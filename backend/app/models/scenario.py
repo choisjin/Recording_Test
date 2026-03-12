@@ -60,6 +60,19 @@ class ROI(BaseModel):
     height: int
 
 
+class CompareMode(str, Enum):
+    FULL = "full"                    # 전체화면 SSIM
+    SINGLE_CROP = "single_crop"      # 단일 크롭 템플릿 매칭
+    FULL_EXCLUDE = "full_exclude"    # 전체화면에서 영역 제외 SSIM
+    MULTI_CROP = "multi_crop"        # 여러 크롭 각각 비교
+
+
+class CropItem(BaseModel):
+    """Multi-crop expected image entry."""
+    image: str          # filename of the cropped expected image
+    label: str = ""     # optional user label
+
+
 class Step(BaseModel):
     id: int
     type: StepType
@@ -72,6 +85,10 @@ class Step(BaseModel):
     similarity_threshold: float = 0.95
     on_pass_goto: Optional[int] = None  # step ID to jump to on pass (None = next)
     on_fail_goto: Optional[int] = None  # step ID to jump to on fail (None = next)
+    compare_mode: CompareMode = CompareMode.FULL
+    exclude_rois: list[ROI] = Field(default_factory=list)  # regions to exclude (full_exclude mode)
+    expected_images: list[CropItem] = Field(default_factory=list)  # multi_crop mode
+    multi_crop_strategy: str = "min"  # "min" or "average"
 
 
 class Scenario(BaseModel):
@@ -82,6 +99,15 @@ class Scenario(BaseModel):
     steps: list[Step] = Field(default_factory=list)
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+
+
+class SubResult(BaseModel):
+    """Per-crop comparison result for multi_crop mode."""
+    label: str = ""
+    expected_image: str = ""
+    score: float = 0.0
+    status: str = "pass"  # pass/warning/fail
+    match_location: Optional[dict] = None
 
 
 class StepResult(BaseModel):
@@ -102,6 +128,8 @@ class StepResult(BaseModel):
     message: str = ""
     delay_ms: int = 0  # configured delay_after_ms
     execution_time_ms: int = 0  # actual duration
+    compare_mode: Optional[str] = None
+    sub_results: list[SubResult] = Field(default_factory=list)  # per-crop details for multi_crop
 
 
 class ScenarioResult(BaseModel):

@@ -41,10 +41,12 @@ export const scenarioApi = {
     api.post(`/scenario/${name}/play`, { verify }),
   stopPlayback: () => api.post('/scenario/playback/stop'),
   playbackStatus: () => api.get('/scenario/playback/status'),
-  saveExpectedImage: (scenarioName: string, stepIndex: number, imageBase64: string, crop?: { x: number; y: number; width: number; height: number }) =>
-    api.post('/scenario/record/save-expected-image', { scenario_name: scenarioName, step_index: stepIndex, image_base64: imageBase64, crop }),
-  captureExpectedImage: (scenarioName: string, stepIndex: number, deviceId: string, crop?: { x: number; y: number; width: number; height: number }) =>
-    api.post('/scenario/record/capture-expected-image', { scenario_name: scenarioName, step_index: stepIndex, device_id: deviceId, crop }),
+  saveExpectedImage: (scenarioName: string, stepIndex: number, imageBase64: string, crop?: { x: number; y: number; width: number; height: number }, compareMode?: string, cropLabel?: string) =>
+    api.post('/scenario/record/save-expected-image', { scenario_name: scenarioName, step_index: stepIndex, image_base64: imageBase64, crop, compare_mode: compareMode, crop_label: cropLabel }),
+  captureExpectedImage: (scenarioName: string, stepIndex: number, deviceId: string, crop?: { x: number; y: number; width: number; height: number }, compareMode?: string, cropLabel?: string) =>
+    api.post('/scenario/record/capture-expected-image', { scenario_name: scenarioName, step_index: stepIndex, device_id: deviceId, crop, compare_mode: compareMode, crop_label: cropLabel }),
+  removeCrop: (scenarioName: string, stepIndex: number, cropIndex: number) =>
+    api.post('/scenario/record/remove-crop', { scenario_name: scenarioName, step_index: stepIndex, crop_index: cropIndex }),
   testStep: (scenarioName: string, stepIndex: number, stepData?: any) =>
     api.post('/scenario/test-step', { scenario_name: scenarioName, step_index: stepIndex, step_data: stepData }),
   // Groups

@@ -57,6 +57,9 @@ const JumpEditorInner = React.memo(({ step, index, steps, onUpdate }: {
   </Space>
 ));
 
+interface ROI { x: number; y: number; width: number; height: number }
+interface CropItem { image: string; label: string }
+
 interface Step {
   id: number;
   type: string;
@@ -67,7 +70,11 @@ interface Step {
   expected_image: string | null;
   on_pass_goto?: number | null;
   on_fail_goto?: number | null;
-  roi?: { x: number; y: number; width: number; height: number } | null;
+  roi?: ROI | null;
+  compare_mode?: 'full' | 'single_crop' | 'full_exclude' | 'multi_crop';
+  exclude_rois?: ROI[];
+  expected_images?: CropItem[];
+  multi_crop_strategy?: 'min' | 'average';
 }
 
 // Gesture detection thresholds
@@ -154,6 +161,15 @@ export default function RecordPage() {
   const roiCanvasRef = useRef<HTMLCanvasElement>(null);
   const roiScreenshotRef = useRef<string>(''); // captured screenshot for ROI modal
   const roiDragRef = useRef<{ startX: number; startY: number; curX: number; curY: number; active: boolean }>({
+    startX: 0, startY: 0, curX: 0, curY: 0, active: false,
+  });
+
+  // Exclude ROI modal (for full_exclude mode)
+  const [excludeRoiEditingIndex, setExcludeRoiEditingIndex] = useState<number | null>(null);
+  const [excludeRoiModalOpen, setExcludeRoiModalOpen] = useState(false);
+  const excludeRoiCanvasRef = useRef<HTMLCanvasElement>(null);
+  const excludeRoiScreenshotRef = useRef<string>('');
+  const excludeRoiDragRef = useRef<{ startX: number; startY: number; curX: number; curY: number; active: boolean }>({
     startX: 0, startY: 0, curX: 0, curY: 0, active: false,
   });
 
@@ -447,10 +463,23 @@ export default function RecordPage() {
     const rh = Math.abs(curY - startY);
     if (rw > 10 && rh > 10 && captureStepIndex != null && scenarioName && screenshotDeviceId) {
       const crop = { x: rx, y: ry, width: rw, height: rh };
+      const stepMode = steps[captureStepIndex]?.compare_mode;
+      const isMultiCrop = stepMode === 'multi_crop';
       try {
-        const res = await scenarioApi.captureExpectedImage(scenarioName, captureStepIndex, screenshotDeviceId, crop);
-        setSteps(prev => prev.map((s, i) => i === captureStepIndex ? { ...s, expected_image: res.data.filename } : s));
-        message.success(`스텝 #${captureStepIndex + 1} 크롭 기대이미지 저장 완료 (${rw}×${rh})`);
+        const res = await scenarioApi.captureExpectedImage(
+          scenarioName, captureStepIndex, screenshotDeviceId, crop,
+          isMultiCrop ? 'multi_crop' : undefined,
+        );
+        if (isMultiCrop) {
+          setSteps(prev => prev.map((s, i) => {
+            if (i !== captureStepIndex) return s;
+            return { ...s, expected_images: [...(s.expected_images || []), { image: res.data.filename, label: '' }] };
+          }));
+          message.success(`스텝 #${captureStepIndex + 1} 멀티크롭 추가 완료 (${rw}×${rh})`);
+        } else {
+          setSteps(prev => prev.map((s, i) => i === captureStepIndex ? { ...s, expected_image: res.data.filename } : s));
+          message.success(`스텝 #${captureStepIndex + 1} 크롭 기대이미지 저장 완료 (${rw}×${rh})`);
+        }
         setCaptureModalOpen(false);
         setCaptureStepIndex(null);
       } catch (e: any) {
@@ -458,7 +487,7 @@ export default function RecordPage() {
         message.error(e.response?.data?.detail || '기대이미지 저장 실패');
       }
     }
-  }, [captureStepIndex, scenarioName, screenshotDeviceId]);
+  }, [captureStepIndex, scenarioName, screenshotDeviceId, steps]);
 
   useEffect(() => {
     if (captureModalOpen) setTimeout(() => drawCaptureCanvas(), 50);
@@ -524,6 +553,151 @@ export default function RecordPage() {
       setTimeout(() => drawRoiCanvas(), 50);
     }
   }, [roiModalOpen]);
+
+  // --- Compare mode helpers ---
+  const updateCompareMode = useCallback((index: number, mode: string) => {
+    setSteps(prev => prev.map((s, i) => i === index ? { ...s, compare_mode: mode as Step['compare_mode'] } : s));
+  }, []);
+
+  // --- Exclude ROI modal handlers ---
+  const drawExcludeRoiCanvas = useCallback((dragRect?: { x: number; y: number; w: number; h: number }) => {
+    const canvas = excludeRoiCanvasRef.current;
+    const src = excludeRoiScreenshotRef.current;
+    if (!canvas || !src) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const img = new window.Image();
+    img.onload = () => {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+      // Draw existing exclude regions
+      const stepIdx = excludeRoiEditingIndex;
+      if (stepIdx != null) {
+        const existing = steps[stepIdx]?.exclude_rois || [];
+        existing.forEach((r, ri) => {
+          ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
+          ctx.fillRect(r.x, r.y, r.width, r.height);
+          ctx.strokeStyle = '#ff4d4f';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(r.x, r.y, r.width, r.height);
+          ctx.fillStyle = '#fff';
+          ctx.font = '20px sans-serif';
+          ctx.fillText(`#${ri + 1}`, r.x + 4, r.y + 22);
+        });
+      }
+      // Draw current drag rectangle
+      if (dragRect && dragRect.w > 5 && dragRect.h > 5) {
+        ctx.fillStyle = 'rgba(255, 0, 0, 0.25)';
+        ctx.fillRect(dragRect.x, dragRect.y, dragRect.w, dragRect.h);
+        ctx.strokeStyle = '#ff4d4f';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([6, 4]);
+        ctx.strokeRect(dragRect.x, dragRect.y, dragRect.w, dragRect.h);
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#ff4d4f';
+        ctx.font = '24px sans-serif';
+        ctx.fillText(`${dragRect.w}×${dragRect.h}`, dragRect.x + 6, dragRect.y - 8);
+      }
+    };
+    img.src = src;
+  }, [excludeRoiEditingIndex, steps]);
+
+  const openExcludeRoiModal = useCallback((index: number) => {
+    excludeRoiScreenshotRef.current = screenshot || '';
+    setExcludeRoiEditingIndex(index);
+    setExcludeRoiModalOpen(true);
+  }, [screenshot]);
+
+  const excludeRoiMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = excludeRoiCanvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = Math.round((e.clientX - rect.left) * scaleX);
+    const y = Math.round((e.clientY - rect.top) * scaleY);
+    excludeRoiDragRef.current = { startX: x, startY: y, curX: x, curY: y, active: true };
+  }, []);
+
+  const excludeRoiMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!excludeRoiDragRef.current.active) return;
+    const canvas = excludeRoiCanvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = Math.round((e.clientX - rect.left) * scaleX);
+    const y = Math.round((e.clientY - rect.top) * scaleY);
+    excludeRoiDragRef.current.curX = x;
+    excludeRoiDragRef.current.curY = y;
+    const { startX, startY } = excludeRoiDragRef.current;
+    drawExcludeRoiCanvas({
+      x: Math.min(startX, x), y: Math.min(startY, y),
+      w: Math.abs(x - startX), h: Math.abs(y - startY),
+    });
+  }, [drawExcludeRoiCanvas]);
+
+  const excludeRoiMouseUp = useCallback(() => {
+    if (!excludeRoiDragRef.current.active) return;
+    excludeRoiDragRef.current.active = false;
+    const { startX, startY, curX, curY } = excludeRoiDragRef.current;
+    const rx = Math.min(startX, curX);
+    const ry = Math.min(startY, curY);
+    const rw = Math.abs(curX - startX);
+    const rh = Math.abs(curY - startY);
+    if (rw > 10 && rh > 10 && excludeRoiEditingIndex != null) {
+      const newRoi = { x: rx, y: ry, width: rw, height: rh };
+      setSteps(prev => prev.map((s, i) => {
+        if (i !== excludeRoiEditingIndex) return s;
+        return { ...s, exclude_rois: [...(s.exclude_rois || []), newRoi] };
+      }));
+      message.success(`제외 영역 추가: ${rw}×${rh} @ (${rx},${ry})`);
+      // Redraw canvas with updated regions after state update
+      setTimeout(() => drawExcludeRoiCanvas(), 50);
+    }
+  }, [excludeRoiEditingIndex, drawExcludeRoiCanvas]);
+
+  const removeExcludeRoi = useCallback((stepIdx: number, roiIdx: number) => {
+    setSteps(prev => prev.map((s, i) => {
+      if (i !== stepIdx) return s;
+      const rois = [...(s.exclude_rois || [])];
+      rois.splice(roiIdx, 1);
+      return { ...s, exclude_rois: rois };
+    }));
+  }, []);
+
+  useEffect(() => {
+    if (excludeRoiModalOpen) setTimeout(() => drawExcludeRoiCanvas(), 50);
+  }, [excludeRoiModalOpen, drawExcludeRoiCanvas]);
+
+  // Redraw exclude canvas when steps change (region added/removed)
+  useEffect(() => {
+    if (excludeRoiModalOpen) setTimeout(() => drawExcludeRoiCanvas(), 50);
+  }, [steps, excludeRoiModalOpen, drawExcludeRoiCanvas]);
+
+  // --- Multi-crop helpers ---
+  const openMultiCropCapture = useCallback((stepIdx: number) => {
+    captureScreenshotRef.current = screenshot || '';
+    setCaptureStepIndex(stepIdx);
+    setCaptureModalOpen(true);
+  }, [screenshot]);
+
+  const removeCropItem = useCallback(async (stepIdx: number, cropIdx: number) => {
+    if (!scenarioName) return;
+    try {
+      await scenarioApi.removeCrop(scenarioName, stepIdx, cropIdx);
+      setSteps(prev => prev.map((s, i) => {
+        if (i !== stepIdx) return s;
+        const imgs = [...(s.expected_images || [])];
+        imgs.splice(cropIdx, 1);
+        return { ...s, expected_images: imgs };
+      }));
+      message.success('크롭 삭제 완료');
+    } catch (e: any) {
+      message.error(e.response?.data?.detail || '크롭 삭제 실패');
+    }
+  }, [scenarioName]);
 
   // Canvas gesture handlers (no ROI logic here)
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -963,7 +1137,7 @@ export default function RecordPage() {
               />
               {getDeviceTag(s.device_id)}
               <Tag color={s.type === 'wait' ? 'cyan' : undefined}>{s.type}</Tag>
-              {s.expected_image && scenarioName && (
+              {s.expected_image && scenarioName && s.compare_mode !== 'multi_crop' && (
                 <span style={{ display: 'inline-flex', alignItems: 'center', position: 'relative', marginRight: 4 }}>
                   <Tooltip title="기대이미지 (클릭하여 확대)">
                     <Image
@@ -975,10 +1149,30 @@ export default function RecordPage() {
                   </Tooltip>
                   <Tooltip title="기대이미지 초기화">
                     <CloseCircleOutlined
-                      onClick={() => setSteps((prev) => prev.map((st, i) => i === index ? { ...st, expected_image: null, roi: null } : st))}
+                      onClick={() => setSteps((prev) => prev.map((st, i) => i === index ? { ...st, expected_image: null, roi: null, exclude_rois: [], expected_images: [] } : st))}
                       style={{ fontSize: 14, color: '#ff4d4f', cursor: 'pointer', marginLeft: 2 }}
                     />
                   </Tooltip>
+                </span>
+              )}
+              {s.compare_mode === 'multi_crop' && (s.expected_images?.length || 0) > 0 && scenarioName && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, marginRight: 4 }}>
+                  {s.expected_images!.map((ci, ci_idx) => (
+                    <span key={ci_idx} style={{ display: 'inline-flex', alignItems: 'center', position: 'relative' }}>
+                      <Tooltip title={ci.label || `크롭 #${ci_idx + 1}`}>
+                        <Image
+                          src={`/screenshots/${scenarioName}/${ci.image}`}
+                          alt={`crop-${ci_idx}`}
+                          style={{ height: 32, width: 18, objectFit: 'cover', borderRadius: 2, cursor: 'pointer' }}
+                          preview={{ mask: false }}
+                        />
+                      </Tooltip>
+                      <CloseCircleOutlined
+                        onClick={() => removeCropItem(index, ci_idx)}
+                        style={{ fontSize: 12, color: '#ff4d4f', cursor: 'pointer', marginLeft: 1 }}
+                      />
+                    </span>
+                  ))}
                 </span>
               )}
               <span style={{ minWidth: 100, maxWidth: 220 }}>
@@ -994,6 +1188,14 @@ export default function RecordPage() {
               {s.roi && (
                 <Tag color="orange" style={{ marginLeft: 4 }}>
                   ROI {s.roi.width}×{s.roi.height}
+                </Tag>
+              )}
+              {s.compare_mode === 'full_exclude' && (s.exclude_rois?.length || 0) > 0 && (
+                <Tag color="red" style={{ marginLeft: 4 }}>제외 {s.exclude_rois!.length}개</Tag>
+              )}
+              {s.compare_mode === 'multi_crop' && (
+                <Tag color="purple" style={{ marginLeft: 4 }}>
+                  크롭 {s.expected_images?.length || 0}개 ({s.multi_crop_strategy === 'average' ? '평균' : '최소'})
                 </Tag>
               )}
               {s.on_pass_goto != null && (
@@ -1036,22 +1238,71 @@ export default function RecordPage() {
               >W</Button>
             )}
             {screenshotDeviceId && scenarioName && (
-              <Button
-                size="small" type="text"
-                icon={<CameraOutlined />}
-                title={s.expected_image ? '기대이미지 재촬영 (전체화면)' : '기대이미지 저장 (전체화면)'}
-                style={s.expected_image ? { color: '#52c41a' } : undefined}
-                onClick={() => saveExpectedFull(index)}
-              />
-            )}
-            {screenshotDeviceId && scenarioName && (
-              <Button
-                size="small" type="text"
-                icon={<ScissorOutlined />}
-                title={s.expected_image ? '기대이미지 재촬영 (크롭)' : '기대이미지 저장 (크롭)'}
-                style={s.expected_image ? { color: '#52c41a' } : undefined}
-                onClick={() => openCaptureModal(index)}
-              />
+              <>
+                <Select
+                  size="small"
+                  value={s.compare_mode || 'full'}
+                  onChange={(v) => updateCompareMode(index, v)}
+                  style={{ width: 105, fontSize: 11 }}
+                  options={[
+                    { value: 'full', label: '전체화면' },
+                    { value: 'single_crop', label: '단일크롭' },
+                    { value: 'full_exclude', label: '영역제외' },
+                    { value: 'multi_crop', label: '멀티크롭' },
+                  ]}
+                />
+                {/* 전체화면 / 영역제외: 카메라 (전체화면 캡처) */}
+                {(s.compare_mode || 'full') !== 'multi_crop' && (
+                  <Button
+                    size="small" type="text"
+                    icon={<CameraOutlined />}
+                    title={s.expected_image ? '기대이미지 재촬영 (전체화면)' : '기대이미지 저장 (전체화면)'}
+                    style={s.expected_image ? { color: '#52c41a' } : undefined}
+                    onClick={() => saveExpectedFull(index)}
+                  />
+                )}
+                {/* 단일크롭: 가위 (크롭 캡처) */}
+                {(s.compare_mode === 'single_crop' || !(s.compare_mode)) && (
+                  <Button
+                    size="small" type="text"
+                    icon={<ScissorOutlined />}
+                    title={s.expected_image ? '기대이미지 재촬영 (크롭)' : '기대이미지 저장 (크롭)'}
+                    style={s.expected_image ? { color: '#52c41a' } : undefined}
+                    onClick={() => openCaptureModal(index)}
+                  />
+                )}
+                {/* 영역제외: 제외 영역 추가 버튼 */}
+                {s.compare_mode === 'full_exclude' && (
+                  <Button
+                    size="small" type="text"
+                    title="제외 영역 추가/편집"
+                    style={(s.exclude_rois?.length || 0) > 0 ? { color: '#ff4d4f' } : undefined}
+                    onClick={() => openExcludeRoiModal(index)}
+                  >제외</Button>
+                )}
+                {/* 멀티크롭: 크롭 추가 + strategy 선택 */}
+                {s.compare_mode === 'multi_crop' && (
+                  <>
+                    <Button
+                      size="small" type="text"
+                      icon={<ScissorOutlined />}
+                      title="크롭 이미지 추가"
+                      style={(s.expected_images?.length || 0) > 0 ? { color: '#52c41a' } : undefined}
+                      onClick={() => openMultiCropCapture(index)}
+                    />
+                    <Select
+                      size="small"
+                      value={s.multi_crop_strategy || 'min'}
+                      onChange={(v) => setSteps(prev => prev.map((st, i) => i === index ? { ...st, multi_crop_strategy: v } : st))}
+                      style={{ width: 80, fontSize: 11 }}
+                      options={[
+                        { value: 'min', label: '최소값' },
+                        { value: 'average', label: '평균값' },
+                      ]}
+                    />
+                  </>
+                )}
+              </>
             )}
             </div>
           </div>
@@ -1093,7 +1344,7 @@ export default function RecordPage() {
       )}
       locale={{ emptyText: '아직 기록된 스텝이 없습니다' }}
     />
-  ), [steps, recording, updateStepJump, updateStepDescription, openEditStepModal, openRoiModal, screenshotDeviceId, scenarioName, saveExpectedFull, openCaptureModal, testStep, testingStepIndex]);
+  ), [steps, recording, updateStepJump, updateStepDescription, openEditStepModal, openRoiModal, screenshotDeviceId, scenarioName, saveExpectedFull, openCaptureModal, testStep, testingStepIndex, updateCompareMode, openExcludeRoiModal, openMultiCropCapture, removeCropItem]);
 
   // Determine if device screen is portrait (tall) or landscape
   const isPortrait = deviceRes.height > deviceRes.width;
@@ -1470,6 +1721,57 @@ export default function RecordPage() {
             ? `현재 ROI: ${steps[roiEditingIndex].roi!.width}×${steps[roiEditingIndex].roi!.height} @ (${steps[roiEditingIndex].roi!.x}, ${steps[roiEditingIndex].roi!.y}) — 다시 드래그하여 변경`
             : '마우스로 비교할 영역을 드래그하세요'}
         </div>
+      </Modal>
+
+      {/* Exclude ROI Modal — add/remove exclusion regions */}
+      <Modal
+        title={`제외 영역 편집 — 스텝 #${(excludeRoiEditingIndex ?? 0) + 1} (드래그하여 제외할 영역 추가)`}
+        open={excludeRoiModalOpen}
+        onCancel={() => { setExcludeRoiModalOpen(false); setExcludeRoiEditingIndex(null); }}
+        width="90vw"
+        style={{ top: 20 }}
+        footer={
+          <Space>
+            <Button onClick={() => { setExcludeRoiModalOpen(false); setExcludeRoiEditingIndex(null); }}>
+              닫기
+            </Button>
+            {excludeRoiEditingIndex != null && (steps[excludeRoiEditingIndex]?.exclude_rois?.length || 0) > 0 && (
+              <Button danger onClick={() => {
+                setSteps(prev => prev.map((s, i) => i === excludeRoiEditingIndex ? { ...s, exclude_rois: [] } : s));
+                message.info('모든 제외 영역 해제');
+              }}>
+                전체 해제
+              </Button>
+            )}
+          </Space>
+        }
+      >
+        <div style={{ overflow: 'auto', maxHeight: '65vh', textAlign: 'center' }}>
+          <canvas
+            ref={excludeRoiCanvasRef}
+            onMouseDown={excludeRoiMouseDown}
+            onMouseMove={excludeRoiMouseMove}
+            onMouseUp={excludeRoiMouseUp}
+            style={{ cursor: 'crosshair', maxWidth: '100%' }}
+          />
+        </div>
+        {excludeRoiEditingIndex != null && (steps[excludeRoiEditingIndex]?.exclude_rois?.length || 0) > 0 && (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>제외 영역 목록 (클릭하여 삭제):</div>
+            <Space wrap>
+              {steps[excludeRoiEditingIndex]?.exclude_rois?.map((r, ri) => (
+                <Tag
+                  key={ri}
+                  color="red"
+                  closable
+                  onClose={() => removeExcludeRoi(excludeRoiEditingIndex!, ri)}
+                >
+                  #{ri + 1} {r.width}×{r.height} @ ({r.x},{r.y})
+                </Tag>
+              ))}
+            </Space>
+          </div>
+        )}
       </Modal>
 
       {/* Step command edit modal */}

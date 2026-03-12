@@ -1,4 +1,4 @@
-"""Image comparison service — SSIM, ROI, template matching."""
+"""Image comparison service — SSIM, ROI, template matching, exclusion, multi-crop."""
 
 from __future__ import annotations
 
@@ -101,6 +101,137 @@ class ImageCompareService:
         }
 
     # ------------------------------------------------------------------
+    # Full-image SSIM with exclusion regions
+    # ------------------------------------------------------------------
+
+    def compare_ssim_with_exclusions(
+        self,
+        expected_path: str,
+        actual_path: str,
+        exclude_rois: list[dict],
+    ) -> dict:
+        """SSIM comparison with specified regions excluded.
+
+        Computes per-pixel SSIM, masks out excluded regions, and averages
+        only the unmasked pixels for the final score.
+        """
+        img_exp = cv2.imread(expected_path)
+        img_act = cv2.imread(actual_path)
+        if img_exp is None or img_act is None:
+            return {"score": 0.0, "error": "Could not read one or both images"}
+
+        if img_exp.shape != img_act.shape:
+            img_act = cv2.resize(img_act, (img_exp.shape[1], img_exp.shape[0]))
+
+        gray_exp = cv2.cvtColor(img_exp, cv2.COLOR_BGR2GRAY)
+        gray_act = cv2.cvtColor(img_act, cv2.COLOR_BGR2GRAY)
+
+        # Compute full SSIM map
+        _, diff = ssim(gray_exp, gray_act, full=True)
+
+        # Build inclusion mask (True = include, False = exclude)
+        h, w = diff.shape
+        mask = np.ones((h, w), dtype=bool)
+        for roi in exclude_rois:
+            rx, ry = roi["x"], roi["y"]
+            rw, rh = roi["width"], roi["height"]
+            mask[ry:ry + rh, rx:rx + rw] = False
+
+        # Average SSIM only over included pixels
+        if mask.sum() == 0:
+            score = 1.0  # nothing to compare
+        else:
+            score = float(diff[mask].mean())
+
+        # Build diff array with excluded regions zeroed out (shown as identical)
+        diff_uint8 = (diff * 255).astype("uint8")
+        diff_uint8[~mask] = 255  # mark excluded as "identical" in diff
+
+        logger.info(
+            "Exclusion comparison: %d regions excluded, score=%.4f",
+            len(exclude_rois), score,
+        )
+
+        return {
+            "score": round(score, 4),
+            "diff_array": diff_uint8,
+            "exclude_rois": exclude_rois,
+        }
+
+    # ------------------------------------------------------------------
+    # Multi-crop comparison
+    # ------------------------------------------------------------------
+
+    def compare_multi_crop(
+        self,
+        actual_path: str,
+        crop_items: list[dict],
+        threshold_pass: float = 0.95,
+        threshold_warning: float = 0.85,
+        strategy: str = "min",
+    ) -> dict:
+        """Compare multiple cropped expected images against a single actual screenshot.
+
+        Returns aggregate score and per-crop sub-results.
+        """
+        img_act = cv2.imread(actual_path)
+        if img_act is None:
+            return {"score": 0.0, "error": "Could not read actual image", "sub_results": []}
+
+        sub_results = []
+        scores = []
+
+        for item in crop_items:
+            img_exp = cv2.imread(item["image"])
+            if img_exp is None:
+                sub_results.append({
+                    "label": item.get("label", ""),
+                    "expected_image": item.get("rel_path", ""),
+                    "score": 0.0,
+                    "status": "error",
+                    "match_location": None,
+                })
+                scores.append(0.0)
+                continue
+
+            result = self._compare_cropped(img_exp, img_act)
+            score = result["score"]
+            scores.append(score)
+
+            if score >= threshold_pass:
+                status = "pass"
+            elif score >= threshold_warning:
+                status = "warning"
+            else:
+                status = "fail"
+
+            sub_results.append({
+                "label": item.get("label", ""),
+                "expected_image": item.get("rel_path", ""),
+                "score": score,
+                "status": status,
+                "match_location": result.get("match_location"),
+            })
+
+        # Aggregate
+        if not scores:
+            agg_score = 0.0
+        elif strategy == "average":
+            agg_score = round(float(np.mean(scores)), 4)
+        else:  # "min"
+            agg_score = round(float(np.min(scores)), 4)
+
+        logger.info(
+            "Multi-crop comparison: %d crops, strategy=%s, aggregate=%.4f",
+            len(crop_items), strategy, agg_score,
+        )
+
+        return {
+            "score": agg_score,
+            "sub_results": sub_results,
+        }
+
+    # ------------------------------------------------------------------
     # Level 2 — SSIM with status-bar masking
     # ------------------------------------------------------------------
 
@@ -159,9 +290,13 @@ class ImageCompareService:
         actual_path: str,
         output_path: str,
         roi: Optional[dict] = None,
+        exclude_rois: Optional[list[dict]] = None,
     ) -> str:
         """Generate a heatmap PNG highlighting differences."""
-        result = self.compare_ssim(expected_path, actual_path, roi=roi)
+        if exclude_rois:
+            result = self.compare_ssim_with_exclusions(expected_path, actual_path, exclude_rois)
+        else:
+            result = self.compare_ssim(expected_path, actual_path, roi=roi)
         if "error" in result:
             raise RuntimeError(result["error"])
 
@@ -170,8 +305,42 @@ class ImageCompareService:
         diff_inv = 255 - diff
         heatmap = cv2.applyColorMap(diff_inv, cv2.COLORMAP_JET)
 
+        # Gray out excluded regions in heatmap
+        if exclude_rois:
+            for roi_r in exclude_rois:
+                rx, ry = roi_r["x"], roi_r["y"]
+                rw, rh = roi_r["width"], roi_r["height"]
+                heatmap[ry:ry + rh, rx:rx + rw] = (128, 128, 128)
+
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         cv2.imwrite(output_path, heatmap)
+        return output_path
+
+    def generate_multi_crop_annotated(
+        self,
+        actual_path: str,
+        sub_results: list[dict],
+        output_path: str,
+    ) -> str:
+        """Draw match boxes for each crop on the actual screenshot."""
+        img = cv2.imread(actual_path)
+        if img is None:
+            raise RuntimeError("Could not read actual image")
+
+        for i, sr in enumerate(sub_results):
+            loc = sr.get("match_location")
+            if not loc:
+                continue
+            x, y = loc["x"], loc["y"]
+            w, h = loc["width"], loc["height"]
+            color = (0, 255, 0) if sr["status"] == "pass" else (0, 0, 255)
+            cv2.rectangle(img, (x, y), (x + w, y + h), color, 3)
+            label = sr.get("label") or f"#{i + 1}"
+            cv2.putText(img, f"{label} {sr['score']:.2f}", (x, y - 8),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(output_path, img)
         return output_path
 
     # ------------------------------------------------------------------
@@ -185,8 +354,52 @@ class ImageCompareService:
         threshold_pass: float = 0.95,
         threshold_warning: float = 0.85,
         roi: Optional[dict] = None,
+        compare_mode: str = "full",
+        exclude_rois: Optional[list[dict]] = None,
+        crop_items: Optional[list[dict]] = None,
+        strategy: str = "min",
     ) -> dict:
-        """Return pass/fail/warning judgement."""
+        """Return pass/fail/warning judgement with mode-aware dispatch."""
+
+        # --- Multi-crop mode ---
+        if compare_mode == "multi_crop" and crop_items:
+            mc_result = self.compare_multi_crop(
+                actual_path, crop_items,
+                threshold_pass=threshold_pass,
+                threshold_warning=threshold_warning,
+                strategy=strategy,
+            )
+            if "error" in mc_result:
+                return {"status": "error", "score": 0.0, "message": mc_result["error"], "sub_results": []}
+
+            score = mc_result["score"]
+            if score >= threshold_pass:
+                status = "pass"
+            elif score >= threshold_warning:
+                status = "warning"
+            else:
+                status = "fail"
+            return {
+                "status": status,
+                "score": score,
+                "sub_results": mc_result["sub_results"],
+            }
+
+        # --- Full-exclude mode ---
+        if compare_mode == "full_exclude" and exclude_rois:
+            result = self.compare_ssim_with_exclusions(expected_path, actual_path, exclude_rois)
+            if "error" in result:
+                return {"status": "error", "score": 0.0, "message": result["error"]}
+            score = result["score"]
+            if score >= threshold_pass:
+                status = "pass"
+            elif score >= threshold_warning:
+                status = "warning"
+            else:
+                status = "fail"
+            return {"status": status, "score": score}
+
+        # --- Full / Single-crop mode (existing behavior) ---
         result = self.compare_ssim(expected_path, actual_path, roi=roi)
         if "error" in result:
             return {"status": "error", "score": 0.0, "message": result["error"]}

@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from ..dependencies import adb_service as adb_svc
 from ..dependencies import playback_service as playback_svc
 from ..dependencies import recording_service as recording_svc
-from ..models.scenario import ROI, Scenario, StepType
+from ..models.scenario import ROI, CompareMode, CropItem, Scenario, StepType
 from ..services.recording_service import SCREENSHOTS_DIR
 
 router = APIRouter(prefix="/api/scenario", tags=["scenario"])
@@ -120,21 +120,24 @@ class SaveExpectedImageRequest(BaseModel):
     step_index: int  # 0-based
     image_base64: str  # PNG base64 data (without data:image/png;base64, prefix)
     crop: Optional[dict] = None  # {x, y, width, height} in image pixels
+    compare_mode: Optional[str] = None  # "multi_crop" to append to expected_images
+    crop_label: str = ""  # label for multi_crop item
+
+
+async def _resolve_scenario(scenario_name: str):
+    """Get scenario from in-memory recording or disk."""
+    if recording_svc.is_recording and recording_svc._current_scenario:
+        return recording_svc._current_scenario
+    try:
+        return await recording_svc.load_scenario(scenario_name)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Scenario '{scenario_name}' not found")
 
 
 @router.post("/record/save-expected-image")
 async def save_expected_image(req: SaveExpectedImageRequest):
     """Manually save an expected image for a step."""
-    # During recording: use in-memory scenario; otherwise load from disk
-    scenario = None
-    if recording_svc.is_recording and recording_svc._current_scenario:
-        # Always use in-memory scenario during recording (it may not be on disk yet)
-        scenario = recording_svc._current_scenario
-    else:
-        try:
-            scenario = await recording_svc.load_scenario(req.scenario_name)
-        except FileNotFoundError:
-            raise HTTPException(status_code=404, detail=f"Scenario '{req.scenario_name}' not found")
+    scenario = await _resolve_scenario(req.scenario_name)
 
     if req.step_index < 0 or req.step_index >= len(scenario.steps):
         raise HTTPException(status_code=400, detail=f"Invalid step index: {req.step_index}")
@@ -163,23 +166,27 @@ async def save_expected_image(req: SaveExpectedImageRequest):
         _, png_bytes = cv2.imencode(".png", cropped)
         png_bytes = png_bytes.tobytes()
 
-    # Save to file
-    filename = f"{req.scenario_name}_step_{step.id:03d}.png"
     save_dir = SCREENSHOTS_DIR / req.scenario_name
     save_dir.mkdir(parents=True, exist_ok=True)
-    (save_dir / filename).write_bytes(png_bytes)
 
-    # Update scenario step
-    step.expected_image = filename
-    # Store crop region as ROI so playback can crop actual screenshot to match
-    if req.crop:
-        step.roi = ROI(x=int(req.crop["x"]), y=int(req.crop["y"]),
-                       width=int(req.crop["width"]), height=int(req.crop["height"]))
+    if req.compare_mode == "multi_crop":
+        # Multi-crop: append to expected_images list
+        crop_idx = len(step.expected_images)
+        filename = f"{req.scenario_name}_step_{step.id:03d}_crop_{crop_idx:02d}.png"
+        (save_dir / filename).write_bytes(png_bytes)
+        step.expected_images.append(CropItem(image=filename, label=req.crop_label))
     else:
-        step.roi = None
-    # Save to disk (also persists during recording so it's not lost)
-    await recording_svc.save_scenario(scenario)
+        # Single image (full or single_crop)
+        filename = f"{req.scenario_name}_step_{step.id:03d}.png"
+        (save_dir / filename).write_bytes(png_bytes)
+        step.expected_image = filename
+        if req.crop:
+            step.roi = ROI(x=int(req.crop["x"]), y=int(req.crop["y"]),
+                           width=int(req.crop["width"]), height=int(req.crop["height"]))
+        else:
+            step.roi = None
 
+    await recording_svc.save_scenario(scenario)
     return {"status": "ok", "filename": filename, "step_id": step.id}
 
 
@@ -188,24 +195,14 @@ class CaptureExpectedImageRequest(BaseModel):
     step_index: int  # 0-based
     device_id: str  # ADB serial to take screenshot from
     crop: Optional[dict] = None  # {x, y, width, height} in device pixels
+    compare_mode: Optional[str] = None  # "multi_crop" to append
+    crop_label: str = ""
 
 
 @router.post("/record/capture-expected-image")
 async def capture_expected_image(req: CaptureExpectedImageRequest):
-    """Capture a screenshot from the device and save as expected image.
-
-    Unlike save-expected-image, this takes the screenshot server-side
-    so no large base64 transfer is needed.
-    """
-    # Resolve scenario
-    scenario = None
-    if recording_svc.is_recording and recording_svc._current_scenario:
-        scenario = recording_svc._current_scenario
-    else:
-        try:
-            scenario = await recording_svc.load_scenario(req.scenario_name)
-        except FileNotFoundError:
-            raise HTTPException(status_code=404, detail=f"Scenario '{req.scenario_name}' not found")
+    """Capture a screenshot from the device and save as expected image."""
+    scenario = await _resolve_scenario(req.scenario_name)
 
     if req.step_index < 0 or req.step_index >= len(scenario.steps):
         raise HTTPException(status_code=400, detail=f"Invalid step index: {req.step_index}")
@@ -231,24 +228,57 @@ async def capture_expected_image(req: CaptureExpectedImageRequest):
         _, buf = cv2.imencode(".png", cropped)
         png_bytes = buf.tobytes()
 
-    # Save to file
     scenario_name = scenario.name
-    filename = f"{scenario_name}_step_{step.id:03d}.png"
     save_dir = SCREENSHOTS_DIR / scenario_name
     save_dir.mkdir(parents=True, exist_ok=True)
-    (save_dir / filename).write_bytes(png_bytes)
 
-    # Update scenario step
-    step.expected_image = filename
-    # Store crop region as ROI so playback can crop actual screenshot to match
-    if req.crop:
-        step.roi = ROI(x=int(req.crop["x"]), y=int(req.crop["y"]),
-                       width=int(req.crop["width"]), height=int(req.crop["height"]))
+    if req.compare_mode == "multi_crop":
+        # Multi-crop: append to expected_images list
+        crop_idx = len(step.expected_images)
+        filename = f"{scenario_name}_step_{step.id:03d}_crop_{crop_idx:02d}.png"
+        (save_dir / filename).write_bytes(png_bytes)
+        step.expected_images.append(CropItem(image=filename, label=req.crop_label))
     else:
-        step.roi = None
-    await recording_svc.save_scenario(scenario)
+        # Single image (full or single_crop)
+        filename = f"{scenario_name}_step_{step.id:03d}.png"
+        (save_dir / filename).write_bytes(png_bytes)
+        step.expected_image = filename
+        if req.crop:
+            step.roi = ROI(x=int(req.crop["x"]), y=int(req.crop["y"]),
+                           width=int(req.crop["width"]), height=int(req.crop["height"]))
+        else:
+            step.roi = None
 
+    await recording_svc.save_scenario(scenario)
     return {"status": "ok", "filename": filename, "step_id": step.id}
+
+
+class RemoveCropRequest(BaseModel):
+    scenario_name: str
+    step_index: int
+    crop_index: int
+
+
+@router.post("/record/remove-crop")
+async def remove_crop(req: RemoveCropRequest):
+    """Remove a crop item from a multi-crop step."""
+    scenario = await _resolve_scenario(req.scenario_name)
+
+    if req.step_index < 0 or req.step_index >= len(scenario.steps):
+        raise HTTPException(status_code=400, detail=f"Invalid step index: {req.step_index}")
+
+    step = scenario.steps[req.step_index]
+    if req.crop_index < 0 or req.crop_index >= len(step.expected_images):
+        raise HTTPException(status_code=400, detail=f"Invalid crop index: {req.crop_index}")
+
+    removed = step.expected_images.pop(req.crop_index)
+    # Delete the image file
+    img_path = SCREENSHOTS_DIR / req.scenario_name / removed.image
+    if img_path.exists():
+        img_path.unlink()
+
+    await recording_svc.save_scenario(scenario)
+    return {"status": "ok", "removed": removed.image}
 
 
 # ------------------------------------------------------------------

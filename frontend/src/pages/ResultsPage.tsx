@@ -23,6 +23,14 @@ interface MatchLocation {
   height: number;
 }
 
+interface SubResultDetail {
+  label: string;
+  expected_image: string;
+  score: number;
+  status: string;
+  match_location: MatchLocation | null;
+}
+
 interface StepResultDetail {
   step_id: number;
   repeat_index: number;
@@ -40,6 +48,8 @@ interface StepResultDetail {
   message: string;
   delay_ms: number;
   execution_time_ms: number;
+  compare_mode: string | null;
+  sub_results: SubResultDetail[];
 }
 
 interface ResultDetail {
@@ -471,6 +481,42 @@ export default function ResultsPage() {
                     alt="Diff"
                     style={{ width: '100%' }}
                   />
+                </Card>
+              </div>
+            )}
+            {compareStep.compare_mode === 'multi_crop' && compareStep.sub_results?.length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <Card size="small" title={`개별 크롭 비교 결과 (${compareStep.sub_results.length}개)`}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid #303030' }}>
+                        <th style={{ padding: '4px 8px', textAlign: 'left' }}>#</th>
+                        <th style={{ padding: '4px 8px', textAlign: 'left' }}>라벨</th>
+                        <th style={{ padding: '4px 8px', textAlign: 'center' }}>상태</th>
+                        <th style={{ padding: '4px 8px', textAlign: 'right' }}>유사도</th>
+                        <th style={{ padding: '4px 8px', textAlign: 'right' }}>매칭 위치</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {compareStep.sub_results.map((sr, si) => (
+                        <tr key={si} style={{ borderBottom: '1px solid #222' }}>
+                          <td style={{ padding: '4px 8px' }}>{si + 1}</td>
+                          <td style={{ padding: '4px 8px' }}>{sr.label || '-'}</td>
+                          <td style={{ padding: '4px 8px', textAlign: 'center' }}>
+                            <Tag color={statusColor(sr.status)}>{sr.status.toUpperCase()}</Tag>
+                          </td>
+                          <td style={{ padding: '4px 8px', textAlign: 'right' }}>
+                            {(sr.score * 100).toFixed(2)}%
+                          </td>
+                          <td style={{ padding: '4px 8px', textAlign: 'right' }}>
+                            {sr.match_location
+                              ? `(${sr.match_location.x},${sr.match_location.y}) ${sr.match_location.width}x${sr.match_location.height}`
+                              : '-'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </Card>
               </div>
             )}

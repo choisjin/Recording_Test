@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import AsyncGenerator, Optional
 
-from ..models.scenario import Scenario, ScenarioResult, Step, StepResult, StepType
+from ..models.scenario import CompareMode, Scenario, ScenarioResult, Step, StepResult, StepType, SubResult
 from .adb_service import ADBService
 from .device_manager import DeviceManager
 from .image_compare_service import ImageCompareService
@@ -226,73 +226,159 @@ class PlaybackService:
                 step_result.actual_image = actual_rel
 
                 # Verify against expected image
-                if verify and step.expected_image:
-                    expected_path = str(SCREENSHOTS_DIR / scenario_name / step.expected_image)
-                    expected_rel = f"{scenario_name}/{step.expected_image}"
-                    step_result.expected_image = expected_rel
+                has_expected = step.expected_image or (step.compare_mode == CompareMode.MULTI_CROP and step.expected_images)
+                if verify and has_expected:
+                    mode = step.compare_mode or CompareMode.FULL
+                    step_result.compare_mode = mode.value if isinstance(mode, CompareMode) else mode
+
+                    expected_path = str(SCREENSHOTS_DIR / scenario_name / step.expected_image) if step.expected_image else ""
+                    if step.expected_image:
+                        step_result.expected_image = f"{scenario_name}/{step.expected_image}"
                     step_result.roi = step.roi
 
-                    compare_actual = actual_path
-                    if step.roi:
-                        import cv2
-                        img_act = cv2.imread(actual_path)
-                        if img_act is not None:
-                            r = step.roi
-                            cropped = img_act[r.y:r.y + r.height, r.x:r.x + r.width]
-                            cropped_path = str(actual_dir / f"{file_prefix}_roi.png")
-                            cv2.imwrite(cropped_path, cropped)
-                            compare_actual = cropped_path
+                    if mode == CompareMode.MULTI_CROP:
+                        # --- Multi-crop mode ---
+                        crop_items = [
+                            {
+                                "image": str(SCREENSHOTS_DIR / scenario_name / ci.image),
+                                "rel_path": f"{scenario_name}/{ci.image}",
+                                "label": ci.label,
+                            }
+                            for ci in step.expected_images
+                        ]
+                        judgement = self.image_compare.judge(
+                            expected_path="",
+                            actual_path=actual_path,
+                            threshold_pass=step.similarity_threshold,
+                            threshold_warning=step.similarity_threshold - 0.10,
+                            compare_mode="multi_crop",
+                            crop_items=crop_items,
+                            strategy=step.multi_crop_strategy,
+                        )
+                        step_result.status = judgement["status"]
+                        step_result.similarity_score = judgement["score"]
+                        step_result.sub_results = [SubResult(**sr) for sr in judgement.get("sub_results", [])]
 
-                    judgement = self.image_compare.judge(
-                        expected_path,
-                        compare_actual,
-                        threshold_pass=step.similarity_threshold,
-                        threshold_warning=step.similarity_threshold - 0.10,
-                    )
-                    step_result.status = judgement["status"]
-                    step_result.similarity_score = judgement["score"]
-
-                    match_loc = judgement.get("match_location")
-                    if match_loc:
-                        step_result.match_location = match_loc
+                        # Generate annotated image with all match boxes
                         try:
-                            import cv2
-                            img_annotated = cv2.imread(actual_path)
-                            if img_annotated is not None:
-                                x, y = match_loc["x"], match_loc["y"]
-                                w, h = match_loc["width"], match_loc["height"]
-                                cv2.rectangle(img_annotated, (x, y), (x + w, y + h), (0, 0, 255), 3)
-                                annotated_path = str(actual_dir / f"{file_prefix}_annotated.png")
-                                cv2.imwrite(annotated_path, img_annotated)
-                                step_result.actual_annotated_image = f"{scenario_name}/actual/{file_prefix}_annotated.png"
-                        except Exception as e:
-                            logger.warning("Failed to generate annotated image: %s", e)
-                    elif step.roi:
-                        try:
-                            import cv2
-                            img_annotated = cv2.imread(actual_path)
-                            if img_annotated is not None:
-                                r = step.roi
-                                cv2.rectangle(img_annotated, (r.x, r.y), (r.x + r.width, r.y + r.height), (0, 0, 255), 3)
-                                annotated_path = str(actual_dir / f"{file_prefix}_annotated.png")
-                                cv2.imwrite(annotated_path, img_annotated)
-                                step_result.actual_annotated_image = f"{scenario_name}/actual/{file_prefix}_annotated.png"
-                                step_result.match_location = {"x": r.x, "y": r.y, "width": r.width, "height": r.height}
-                        except Exception as e:
-                            logger.warning("Failed to generate annotated image: %s", e)
-
-                    if step_result.status != "pass":
-                        diff_path = str(actual_dir / f"diff_{file_prefix}.png")
-                        diff_rel = f"{scenario_name}/actual/diff_{file_prefix}.png"
-                        try:
-                            self.image_compare.generate_diff_heatmap(
-                                expected_path, compare_actual, diff_path
+                            annotated_path = str(actual_dir / f"{file_prefix}_annotated.png")
+                            self.image_compare.generate_multi_crop_annotated(
+                                actual_path, judgement.get("sub_results", []), annotated_path
                             )
-                            step_result.diff_image = diff_rel
+                            step_result.actual_annotated_image = f"{scenario_name}/actual/{file_prefix}_annotated.png"
                         except Exception as e:
-                            logger.warning("Failed to generate diff: %s", e)
+                            logger.warning("Failed to generate multi-crop annotated image: %s", e)
 
-                    step_result.message = f"Similarity: {judgement['score']:.4f}"
+                        step_result.message = f"Multi-crop ({step.multi_crop_strategy}): {judgement['score']:.4f}"
+
+                    elif mode == CompareMode.FULL_EXCLUDE:
+                        # --- Full-exclude mode ---
+                        exclude_rois_dicts = [r.model_dump() for r in step.exclude_rois]
+                        judgement = self.image_compare.judge(
+                            expected_path,
+                            actual_path,
+                            threshold_pass=step.similarity_threshold,
+                            threshold_warning=step.similarity_threshold - 0.10,
+                            compare_mode="full_exclude",
+                            exclude_rois=exclude_rois_dicts,
+                        )
+                        step_result.status = judgement["status"]
+                        step_result.similarity_score = judgement["score"]
+
+                        # Generate annotated image with excluded regions
+                        try:
+                            import cv2
+                            img_annotated = cv2.imread(actual_path)
+                            if img_annotated is not None:
+                                overlay = img_annotated.copy()
+                                for r in step.exclude_rois:
+                                    cv2.rectangle(overlay, (r.x, r.y), (r.x + r.width, r.y + r.height), (128, 128, 128), -1)
+                                cv2.addWeighted(overlay, 0.5, img_annotated, 0.5, 0, img_annotated)
+                                for r in step.exclude_rois:
+                                    cv2.rectangle(img_annotated, (r.x, r.y), (r.x + r.width, r.y + r.height), (0, 0, 255), 2)
+                                annotated_path = str(actual_dir / f"{file_prefix}_annotated.png")
+                                cv2.imwrite(annotated_path, img_annotated)
+                                step_result.actual_annotated_image = f"{scenario_name}/actual/{file_prefix}_annotated.png"
+                        except Exception as e:
+                            logger.warning("Failed to generate exclude annotated image: %s", e)
+
+                        if step_result.status != "pass":
+                            diff_path = str(actual_dir / f"diff_{file_prefix}.png")
+                            diff_rel = f"{scenario_name}/actual/diff_{file_prefix}.png"
+                            try:
+                                self.image_compare.generate_diff_heatmap(
+                                    expected_path, actual_path, diff_path,
+                                    exclude_rois=exclude_rois_dicts,
+                                )
+                                step_result.diff_image = diff_rel
+                            except Exception as e:
+                                logger.warning("Failed to generate diff: %s", e)
+
+                        step_result.message = f"Exclude {len(step.exclude_rois)} regions: {judgement['score']:.4f}"
+
+                    else:
+                        # --- Full / Single-crop mode (existing behavior) ---
+                        compare_actual = actual_path
+                        if step.roi:
+                            import cv2
+                            img_act = cv2.imread(actual_path)
+                            if img_act is not None:
+                                r = step.roi
+                                cropped = img_act[r.y:r.y + r.height, r.x:r.x + r.width]
+                                cropped_path = str(actual_dir / f"{file_prefix}_roi.png")
+                                cv2.imwrite(cropped_path, cropped)
+                                compare_actual = cropped_path
+
+                        judgement = self.image_compare.judge(
+                            expected_path,
+                            compare_actual,
+                            threshold_pass=step.similarity_threshold,
+                            threshold_warning=step.similarity_threshold - 0.10,
+                        )
+                        step_result.status = judgement["status"]
+                        step_result.similarity_score = judgement["score"]
+
+                        match_loc = judgement.get("match_location")
+                        if match_loc:
+                            step_result.match_location = match_loc
+                            try:
+                                import cv2
+                                img_annotated = cv2.imread(actual_path)
+                                if img_annotated is not None:
+                                    x, y = match_loc["x"], match_loc["y"]
+                                    w, h = match_loc["width"], match_loc["height"]
+                                    cv2.rectangle(img_annotated, (x, y), (x + w, y + h), (0, 0, 255), 3)
+                                    annotated_path = str(actual_dir / f"{file_prefix}_annotated.png")
+                                    cv2.imwrite(annotated_path, img_annotated)
+                                    step_result.actual_annotated_image = f"{scenario_name}/actual/{file_prefix}_annotated.png"
+                            except Exception as e:
+                                logger.warning("Failed to generate annotated image: %s", e)
+                        elif step.roi:
+                            try:
+                                import cv2
+                                img_annotated = cv2.imread(actual_path)
+                                if img_annotated is not None:
+                                    r = step.roi
+                                    cv2.rectangle(img_annotated, (r.x, r.y), (r.x + r.width, r.y + r.height), (0, 0, 255), 3)
+                                    annotated_path = str(actual_dir / f"{file_prefix}_annotated.png")
+                                    cv2.imwrite(annotated_path, img_annotated)
+                                    step_result.actual_annotated_image = f"{scenario_name}/actual/{file_prefix}_annotated.png"
+                                    step_result.match_location = {"x": r.x, "y": r.y, "width": r.width, "height": r.height}
+                            except Exception as e:
+                                logger.warning("Failed to generate annotated image: %s", e)
+
+                        if step_result.status != "pass":
+                            diff_path = str(actual_dir / f"diff_{file_prefix}.png")
+                            diff_rel = f"{scenario_name}/actual/diff_{file_prefix}.png"
+                            try:
+                                self.image_compare.generate_diff_heatmap(
+                                    expected_path, compare_actual, diff_path
+                                )
+                                step_result.diff_image = diff_rel
+                            except Exception as e:
+                                logger.warning("Failed to generate diff: %s", e)
+
+                        step_result.message = f"Similarity: {judgement['score']:.4f}"
                 else:
                     step_result.message = f"Executed on {adb_serial} (기대 이미지 없음)"
             else:
