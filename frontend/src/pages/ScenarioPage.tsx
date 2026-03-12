@@ -721,17 +721,21 @@ export default function ScenarioPage() {
 
   const exportExcel = async (filename: string) => {
     try {
-      if (settings.excel_export_dir) {
+      // Always try server-side save first; falls back to browser download if no dir configured
+      try {
         const path = await saveExcelToDir(filename);
         message.success(`Excel 저장 완료: ${path}`);
-      } else {
-        const res = await resultsApi.exportExcel(filename);
-        const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = filename.replace('.json', '.xlsx'); a.click();
-        window.URL.revokeObjectURL(url);
+        return;
+      } catch (serverErr: any) {
+        // If server says no dir configured (400), fall back to browser download
+        if (serverErr.response?.status !== 400) throw serverErr;
       }
+      const res = await resultsApi.exportExcel(filename);
+      const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename.replace('.json', '.xlsx'); a.click();
+      window.URL.revokeObjectURL(url);
     } catch (e: any) { message.error(e.response?.data?.detail || 'Excel 내보내기 실패'); }
   };
 
