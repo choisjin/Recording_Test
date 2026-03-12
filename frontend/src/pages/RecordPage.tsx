@@ -491,13 +491,19 @@ export default function RecordPage() {
               return { ...s, expected_images: [...(s.expected_images || []), { image: res.data.filename, label: '' }] };
             }));
             message.success(`스텝 #${captureStepIndex + 1} 멀티크롭 추가 완료 (${rw}×${rh})`);
+            // Stay open for continuous cropping — redraw canvas
+            setTimeout(() => drawCaptureCanvas(), 50);
           }
         } else {
           setSteps(prev => prev.map((s, i) => i === captureStepIndex ? { ...s, expected_image: res.data.filename } : s));
           message.success(`스텝 #${captureStepIndex + 1} 크롭 기대이미지 저장 완료 (${rw}×${rh})`);
         }
-        setCaptureModalOpen(false);
-        setCaptureStepIndex(null);
+        // Multi-crop append: keep modal open; otherwise close
+        if (!(isMultiCrop && replaceCropIdx == null)) {
+          setCaptureModalOpen(false);
+          setCaptureStepIndex(null);
+          setReplaceCropIdx(null);
+        }
       } catch (e: any) {
         console.error('Expected image save error:', e.response?.status, e.response?.data);
         message.error(e.response?.data?.detail || '기대이미지 저장 실패');

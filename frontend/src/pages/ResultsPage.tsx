@@ -426,6 +426,14 @@ export default function ResultsPage() {
           <>
             <Space style={{ marginBottom: 16 }} wrap>
               <Tag color={statusColor(compareStep.status)}>{compareStep.status.toUpperCase()}</Tag>
+              {compareStep.compare_mode && compareStep.compare_mode !== 'full' && (
+                <Tag color="purple">
+                  {compareStep.compare_mode === 'single_crop' ? '단일크롭'
+                    : compareStep.compare_mode === 'full_exclude' ? '영역제외'
+                    : compareStep.compare_mode === 'multi_crop' ? '멀티크롭'
+                    : compareStep.compare_mode}
+                </Tag>
+              )}
               {compareStep.similarity_score != null && (
                 <span>
                   유사도: {(compareStep.similarity_score * 100).toFixed(2)}%
@@ -481,6 +489,19 @@ export default function ResultsPage() {
                     alt="Diff"
                     style={{ width: '100%' }}
                   />
+                </Card>
+              </div>
+            )}
+            {compareStep.compare_mode === 'full_exclude' && (
+              <div style={{ marginTop: 12 }}>
+                <Card size="small" title="영역 제외 비교">
+                  <Space wrap>
+                    <Tag color="red">제외 영역 적용</Tag>
+                    <span style={{ fontSize: 13, color: '#ccc' }}>{compareStep.message}</span>
+                  </Space>
+                  <div style={{ marginTop: 8, fontSize: 12, color: '#888' }}>
+                    실제 이미지에서 회색 반투명 영역이 제외된 부분입니다. Diff 히트맵에서도 해당 영역은 제외됩니다.
+                  </div>
                 </Card>
               </div>
             )}
