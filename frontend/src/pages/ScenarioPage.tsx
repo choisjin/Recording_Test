@@ -748,7 +748,7 @@ export default function ScenarioPage() {
       </Card>
 
       {/* ===== 웹캠 패널 (오른쪽) ===== */}
-      <div style={{ width: 360, flexShrink: 0 }}>
+      <div style={{ width: 540, flexShrink: 0 }}>
         <style>{`@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }`}</style>
         <WebcamPanel webcam={webcam} />
       </div>
