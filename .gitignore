@@ -22,6 +22,15 @@ backend/results/
 backend/scenarios/
 backend/auxiliary_devices.json
 
+# Reference files (not used by the application)
+BENCH.py
+CAN.py
+CANAT.py
+IVIQEBenchIOClient.py
+IVIQEBenchIOProtocol.py
+IVIQEBenchIOReceive.py
+procResponse.py
+
 # OS / IDE
 .env
 .vscode/

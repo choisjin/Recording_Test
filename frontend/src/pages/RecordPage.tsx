@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { Button, Card, Col, Collapse, Image, Input, Modal, Row, Select, Slider, Space, InputNumber, message, List, Tag, Popover, Tooltip } from 'antd';
-import { PlayCircleOutlined, PauseOutlined, PlusOutlined, SwapOutlined, FolderOpenOutlined, SaveOutlined, DeleteOutlined, ArrowUpOutlined, ArrowDownOutlined, BranchesOutlined, ScissorOutlined, CameraOutlined, VideoCameraOutlined, SettingOutlined, ThunderboltOutlined, CheckCircleOutlined, CloseCircleOutlined, WarningOutlined, EditOutlined } from '@ant-design/icons';
+import { Button, Card, Col, Image, Input, Modal, Row, Select, Space, InputNumber, message, List, Tag, Popover, Tooltip } from 'antd';
+import { PlayCircleOutlined, PauseOutlined, PlusOutlined, SwapOutlined, FolderOpenOutlined, SaveOutlined, DeleteOutlined, ArrowUpOutlined, ArrowDownOutlined, BranchesOutlined, ScissorOutlined, CameraOutlined, ThunderboltOutlined, CheckCircleOutlined, CloseCircleOutlined, WarningOutlined, EditOutlined } from '@ant-design/icons';
 import { deviceApi, scenarioApi } from '../services/api';
 import { useDevice } from '../context/DeviceContext';
+import { useWebcam } from '../hooks/useWebcam';
+import WebcamPanel from '../components/WebcamPanel';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -96,21 +98,16 @@ export default function RecordPage() {
   // Detected gesture display
   const [lastGesture, setLastGesture] = useState('');
 
-  // Webcam
-  const [webcamOpen, setWebcamOpen] = useState(false);
-  const [webcamIndex, setWebcamIndex] = useState(0);
-  const [webcamDevices, setWebcamDevices] = useState<MediaDeviceInfo[]>([]);
-  const webcamVideoRef = useRef<HTMLVideoElement>(null);
-  const webcamStreamRef = useRef<MediaStream | null>(null);
-  const [webcamRecording, setWebcamRecording] = useState(false);
-  const webcamRecorderRef = useRef<MediaRecorder | null>(null);
-  const webcamChunksRef = useRef<Blob[]>([]);
-  const webcamFileHandleRef = useRef<FileSystemFileHandle | null>(null);
-  const [webcamSettingsOpen, setWebcamSettingsOpen] = useState(false);
-  const [webcamCapabilities, setWebcamCapabilities] = useState<Record<string, any>>({});
-  const [webcamSettings, setWebcamSettings] = useState<Record<string, number>>({});
-  const [webcamResolution, setWebcamResolution] = useState('');
-  const [webcamResolutions, setWebcamResolutions] = useState<string[]>([]);
+  // Webcam (shared hook)
+  const webcam = useWebcam();
+  const {
+    webcamOpen, webcamIndex, webcamDevices, webcamVideoRef, webcamRecording,
+    webcamSettingsOpen, setWebcamSettingsOpen, webcamCapabilities, webcamSettings,
+    webcamResolution, webcamResolutions,
+    handleWebcamToggle, handleWebcamChange, handleWebcamResolutionChange,
+    startWebcamRecording, stopWebcamRecording, loadWebcamCapabilities, applyWebcamSetting,
+    stopWebcam,
+  } = webcam;
 
   // Wait step insertion
   const [waitDurationMs, setWaitDurationMs] = useState(1000);
@@ -223,240 +220,8 @@ export default function RecordPage() {
   useEffect(() => {
     return () => {
       setScreenshotDeviceId('');
-      if (webcamStreamRef.current) {
-        webcamStreamRef.current.getTracks().forEach(t => t.stop());
-        webcamStreamRef.current = null;
-      }
-    };
-  }, []);
-
-  // Enumerate webcam devices
-  const enumerateWebcams = useCallback(async () => {
-    try {
-      // Need temporary stream to get permission for labels
-      const tempStream = await navigator.mediaDevices.getUserMedia({ video: true });
-      tempStream.getTracks().forEach(t => t.stop());
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoDevices = devices.filter(d => d.kind === 'videoinput');
-      setWebcamDevices(videoDevices);
-    } catch {
-      setWebcamDevices([]);
-    }
-  }, []);
-
-  // Start/stop webcam stream
-  const probeWebcamResolutions = useCallback(async (deviceId?: string) => {
-    const candidates = [
-      { w: 3840, h: 2160, label: '4K (3840×2160)' },
-      { w: 2560, h: 1440, label: 'QHD (2560×1440)' },
-      { w: 1920, h: 1080, label: 'FHD (1920×1080)' },
-      { w: 1280, h: 720, label: 'HD (1280×720)' },
-      { w: 960, h: 540, label: 'qHD (960×540)' },
-      { w: 640, h: 480, label: 'VGA (640×480)' },
-      { w: 320, h: 240, label: 'QVGA (320×240)' },
-    ];
-    const supported: string[] = [];
-    for (const c of candidates) {
-      try {
-        const s = await navigator.mediaDevices.getUserMedia({
-          video: {
-            ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
-            width: { exact: c.w },
-            height: { exact: c.h },
-          },
-        });
-        s.getTracks().forEach(t => t.stop());
-        supported.push(`${c.w}x${c.h}`);
-      } catch {
-        // not supported
-      }
-    }
-    setWebcamResolutions(supported);
-    return supported;
-  }, []);
-
-  const startWebcam = useCallback(async (deviceIndex: number, resolution?: string) => {
-    // Stop existing
-    if (webcamStreamRef.current) {
-      webcamStreamRef.current.getTracks().forEach(t => t.stop());
-      webcamStreamRef.current = null;
-    }
-    try {
-      const devices = webcamDevices.length > 0 ? webcamDevices : [];
-      const videoConstraints: any = devices[deviceIndex]
-        ? { deviceId: { exact: devices[deviceIndex].deviceId } }
-        : {};
-      if (resolution) {
-        const [w, h] = resolution.split('x').map(Number);
-        videoConstraints.width = { exact: w };
-        videoConstraints.height = { exact: h };
-      }
-      const constraints: MediaStreamConstraints = {
-        video: Object.keys(videoConstraints).length > 0 ? videoConstraints : true,
-      };
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      webcamStreamRef.current = stream;
-      if (webcamVideoRef.current) {
-        webcamVideoRef.current.srcObject = stream;
-      }
-      // Set current resolution from actual track settings
-      const track = stream.getVideoTracks()[0];
-      if (track) {
-        const settings = track.getSettings();
-        const curRes = `${settings.width}x${settings.height}`;
-        setWebcamResolution(curRes);
-      }
-    } catch (e: any) {
-      message.error('웹캠을 열 수 없습니다: ' + (e.message || e));
-    }
-  }, [webcamDevices]);
-
-  const stopWebcam = useCallback(() => {
-    // Stop recording if active
-    if (webcamRecorderRef.current && webcamRecorderRef.current.state !== 'inactive') {
-      webcamRecorderRef.current.stop();
-      webcamRecorderRef.current = null;
-      setWebcamRecording(false);
-    }
-    if (webcamStreamRef.current) {
-      webcamStreamRef.current.getTracks().forEach(t => t.stop());
-      webcamStreamRef.current = null;
-    }
-    if (webcamVideoRef.current) {
-      webcamVideoRef.current.srcObject = null;
-    }
-  }, []);
-
-  // Handle webcam panel open/close
-  const handleWebcamToggle = useCallback(async (keys: string | string[]) => {
-    const isOpen = Array.isArray(keys) ? keys.includes('webcam') : keys === 'webcam';
-    setWebcamOpen(isOpen);
-    if (isOpen) {
-      await enumerateWebcams();
-      await startWebcam(webcamIndex);
-      const devices = webcamDevices.length > 0 ? webcamDevices : [];
-      probeWebcamResolutions(devices[webcamIndex]?.deviceId);
-    } else {
       stopWebcam();
-    }
-  }, [webcamIndex, webcamDevices, enumerateWebcams, startWebcam, stopWebcam, probeWebcamResolutions]);
-
-  // Switch webcam device
-  const handleWebcamChange = useCallback(async (idx: number) => {
-    setWebcamIndex(idx);
-    if (webcamOpen) {
-      await startWebcam(idx);
-      const devices = webcamDevices.length > 0 ? webcamDevices : [];
-      probeWebcamResolutions(devices[idx]?.deviceId);
-    }
-  }, [webcamOpen, webcamDevices, startWebcam, probeWebcamResolutions]);
-
-  // Switch webcam resolution
-  const handleWebcamResolutionChange = useCallback(async (res: string) => {
-    setWebcamResolution(res);
-    await startWebcam(webcamIndex, res);
-  }, [webcamIndex, startWebcam]);
-
-  // Webcam recording
-  const startWebcamRecording = useCallback(async () => {
-    if (!webcamStreamRef.current) {
-      message.error('웹캠이 활성화되지 않았습니다');
-      return;
-    }
-    try {
-      // Ask user for save location
-      const fileHandle = await (window as any).showSaveFilePicker({
-        suggestedName: `webcam_${new Date().toISOString().replace(/[:.]/g, '-')}.webm`,
-        types: [{
-          description: 'WebM Video',
-          accept: { 'video/webm': ['.webm'] },
-        }],
-      });
-      webcamFileHandleRef.current = fileHandle;
-    } catch {
-      // User cancelled the dialog
-      return;
-    }
-
-    webcamChunksRef.current = [];
-    const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
-      ? 'video/webm;codecs=vp9'
-      : 'video/webm';
-    const recorder = new MediaRecorder(webcamStreamRef.current, { mimeType });
-    recorder.ondataavailable = (e) => {
-      if (e.data.size > 0) webcamChunksRef.current.push(e.data);
     };
-    recorder.onstop = async () => {
-      const blob = new Blob(webcamChunksRef.current, { type: mimeType });
-      webcamChunksRef.current = [];
-      try {
-        const handle = webcamFileHandleRef.current;
-        if (handle) {
-          const writable = await (handle as any).createWritable();
-          await writable.write(blob);
-          await writable.close();
-          message.success('웹캠 녹화 저장 완료');
-        }
-      } catch (e: any) {
-        message.error('파일 저장 실패: ' + (e.message || e));
-      }
-      webcamFileHandleRef.current = null;
-    };
-    recorder.start(1000); // collect data every 1s
-    webcamRecorderRef.current = recorder;
-    setWebcamRecording(true);
-    message.success('웹캠 녹화 시작');
-  }, []);
-
-  const stopWebcamRecording = useCallback(() => {
-    if (webcamRecorderRef.current && webcamRecorderRef.current.state !== 'inactive') {
-      webcamRecorderRef.current.stop();
-      webcamRecorderRef.current = null;
-    }
-    setWebcamRecording(false);
-  }, []);
-
-  // Webcam settings — read capabilities & current values
-  const WEBCAM_SETTING_LABELS: Record<string, string> = {
-    brightness: '밝기',
-    contrast: '대비',
-    sharpness: '선명도',
-    exposureTime: '노출',
-  };
-
-  const loadWebcamCapabilities = useCallback(() => {
-    if (!webcamStreamRef.current) return;
-    const track = webcamStreamRef.current.getVideoTracks()[0];
-    if (!track) return;
-    const caps = (track as any).getCapabilities?.() || {};
-    const settings = (track as any).getSettings?.() || {};
-    const supported: Record<string, any> = {};
-    const current: Record<string, number> = {};
-    for (const key of Object.keys(WEBCAM_SETTING_LABELS)) {
-      if (caps[key] && typeof caps[key] === 'object' && 'min' in caps[key]) {
-        supported[key] = caps[key];
-        current[key] = settings[key] ?? caps[key].min;
-      }
-    }
-    setWebcamCapabilities(supported);
-    setWebcamSettings(current);
-  }, []);
-
-  const applyWebcamSetting = useCallback(async (key: string, value: number) => {
-    if (!webcamStreamRef.current) return;
-    const track = webcamStreamRef.current.getVideoTracks()[0];
-    if (!track) return;
-    try {
-      // exposureTime requires exposureMode: "manual" to take effect
-      if (key === 'exposureTime') {
-        await (track as any).applyConstraints({ advanced: [{ exposureMode: 'manual', exposureTime: value }] });
-      } else {
-        await (track as any).applyConstraints({ advanced: [{ [key]: value }] });
-      }
-      setWebcamSettings(prev => ({ ...prev, [key]: value }));
-    } catch (e: any) {
-      message.error(`설정 적용 실패: ${e.message || e}`);
-    }
   }, []);
 
   // Helper: convert canvas coords to device coords
@@ -602,7 +367,8 @@ export default function RecordPage() {
     }
     setTestingStepIndex(stepIdx);
     try {
-      const res = await scenarioApi.testStep(scenarioName, stepIdx);
+      const currentStep = steps[stepIdx];
+      const res = await scenarioApi.testStep(scenarioName, stepIdx, currentStep);
       setTestResult(res.data);
       setTestResultModalOpen(true);
       refreshScreenshot();
@@ -611,7 +377,7 @@ export default function RecordPage() {
     } finally {
       setTestingStepIndex(null);
     }
-  }, [scenarioName, refreshScreenshot]);
+  }, [scenarioName, steps, refreshScreenshot]);
 
   const drawCaptureCanvas = useCallback((dragRect?: { x: number; y: number; w: number; h: number }) => {
     const canvas = captureCanvasRef.current;
@@ -1418,156 +1184,7 @@ export default function RecordPage() {
           </Card>
 
           {/* Webcam panel */}
-          <Collapse
-            size="small"
-            style={{ flexShrink: 0 }}
-            activeKey={webcamOpen ? ['webcam'] : []}
-            onChange={handleWebcamToggle}
-            items={[{
-              key: 'webcam',
-              label: (
-                <Space>
-                  <VideoCameraOutlined />
-                  <span>웹캠</span>
-                </Space>
-              ),
-              extra: webcamOpen ? (
-                <Space size={4} onClick={(e) => e.stopPropagation()}>
-                  <Select
-                    size="small"
-                    value={webcamIndex}
-                    onChange={(v) => { handleWebcamChange(v); }}
-                    style={{ width: 180 }}
-                    placeholder="웹캠 선택"
-                  >
-                    {webcamDevices.map((d, i) => (
-                      <Option key={d.deviceId} value={i}>
-                        {d.label || `카메라 ${i}`}
-                      </Option>
-                    ))}
-                  </Select>
-                  {!webcamRecording ? (
-                    <Button
-                      size="small"
-                      type="primary"
-                      danger
-                      icon={<PlayCircleOutlined />}
-                      onClick={startWebcamRecording}
-                    >
-                      녹화
-                    </Button>
-                  ) : (
-                    <Button
-                      size="small"
-                      danger
-                      icon={<PauseOutlined />}
-                      onClick={stopWebcamRecording}
-                      style={{ animation: 'blink 1s infinite' }}
-                    >
-                      녹화 중지
-                    </Button>
-                  )}
-                  <Button
-                    size="small"
-                    icon={<SettingOutlined />}
-                    onClick={() => { loadWebcamCapabilities(); setWebcamSettingsOpen(v => !v); }}
-                    type={webcamSettingsOpen ? 'primary' : 'default'}
-                  />
-                </Space>
-              ) : null,
-              children: (
-                <div>
-                  {webcamResolutions.length > 0 && (
-                    <div style={{ marginBottom: 4 }}>
-                      <Select
-                        size="small"
-                        value={webcamResolution || undefined}
-                        onChange={handleWebcamResolutionChange}
-                        style={{ width: '100%' }}
-                        placeholder="해상도 선택"
-                      >
-                        {webcamResolutions.map(r => {
-                          const [w, h] = r.split('x');
-                          const labels: Record<string, string> = {
-                            '3840x2160': '4K', '2560x1440': 'QHD', '1920x1080': 'FHD',
-                            '1280x720': 'HD', '960x540': 'qHD', '640x480': 'VGA', '320x240': 'QVGA',
-                          };
-                          return (
-                            <Option key={r} value={r}>
-                              {labels[r] ? `${labels[r]} (${w}×${h})` : `${w}×${h}`}
-                            </Option>
-                          );
-                        })}
-                      </Select>
-                    </div>
-                  )}
-                  <div style={{ display: 'flex', justifyContent: 'center' }}>
-                    <div style={{ width: '66.6%', position: 'relative' }}>
-                      <video
-                        ref={webcamVideoRef}
-                        autoPlay
-                        playsInline
-                        muted
-                        style={{
-                          width: '100%',
-                          borderRadius: 4,
-                          background: '#000',
-                          display: 'block',
-                        }}
-                      />
-                      {webcamRecording && (
-                        <div style={{
-                          position: 'absolute',
-                          top: 8,
-                          right: 8,
-                          background: 'rgba(255, 0, 0, 0.8)',
-                          color: '#fff',
-                          padding: '2px 8px',
-                          borderRadius: 4,
-                          fontSize: 12,
-                          fontWeight: 'bold',
-                          animation: 'blink 1s infinite',
-                        }}>
-                          ● REC
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  {webcamSettingsOpen && (
-                    <div style={{
-                      marginTop: 8,
-                      padding: '8px 12px',
-                      background: 'rgba(0,0,0,0.15)',
-                      borderRadius: 6,
-                    }}>
-                      {Object.keys(webcamCapabilities).length === 0 ? (
-                        <div style={{ color: '#888', fontSize: 12, textAlign: 'center' }}>
-                          이 웹캠은 조절 가능한 설정이 없습니다
-                        </div>
-                      ) : (
-                        Object.entries(webcamCapabilities).map(([key, cap]) => (
-                          <div key={key} style={{ marginBottom: 4 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 2 }}>
-                              <span>{WEBCAM_SETTING_LABELS[key] || key}</span>
-                              <span style={{ color: '#888' }}>{webcamSettings[key] ?? '-'}</span>
-                            </div>
-                            <Slider
-                              min={cap.min}
-                              max={cap.max}
-                              step={cap.step || 1}
-                              value={webcamSettings[key] ?? cap.min}
-                              onChange={(v: number) => applyWebcamSetting(key, v)}
-                              style={{ margin: '0 0 4px 0' }}
-                            />
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
-                </div>
-              ),
-            }]}
-          />
+          <WebcamPanel webcam={webcam} />
         </div>
 
         {/* Right panel: Controls + Steps */}

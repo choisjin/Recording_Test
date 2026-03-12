@@ -8,6 +8,8 @@ import {
   DownOutlined, RightOutlined, ClearOutlined,
 } from '@ant-design/icons';
 import { scenarioApi, resultsApi } from '../services/api';
+import { useWebcam } from '../hooks/useWebcam';
+import WebcamPanel from '../components/WebcamPanel';
 
 interface ScenarioDetail {
   name: string;
@@ -113,6 +115,7 @@ const formatTime = (iso: string) => {
 };
 
 export default function ScenarioPage() {
+  const webcam = useWebcam();
   const [scenarios, setScenarios] = useState<string[]>([]);
   const [selectedScenario, setSelectedScenario] = useState<ScenarioDetail | null>(null);
   const [detailVisible, setDetailVisible] = useState(false);
@@ -741,6 +744,12 @@ export default function ScenarioPage() {
           )}
         </Space>
       </Card>
+
+      {/* ===== 웹캠 패널 ===== */}
+      <div style={{ marginTop: 8 }}>
+        <style>{`@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }`}</style>
+        <WebcamPanel webcam={webcam} />
+      </div>
 
       {/* ===== 실시간 재생 패널 ===== */}
       {(playing || stepResults.length > 0) && playbackScenario && (

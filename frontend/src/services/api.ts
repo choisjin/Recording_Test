@@ -45,8 +45,8 @@ export const scenarioApi = {
     api.post('/scenario/record/save-expected-image', { scenario_name: scenarioName, step_index: stepIndex, image_base64: imageBase64, crop }),
   captureExpectedImage: (scenarioName: string, stepIndex: number, deviceId: string, crop?: { x: number; y: number; width: number; height: number }) =>
     api.post('/scenario/record/capture-expected-image', { scenario_name: scenarioName, step_index: stepIndex, device_id: deviceId, crop }),
-  testStep: (scenarioName: string, stepIndex: number) =>
-    api.post('/scenario/test-step', { scenario_name: scenarioName, step_index: stepIndex }),
+  testStep: (scenarioName: string, stepIndex: number, stepData?: any) =>
+    api.post('/scenario/test-step', { scenario_name: scenarioName, step_index: stepIndex, step_data: stepData }),
   // Groups
   getGroups: () => api.get('/scenario/groups'),
   createGroup: (name: string) => api.post('/scenario/groups', { name }),

@@ -390,21 +390,31 @@ async def merge_scenarios(req: MergeRequest):
 class TestStepRequest(BaseModel):
     scenario_name: str
     step_index: int  # 0-based
+    step_data: Optional[dict] = None  # current (unsaved) step data from frontend
 
 
 @router.post("/test-step")
 async def test_step(req: TestStepRequest):
     """Execute a single step on the device and verify against expected image."""
-    try:
-        scenario = await recording_svc.load_scenario(req.scenario_name)
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Scenario '{req.scenario_name}' not found")
+    if req.step_data:
+        # Use the step data sent from frontend (may differ from saved file)
+        from ..models.scenario import Step
+        step = Step(**req.step_data)
+        scenario_name = req.scenario_name
+    else:
+        # Fallback: load from saved scenario file
+        try:
+            scenario = await recording_svc.load_scenario(req.scenario_name)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail=f"Scenario '{req.scenario_name}' not found")
 
-    if req.step_index < 0 or req.step_index >= len(scenario.steps):
-        raise HTTPException(status_code=400, detail=f"Invalid step index: {req.step_index}")
+        if req.step_index < 0 or req.step_index >= len(scenario.steps):
+            raise HTTPException(status_code=400, detail=f"Invalid step index: {req.step_index}")
 
-    step = scenario.steps[req.step_index]
-    result = await playback_svc.execute_single_step(step, scenario.name)
+        step = scenario.steps[req.step_index]
+        scenario_name = scenario.name
+
+    result = await playback_svc.execute_single_step(step, scenario_name)
     return result.model_dump()
 
 
