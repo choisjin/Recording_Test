@@ -1,0 +1,1049 @@
+import { useEffect, useRef, useState } from 'react';
+import { Button, Card, Col, Collapse, Descriptions, Divider, Image, Input, InputNumber, List, Modal, Row, Select, Space, Table, Tag, Tooltip, message } from 'antd';
+import {
+  PlayCircleOutlined, DeleteOutlined, DownloadOutlined, EyeOutlined,
+  ReloadOutlined, StopOutlined, CopyOutlined, MergeCellsOutlined,
+  FolderOutlined, FolderAddOutlined, MinusOutlined,
+  ArrowUpOutlined, ArrowDownOutlined, EditOutlined, BranchesOutlined,
+  DownOutlined, RightOutlined, ClearOutlined,
+} from '@ant-design/icons';
+import { scenarioApi, resultsApi } from '../services/api';
+
+interface ScenarioDetail {
+  name: string;
+  description: string;
+  device_serial: string;
+  resolution: { width: number; height: number } | null;
+  steps: any[];
+  created_at: string;
+}
+
+interface ROI { x: number; y: number; width: number; height: number; }
+interface MatchLocation { x: number; y: number; width: number; height: number; }
+
+interface StepResultData {
+  step_id: number;
+  repeat_index: number;
+  timestamp: string | null;
+  device_id: string;
+  command: string;
+  description: string;
+  status: string;
+  similarity_score: number | null;
+  expected_image: string | null;
+  actual_image: string | null;
+  actual_annotated_image: string | null;
+  diff_image: string | null;
+  roi: ROI | null;
+  match_location: MatchLocation | null;
+  message: string;
+  delay_ms: number;
+  execution_time_ms: number;
+}
+
+interface ResultSummary {
+  filename: string;
+  scenario_name: string;
+  status: string;
+  total_steps: number;
+  passed_steps: number;
+  failed_steps: number;
+  warning_steps: number;
+  error_steps: number;
+  started_at: string;
+  finished_at: string;
+}
+
+interface ResultDetail {
+  scenario_name: string;
+  device_serial: string;
+  status: string;
+  total_steps: number;
+  total_repeat: number;
+  passed_steps: number;
+  failed_steps: number;
+  warning_steps: number;
+  error_steps: number;
+  step_results: StepResultData[];
+  started_at: string;
+  finished_at: string;
+}
+
+interface JumpTarget {
+  scenario: number;  // group index (0-based), -1 = END
+  step: number;      // step index within scenario (0-based)
+}
+
+interface StepJump {
+  on_pass_goto: JumpTarget | null;
+  on_fail_goto: JumpTarget | null;
+}
+
+interface GroupEntry {
+  name: string;
+  on_pass_goto: JumpTarget | null;
+  on_fail_goto: JumpTarget | null;
+  step_jumps?: Record<string, StepJump>;
+}
+
+const statusColor = (s: string) =>
+  s === 'pass' ? 'green' : s === 'warning' ? 'orange' : s === 'error' ? 'volcano' : 'red';
+
+const imageUrl = (path: string | null) => {
+  if (!path) return null;
+  let rel = path.replace(/\\/g, '/');
+  const idx = rel.indexOf('/screenshots/');
+  if (idx >= 0) rel = rel.substring(idx + '/screenshots/'.length);
+  return '/screenshots/' + rel;
+};
+
+const formatDuration = (ms: number) => {
+  if (ms < 1000) return `${ms}ms`;
+  const sec = Math.floor(ms / 1000);
+  const remain = ms % 1000;
+  if (sec < 60) return `${sec}.${String(remain).padStart(3, '0').slice(0, 1)}s`;
+  const min = Math.floor(sec / 60);
+  const remSec = sec % 60;
+  return `${min}m ${remSec}s`;
+};
+
+const formatTime = (iso: string) => {
+  if (!iso) return '-';
+  try { return new Date(iso).toLocaleString('ko-KR'); } catch { return iso; }
+};
+
+export default function ScenarioPage() {
+  const [scenarios, setScenarios] = useState<string[]>([]);
+  const [selectedScenario, setSelectedScenario] = useState<ScenarioDetail | null>(null);
+  const [detailVisible, setDetailVisible] = useState(false);
+
+  // Playback
+  const [playing, setPlaying] = useState(false);
+  const [playingName, setPlayingName] = useState('');
+  const [_currentStepId, setCurrentStepId] = useState<number | null>(null);
+  const [stepResults, setStepResults] = useState<StepResultData[]>([]);
+  const [playbackScenario, setPlaybackScenario] = useState<ScenarioDetail | null>(null);
+  const [repeatCounts, setRepeatCounts] = useState<Record<string, number>>({});
+  const [currentIteration, setCurrentIteration] = useState(1);
+  const [totalIterations, setTotalIterations] = useState(1);
+  const [selectedName, setSelectedName] = useState<string | null>(null);
+  const getRepeatCount = (name: string) => repeatCounts[name] ?? 1;
+  const setRepeatCount = (name: string, val: number) =>
+    setRepeatCounts((prev) => ({ ...prev, [name]: val }));
+
+  // Group play
+  const [playingGroupName, setPlayingGroupName] = useState<string | null>(null);
+  const [currentGroupScenario, setCurrentGroupScenario] = useState('');
+  const [groupScenarioIndex, setGroupScenarioIndex] = useState(0);
+  const [groupScenarioTotal, setGroupScenarioTotal] = useState(0);
+
+  // Groups
+  const [groups, setGroups] = useState<Record<string, GroupEntry[]>>({});
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
+  const [groupModalVisible, setGroupModalVisible] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [scenarioStepsCache, setScenarioStepsCache] = useState<Record<string, any[]>>({});
+  const [expandedEntries, setExpandedEntries] = useState<Set<string>>(new Set());
+
+  // Copy / Merge
+  const [copyName, setCopyName] = useState('');
+  const [copyModalVisible, setCopyModalVisible] = useState(false);
+  const [mergeModalVisible, setMergeModalVisible] = useState(false);
+  const [mergeTargets, setMergeTargets] = useState<string[]>([]);
+  const [mergeName, setMergeName] = useState('');
+
+  // Rename modal
+  const [renameModalVisible, setRenameModalVisible] = useState(false);
+  const [renameNewName, setRenameNewName] = useState('');
+
+  // Compare modal
+  const [compareStep, setCompareStep] = useState<StepResultData | null>(null);
+
+  // Results
+  const [results, setResults] = useState<ResultSummary[]>([]);
+  const [resultsLoading, setResultsLoading] = useState(false);
+  const [resultDetail, setResultDetail] = useState<ResultDetail | null>(null);
+  const [resultDetailFilename, setResultDetailFilename] = useState('');
+  const [resultDetailVisible, setResultDetailVisible] = useState(false);
+
+  const wsRef = useRef<WebSocket | null>(null);
+
+  // --- Filtered scenarios by group ---
+  const filteredScenarios = selectedGroup
+    ? scenarios.filter((n) => (groups[selectedGroup] || []).some((m) => m.name === n))
+    : scenarios;
+
+  // --- Fetches ---
+  const fetchScenarios = async () => {
+    try {
+      const res = await scenarioApi.list();
+      setScenarios(res.data.scenarios);
+    } catch { message.error('시나리오 목록 불러오기 실패'); }
+  };
+
+  const fetchGroups = async () => {
+    try {
+      const res = await scenarioApi.getGroups();
+      setGroups(res.data.groups);
+    } catch { /* ignore */ }
+  };
+
+  const fetchResults = async () => {
+    setResultsLoading(true);
+    try {
+      const res = await resultsApi.list();
+      setResults(res.data.results);
+    } catch { message.error('결과 목록 불러오기 실패'); }
+    setResultsLoading(false);
+  };
+
+  const fetchScenarioStepsCache = async (names: string[]) => {
+    const cache: Record<string, any[]> = { ...scenarioStepsCache };
+    const toFetch = names.filter((n) => !(n in cache));
+    await Promise.all(toFetch.map(async (name) => {
+      try {
+        const res = await scenarioApi.get(name);
+        cache[name] = res.data.steps ?? [];
+      } catch { cache[name] = []; }
+    }));
+    setScenarioStepsCache(cache);
+  };
+
+  const formatStepLabel = (step: any, idx: number) => {
+    const type = step.type || '';
+    const p = step.params || {};
+    let detail = '';
+    if (type === 'tap') detail = `(${p.x},${p.y})`;
+    else if (type === 'long_press') detail = `(${p.x},${p.y}) ${p.duration_ms || 1000}ms`;
+    else if (type === 'swipe') detail = `(${p.x1},${p.y1})→(${p.x2},${p.y2})`;
+    else if (type === 'input_text') detail = `"${p.text || ''}"`;
+    else if (type === 'key_event') detail = p.keycode || '';
+    else if (type === 'wait') detail = `${p.duration_ms || 1000}ms`;
+    else if (type === 'adb_command') detail = p.command || '';
+    else if (type === 'serial_command') detail = `"${p.data || ''}"`;
+    else if (type === 'module_command') detail = `${p.module}::${p.function}()`;
+    const desc = step.description ? ` [${step.description}]` : '';
+    return `#${idx + 1} ${type} ${detail}${desc}`;
+  };
+
+  useEffect(() => {
+    fetchScenarios();
+    fetchGroups();
+    fetchResults();
+    return () => { if (wsRef.current) wsRef.current.close(); };
+  }, []);
+
+  // --- Scenario CRUD ---
+  const viewScenario = async (name: string) => {
+    try {
+      const res = await scenarioApi.get(name);
+      setSelectedScenario(res.data);
+      setDetailVisible(true);
+    } catch { message.error('시나리오 로드 실패'); }
+  };
+
+  const deleteScenario = async (name: string) => {
+    Modal.confirm({
+      title: '시나리오 삭제',
+      content: `"${name}" 시나리오를 삭제하시겠습니까?`,
+      onOk: async () => {
+        try {
+          await scenarioApi.delete(name);
+          message.success('삭제 완료');
+          if (selectedName === name) setSelectedName(null);
+          fetchScenarios();
+          fetchGroups();
+        } catch { message.error('삭제 실패'); }
+      },
+    });
+  };
+
+  // --- Rename ---
+  const openRenameModal = () => {
+    if (!selectedName) return;
+    setRenameNewName(selectedName);
+    setRenameModalVisible(true);
+  };
+
+  const doRename = async () => {
+    if (!selectedName || !renameNewName.trim() || renameNewName.trim() === selectedName) {
+      setRenameModalVisible(false);
+      return;
+    }
+    try {
+      await scenarioApi.rename(selectedName, renameNewName.trim());
+      message.success('이름 변경 완료');
+      setRenameModalVisible(false);
+      setSelectedName(renameNewName.trim());
+      fetchScenarios();
+    } catch (e: any) {
+      message.error(e.response?.data?.detail || '이름 변경 실패');
+    }
+  };
+
+  // --- Copy ---
+  const openCopyModal = () => {
+    if (!selectedName) return;
+    setCopyName(selectedName + '_copy');
+    setCopyModalVisible(true);
+  };
+
+  const doCopy = async () => {
+    if (!selectedName || !copyName.trim()) return;
+    try {
+      await scenarioApi.copy(selectedName, copyName.trim());
+      message.success('복사 완료');
+      setCopyModalVisible(false);
+      fetchScenarios();
+    } catch { message.error('복사 실패'); }
+  };
+
+  // --- Merge ---
+  const openMergeModal = () => {
+    setMergeTargets([]);
+    setMergeName('merged_scenario');
+    setMergeModalVisible(true);
+  };
+
+  const doMerge = async () => {
+    if (mergeTargets.length < 2 || !mergeName.trim()) {
+      message.warning('2개 이상의 시나리오와 이름을 입력하세요');
+      return;
+    }
+    try {
+      await scenarioApi.merge(mergeTargets, mergeName.trim());
+      message.success('합치기 완료');
+      setMergeModalVisible(false);
+      fetchScenarios();
+    } catch { message.error('합치기 실패'); }
+  };
+
+  // --- Group actions ---
+  const createGroup = async () => {
+    if (!newGroupName.trim()) return;
+    try {
+      const res = await scenarioApi.createGroup(newGroupName.trim());
+      setGroups(res.data.groups);
+      setNewGroupName('');
+      message.success('그룹 생성 완료');
+    } catch { message.error('그룹 생성 실패'); }
+  };
+
+  const deleteGroup = async (gName: string) => {
+    try {
+      const res = await scenarioApi.deleteGroup(gName);
+      setGroups(res.data.groups);
+      if (selectedGroup === gName) setSelectedGroup(null);
+      message.success('그룹 삭제 완료');
+    } catch { message.error('그룹 삭제 실패'); }
+  };
+
+  const addToGroup = async (gName: string, sName: string) => {
+    try {
+      const res = await scenarioApi.addToGroup(gName, sName);
+      setGroups(res.data.groups);
+      fetchScenarioStepsCache([sName]);
+    } catch { message.error('그룹 추가 실패'); }
+  };
+
+  const removeFromGroup = async (gName: string, sName: string) => {
+    try {
+      const res = await scenarioApi.removeFromGroup(gName, sName);
+      setGroups(res.data.groups);
+    } catch { message.error('그룹 제거 실패'); }
+  };
+
+  const reorderGroup = async (gName: string, ordered: string[]) => {
+    try {
+      const res = await scenarioApi.reorderGroup(gName, ordered);
+      setGroups(res.data.groups);
+    } catch { message.error('순서 변경 실패'); }
+  };
+
+  const moveInGroup = (gName: string, members: GroupEntry[], idx: number, dir: -1 | 1) => {
+    const newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= members.length) return;
+    const arr = [...members];
+    [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]];
+    reorderGroup(gName, arr.map((m) => m.name));
+  };
+
+  const updateGroupStepJumps = async (gName: string, entryIdx: number, stepId: number, on_pass_goto: JumpTarget | null, on_fail_goto: JumpTarget | null) => {
+    try {
+      const res = await scenarioApi.updateGroupStepJumps(gName, entryIdx, stepId, on_pass_goto, on_fail_goto);
+      setGroups(res.data.groups);
+    } catch { message.error('스텝 조건부 이동 설정 실패'); }
+  };
+
+  const toggleExpandEntry = (key: string) => {
+    setExpandedEntries((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  // --- Playback ---
+  const playScenario = async (name: string) => {
+    const repeat = getRepeatCount(name);
+    try {
+      const res = await scenarioApi.get(name);
+      setPlaybackScenario(res.data);
+    } catch { message.error('시나리오 로드 실패'); return; }
+
+    setPlaying(true);
+    setPlayingName(name);
+    setStepResults([]);
+    setCurrentStepId(null);
+    setCurrentIteration(1);
+    setTotalIterations(repeat);
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${protocol}//${window.location.host}/ws/playback`);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      setCurrentStepId(1);
+      ws.send(JSON.stringify({ action: 'play', scenario: name, verify: true, repeat }));
+    };
+    ws.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+      if (msg.type === 'iteration_start') {
+        setCurrentIteration(msg.iteration);
+      } else if (msg.type === 'step_result') {
+        const result: StepResultData = msg.data;
+        setStepResults((prev) => [...prev, result]);
+        setCurrentStepId(result.step_id + 1);
+      } else if (msg.type === 'playback_complete') {
+        setPlaying(false); setCurrentStepId(null);
+        message.success(repeat > 1 ? `재생 완료 (${repeat}회)` : '재생 완료');
+        ws.close(); fetchResults();
+      } else if (msg.type === 'error') {
+        setPlaying(false); setCurrentStepId(null);
+        message.error(msg.message); ws.close(); fetchResults();
+      } else if (msg.type === 'playback_stopped') {
+        setPlaying(false); setCurrentStepId(null);
+        message.info('재생 중지됨'); ws.close(); fetchResults();
+      }
+    };
+    ws.onerror = () => { setPlaying(false); setCurrentStepId(null); message.error('WebSocket 연결 실패'); };
+    ws.onclose = () => { wsRef.current = null; };
+  };
+
+  // --- Group playback ---
+  const playGroup = (gName: string) => {
+    const members = groups[gName] || [];
+    if (members.length === 0) { message.warning('그룹에 시나리오가 없습니다'); return; }
+    const repeat = getRepeatCount(gName);
+
+    setPlaying(true);
+    setPlayingGroupName(gName);
+    setPlayingName(members[0].name);
+    setPlaybackScenario({ name: gName, description: '', device_serial: '', resolution: null, steps: [], created_at: '' });
+    setStepResults([]);
+    setCurrentStepId(null);
+    setCurrentIteration(1);
+    setTotalIterations(repeat);
+    setGroupScenarioIndex(0);
+    setGroupScenarioTotal(members.length);
+    setCurrentGroupScenario('');
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${protocol}//${window.location.host}/ws/playback`);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ action: 'play_group', scenarios: members, verify: true, repeat }));
+    };
+    ws.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+      if (msg.type === 'group_scenario_start') {
+        setCurrentGroupScenario(msg.scenario_name);
+        setGroupScenarioIndex(msg.scenario_index);
+        setGroupScenarioTotal(msg.total_scenarios);
+        setPlayingName(msg.scenario_name);
+      } else if (msg.type === 'iteration_start') {
+        setCurrentIteration(msg.iteration);
+      } else if (msg.type === 'step_result') {
+        const result: StepResultData = msg.data;
+        setStepResults((prev) => [...prev, result]);
+      } else if (msg.type === 'playback_complete') {
+        setPlaying(false); setPlayingGroupName(null); setCurrentStepId(null);
+        message.success(`그룹 "${gName}" 재생 완료`);
+        ws.close(); fetchResults();
+      } else if (msg.type === 'error') {
+        setPlaying(false); setPlayingGroupName(null); setCurrentStepId(null);
+        message.error(msg.message); ws.close(); fetchResults();
+      } else if (msg.type === 'playback_stopped') {
+        setPlaying(false); setPlayingGroupName(null); setCurrentStepId(null);
+        message.info('재생 중지됨'); ws.close(); fetchResults();
+      }
+    };
+    ws.onerror = () => { setPlaying(false); setPlayingGroupName(null); setCurrentStepId(null); message.error('WebSocket 연결 실패'); };
+    ws.onclose = () => { wsRef.current = null; };
+  };
+
+  const stopPlayback = () => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ action: 'stop' }));
+    }
+  };
+
+  // --- Results ---
+  const viewResultDetail = async (filename: string) => {
+    try {
+      const res = await resultsApi.get(filename);
+      setResultDetail(res.data);
+      setResultDetailFilename(filename);
+      setResultDetailVisible(true);
+    } catch { message.error('결과 상세 불러오기 실패'); }
+  };
+
+  const deleteResult = (filename: string) => {
+    Modal.confirm({
+      title: '결과 삭제',
+      content: `"${filename}" 결과를 삭제하시겠습니까?`,
+      okText: '삭제', okType: 'danger', cancelText: '취소',
+      onOk: async () => {
+        try {
+          await resultsApi.delete(filename);
+          message.success('삭제 완료');
+          fetchResults();
+          if (resultDetailFilename === filename) { setResultDetailVisible(false); setResultDetail(null); }
+        } catch { message.error('삭제 실패'); }
+      },
+    });
+  };
+
+  const exportExcel = async (filename: string) => {
+    try {
+      const res = await resultsApi.exportExcel(filename);
+      const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename.replace('.json', '.xlsx'); a.click();
+      window.URL.revokeObjectURL(url);
+    } catch { message.error('Excel 내보내기 실패'); }
+  };
+
+  // --- Columns ---
+  const expectedImageUrl = (scenarioName: string, filename: string | null) => {
+    if (!filename) return null;
+    return '/screenshots/' + scenarioName + '/' + filename;
+  };
+
+  const scenarioStepColumns = [
+    { title: 'ID', dataIndex: 'id', key: 'id', width: 60 },
+    { title: 'Remark', dataIndex: 'description', key: 'description', ellipsis: true },
+    { title: '유형', dataIndex: 'type', key: 'type', render: (t: string) => <Tag>{t}</Tag> },
+    { title: '디바이스', dataIndex: 'device_id', key: 'device_id', width: 100, render: (v: string) => v || '-' },
+    {
+      title: '기대이미지', dataIndex: 'expected_image', key: 'expected_image', width: 90,
+      render: (v: string | null) => {
+        const url = selectedScenario ? expectedImageUrl(selectedScenario.name, v) : null;
+        return url ? <Image src={url} alt="expected" style={{ maxHeight: 60, maxWidth: 60 }} /> : '-';
+      },
+    },
+    { title: '파라미터', dataIndex: 'params', key: 'params', render: (p: any) => <code style={{ fontSize: 11 }}>{JSON.stringify(p)}</code> },
+    { title: '딜레이', dataIndex: 'delay_after_ms', key: 'delay', width: 80, render: (v: number) => `${v}ms` },
+  ];
+
+  const playbackSteps = playbackScenario?.steps || [];
+  const passCount = stepResults.filter((r) => r.status === 'pass').length;
+  const failCount = stepResults.filter((r) => r.status === 'fail').length;
+  const warnCount = stepResults.filter((r) => r.status === 'warning').length;
+  const errorCount = stepResults.filter((r) => r.status === 'error').length;
+
+  const makeStepResultColumns = (totalRepeat: number) => [
+    { title: <div>Time Stamp<br /><span style={{ fontSize: 11, color: '#888' }}>실행 시각</span></div>, dataIndex: 'timestamp', key: 'timestamp', width: 150, render: (v: string | null) => v ? formatTime(v) : '-' },
+    { title: <div>Repeat<br /><span style={{ fontSize: 11, color: '#888' }}>현재/총</span></div>, dataIndex: 'repeat_index', key: 'repeat', width: 75, align: 'center' as const, render: (v: number) => `${v}/${totalRepeat}` },
+    { title: <div>Step<br /><span style={{ fontSize: 11, color: '#888' }}>순서</span></div>, dataIndex: 'step_id', key: 'step_id', width: 55, align: 'center' as const },
+    { title: <div>Device<br /><span style={{ fontSize: 11, color: '#888' }}>장치</span></div>, dataIndex: 'device_id', key: 'device_id', width: 120, ellipsis: true, render: (v: string) => v || '-' },
+    { title: <div>Command<br /><span style={{ fontSize: 11, color: '#888' }}>action</span></div>, dataIndex: 'command', key: 'command', ellipsis: true, render: (v: string, r: StepResultData) => v || r.message || '-' },
+    { title: <div>Remark<br /><span style={{ fontSize: 11, color: '#888' }}>설명</span></div>, dataIndex: 'description', key: 'description', width: 150, ellipsis: true, render: (v: string) => v || '-' },
+    { title: <div>Status<br /><span style={{ fontSize: 11, color: '#888' }}>결과</span></div>, dataIndex: 'status', key: 'status', width: 90, align: 'center' as const, render: (s: string) => <Tag color={statusColor(s)}>{s.toUpperCase()}</Tag> },
+    { title: <div>Delay<br /><span style={{ fontSize: 11, color: '#888' }}>설정</span></div>, dataIndex: 'delay_ms', key: 'delay', width: 80, align: 'center' as const, render: (ms: number) => ms ? formatDuration(ms) : '-' },
+    { title: <div>Duration<br /><span style={{ fontSize: 11, color: '#888' }}>실제</span></div>, dataIndex: 'execution_time_ms', key: 'duration', width: 90, align: 'center' as const, render: (ms: number) => formatDuration(ms) },
+    { title: '비교', key: 'compare', width: 70, align: 'center' as const, render: (_: any, r: StepResultData) => (r.expected_image || r.actual_image) ? <Button size="small" onClick={() => setCompareStep(r)}>비교</Button> : '-' },
+  ];
+
+  const resultsColumns = [
+    { title: '시나리오', dataIndex: 'scenario_name', key: 'name', sorter: (a: ResultSummary, b: ResultSummary) => a.scenario_name.localeCompare(b.scenario_name) },
+    { title: '상태', dataIndex: 'status', key: 'status', width: 90, filters: [{ text: 'PASS', value: 'pass' }, { text: 'FAIL', value: 'fail' }, { text: 'WARNING', value: 'warning' }, { text: 'ERROR', value: 'error' }], onFilter: (value: any, record: ResultSummary) => record.status === value, render: (s: string) => <Tag color={statusColor(s)}>{s.toUpperCase()}</Tag> },
+    { title: '결과', key: 'counts', width: 180, render: (_: any, r: ResultSummary) => (<Space size={4}><Tag color="green">{r.passed_steps}P</Tag><Tag color="red">{r.failed_steps}F</Tag>{r.warning_steps > 0 && <Tag color="orange">{r.warning_steps}W</Tag>}{r.error_steps > 0 && <Tag color="volcano">{r.error_steps}E</Tag>}<span style={{ color: '#888' }}>/ {r.total_steps}</span></Space>) },
+    { title: '실행 시간', key: 'time', width: 160, render: (_: any, r: ResultSummary) => formatTime(r.started_at), sorter: (a: ResultSummary, b: ResultSummary) => (a.started_at || '').localeCompare(b.started_at || ''), defaultSortOrder: 'descend' as const },
+    { title: '작업', key: 'actions', width: 200, render: (_: any, record: ResultSummary) => (<Space size={4}><Tooltip title="상세보기"><Button size="small" icon={<EyeOutlined />} onClick={() => viewResultDetail(record.filename)}>상세</Button></Tooltip><Tooltip title="Excel"><Button size="small" icon={<DownloadOutlined />} onClick={() => exportExcel(record.filename)} /></Tooltip><Tooltip title="삭제"><Button size="small" danger icon={<DeleteOutlined />} onClick={() => deleteResult(record.filename)} /></Tooltip></Space>) },
+  ];
+
+  const totalTime = (steps: StepResultData[]) => steps.reduce((sum, s) => sum + (s.execution_time_ms || 0), 0);
+
+  const CompareImage = ({ src, roi, alt }: { src: string; roi: ROI | null; alt: string }) => {
+    const cRef = useRef<HTMLCanvasElement>(null);
+    const [loaded, setLoaded] = useState(false);
+    useEffect(() => {
+      if (!roi) { setLoaded(false); return; }
+      const img = new window.Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => { const canvas = cRef.current; if (!canvas) return; canvas.width = roi.width; canvas.height = roi.height; const ctx = canvas.getContext('2d'); if (!ctx) return; ctx.drawImage(img, roi.x, roi.y, roi.width, roi.height, 0, 0, roi.width, roi.height); setLoaded(true); };
+      img.onerror = () => setLoaded(false);
+      img.src = src;
+    }, [src, roi]);
+    if (!roi) return <Image src={src} alt={alt} style={{ width: '100%' }} fallback="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iIzMzMyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmaWxsPSIjOTk5IiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LXNpemU9IjE0Ij5ObyBJbWFnZTwvdGV4dD48L3N2Zz4=" />;
+    return <canvas ref={cRef} style={{ width: '100%', borderRadius: 4, display: loaded ? 'block' : 'none' }} />;
+  };
+
+  // Group names for the selected scenario
+  const scenarioGroups = (name: string) =>
+    Object.entries(groups).filter(([, members]) => members.some((m) => m.name === name)).map(([g]) => g);
+
+  return (
+    <div>
+      {/* ===== 시나리오 컨트롤 (상단) ===== */}
+      <Card
+        title="시나리오"
+        extra={
+          <Space>
+            <Button icon={<FolderOutlined />} size="small" onClick={() => {
+              setGroupModalVisible(true);
+              const allNames = Object.values(groups).flatMap((ms) => ms.map((m) => m.name));
+              if (allNames.length > 0) fetchScenarioStepsCache(allNames);
+            }}>그룹 관리</Button>
+            <Button icon={<MergeCellsOutlined />} size="small" onClick={openMergeModal}>합치기</Button>
+            <Button onClick={() => { fetchScenarios(); fetchGroups(); }} size="small">새로고침</Button>
+          </Space>
+        }
+      >
+        {/* Group filter */}
+        <Space wrap style={{ width: '100%', marginBottom: 12 }}>
+          <span style={{ fontSize: 13, color: '#888' }}>그룹:</span>
+          <Tag
+            color={selectedGroup === null ? 'blue' : undefined}
+            style={{ cursor: 'pointer' }}
+            onClick={() => setSelectedGroup(null)}
+          >
+            전체 ({scenarios.length})
+          </Tag>
+          {Object.entries(groups).map(([gName, members]) => {
+            const validCount = members.filter((m) => scenarios.includes(m.name)).length;
+            return (
+              <Space key={gName} size={2}>
+                <Tag
+                  color={selectedGroup === gName ? 'blue' : undefined}
+                  style={{ cursor: 'pointer', marginRight: 0 }}
+                  onClick={() => setSelectedGroup(selectedGroup === gName ? null : gName)}
+                >
+                  <FolderOutlined /> {gName} ({validCount})
+                </Tag>
+                {validCount > 0 && (
+                  <Tooltip title={`"${gName}" 그룹 전체 재생`}>
+                    <Button
+                      size="small"
+                      type="text"
+                      icon={<PlayCircleOutlined />}
+                      disabled={playing}
+                      onClick={(e) => { e.stopPropagation(); playGroup(gName); }}
+                      style={{ padding: '0 4px', height: 22 }}
+                    />
+                  </Tooltip>
+                )}
+              </Space>
+            );
+          })}
+        </Space>
+
+        {/* Group play repeat */}
+        {selectedGroup && (groups[selectedGroup] || []).length > 0 && (
+          <Space style={{ marginBottom: 12 }}>
+            <span style={{ fontSize: 13, color: '#888' }}>그룹 재생:</span>
+            <InputNumber
+              min={1} max={999} size="small"
+              value={getRepeatCount(selectedGroup)}
+              onChange={(v) => setRepeatCount(selectedGroup, v || 1)}
+              style={{ width: 60 }}
+              disabled={playing}
+            />
+            <span style={{ fontSize: 12, color: '#888' }}>회</span>
+            {playing && playingGroupName === selectedGroup ? (
+              <Button danger size="small" icon={<StopOutlined />} onClick={stopPlayback}>중지</Button>
+            ) : (
+              <Button type="primary" size="small" icon={<PlayCircleOutlined />}
+                disabled={playing}
+                onClick={() => playGroup(selectedGroup)}
+              >
+                그룹 재생 ({(groups[selectedGroup] || []).length}개)
+              </Button>
+            )}
+          </Space>
+        )}
+
+        {/* Scenario select + actions */}
+        <Space wrap style={{ width: '100%' }}>
+          <Select
+            showSearch
+            placeholder="시나리오 선택"
+            value={selectedName}
+            onChange={(v) => setSelectedName(v)}
+            style={{ minWidth: 260 }}
+            options={filteredScenarios.map((n) => ({ label: n, value: n }))}
+            notFoundContent="시나리오 없음"
+          />
+          <Button icon={<EyeOutlined />} disabled={!selectedName} onClick={() => selectedName && viewScenario(selectedName)}>보기</Button>
+          <Button icon={<EditOutlined />} disabled={!selectedName || playing} onClick={openRenameModal}>이름변경</Button>
+          <Button icon={<CopyOutlined />} disabled={!selectedName || playing} onClick={openCopyModal}>복사</Button>
+          {playing && playingName === selectedName ? (
+            <Button danger icon={<StopOutlined />} onClick={stopPlayback}>중지</Button>
+          ) : (
+            <>
+              <InputNumber
+                min={1} max={999}
+                value={selectedName ? getRepeatCount(selectedName) : 1}
+                onChange={(v) => selectedName && setRepeatCount(selectedName, v || 1)}
+                style={{ width: 65 }}
+                disabled={playing || !selectedName}
+              />
+              <span style={{ fontSize: 13, color: '#888' }}>회</span>
+              <Button type="primary" icon={<PlayCircleOutlined />}
+                loading={playing && playingName === selectedName}
+                disabled={playing || !selectedName}
+                onClick={() => selectedName && playScenario(selectedName)}
+              >재생</Button>
+            </>
+          )}
+          <Button danger icon={<DeleteOutlined />} disabled={playing || !selectedName}
+            onClick={() => selectedName && deleteScenario(selectedName)}>삭제</Button>
+
+          {/* Quick group assign */}
+          {selectedName && Object.keys(groups).length > 0 && (
+            <>
+              <Divider type="vertical" />
+              <Select
+                placeholder="그룹에 추가"
+                style={{ width: 140 }}
+                size="small"
+                value={undefined}
+                onChange={(gName: string) => { if (gName && selectedName) addToGroup(gName, selectedName); }}
+                options={Object.keys(groups)
+                  .filter((g) => !(groups[g] || []).some((m) => m.name === selectedName!))
+                  .map((g) => ({ label: g, value: g }))}
+              />
+              {scenarioGroups(selectedName).map((g) => (
+                <Tag
+                  key={g}
+                  closable
+                  onClose={() => removeFromGroup(g, selectedName)}
+                  color="blue"
+                >
+                  {g}
+                </Tag>
+              ))}
+            </>
+          )}
+        </Space>
+      </Card>
+
+      {/* ===== 실시간 재생 패널 ===== */}
+      {(playing || stepResults.length > 0) && playbackScenario && (
+        <Card
+          title={<Space>
+            <span>재생: {playingGroupName ? `[${playingGroupName}]` : ''} {currentGroupScenario || playbackScenario.name}</span>
+            {playingGroupName && groupScenarioTotal > 0 && <Tag color="cyan">{groupScenarioIndex}/{groupScenarioTotal} 시나리오</Tag>}
+            {totalIterations > 1 && <Tag color="purple">{currentIteration} / {totalIterations}회</Tag>}
+            {playing && <Tag color="processing">진행 중...</Tag>}
+            {!playing && stepResults.length > 0 && <Tag color={failCount + errorCount > 0 ? 'red' : warnCount > 0 ? 'orange' : 'green'}>완료</Tag>}
+          </Space>}
+          extra={<Space><span>Pass: {passCount}</span><span>Fail: {failCount}</span><span>Warning: {warnCount}</span><span>Error: {errorCount}</span><span>/ {playbackSteps.length} 스텝</span></Space>}
+          style={{ marginTop: 8 }}
+        >
+          <Table columns={makeStepResultColumns(totalIterations)} dataSource={stepResults} rowKey={(_r, idx) => `${idx}`} size="small" pagination={false}
+            rowClassName={(r: StepResultData) => r.status === 'fail' ? 'row-fail' : r.status === 'error' ? 'row-error' : r.status === 'pass' ? 'row-pass' : ''} />
+        </Card>
+      )}
+
+      {/* ===== 테스트 결과 목록 ===== */}
+      <Card title="테스트 결과" extra={<Button icon={<ReloadOutlined />} onClick={fetchResults} loading={resultsLoading} size="small">새로고침</Button>} style={{ marginTop: 8 }}>
+        <Table columns={resultsColumns} dataSource={results} rowKey="filename" size="small" pagination={{ pageSize: 10, showSizeChanger: true }} />
+      </Card>
+
+      {/* ===== 그룹 관리 모달 ===== */}
+      <Modal title="그룹 관리" open={groupModalVisible} onCancel={() => setGroupModalVisible(false)} footer={null} width={960}
+        styles={{ body: { maxHeight: '75vh', overflowY: 'auto' } }}
+      >
+        <Space style={{ marginBottom: 8 }}>
+          <Input
+            placeholder="새 그룹 이름"
+            value={newGroupName}
+            onChange={(e) => setNewGroupName(e.target.value)}
+            onPressEnter={createGroup}
+            style={{ width: 200 }}
+          />
+          <Button icon={<FolderAddOutlined />} type="primary" onClick={createGroup}>생성</Button>
+        </Space>
+        <Collapse
+          accordion
+          items={Object.entries(groups).map(([gName, members]) => ({
+            key: gName,
+            label: (
+              <Space>
+                <FolderOutlined />
+                <span>{gName}</span>
+                <Tag>{members.length}개</Tag>
+              </Space>
+            ),
+            extra: (
+              <Button size="small" danger icon={<DeleteOutlined />} onClick={(e) => { e.stopPropagation(); deleteGroup(gName); }}>삭제</Button>
+            ),
+            children: (
+              <>
+                <List
+                  size="small"
+                  dataSource={members}
+                  locale={{ emptyText: '시나리오 없음' }}
+                  renderItem={(entry, idx) => {
+                    const entryKey = `${gName}:${idx}`;
+                    const isExpanded = expandedEntries.has(entryKey);
+                    const steps = scenarioStepsCache[entry.name] || [];
+                    const stepJumps = entry.step_jumps || {};
+                    const hasAnyJump = Object.keys(stepJumps).length > 0;
+
+                    // Shared jump selector renderer
+                    const renderJumpRow = (
+                      jumpLabel: string, jumpColor: string,
+                      passGoto: JumpTarget | null, failGoto: JumpTarget | null,
+                      onUpdate: (pg: JumpTarget | null, fg: JumpTarget | null) => void,
+                      field: 'pass' | 'fail',
+                    ) => {
+                      const jump = field === 'pass' ? passGoto : failGoto;
+                      const targetSteps = jump && jump.scenario >= 0 ? (scenarioStepsCache[members[jump.scenario]?.name] || []) : [];
+                      return (
+                        <div key={field} style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 12, flexWrap: 'wrap' }}>
+                          <span style={{ color: jumpColor, minWidth: 32 }}>{jumpLabel}</span>
+                          <Select
+                            size="small"
+                            style={{ width: 140 }}
+                            value={jump ? jump.scenario : undefined}
+                            allowClear
+                            placeholder="다음으로"
+                            onChange={(v) => {
+                              const newJump = v == null ? null : { scenario: v as number, step: 0 };
+                              if (field === 'pass') onUpdate(newJump, failGoto);
+                              else onUpdate(passGoto, newJump);
+                            }}
+                          >
+                            <Select.Option value={-1}>종료 (END)</Select.Option>
+                            {members.map((m, mi) => (
+                              <Select.Option key={mi} value={mi}>#{mi + 1} {m.name}</Select.Option>
+                            ))}
+                          </Select>
+                          {jump && jump.scenario >= 0 && targetSteps.length > 0 && (
+                            <Select
+                              size="small"
+                              style={{ minWidth: 180, flex: 1 }}
+                              value={jump.step}
+                              onChange={(stepVal) => {
+                                const newJump = { scenario: jump.scenario, step: stepVal as number };
+                                if (field === 'pass') onUpdate(newJump, failGoto);
+                                else onUpdate(passGoto, newJump);
+                              }}
+                            >
+                              {targetSteps.map((s: any, si: number) => (
+                                <Select.Option key={si} value={si}>{formatStepLabel(s, si)}</Select.Option>
+                              ))}
+                            </Select>
+                          )}
+                        </div>
+                      );
+                    };
+
+                    return (
+                      <List.Item style={{ display: 'block', padding: '6px 0' }}>
+                        {/* 시나리오 헤더 */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <Tag color="blue" style={{ minWidth: 24, textAlign: 'center' }}>{idx + 1}</Tag>
+                          <Button size="small" type="text" style={{ padding: '0 2px', fontSize: 11, color: '#888' }}
+                            icon={isExpanded ? <DownOutlined /> : <RightOutlined />}
+                            onClick={() => { toggleExpandEntry(entryKey); if (!isExpanded && steps.length === 0) fetchScenarioStepsCache([entry.name]); }}
+                          />
+                          <span style={{ flex: 1, fontWeight: 500 }}>{entry.name}</span>
+                          {!scenarios.includes(entry.name) && <Tag color="red">없음</Tag>}
+                          {hasAnyJump && <BranchesOutlined style={{ color: '#722ed1', fontSize: 13 }} />}
+                          <span style={{ color: '#888', fontSize: 11 }}>{steps.length}스텝</span>
+                          <Button size="small" type="text" icon={<ArrowUpOutlined />}
+                            disabled={idx === 0}
+                            onClick={() => moveInGroup(gName, members, idx, -1)}
+                          />
+                          <Button size="small" type="text" icon={<ArrowDownOutlined />}
+                            disabled={idx === members.length - 1}
+                            onClick={() => moveInGroup(gName, members, idx, 1)}
+                          />
+                          <Button size="small" type="text" danger icon={<DeleteOutlined />}
+                            onClick={() => removeFromGroup(gName, entry.name)}
+                          />
+                        </div>
+
+                        {/* 펼쳐진 스텝 목록 */}
+                        {isExpanded && (
+                          <div style={{ paddingLeft: 36, marginTop: 6, borderLeft: '2px solid #303030', marginLeft: 18 }}>
+                            <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>스텝별 조건부 이동:</div>
+                            {steps.length === 0 && <div style={{ color: '#666', fontSize: 12, padding: 4 }}>스텝 로딩 중...</div>}
+                            {steps.map((step: any, si: number) => {
+                              const sid = step.id;
+                              const sj = stepJumps[String(sid)] || { on_pass_goto: null, on_fail_goto: null };
+                              const hasSJ = sj.on_pass_goto != null || sj.on_fail_goto != null;
+                              return (
+                                <div key={si} style={{ marginBottom: 4, padding: '3px 0', borderBottom: '1px solid #222' }}>
+                                  <div style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    <Tag style={{ fontSize: 11, margin: 0, minWidth: 20, textAlign: 'center' }}>{sid}</Tag>
+                                    <span style={{ flex: 1, color: hasSJ ? '#d89614' : '#ccc' }}>{formatStepLabel(step, si)}</span>
+                                    {hasSJ && <BranchesOutlined style={{ color: '#d89614', fontSize: 11 }} />}
+                                  </div>
+                                  <div style={{ paddingLeft: 28, display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2 }}>
+                                    {renderJumpRow('P→', '#52c41a', sj.on_pass_goto, sj.on_fail_goto,
+                                      (pg, fg) => updateGroupStepJumps(gName, idx, sid, pg, fg), 'pass')}
+                                    {renderJumpRow('F→', '#ff4d4f', sj.on_pass_goto, sj.on_fail_goto,
+                                      (pg, fg) => updateGroupStepJumps(gName, idx, sid, pg, fg), 'fail')}
+                                    {hasSJ && (
+                                      <Button size="small" type="link" danger style={{ fontSize: 11, padding: 0, alignSelf: 'flex-start' }}
+                                        icon={<ClearOutlined />}
+                                        onClick={() => updateGroupStepJumps(gName, idx, sid, null, null)}
+                                      >초기화</Button>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </List.Item>
+                    );
+                  }}
+                />
+                <Select
+                  placeholder="시나리오 추가"
+                  size="small"
+                  style={{ width: '100%', marginTop: 8 }}
+                  value={undefined}
+                  onChange={(sName: string) => { if (sName) addToGroup(gName, sName); }}
+                  options={scenarios.filter((n) => !members.some((m) => m.name === n)).map((n) => ({ label: n, value: n }))}
+                />
+              </>
+            ),
+          }))}
+        />
+        {Object.keys(groups).length === 0 && <div style={{ textAlign: 'center', color: '#888', padding: 20 }}>그룹이 없습니다</div>}
+      </Modal>
+
+      {/* ===== 복사 모달 ===== */}
+      <Modal title={`"${selectedName}" 이름 변경`} open={renameModalVisible} onCancel={() => setRenameModalVisible(false)} onOk={doRename} okText="변경">
+        <Input value={renameNewName} onChange={(e) => setRenameNewName(e.target.value)} placeholder="새 시나리오 이름" />
+      </Modal>
+
+      <Modal title={`"${selectedName}" 복사`} open={copyModalVisible} onCancel={() => setCopyModalVisible(false)} onOk={doCopy} okText="복사">
+        <Input value={copyName} onChange={(e) => setCopyName(e.target.value)} placeholder="새 시나리오 이름" />
+      </Modal>
+
+      {/* ===== 합치기 모달 ===== */}
+      <Modal title="시나리오 합치기" open={mergeModalVisible} onCancel={() => setMergeModalVisible(false)} onOk={doMerge} okText="합치기" width={500}>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ marginBottom: 8, color: '#888', fontSize: 12 }}>합칠 시나리오를 순서대로 선택하세요:</div>
+          {mergeTargets.map((name, idx) => (
+            <Space key={idx} style={{ display: 'flex', marginBottom: 4 }}>
+              <Tag color="blue">{idx + 1}</Tag>
+              <span>{name}</span>
+              <Button size="small" icon={<MinusOutlined />} danger onClick={() => setMergeTargets((prev) => prev.filter((_, i) => i !== idx))} />
+            </Space>
+          ))}
+          <Select
+            placeholder="시나리오 추가"
+            style={{ width: '100%', marginTop: 4 }}
+            value={undefined}
+            onChange={(v: string) => { if (v) setMergeTargets((prev) => [...prev, v]); }}
+            options={scenarios.map((n) => ({ label: n, value: n }))}
+          />
+        </div>
+        <Divider />
+        <Space>
+          <span style={{ color: '#888' }}>이름:</span>
+          <Input value={mergeName} onChange={(e) => setMergeName(e.target.value)} placeholder="합쳐진 시나리오 이름" style={{ width: 300 }} />
+        </Space>
+      </Modal>
+
+      {/* ===== 시나리오 상세 모달 ===== */}
+      <Modal title={selectedScenario?.name || '시나리오 상세'} open={detailVisible} onCancel={() => setDetailVisible(false)} width={900} footer={null}>
+        {selectedScenario && (
+          <>
+            <Descriptions column={2} size="small" style={{ marginBottom: 8 }}>
+              <Descriptions.Item label="설명">{selectedScenario.description || '-'}</Descriptions.Item>
+              <Descriptions.Item label="디바이스">{selectedScenario.device_serial || '-'}</Descriptions.Item>
+              <Descriptions.Item label="해상도">{selectedScenario.resolution ? `${selectedScenario.resolution.width}×${selectedScenario.resolution.height}` : '-'}</Descriptions.Item>
+              <Descriptions.Item label="스텝 수">{selectedScenario.steps.length}</Descriptions.Item>
+            </Descriptions>
+            <Table columns={scenarioStepColumns} dataSource={selectedScenario.steps} rowKey="id" size="small" pagination={false} />
+          </>
+        )}
+      </Modal>
+
+      {/* ===== 결과 상세 모달 ===== */}
+      <Modal
+        title={<Space><span>{resultDetail?.scenario_name || '결과 상세'}</span>{resultDetail && <Tag color={statusColor(resultDetail.status)}>{resultDetail.status.toUpperCase()}</Tag>}</Space>}
+        open={resultDetailVisible} onCancel={() => setResultDetailVisible(false)} width={1200}
+        footer={<Space><Button icon={<DownloadOutlined />} onClick={() => resultDetailFilename && exportExcel(resultDetailFilename)}>Excel 내보내기</Button><Button danger icon={<DeleteOutlined />} onClick={() => resultDetailFilename && deleteResult(resultDetailFilename)}>삭제</Button></Space>}
+      >
+        {resultDetail && (
+          <>
+            <Descriptions bordered size="small" column={4} style={{ marginBottom: 8 }}>
+              <Descriptions.Item label="시나리오">{resultDetail.scenario_name}</Descriptions.Item>
+              <Descriptions.Item label="디바이스">{resultDetail.device_serial || '-'}</Descriptions.Item>
+              <Descriptions.Item label="시작">{formatTime(resultDetail.started_at)}</Descriptions.Item>
+              <Descriptions.Item label="종료">{formatTime(resultDetail.finished_at)}</Descriptions.Item>
+              <Descriptions.Item label="총 실행시간"><strong>{formatDuration(totalTime(resultDetail.step_results))}</strong></Descriptions.Item>
+              <Descriptions.Item label="Repeat">{resultDetail.total_repeat}회</Descriptions.Item>
+              <Descriptions.Item label="결과"><Space size={4}><Tag color="green">{resultDetail.passed_steps} Pass</Tag><Tag color="red">{resultDetail.failed_steps} Fail</Tag>{resultDetail.warning_steps > 0 && <Tag color="orange">{resultDetail.warning_steps} Warning</Tag>}{resultDetail.error_steps > 0 && <Tag color="volcano">{resultDetail.error_steps} Error</Tag>}</Space></Descriptions.Item>
+              <Descriptions.Item label="상태"><Tag color={statusColor(resultDetail.status)} style={{ fontSize: 14 }}>{resultDetail.status.toUpperCase()}</Tag></Descriptions.Item>
+            </Descriptions>
+            <Table columns={makeStepResultColumns(resultDetail.total_repeat)} dataSource={resultDetail.step_results} rowKey={(_r, idx) => `rd-${idx}`} size="small" pagination={false}
+              rowClassName={(r: StepResultData) => r.status === 'fail' ? 'row-fail' : r.status === 'error' ? 'row-error' : r.status === 'warning' ? 'row-warning' : ''} />
+          </>
+        )}
+      </Modal>
+
+      {/* ===== 이미지 비교 모달 ===== */}
+      <Modal title={`스텝 ${compareStep?.step_id} 비교`} open={!!compareStep} onCancel={() => setCompareStep(null)} width={1100} footer={null} zIndex={1100}>
+        {compareStep && (
+          <>
+            <Space style={{ marginBottom: 8 }} wrap>
+              <Tag color={statusColor(compareStep.status)}>{compareStep.status.toUpperCase()}</Tag>
+              {compareStep.similarity_score != null && <span>유사도: {(compareStep.similarity_score * 100).toFixed(2)}%</span>}
+              {compareStep.match_location && <Tag color="blue">매칭 위치: ({compareStep.match_location.x},{compareStep.match_location.y}) {compareStep.match_location.width}x{compareStep.match_location.height}</Tag>}
+              <span style={{ color: '#888' }}>Duration: {formatDuration(compareStep.execution_time_ms)}</span>
+            </Space>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Card size="small" title="기대 이미지 (Expected)">
+                  {compareStep.expected_image ? <Image src={`${imageUrl(compareStep.expected_image)!}?t=${Date.now()}`} alt="Expected" style={{ width: '100%' }} /> : <div style={{ textAlign: 'center', padding: 40, color: '#666' }}>이미지 없음</div>}
+                </Card>
+              </Col>
+              <Col span={12}>
+                <Card size="small" title="실제 이미지 (Actual)">
+                  {compareStep.actual_annotated_image ? <Image src={`${imageUrl(compareStep.actual_annotated_image)!}?t=${Date.now()}`} alt="Actual (annotated)" style={{ width: '100%' }} /> : compareStep.actual_image ? <CompareImage src={imageUrl(compareStep.actual_image)!} roi={compareStep.roi} alt="Actual" /> : <div style={{ textAlign: 'center', padding: 40, color: '#666' }}>이미지 없음</div>}
+                </Card>
+              </Col>
+            </Row>
+            {compareStep.diff_image && (
+              <div style={{ marginTop: 12 }}>
+                <Card size="small" title="차이 히트맵 (Diff)"><Image src={`${imageUrl(compareStep.diff_image)!}?t=${Date.now()}`} alt="Diff" style={{ width: '100%' }} /></Card>
+              </div>
+            )}
+          </>
+        )}
+      </Modal>
+
+      <style>{`
+        .row-pass td { background: rgba(82, 196, 26, 0.08) !important; }
+        .row-fail td { background: rgba(255, 77, 79, 0.12) !important; }
+        .row-error td { background: rgba(255, 122, 69, 0.12) !important; }
+        .row-warning td { background: rgba(250, 173, 20, 0.08) !important; }
+      `}</style>
+    </div>
+  );
+}

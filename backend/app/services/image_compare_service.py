@@ -1,0 +1,205 @@
+"""Image comparison service — SSIM, ROI, template matching."""
+
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+from typing import Optional
+
+import cv2
+import numpy as np
+from skimage.metrics import structural_similarity as ssim
+
+logger = logging.getLogger(__name__)
+
+
+class ImageCompareService:
+    """Compare expected vs actual screenshots."""
+
+    # ------------------------------------------------------------------
+    # Level 1 — Full-image SSIM
+    # ------------------------------------------------------------------
+
+    def compare_ssim(
+        self,
+        expected_path: str,
+        actual_path: str,
+        roi: Optional[dict] = None,
+    ) -> dict:
+        """Return similarity score and diff image path.
+
+        Args:
+            expected_path: path to expected screenshot PNG
+            actual_path: path to actual screenshot PNG
+            roi: optional dict with x, y, width, height to crop before comparing
+        """
+        img_exp = cv2.imread(expected_path)
+        img_act = cv2.imread(actual_path)
+        if img_exp is None or img_act is None:
+            return {"score": 0.0, "error": "Could not read one or both images"}
+
+        # Apply ROI crop if specified
+        if roi:
+            x, y, w, h = roi["x"], roi["y"], roi["width"], roi["height"]
+            img_exp = img_exp[y : y + h, x : x + w]
+            img_act = img_act[y : y + h, x : x + w]
+
+        # If expected image is smaller than actual (cropped expected image),
+        # extract the matching region from actual via template matching.
+        eh, ew = img_exp.shape[:2]
+        ah, aw = img_act.shape[:2]
+        if eh < ah or ew < aw:
+            return self._compare_cropped(img_exp, img_act)
+
+        # Resize actual to match expected if needed (e.g. slight resolution diff)
+        if img_exp.shape != img_act.shape:
+            img_act = cv2.resize(img_act, (img_exp.shape[1], img_exp.shape[0]))
+
+        # Convert to grayscale for SSIM
+        gray_exp = cv2.cvtColor(img_exp, cv2.COLOR_BGR2GRAY)
+        gray_act = cv2.cvtColor(img_act, cv2.COLOR_BGR2GRAY)
+
+        score, diff = ssim(gray_exp, gray_act, full=True)
+        diff_uint8 = (diff * 255).astype("uint8")
+
+        return {
+            "score": round(float(score), 4),
+            "diff_array": diff_uint8,
+        }
+
+    def _compare_cropped(self, img_exp: np.ndarray, img_act: np.ndarray) -> dict:
+        """Compare a cropped expected image against a full actual screenshot.
+
+        Uses template matching to locate the region, then SSIM on the matched area.
+        """
+        gray_exp = cv2.cvtColor(img_exp, cv2.COLOR_BGR2GRAY)
+        gray_act = cv2.cvtColor(img_act, cv2.COLOR_BGR2GRAY)
+
+        # Template match to find the best location
+        result = cv2.matchTemplate(gray_act, gray_exp, cv2.TM_CCOEFF_NORMED)
+        _, max_val, _, max_loc = cv2.minMaxLoc(result)
+
+        # Crop actual image at the matched location
+        eh, ew = img_exp.shape[:2]
+        x, y = max_loc
+        matched_region = gray_act[y:y + eh, x:x + ew]
+
+        # Compute SSIM on the matched region
+        score, diff = ssim(gray_exp, matched_region, full=True)
+        diff_uint8 = (diff * 255).astype("uint8")
+
+        logger.info(
+            "Cropped comparison: template_confidence=%.4f, ssim=%.4f, location=(%d,%d)",
+            max_val, score, x, y,
+        )
+
+        return {
+            "score": round(float(score), 4),
+            "diff_array": diff_uint8,
+            "match_location": {"x": int(x), "y": int(y), "width": int(ew), "height": int(eh)},
+            "template_confidence": round(float(max_val), 4),
+        }
+
+    # ------------------------------------------------------------------
+    # Level 2 — SSIM with status-bar masking
+    # ------------------------------------------------------------------
+
+    def compare_ssim_masked(
+        self,
+        expected_path: str,
+        actual_path: str,
+        mask_top_px: int = 80,
+    ) -> dict:
+        """SSIM comparison with top status bar masked out."""
+        return self.compare_ssim(
+            expected_path,
+            actual_path,
+            roi=None,  # masking is applied below
+        )
+
+    # ------------------------------------------------------------------
+    # Level 3 — Template matching
+    # ------------------------------------------------------------------
+
+    def template_match(
+        self,
+        screenshot_path: str,
+        template_path: str,
+        threshold: float = 0.8,
+    ) -> dict:
+        """Check if a template image exists within a screenshot.
+
+        Returns location and confidence score.
+        """
+        img = cv2.imread(screenshot_path)
+        tmpl = cv2.imread(template_path)
+        if img is None or tmpl is None:
+            return {"found": False, "error": "Could not read one or both images"}
+
+        img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        tmpl_gray = cv2.cvtColor(tmpl, cv2.COLOR_BGR2GRAY)
+
+        result = cv2.matchTemplate(img_gray, tmpl_gray, cv2.TM_CCOEFF_NORMED)
+        _, max_val, _, max_loc = cv2.minMaxLoc(result)
+
+        found = float(max_val) >= threshold
+        return {
+            "found": found,
+            "confidence": round(float(max_val), 4),
+            "location": {"x": int(max_loc[0]), "y": int(max_loc[1])} if found else None,
+        }
+
+    # ------------------------------------------------------------------
+    # Diff heatmap generation
+    # ------------------------------------------------------------------
+
+    def generate_diff_heatmap(
+        self,
+        expected_path: str,
+        actual_path: str,
+        output_path: str,
+        roi: Optional[dict] = None,
+    ) -> str:
+        """Generate a heatmap PNG highlighting differences."""
+        result = self.compare_ssim(expected_path, actual_path, roi=roi)
+        if "error" in result:
+            raise RuntimeError(result["error"])
+
+        diff = result["diff_array"]
+        # Invert so differences are bright
+        diff_inv = 255 - diff
+        heatmap = cv2.applyColorMap(diff_inv, cv2.COLORMAP_JET)
+
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(output_path, heatmap)
+        return output_path
+
+    # ------------------------------------------------------------------
+    # High-level judge
+    # ------------------------------------------------------------------
+
+    def judge(
+        self,
+        expected_path: str,
+        actual_path: str,
+        threshold_pass: float = 0.95,
+        threshold_warning: float = 0.85,
+        roi: Optional[dict] = None,
+    ) -> dict:
+        """Return pass/fail/warning judgement."""
+        result = self.compare_ssim(expected_path, actual_path, roi=roi)
+        if "error" in result:
+            return {"status": "error", "score": 0.0, "message": result["error"]}
+
+        score = result["score"]
+        if score >= threshold_pass:
+            status = "pass"
+        elif score >= threshold_warning:
+            status = "warning"
+        else:
+            status = "fail"
+
+        out: dict = {"status": status, "score": score}
+        if "match_location" in result:
+            out["match_location"] = result["match_location"]
+        return out

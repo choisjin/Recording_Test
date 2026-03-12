@@ -1,0 +1,435 @@
+"""Recording service — 사용자 동작을 시나리오로 기록."""
+
+from __future__ import annotations
+
+import json
+import logging
+import shutil
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+from ..models.scenario import ROI, Scenario, Step, StepType
+from .adb_service import ADBService
+from .device_manager import DeviceManager
+
+logger = logging.getLogger(__name__)
+
+SCENARIOS_DIR = Path(__file__).resolve().parent.parent.parent / "scenarios"
+SCREENSHOTS_DIR = Path(__file__).resolve().parent.parent.parent / "screenshots"
+
+
+def _build_ctor_kwargs(dev) -> dict | None:
+    """Build constructor kwargs from device info for module instantiation."""
+    ct = dev.info.get("connect_type", "serial" if dev.type == "serial" else "none")
+    if ct == "serial":
+        return {"port": dev.address, "bps": dev.info.get("baudrate", 115200)}
+    elif ct == "socket":
+        return {"host": dev.address}
+    elif ct == "can":
+        return {k: v for k, v in dev.info.items() if k not in ("module", "connect_type")}
+    return None
+GROUPS_FILE = SCENARIOS_DIR / "groups.json"
+
+
+class RecordingService:
+    """Record user actions into a Scenario."""
+
+    def __init__(self, adb: ADBService, device_manager: DeviceManager):
+        self.adb = adb
+        self.dm = device_manager
+        self._recording = False
+        self._current_scenario: Optional[Scenario] = None
+        self._step_counter = 0
+        self._last_action_time: Optional[float] = None
+
+    @property
+    def is_recording(self) -> bool:
+        return self._recording
+
+    async def start_recording(self, scenario_name: str, description: str = "") -> Scenario:
+        """Start a new recording session."""
+        if self._recording:
+            raise RuntimeError("Already recording")
+
+        self._current_scenario = Scenario(
+            name=scenario_name,
+            description=description,
+            steps=[],
+            created_at=datetime.now(timezone.utc).isoformat(),
+        )
+        self._step_counter = 0
+        self._last_action_time = time.time()
+        self._recording = True
+        logger.info("Recording started: %s", scenario_name)
+        return self._current_scenario
+
+    async def resume_recording(self, scenario_name: str) -> Scenario:
+        """Resume recording on an existing saved scenario."""
+        if self._recording:
+            raise RuntimeError("Already recording")
+
+        scenario = await self.load_scenario(scenario_name)
+        self._current_scenario = scenario
+        self._step_counter = max((s.id for s in scenario.steps), default=0)
+        self._last_action_time = time.time()
+        self._recording = True
+        logger.info("Recording resumed: %s (from step %d)", scenario_name, self._step_counter)
+        return self._current_scenario
+
+    async def add_step(
+        self,
+        step_type: StepType,
+        params: dict,
+        device_id: str = "",
+        description: str = "",
+        delay_after_ms: int = 1000,
+        roi: Optional[dict] = None,
+        similarity_threshold: float = 0.95,
+        skip_execute: bool = False,
+    ) -> Step:
+        """Add a recorded step and optionally execute the action on the target device.
+
+        Expected images are NOT captured automatically — the user saves them
+        manually via the save-expected-image endpoint.
+        """
+        if not self._recording or self._current_scenario is None:
+            raise RuntimeError("Not recording")
+
+        self._step_counter += 1
+        step_id = self._step_counter
+
+        if not skip_execute:
+            await self._execute_step_action(step_type, params, device_id)
+
+        step = Step(
+            id=step_id,
+            type=step_type,
+            device_id=device_id or None,
+            params=params,
+            delay_after_ms=delay_after_ms,
+            expected_image=None,
+            description=description,
+            roi=ROI(**roi) if roi else None,
+            similarity_threshold=similarity_threshold,
+        )
+        self._current_scenario.steps.append(step)
+        self._last_action_time = time.time()
+        logger.info("Step %d recorded: %s on device %s", step_id, step_type.value, device_id or "default")
+        return step
+
+    async def stop_recording(self) -> Scenario:
+        """Stop recording and save the scenario."""
+        if not self._recording or self._current_scenario is None:
+            raise RuntimeError("Not recording")
+
+        self._current_scenario.updated_at = datetime.now(timezone.utc).isoformat()
+        self._recording = False
+
+        # Save scenario to JSON
+        await self.save_scenario(self._current_scenario)
+        logger.info("Recording stopped: %s (%d steps)", self._current_scenario.name, len(self._current_scenario.steps))
+        scenario = self._current_scenario
+        self._current_scenario = None
+        return scenario
+
+    async def save_scenario(self, scenario: Scenario) -> str:
+        """Save scenario to JSON file."""
+        SCENARIOS_DIR.mkdir(parents=True, exist_ok=True)
+        filepath = SCENARIOS_DIR / f"{scenario.name}.json"
+        filepath.write_text(scenario.model_dump_json(indent=2), encoding="utf-8")
+        return str(filepath)
+
+    async def load_scenario(self, name: str) -> Scenario:
+        """Load scenario from JSON file."""
+        filepath = SCENARIOS_DIR / f"{name}.json"
+        if not filepath.exists():
+            raise FileNotFoundError(f"Scenario not found: {name}")
+        data = json.loads(filepath.read_text(encoding="utf-8"))
+        return Scenario(**data)
+
+    async def list_scenarios(self) -> list[str]:
+        """List all saved scenario names."""
+        SCENARIOS_DIR.mkdir(parents=True, exist_ok=True)
+        return [p.stem for p in SCENARIOS_DIR.glob("*.json") if p.name != "groups.json"]
+
+    async def delete_scenario(self, name: str) -> bool:
+        """Delete a scenario file."""
+        filepath = SCENARIOS_DIR / f"{name}.json"
+        if filepath.exists():
+            filepath.unlink()
+            # Remove from any groups
+            groups = self._load_groups()
+            changed = False
+            for members in groups.values():
+                if name in members:
+                    members.remove(name)
+                    changed = True
+            if changed:
+                self._save_groups(groups)
+            return True
+        return False
+
+    async def rename_scenario(self, old_name: str, new_name: str) -> bool:
+        """Rename a scenario file and update group references."""
+        old_path = SCENARIOS_DIR / f"{old_name}.json"
+        new_path = SCENARIOS_DIR / f"{new_name}.json"
+        if not old_path.exists():
+            return False
+        if new_path.exists():
+            raise ValueError(f"Scenario '{new_name}' already exists")
+        # Load, update name, save to new path
+        data = json.loads(old_path.read_text(encoding="utf-8"))
+        data["name"] = new_name
+        new_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        old_path.unlink()
+        # Rename screenshots directory
+        old_ss = SCREENSHOTS_DIR / old_name
+        new_ss = SCREENSHOTS_DIR / new_name
+        if old_ss.exists() and not new_ss.exists():
+            old_ss.rename(new_ss)
+        # Update group references
+        groups = self._load_groups()
+        changed = False
+        for members in groups.values():
+            if old_name in members:
+                idx = members.index(old_name)
+                members[idx] = new_name
+                changed = True
+        if changed:
+            self._save_groups(groups)
+        return True
+
+    # ------------------------------------------------------------------
+    # Groups
+    # ------------------------------------------------------------------
+
+    def _load_groups_raw(self) -> dict:
+        SCENARIOS_DIR.mkdir(parents=True, exist_ok=True)
+        if GROUPS_FILE.exists():
+            return json.loads(GROUPS_FILE.read_text(encoding="utf-8"))
+        return {}
+
+    def _load_groups(self) -> dict[str, list[dict]]:
+        """Load groups, auto-migrating old formats to new dict-based jump format.
+
+        Current format: on_pass_goto / on_fail_goto = {scenario: int, step: int} | null
+        Old format v1: list[str] (just scenario names)
+        Old format v2: on_pass_goto / on_fail_goto = int | null (scenario index only)
+        """
+        raw = self._load_groups_raw()
+        migrated = False
+        result: dict[str, list[dict]] = {}
+        for gname, members in raw.items():
+            if isinstance(members, list) and len(members) > 0 and isinstance(members[0], str):
+                # Old format v1: list of scenario names
+                result[gname] = [{"name": m, "on_pass_goto": None, "on_fail_goto": None} for m in members]
+                migrated = True
+            else:
+                entries = members if isinstance(members, list) else []
+                # Migrate v2 integer jumps to dict format
+                for entry in entries:
+                    for key in ("on_pass_goto", "on_fail_goto"):
+                        val = entry.get(key)
+                        if isinstance(val, int):
+                            entry[key] = {"scenario": val, "step": 0}
+                            migrated = True
+                result[gname] = entries
+        if migrated:
+            self._save_groups(result)
+        return result
+
+    def _save_groups(self, groups: dict[str, list[dict]]) -> None:
+        SCENARIOS_DIR.mkdir(parents=True, exist_ok=True)
+        GROUPS_FILE.write_text(json.dumps(groups, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def get_groups(self) -> dict[str, list[dict]]:
+        return self._load_groups()
+
+    def create_group(self, group_name: str) -> dict[str, list[dict]]:
+        groups = self._load_groups()
+        if group_name not in groups:
+            groups[group_name] = []
+        self._save_groups(groups)
+        return groups
+
+    def delete_group(self, group_name: str) -> dict[str, list[dict]]:
+        groups = self._load_groups()
+        groups.pop(group_name, None)
+        self._save_groups(groups)
+        return groups
+
+    def rename_group(self, old_name: str, new_name: str) -> dict[str, list[dict]]:
+        groups = self._load_groups()
+        if old_name in groups:
+            groups[new_name] = groups.pop(old_name)
+            self._save_groups(groups)
+        return groups
+
+    def add_to_group(self, group_name: str, scenario_name: str) -> dict[str, list[dict]]:
+        groups = self._load_groups()
+        if group_name not in groups:
+            groups[group_name] = []
+        names = [m["name"] for m in groups[group_name]]
+        if scenario_name not in names:
+            groups[group_name].append({"name": scenario_name, "on_pass_goto": None, "on_fail_goto": None})
+        self._save_groups(groups)
+        return groups
+
+    def remove_from_group(self, group_name: str, scenario_name: str) -> dict[str, list[dict]]:
+        groups = self._load_groups()
+        if group_name in groups:
+            groups[group_name] = [m for m in groups[group_name] if m["name"] != scenario_name]
+        self._save_groups(groups)
+        return groups
+
+    def reorder_group(self, group_name: str, ordered: list[str]) -> dict[str, list[dict]]:
+        groups = self._load_groups()
+        if group_name in groups:
+            old_map = {m["name"]: m for m in groups[group_name]}
+            groups[group_name] = [old_map.get(n, {"name": n, "on_pass_goto": None, "on_fail_goto": None}) for n in ordered]
+        self._save_groups(groups)
+        return groups
+
+    def update_group_jumps(self, group_name: str, index: int, on_pass_goto, on_fail_goto) -> dict[str, list[dict]]:
+        """Update conditional jump settings for a scenario in a group."""
+        groups = self._load_groups()
+        if group_name in groups and 0 <= index < len(groups[group_name]):
+            groups[group_name][index]["on_pass_goto"] = on_pass_goto
+            groups[group_name][index]["on_fail_goto"] = on_fail_goto
+        self._save_groups(groups)
+        return groups
+
+    def update_group_step_jumps(self, group_name: str, index: int, step_id: int, on_pass_goto, on_fail_goto) -> dict[str, list[dict]]:
+        """Update conditional jump settings for a specific step within a scenario in a group."""
+        groups = self._load_groups()
+        if group_name in groups and 0 <= index < len(groups[group_name]):
+            entry = groups[group_name][index]
+            if "step_jumps" not in entry:
+                entry["step_jumps"] = {}
+            key = str(step_id)
+            if on_pass_goto is None and on_fail_goto is None:
+                entry["step_jumps"].pop(key, None)
+            else:
+                entry["step_jumps"][key] = {"on_pass_goto": on_pass_goto, "on_fail_goto": on_fail_goto}
+            # Clean up empty step_jumps
+            if not entry["step_jumps"]:
+                del entry["step_jumps"]
+        self._save_groups(groups)
+        return groups
+
+    # ------------------------------------------------------------------
+    # Copy & Merge
+    # ------------------------------------------------------------------
+
+    async def copy_scenario(self, source_name: str, target_name: str) -> Scenario:
+        """Copy a scenario with a new name, including screenshots."""
+        source = await self.load_scenario(source_name)
+        source.name = target_name
+        source.created_at = datetime.now(timezone.utc).isoformat()
+        source.updated_at = source.created_at
+
+        # Remap expected_image filenames
+        src_ss_dir = SCREENSHOTS_DIR / source_name
+        tgt_ss_dir = SCREENSHOTS_DIR / target_name
+        tgt_ss_dir.mkdir(parents=True, exist_ok=True)
+
+        for step in source.steps:
+            if step.expected_image:
+                old_file = src_ss_dir / step.expected_image
+                new_filename = step.expected_image.replace(source_name, target_name, 1)
+                new_file = tgt_ss_dir / new_filename
+                if old_file.exists():
+                    shutil.copy2(str(old_file), str(new_file))
+                step.expected_image = new_filename
+
+        await self.save_scenario(source)
+        return source
+
+    async def merge_scenarios(self, names: list[str], target_name: str) -> Scenario:
+        """Merge multiple scenarios into one new scenario."""
+        merged_steps: list[Step] = []
+        step_id = 0
+
+        tgt_ss_dir = SCREENSHOTS_DIR / target_name
+        tgt_ss_dir.mkdir(parents=True, exist_ok=True)
+
+        for name in names:
+            scen = await self.load_scenario(name)
+            src_ss_dir = SCREENSHOTS_DIR / name
+            for step in scen.steps:
+                step_id += 1
+                step.id = step_id
+                if step.expected_image:
+                    old_file = src_ss_dir / step.expected_image
+                    new_filename = f"{target_name}_step_{step_id:03d}.png"
+                    new_file = tgt_ss_dir / new_filename
+                    if old_file.exists():
+                        shutil.copy2(str(old_file), str(new_file))
+                    step.expected_image = new_filename
+                merged_steps.append(step)
+
+        merged = Scenario(
+            name=target_name,
+            steps=merged_steps,
+            created_at=datetime.now(timezone.utc).isoformat(),
+        )
+        await self.save_scenario(merged)
+        return merged
+
+    # ------------------------------------------------------------------
+    # Internal
+    # ------------------------------------------------------------------
+
+    async def _execute_step_action(self, step_type: StepType, params: dict, device_id: str = "") -> None:
+        """Execute an action on the target device."""
+        if step_type == StepType.MODULE_COMMAND:
+            from .module_service import execute_module_function
+            module_name = params.get("module", "")
+            func_name = params.get("function", "")
+            func_args = params.get("args", {})
+            # Pass device connection info as constructor kwargs
+            ctor_kwargs = None
+            if device_id:
+                dev = self.dm.get_device(device_id)
+                if dev:
+                    ctor_kwargs = _build_ctor_kwargs(dev)
+            await execute_module_function(module_name, func_name, func_args, ctor_kwargs)
+        elif step_type == StepType.SERIAL_COMMAND:
+            if not device_id:
+                raise ValueError("serial_command requires a device_id")
+            await self.dm.send_serial_command(
+                device_id,
+                params["data"],
+                params.get("read_timeout", 1.0),
+            )
+        elif step_type == StepType.WAIT:
+            await _async_sleep(params.get("duration_ms", 1000) / 1000.0)
+        else:
+            # ADB actions — use device_id or fallback to active device
+            serial = device_id or await self.adb.get_active_device()
+            if not serial:
+                raise ValueError("No ADB device specified")
+            if step_type == StepType.TAP:
+                await self.adb.tap(params["x"], params["y"], serial=serial)
+            elif step_type == StepType.LONG_PRESS:
+                await self.adb.long_press(params["x"], params["y"], params.get("duration_ms", 1000), serial=serial)
+            elif step_type == StepType.SWIPE:
+                await self.adb.swipe(
+                    params["x1"], params["y1"],
+                    params["x2"], params["y2"],
+                    params.get("duration_ms", 300),
+                    serial=serial,
+                )
+            elif step_type == StepType.INPUT_TEXT:
+                await self.adb.input_text(params["text"], serial=serial)
+            elif step_type == StepType.KEY_EVENT:
+                await self.adb.key_event(params["keycode"], serial=serial)
+            elif step_type == StepType.ADB_COMMAND:
+                await self.adb.run_shell_command(params["command"], serial=serial)
+
+
+async def _async_sleep(seconds: float) -> None:
+    import asyncio
+    await asyncio.sleep(seconds)

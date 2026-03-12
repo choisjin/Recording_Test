@@ -1,0 +1,31 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Large binaries (copy manually to work PC)
+*.whl
+*.exe
+*.dll
+
+# Runtime data
+backend/screenshots/
+backend/results/
+backend/scenarios/
+backend/auxiliary_devices.json
+
+# OS / IDE
+.env
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+.DS_Store
