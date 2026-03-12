@@ -1306,8 +1306,8 @@ export default function RecordPage() {
                     { value: 'multi_crop', label: '멀티크롭' },
                   ]}
                 />
-                {/* 전체화면 / 영역제외: 카메라 (전체화면 캡처) */}
-                {(s.compare_mode || 'full') !== 'multi_crop' && (
+                {/* 전체화면: 카메라 (전체화면 캡처) */}
+                {(!s.compare_mode || s.compare_mode === 'full') && (
                   <Button
                     size="small" type="text"
                     icon={<CameraOutlined />}
@@ -1317,7 +1317,7 @@ export default function RecordPage() {
                   />
                 )}
                 {/* 단일크롭: 가위 (크롭 캡처) */}
-                {(s.compare_mode === 'single_crop' || !(s.compare_mode)) && (
+                {s.compare_mode === 'single_crop' && (
                   <Button
                     size="small" type="text"
                     icon={<ScissorOutlined />}
