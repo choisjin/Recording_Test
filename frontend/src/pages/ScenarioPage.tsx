@@ -602,8 +602,10 @@ export default function ScenarioPage() {
 
   return (
     <div>
-      {/* ===== 시나리오 컨트롤 (상단) ===== */}
+      {/* ===== 시나리오 + 웹캠 (같은 행) ===== */}
+      <div style={{ display: 'flex', gap: 8 }}>
       <Card
+        style={{ flex: 1, minWidth: 0 }}
         title="시나리오"
         extra={
           <Space>
@@ -745,10 +747,11 @@ export default function ScenarioPage() {
         </Space>
       </Card>
 
-      {/* ===== 웹캠 패널 ===== */}
-      <div style={{ marginTop: 8 }}>
+      {/* ===== 웹캠 패널 (오른쪽) ===== */}
+      <div style={{ width: 360, flexShrink: 0 }}>
         <style>{`@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }`}</style>
         <WebcamPanel webcam={webcam} />
+      </div>
       </div>
 
       {/* ===== 실시간 재생 패널 ===== */}
