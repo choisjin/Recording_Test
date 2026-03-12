@@ -19,6 +19,7 @@ if not exist "venv" (
 :: pip 패키지 설치
 echo [2/4] Python 패키지 설치 중...
 call venv\Scripts\activate.bat
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 if exist "lge.auto-*.whl" (
     for %%f in (lge.auto-*.whl) do pip install "%%f"
