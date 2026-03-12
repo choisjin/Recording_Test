@@ -23,6 +23,14 @@ interface ScenarioDetail {
 interface ROI { x: number; y: number; width: number; height: number; }
 interface MatchLocation { x: number; y: number; width: number; height: number; }
 
+interface SubResultData {
+  label: string;
+  expected_image: string;
+  score: number;
+  status: string;
+  match_location: MatchLocation | null;
+}
+
 interface StepResultData {
   step_id: number;
   repeat_index: number;
@@ -33,6 +41,7 @@ interface StepResultData {
   status: string;
   similarity_score: number | null;
   expected_image: string | null;
+  expected_annotated_image: string | null;
   actual_image: string | null;
   actual_annotated_image: string | null;
   diff_image: string | null;
@@ -41,6 +50,8 @@ interface StepResultData {
   message: string;
   delay_ms: number;
   execution_time_ms: number;
+  compare_mode: string | null;
+  sub_results: SubResultData[];
 }
 
 interface ResultSummary {
@@ -1025,14 +1036,29 @@ export default function ScenarioPage() {
           <>
             <Space style={{ marginBottom: 8 }} wrap>
               <Tag color={statusColor(compareStep.status)}>{compareStep.status.toUpperCase()}</Tag>
+              {compareStep.compare_mode && compareStep.compare_mode !== 'full' && (
+                <Tag color="purple">
+                  {compareStep.compare_mode === 'single_crop' ? '단일크롭' : compareStep.compare_mode === 'full_exclude' ? '영역제외' : compareStep.compare_mode === 'multi_crop' ? '멀티크롭' : compareStep.compare_mode}
+                </Tag>
+              )}
               {compareStep.similarity_score != null && <span>유사도: {(compareStep.similarity_score * 100).toFixed(2)}%</span>}
               {compareStep.match_location && <Tag color="blue">매칭 위치: ({compareStep.match_location.x},{compareStep.match_location.y}) {compareStep.match_location.width}x{compareStep.match_location.height}</Tag>}
               <span style={{ color: '#888' }}>Duration: {formatDuration(compareStep.execution_time_ms)}</span>
             </Space>
             <Row gutter={16}>
               <Col span={12}>
-                <Card size="small" title="기대 이미지 (Expected)">
-                  {compareStep.expected_image ? <Image src={`${imageUrl(compareStep.expected_image)!}?t=${Date.now()}`} alt="Expected" style={{ width: '100%' }} /> : <div style={{ textAlign: 'center', padding: 40, color: '#666' }}>이미지 없음</div>}
+                <Card size="small" title={
+                  compareStep.compare_mode === 'full_exclude' ? '기대 이미지 (제외 영역 표시)'
+                  : compareStep.compare_mode === 'multi_crop' ? '기대 이미지 (크롭 영역)'
+                  : '기대 이미지 (Expected)'
+                }>
+                  {compareStep.expected_image ? (
+                    <Image
+                      src={`${imageUrl(compareStep.expected_annotated_image || compareStep.expected_image)!}?t=${Date.now()}`}
+                      alt="Expected"
+                      style={{ width: '100%' }}
+                    />
+                  ) : <div style={{ textAlign: 'center', padding: 40, color: '#666' }}>이미지 없음</div>}
                 </Card>
               </Col>
               <Col span={12}>
@@ -1044,6 +1070,29 @@ export default function ScenarioPage() {
             {compareStep.diff_image && (
               <div style={{ marginTop: 12 }}>
                 <Card size="small" title="차이 히트맵 (Diff)"><Image src={`${imageUrl(compareStep.diff_image)!}?t=${Date.now()}`} alt="Diff" style={{ width: '100%' }} /></Card>
+              </div>
+            )}
+            {compareStep.compare_mode === 'multi_crop' && compareStep.sub_results?.length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <Card size="small" title="크롭별 상세 결과">
+                  <Table
+                    dataSource={compareStep.sub_results}
+                    rowKey={(_r, idx) => `sub-${idx}`}
+                    size="small"
+                    pagination={false}
+                    columns={[
+                      { title: '라벨', dataIndex: 'label', key: 'label', render: (v: string) => v || '-' },
+                      { title: '점수', dataIndex: 'score', key: 'score', width: 100, render: (v: number) => `${(v * 100).toFixed(2)}%` },
+                      { title: '상태', dataIndex: 'status', key: 'status', width: 80, render: (s: string) => <Tag color={statusColor(s)}>{s.toUpperCase()}</Tag> },
+                      { title: '매칭 위치', key: 'loc', width: 200, render: (_: any, r: SubResultData) => r.match_location ? `(${r.match_location.x},${r.match_location.y}) ${r.match_location.width}x${r.match_location.height}` : '-' },
+                    ]}
+                  />
+                </Card>
+              </div>
+            )}
+            {compareStep.compare_mode === 'full_exclude' && (
+              <div style={{ marginTop: 12 }}>
+                <Card size="small"><span style={{ color: '#888' }}>제외 영역이 적용된 SSIM 비교 결과입니다. 빨간 박스 영역은 비교에서 제외되었습니다.</span></Card>
               </div>
             )}
           </>
