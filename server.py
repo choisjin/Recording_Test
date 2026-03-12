@@ -73,7 +73,7 @@ class ServerProcess:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW) if sys.platform == "win32" else 0,
-                bufsize=1,
+                bufsize=0,
             )
             log_callback(f"[{self.name}] 시작됨 (PID {self.proc.pid}) — {self.url}")
             self._reader_thread = threading.Thread(
