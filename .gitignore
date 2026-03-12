@@ -29,3 +29,5 @@ backend/auxiliary_devices.json
 Thumbs.db
 Desktop.ini
 .DS_Store
+.claude/settings.json
+.claude/settings.local.json

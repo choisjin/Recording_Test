@@ -10,7 +10,7 @@ cd /d "%~dp0"
 :: Python venv 생성
 echo [1/4] Python 가상환경 생성 중...
 if not exist "venv" (
-    python -m venv venv
+    python -3.10 -m venv venv
     echo       venv 생성 완료
 ) else (
     echo       venv 이미 존재함 - 건너뜀
