@@ -58,7 +58,7 @@ const JumpEditorInner = React.memo(({ step, index, steps, onUpdate }: {
 ));
 
 interface ROI { x: number; y: number; width: number; height: number }
-interface CropItem { image: string; label: string }
+interface CropItem { image: string; label: string; roi?: ROI | null }
 
 interface Step {
   id: number;
@@ -75,6 +75,39 @@ interface Step {
   exclude_rois?: ROI[];
   expected_images?: CropItem[];
 }
+
+// Annotated thumbnail: draws expected image with colored region rectangles
+const AnnotatedThumbnail = React.memo(({ src, regions, color, height = 48 }: {
+  src: string;
+  regions: ROI[];
+  color: string;
+  height?: number;
+}) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const img = new window.Image();
+    img.onload = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const aspect = img.width / img.height;
+      canvas.height = height;
+      canvas.width = Math.round(height * aspect);
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const sx = canvas.width / img.width;
+      const sy = canvas.height / img.height;
+      regions.forEach((r) => {
+        ctx.fillStyle = color === 'red' ? 'rgba(255,77,79,0.3)' : 'rgba(82,196,26,0.3)';
+        ctx.fillRect(r.x * sx, r.y * sy, r.width * sx, r.height * sy);
+        ctx.strokeStyle = color === 'red' ? '#ff4d4f' : '#52c41a';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(r.x * sx, r.y * sy, r.width * sx, r.height * sy);
+      });
+    };
+    img.src = src;
+  }, [src, regions, color, height]);
+  return <canvas ref={canvasRef} style={{ height, borderRadius: 2, cursor: 'pointer' }} />;
+});
 
 // Gesture detection thresholds
 const LONG_PRESS_THRESHOLD_MS = 500;
@@ -168,8 +201,16 @@ export default function RecordPage() {
   const [excludeRoiModalOpen, setExcludeRoiModalOpen] = useState(false);
   const [excludeRoiSelectedIdx, setExcludeRoiSelectedIdx] = useState<number | null>(null); // selected region to replace
 
-  // Multi-crop: which crop index to replace (null = append new)
-  const [replaceCropIdx, setReplaceCropIdx] = useState<number | null>(null);
+  // Multi-crop modal (for multi_crop mode)
+  const [multiCropModalOpen, setMultiCropModalOpen] = useState(false);
+  const [multiCropEditingIndex, setMultiCropEditingIndex] = useState<number | null>(null);
+  const [multiCropSelectedIdx, setMultiCropSelectedIdx] = useState<number | null>(null);
+  const multiCropCanvasRef = useRef<HTMLCanvasElement>(null);
+  const multiCropScreenshotRef = useRef<string>('');
+  const multiCropDragRef = useRef<{ startX: number; startY: number; curX: number; curY: number; active: boolean }>({
+    startX: 0, startY: 0, curX: 0, curY: 0, active: false,
+  });
+
   const excludeRoiCanvasRef = useRef<HTMLCanvasElement>(null);
   const excludeRoiScreenshotRef = useRef<string>('');
   const excludeRoiDragRef = useRef<{ startX: number; startY: number; curX: number; curY: number; active: boolean }>({
@@ -466,50 +507,20 @@ export default function RecordPage() {
     const rh = Math.abs(curY - startY);
     if (rw > 10 && rh > 10 && captureStepIndex != null && scenarioName && screenshotDeviceId) {
       const crop = { x: rx, y: ry, width: rw, height: rh };
-      const stepMode = steps[captureStepIndex]?.compare_mode;
-      const isMultiCrop = stepMode === 'multi_crop';
       try {
         const res = await scenarioApi.captureExpectedImage(
           scenarioName, captureStepIndex, screenshotDeviceId, crop,
-          isMultiCrop ? 'multi_crop' : undefined,
         );
-        if (isMultiCrop) {
-          if (replaceCropIdx != null) {
-            // Replace existing crop at index
-            setSteps(prev => prev.map((s, i) => {
-              if (i !== captureStepIndex) return s;
-              const imgs = [...(s.expected_images || [])];
-              imgs[replaceCropIdx] = { image: res.data.filename, label: imgs[replaceCropIdx]?.label || '' };
-              return { ...s, expected_images: imgs };
-            }));
-            message.success(`스텝 #${captureStepIndex + 1} 크롭 #${replaceCropIdx + 1} 수정 완료 (${rw}×${rh})`);
-            setReplaceCropIdx(null);
-          } else {
-            // Append new crop
-            setSteps(prev => prev.map((s, i) => {
-              if (i !== captureStepIndex) return s;
-              return { ...s, expected_images: [...(s.expected_images || []), { image: res.data.filename, label: '' }] };
-            }));
-            message.success(`스텝 #${captureStepIndex + 1} 멀티크롭 추가 완료 (${rw}×${rh})`);
-            // Stay open for continuous cropping — redraw canvas
-            setTimeout(() => drawCaptureCanvas(), 50);
-          }
-        } else {
-          setSteps(prev => prev.map((s, i) => i === captureStepIndex ? { ...s, expected_image: res.data.filename } : s));
-          message.success(`스텝 #${captureStepIndex + 1} 크롭 기대이미지 저장 완료 (${rw}×${rh})`);
-        }
-        // Multi-crop append: keep modal open; otherwise close
-        if (!(isMultiCrop && replaceCropIdx == null)) {
-          setCaptureModalOpen(false);
-          setCaptureStepIndex(null);
-          setReplaceCropIdx(null);
-        }
+        setSteps(prev => prev.map((s, i) => i === captureStepIndex ? { ...s, expected_image: res.data.filename } : s));
+        message.success(`스텝 #${captureStepIndex + 1} 크롭 기대이미지 저장 완료 (${rw}×${rh})`);
+        setCaptureModalOpen(false);
+        setCaptureStepIndex(null);
       } catch (e: any) {
         console.error('Expected image save error:', e.response?.status, e.response?.data);
         message.error(e.response?.data?.detail || '기대이미지 저장 실패');
       }
     }
-  }, [captureStepIndex, scenarioName, screenshotDeviceId, steps, replaceCropIdx]);
+  }, [captureStepIndex, scenarioName, screenshotDeviceId]);
 
   useEffect(() => {
     if (captureModalOpen) setTimeout(() => drawCaptureCanvas(), 50);
@@ -626,11 +637,24 @@ export default function RecordPage() {
     img.src = src;
   }, [excludeRoiEditingIndex, excludeRoiSelectedIdx, steps]);
 
-  const openExcludeRoiModal = useCallback((index: number) => {
+  const openExcludeRoiModal = useCallback(async (index: number) => {
     excludeRoiScreenshotRef.current = screenshot || '';
     setExcludeRoiEditingIndex(index);
+    setExcludeRoiSelectedIdx(null);
+    // Auto-capture full screenshot as expected_image if not set
+    const step = steps[index];
+    if (!step?.expected_image && scenarioName && screenshotDeviceId) {
+      try {
+        const res = await scenarioApi.captureExpectedImage(scenarioName, index, screenshotDeviceId);
+        setSteps(prev => prev.map((s, i) => i === index ? { ...s, expected_image: res.data.filename } : s));
+        message.success('기대이미지 (전체) 자동 캡처 완료');
+      } catch {
+        message.error('기대이미지 자동 캡처 실패');
+        return;
+      }
+    }
     setExcludeRoiModalOpen(true);
-  }, [screenshot]);
+  }, [screenshot, steps, scenarioName, screenshotDeviceId]);
 
   const excludeRoiMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = excludeRoiCanvasRef.current;
@@ -712,28 +736,156 @@ export default function RecordPage() {
     if (excludeRoiModalOpen) setTimeout(() => drawExcludeRoiCanvas(), 50);
   }, [steps, excludeRoiModalOpen, drawExcludeRoiCanvas]);
 
-  // --- Multi-crop helpers ---
-  const openMultiCropCapture = useCallback((stepIdx: number) => {
-    captureScreenshotRef.current = screenshot || '';
-    setCaptureStepIndex(stepIdx);
-    setCaptureModalOpen(true);
-  }, [screenshot]);
+  // --- Multi-crop modal helpers ---
+  const drawMultiCropCanvas = useCallback((dragRect?: { x: number; y: number; w: number; h: number }) => {
+    const canvas = multiCropCanvasRef.current;
+    const src = multiCropScreenshotRef.current;
+    if (!canvas || !src) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const img = new window.Image();
+    img.onload = () => {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+      // Draw existing crop regions
+      const stepIdx = multiCropEditingIndex;
+      if (stepIdx != null) {
+        const cropItems = steps[stepIdx]?.expected_images || [];
+        cropItems.forEach((ci, ri) => {
+          if (!ci.roi) return;
+          const isSelected = ri === multiCropSelectedIdx;
+          ctx.strokeStyle = isSelected ? '#1890ff' : '#52c41a';
+          ctx.lineWidth = isSelected ? 4 : 2;
+          ctx.strokeRect(ci.roi.x, ci.roi.y, ci.roi.width, ci.roi.height);
+          ctx.fillStyle = isSelected ? 'rgba(24,144,255,0.15)' : 'rgba(82,196,26,0.15)';
+          ctx.fillRect(ci.roi.x, ci.roi.y, ci.roi.width, ci.roi.height);
+          // Label
+          ctx.fillStyle = isSelected ? '#1890ff' : '#52c41a';
+          ctx.font = '24px sans-serif';
+          ctx.fillText(ci.label || `#${ri + 1}`, ci.roi.x + 4, ci.roi.y + 24);
+        });
+      }
+      // Draw current drag rectangle
+      if (dragRect && dragRect.w > 0 && dragRect.h > 0) {
+        ctx.strokeStyle = '#faad14';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 3]);
+        ctx.strokeRect(dragRect.x, dragRect.y, dragRect.w, dragRect.h);
+        ctx.setLineDash([]);
+        ctx.fillStyle = 'rgba(250,173,20,0.15)';
+        ctx.fillRect(dragRect.x, dragRect.y, dragRect.w, dragRect.h);
+      }
+    };
+    img.src = src;
+  }, [multiCropEditingIndex, multiCropSelectedIdx, steps]);
 
-  const removeCropItem = useCallback(async (stepIdx: number, cropIdx: number) => {
-    if (!scenarioName) return;
-    try {
-      await scenarioApi.removeCrop(scenarioName, stepIdx, cropIdx);
-      setSteps(prev => prev.map((s, i) => {
-        if (i !== stepIdx) return s;
-        const imgs = [...(s.expected_images || [])];
-        imgs.splice(cropIdx, 1);
-        return { ...s, expected_images: imgs };
-      }));
-      message.success('크롭 삭제 완료');
-    } catch (e: any) {
-      message.error(e.response?.data?.detail || '크롭 삭제 실패');
+  const openMultiCropModal = useCallback(async (stepIdx: number) => {
+    multiCropScreenshotRef.current = screenshot || '';
+    setMultiCropEditingIndex(stepIdx);
+    setMultiCropSelectedIdx(null);
+    // Auto-capture full screenshot as expected_image if not set
+    const step = steps[stepIdx];
+    if (!step?.expected_image && scenarioName && screenshotDeviceId) {
+      try {
+        const res = await scenarioApi.captureExpectedImage(scenarioName, stepIdx, screenshotDeviceId);
+        setSteps(prev => prev.map((s, i) => i === stepIdx ? { ...s, expected_image: res.data.filename } : s));
+        message.success('기대이미지 (전체) 자동 캡처 완료');
+      } catch (e: any) {
+        message.error('기대이미지 자동 캡처 실패');
+        return;
+      }
     }
-  }, [scenarioName]);
+    setMultiCropModalOpen(true);
+  }, [screenshot, steps, scenarioName, screenshotDeviceId]);
+
+  const multiCropMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = multiCropCanvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = Math.round((e.clientX - rect.left) * scaleX);
+    const y = Math.round((e.clientY - rect.top) * scaleY);
+    multiCropDragRef.current = { startX: x, startY: y, curX: x, curY: y, active: true };
+  }, []);
+
+  const multiCropMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!multiCropDragRef.current.active) return;
+    const canvas = multiCropCanvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = Math.round((e.clientX - rect.left) * scaleX);
+    const y = Math.round((e.clientY - rect.top) * scaleY);
+    multiCropDragRef.current.curX = x;
+    multiCropDragRef.current.curY = y;
+    const { startX, startY } = multiCropDragRef.current;
+    drawMultiCropCanvas({
+      x: Math.min(startX, x), y: Math.min(startY, y),
+      w: Math.abs(x - startX), h: Math.abs(y - startY),
+    });
+  }, [drawMultiCropCanvas]);
+
+  const multiCropMouseUp = useCallback(async () => {
+    if (!multiCropDragRef.current.active) return;
+    multiCropDragRef.current.active = false;
+    const { startX, startY, curX, curY } = multiCropDragRef.current;
+    const rx = Math.min(startX, curX);
+    const ry = Math.min(startY, curY);
+    const rw = Math.abs(curX - startX);
+    const rh = Math.abs(curY - startY);
+    if (rw > 10 && rh > 10 && multiCropEditingIndex != null && scenarioName) {
+      const crop = { x: rx, y: ry, width: rw, height: rh };
+      try {
+        const replaceIdx = multiCropSelectedIdx ?? undefined;
+        const res = await scenarioApi.cropFromExpected(scenarioName, multiCropEditingIndex, crop, '', replaceIdx);
+        const roi: ROI = res.data.roi;
+        const filename: string = res.data.filename;
+        setSteps(prev => prev.map((s, i) => {
+          if (i !== multiCropEditingIndex) return s;
+          const imgs = [...(s.expected_images || [])];
+          if (multiCropSelectedIdx != null && multiCropSelectedIdx < imgs.length) {
+            imgs[multiCropSelectedIdx] = { ...imgs[multiCropSelectedIdx], image: filename, roi };
+          } else {
+            imgs.push({ image: filename, label: '', roi });
+          }
+          return { ...s, expected_images: imgs };
+        }));
+        if (multiCropSelectedIdx != null) {
+          message.success(`크롭 #${multiCropSelectedIdx + 1} 수정 완료 (${rw}×${rh})`);
+          setMultiCropSelectedIdx(null);
+        } else {
+          message.success(`크롭 추가 완료 (${rw}×${rh})`);
+        }
+        setTimeout(() => drawMultiCropCanvas(), 50);
+      } catch (e: any) {
+        message.error(e.response?.data?.detail || '크롭 저장 실패');
+      }
+    }
+  }, [multiCropEditingIndex, multiCropSelectedIdx, scenarioName, drawMultiCropCanvas]);
+
+  const removeMultiCropItem = useCallback((cropIdx: number) => {
+    if (multiCropEditingIndex == null) return;
+    setSteps(prev => prev.map((s, i) => {
+      if (i !== multiCropEditingIndex) return s;
+      const imgs = [...(s.expected_images || [])];
+      imgs.splice(cropIdx, 1);
+      return { ...s, expected_images: imgs };
+    }));
+    if (multiCropSelectedIdx === cropIdx) setMultiCropSelectedIdx(null);
+    else if (multiCropSelectedIdx != null && multiCropSelectedIdx > cropIdx) setMultiCropSelectedIdx(multiCropSelectedIdx - 1);
+    setTimeout(() => drawMultiCropCanvas(), 50);
+  }, [multiCropEditingIndex, multiCropSelectedIdx, drawMultiCropCanvas]);
+
+  useEffect(() => {
+    if (multiCropModalOpen) setTimeout(() => drawMultiCropCanvas(), 50);
+  }, [multiCropModalOpen, drawMultiCropCanvas]);
+
+  useEffect(() => {
+    if (multiCropModalOpen) setTimeout(() => drawMultiCropCanvas(), 50);
+  }, [steps, multiCropModalOpen, drawMultiCropCanvas]);
 
   // Canvas gesture handlers (no ROI logic here)
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -1173,58 +1325,43 @@ export default function RecordPage() {
               />
               {getDeviceTag(s.device_id)}
               <Tag color={s.type === 'wait' ? 'cyan' : undefined}>{s.type}</Tag>
-              {s.expected_image && scenarioName && s.compare_mode !== 'multi_crop' && (
+              {s.expected_image && scenarioName && (
                 <span style={{ display: 'inline-flex', alignItems: 'center', position: 'relative', marginRight: 4 }}>
-                  <Tooltip title="기대이미지 (클릭하여 확대)">
-                    <Image
-                      src={`/screenshots/${scenarioName}/${s.expected_image}`}
-                      alt="expected"
-                      style={{ height: 32, width: 18, objectFit: 'cover', borderRadius: 2, cursor: 'pointer' }}
-                      preview={{ mask: false }}
-                    />
-                  </Tooltip>
+                  {/* Annotated thumbnail for full_exclude / multi_crop; plain image otherwise */}
+                  {s.compare_mode === 'full_exclude' && (s.exclude_rois?.length || 0) > 0 ? (
+                    <Tooltip title="기대이미지 + 제외 영역 (가위로 편집)">
+                      <span><AnnotatedThumbnail
+                        src={`/screenshots/${scenarioName}/${s.expected_image}`}
+                        regions={s.exclude_rois || []}
+                        color="red"
+                        height={40}
+                      /></span>
+                    </Tooltip>
+                  ) : s.compare_mode === 'multi_crop' && (s.expected_images?.length || 0) > 0 ? (
+                    <Tooltip title="기대이미지 + 크롭 영역 (가위로 편집)">
+                      <span><AnnotatedThumbnail
+                        src={`/screenshots/${scenarioName}/${s.expected_image}`}
+                        regions={(s.expected_images || []).map(ci => ci.roi).filter((r): r is ROI => !!r)}
+                        color="green"
+                        height={40}
+                      /></span>
+                    </Tooltip>
+                  ) : (
+                    <Tooltip title="기대이미지 (클릭하여 확대)">
+                      <Image
+                        src={`/screenshots/${scenarioName}/${s.expected_image}`}
+                        alt="expected"
+                        style={{ height: 40, width: 22, objectFit: 'cover', borderRadius: 2, cursor: 'pointer' }}
+                        preview={{ mask: false }}
+                      />
+                    </Tooltip>
+                  )}
                   <Tooltip title="기대이미지 초기화">
                     <CloseCircleOutlined
                       onClick={() => setSteps((prev) => prev.map((st, i) => i === index ? { ...st, expected_image: null, roi: null, exclude_rois: [], expected_images: [] } : st))}
                       style={{ fontSize: 14, color: '#ff4d4f', cursor: 'pointer', marginLeft: 2 }}
                     />
                   </Tooltip>
-                </span>
-              )}
-              {s.compare_mode === 'multi_crop' && (s.expected_images?.length || 0) > 0 && scenarioName && (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, marginRight: 4 }}>
-                  {s.expected_images!.map((ci, ci_idx) => (
-                    <span key={ci_idx} style={{ display: 'inline-flex', alignItems: 'center', position: 'relative' }}>
-                      <Tooltip title={`${ci.label || `크롭 #${ci_idx + 1}`} — 클릭하여 다시 캡처`}>
-                        <span
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setReplaceCropIdx(ci_idx);
-                            openMultiCropCapture(index);
-                          }}
-                          style={{
-                            display: 'inline-block',
-                            border: '2px solid transparent',
-                            borderRadius: 3,
-                            cursor: 'pointer',
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#1890ff')}
-                          onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'transparent')}
-                        >
-                          <Image
-                            src={`/screenshots/${scenarioName}/${ci.image}`}
-                            alt={`crop-${ci_idx}`}
-                            style={{ height: 32, width: 18, objectFit: 'cover', borderRadius: 2 }}
-                            preview={{ mask: false }}
-                          />
-                        </span>
-                      </Tooltip>
-                      <CloseCircleOutlined
-                        onClick={() => removeCropItem(index, ci_idx)}
-                        style={{ fontSize: 12, color: '#ff4d4f', cursor: 'pointer', marginLeft: 1 }}
-                      />
-                    </span>
-                  ))}
                 </span>
               )}
               <span style={{ minWidth: 100, maxWidth: 220 }}>
@@ -1332,26 +1469,25 @@ export default function RecordPage() {
                     onClick={() => openCaptureModal(index)}
                   />
                 )}
-                {/* 영역제외: 제외 영역 추가 버튼 */}
+                {/* 영역제외: 가위 (제외 영역 편집) */}
                 {s.compare_mode === 'full_exclude' && (
                   <Button
                     size="small" type="text"
-                    title="제외 영역 추가/편집"
+                    icon={<ScissorOutlined />}
+                    title="제외 영역 편집"
                     style={(s.exclude_rois?.length || 0) > 0 ? { color: '#ff4d4f' } : undefined}
                     onClick={() => openExcludeRoiModal(index)}
-                  >제외</Button>
+                  />
                 )}
-                {/* 멀티크롭: 크롭 추가 + strategy 선택 */}
+                {/* 멀티크롭: 가위 (크롭 영역 편집) */}
                 {s.compare_mode === 'multi_crop' && (
-                  <>
-                    <Button
-                      size="small" type="text"
-                      icon={<ScissorOutlined />}
-                      title="크롭 이미지 추가"
-                      style={(s.expected_images?.length || 0) > 0 ? { color: '#52c41a' } : undefined}
-                      onClick={() => openMultiCropCapture(index)}
-                    />
-                  </>
+                  <Button
+                    size="small" type="text"
+                    icon={<ScissorOutlined />}
+                    title="크롭 영역 편집"
+                    style={(s.expected_images?.length || 0) > 0 ? { color: '#52c41a' } : undefined}
+                    onClick={() => openMultiCropModal(index)}
+                  />
                 )}
               </>
             )}
@@ -1395,7 +1531,7 @@ export default function RecordPage() {
       )}
       locale={{ emptyText: '아직 기록된 스텝이 없습니다' }}
     />
-  ), [steps, recording, updateStepJump, updateStepDescription, openEditStepModal, openRoiModal, screenshotDeviceId, scenarioName, saveExpectedFull, openCaptureModal, testStep, testingStepIndex, updateCompareMode, openExcludeRoiModal, openMultiCropCapture, removeCropItem]);
+  ), [steps, recording, updateStepJump, updateStepDescription, openEditStepModal, openRoiModal, screenshotDeviceId, scenarioName, saveExpectedFull, openCaptureModal, testStep, testingStepIndex, updateCompareMode, openExcludeRoiModal, openMultiCropModal]);
 
   // Determine if device screen is portrait (tall) or landscape
   const isPortrait = deviceRes.height > deviceRes.width;
@@ -1708,13 +1844,13 @@ export default function RecordPage() {
 
       {/* Expected Image Crop Modal */}
       <Modal
-        title={`기대이미지 크롭 — 스텝 #${(captureStepIndex ?? 0) + 1}${replaceCropIdx != null ? ` [크롭 #${replaceCropIdx + 1} 수정]` : ''} (저장할 영역을 드래그하세요)`}
+        title={`기대이미지 크롭 — 스텝 #${(captureStepIndex ?? 0) + 1} (저장할 영역을 드래그하세요)`}
         open={captureModalOpen}
-        onCancel={() => { setCaptureModalOpen(false); setCaptureStepIndex(null); setReplaceCropIdx(null); }}
+        onCancel={() => { setCaptureModalOpen(false); setCaptureStepIndex(null); }}
         width="90vw"
         style={{ top: 20 }}
         footer={
-          <Button onClick={() => { setCaptureModalOpen(false); setCaptureStepIndex(null); setReplaceCropIdx(null); }}>
+          <Button onClick={() => { setCaptureModalOpen(false); setCaptureStepIndex(null); }}>
             취소
           </Button>
         }
@@ -1827,6 +1963,64 @@ export default function RecordPage() {
                   }}
                 >
                   #{ri + 1} {r.width}×{r.height} @ ({r.x},{r.y}){excludeRoiSelectedIdx === ri ? ' ✎' : ''}
+                </Tag>
+              ))}
+            </Space>
+          </div>
+        )}
+      </Modal>
+
+      {/* Multi-crop Modal — add/remove crop regions */}
+      <Modal
+        title={`멀티크롭 편집 — 스텝 #${(multiCropEditingIndex ?? 0) + 1} (드래그하여 크롭 영역 추가)`}
+        open={multiCropModalOpen}
+        onCancel={() => { setMultiCropModalOpen(false); setMultiCropEditingIndex(null); setMultiCropSelectedIdx(null); }}
+        width="90vw"
+        style={{ top: 20 }}
+        footer={
+          <Space>
+            <Button onClick={() => { setMultiCropModalOpen(false); setMultiCropEditingIndex(null); setMultiCropSelectedIdx(null); }}>
+              닫기
+            </Button>
+            {multiCropEditingIndex != null && (steps[multiCropEditingIndex]?.expected_images?.length || 0) > 0 && (
+              <Button danger onClick={() => {
+                setSteps(prev => prev.map((s, i) => i === multiCropEditingIndex ? { ...s, expected_images: [] } : s));
+                setMultiCropSelectedIdx(null);
+                message.info('모든 크롭 영역 해제');
+                setTimeout(() => drawMultiCropCanvas(), 50);
+              }}>
+                전체 해제
+              </Button>
+            )}
+          </Space>
+        }
+      >
+        <div style={{ overflow: 'auto', maxHeight: '65vh', textAlign: 'center' }}>
+          <canvas
+            ref={multiCropCanvasRef}
+            onMouseDown={multiCropMouseDown}
+            onMouseMove={multiCropMouseMove}
+            onMouseUp={multiCropMouseUp}
+            style={{ cursor: 'crosshair', maxWidth: '100%' }}
+          />
+        </div>
+        {multiCropEditingIndex != null && (steps[multiCropEditingIndex]?.expected_images?.length || 0) > 0 && (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>크롭 영역 목록 (클릭하여 선택 후 드래그로 수정, X로 삭제):</div>
+            <Space wrap>
+              {steps[multiCropEditingIndex]?.expected_images?.map((ci, ci_idx) => (
+                <Tag
+                  key={ci_idx}
+                  color={multiCropSelectedIdx === ci_idx ? 'blue' : 'green'}
+                  closable
+                  onClose={() => removeMultiCropItem(ci_idx)}
+                  style={{ cursor: 'pointer', border: multiCropSelectedIdx === ci_idx ? '2px solid #1890ff' : undefined }}
+                  onClick={() => {
+                    setMultiCropSelectedIdx(prev => prev === ci_idx ? null : ci_idx);
+                    setTimeout(() => drawMultiCropCanvas(), 50);
+                  }}
+                >
+                  #{ci_idx + 1}{ci.label ? ` ${ci.label}` : ''}{ci.roi ? ` ${ci.roi.width}×${ci.roi.height}` : ''}{multiCropSelectedIdx === ci_idx ? ' ✎' : ''}
                 </Tag>
               ))}
             </Space>

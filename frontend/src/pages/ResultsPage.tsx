@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Button, Card, Col, Descriptions, Image, Modal, Row, Space, Table, Tag, Tooltip, message } from 'antd';
 import { DeleteOutlined, DownloadOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons';
 import { resultsApi } from '../services/api';
@@ -79,6 +79,59 @@ const imageUrl = (path: string | null) => {
   }
   return '/screenshots/' + rel;
 };
+
+// Draws match-location boxes on the expected image for multi_crop results
+const AnnotatedOverlay = React.memo(({ subResults, expectedImage }: {
+  subResults: SubResultDetail[];
+  expectedImage: string;
+}) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+
+  useEffect(() => {
+    const img = new window.Image();
+    img.onload = () => {
+      setSize({ w: img.width, h: img.height });
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      // canvas overlays on the image; match its display size via parent
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d')!;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      subResults.forEach((sr, i) => {
+        const loc = sr.match_location;
+        if (!loc) return;
+        const color = sr.status === 'pass' ? '#52c41a' : sr.status === 'warning' ? '#faad14' : '#ff4d4f';
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 3;
+        ctx.strokeRect(loc.x, loc.y, loc.width, loc.height);
+        ctx.fillStyle = color.replace(')', ',0.15)').replace('rgb', 'rgba').replace('#', '');
+        // Use simpler fill
+        ctx.globalAlpha = 0.15;
+        ctx.fillStyle = color;
+        ctx.fillRect(loc.x, loc.y, loc.width, loc.height);
+        ctx.globalAlpha = 1;
+        // Label
+        ctx.fillStyle = color;
+        ctx.font = 'bold 24px sans-serif';
+        ctx.fillText(`${sr.label || `#${i + 1}`} ${(sr.score * 100).toFixed(0)}%`, loc.x + 4, loc.y + 28);
+      });
+    };
+    img.src = expectedImage + `?t=${Date.now()}`;
+  }, [subResults, expectedImage]);
+
+  if (!size) return null;
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{
+        position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+        pointerEvents: 'none',
+      }}
+    />
+  );
+});
 
 export default function ResultsPage() {
   const [results, setResults] = useState<ResultSummary[]>([]);
@@ -449,13 +502,23 @@ export default function ResultsPage() {
             </Space>
             <Row gutter={16}>
               <Col span={12}>
-                <Card size="small" title="기대 이미지 (Expected)">
+                <Card size="small" title={
+                  compareStep.compare_mode === 'full_exclude' ? '기대 이미지 (제외 영역 표시 → Actual)'
+                  : compareStep.compare_mode === 'multi_crop' ? '기대 이미지 (크롭 영역 → Actual)'
+                  : '기대 이미지 (Expected)'
+                }>
                   {compareStep.expected_image ? (
-                    <Image
-                      src={`${imageUrl(compareStep.expected_image)!}?t=${Date.now()}`}
-                      alt="Expected"
-                      style={{ width: '100%' }}
-                    />
+                    <div style={{ position: 'relative' }}>
+                      <Image
+                        src={`${imageUrl(compareStep.expected_image)!}?t=${Date.now()}`}
+                        alt="Expected"
+                        style={{ width: '100%' }}
+                      />
+                      {/* Overlay annotations for full_exclude / multi_crop */}
+                      {compareStep.compare_mode === 'multi_crop' && compareStep.sub_results?.length > 0 && (
+                        <AnnotatedOverlay subResults={compareStep.sub_results} expectedImage={imageUrl(compareStep.expected_image)!} />
+                      )}
+                    </div>
                   ) : (
                     <div style={{ textAlign: 'center', padding: 40, color: '#666' }}>이미지 없음</div>
                   )}

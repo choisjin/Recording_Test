@@ -174,7 +174,9 @@ async def save_expected_image(req: SaveExpectedImageRequest):
         crop_idx = len(step.expected_images)
         filename = f"{req.scenario_name}_step_{step.id:03d}_crop_{crop_idx:02d}.png"
         (save_dir / filename).write_bytes(png_bytes)
-        step.expected_images.append(CropItem(image=filename, label=req.crop_label))
+        crop_roi = ROI(x=int(req.crop["x"]), y=int(req.crop["y"]),
+                       width=int(req.crop["width"]), height=int(req.crop["height"])) if req.crop else None
+        step.expected_images.append(CropItem(image=filename, label=req.crop_label, roi=crop_roi))
     else:
         # Single image (full or single_crop)
         filename = f"{req.scenario_name}_step_{step.id:03d}.png"
@@ -237,7 +239,9 @@ async def capture_expected_image(req: CaptureExpectedImageRequest):
         crop_idx = len(step.expected_images)
         filename = f"{scenario_name}_step_{step.id:03d}_crop_{crop_idx:02d}.png"
         (save_dir / filename).write_bytes(png_bytes)
-        step.expected_images.append(CropItem(image=filename, label=req.crop_label))
+        crop_roi = ROI(x=int(req.crop["x"]), y=int(req.crop["y"]),
+                       width=int(req.crop["width"]), height=int(req.crop["height"])) if req.crop else None
+        step.expected_images.append(CropItem(image=filename, label=req.crop_label, roi=crop_roi))
     else:
         # Single image (full or single_crop)
         filename = f"{scenario_name}_step_{step.id:03d}.png"
@@ -279,6 +283,70 @@ async def remove_crop(req: RemoveCropRequest):
 
     await recording_svc.save_scenario(scenario)
     return {"status": "ok", "removed": removed.image}
+
+
+class CropFromExpectedRequest(BaseModel):
+    scenario_name: str
+    step_index: int
+    crop: dict  # {x, y, width, height}
+    crop_label: str = ""
+    replace_index: Optional[int] = None  # if set, replace existing crop at this index
+
+
+@router.post("/record/crop-from-expected")
+async def crop_from_expected(req: CropFromExpectedRequest):
+    """Crop a region from the step's expected_image and save as a multi-crop item."""
+    import cv2
+    import numpy as np
+
+    scenario = await _resolve_scenario(req.scenario_name)
+
+    if req.step_index < 0 or req.step_index >= len(scenario.steps):
+        raise HTTPException(status_code=400, detail=f"Invalid step index: {req.step_index}")
+
+    step = scenario.steps[req.step_index]
+    if not step.expected_image:
+        raise HTTPException(status_code=400, detail="Step has no expected image to crop from")
+
+    # Read the expected image
+    img_path = SCREENSHOTS_DIR / req.scenario_name / step.expected_image
+    img = cv2.imread(str(img_path))
+    if img is None:
+        raise HTTPException(status_code=400, detail="Cannot read expected image")
+
+    x, y = int(req.crop["x"]), int(req.crop["y"])
+    w, h = int(req.crop["width"]), int(req.crop["height"])
+    cropped = img[y:y + h, x:x + w]
+
+    save_dir = SCREENSHOTS_DIR / req.scenario_name
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    roi = ROI(x=x, y=y, width=w, height=h)
+
+    if req.replace_index is not None:
+        # Replace existing crop
+        if req.replace_index < 0 or req.replace_index >= len(step.expected_images):
+            raise HTTPException(status_code=400, detail=f"Invalid replace index: {req.replace_index}")
+        old = step.expected_images[req.replace_index]
+        filename = old.image  # reuse same filename
+        cv2.imwrite(str(save_dir / filename), cropped)
+        step.expected_images[req.replace_index] = CropItem(
+            image=filename, label=req.crop_label or old.label, roi=roi,
+        )
+    else:
+        # Append new crop
+        crop_idx = len(step.expected_images)
+        filename = f"{req.scenario_name}_step_{step.id:03d}_crop_{crop_idx:02d}.png"
+        cv2.imwrite(str(save_dir / filename), cropped)
+        step.expected_images.append(CropItem(image=filename, label=req.crop_label, roi=roi))
+
+    await recording_svc.save_scenario(scenario)
+    return {
+        "status": "ok",
+        "filename": filename,
+        "roi": roi.model_dump(),
+        "index": req.replace_index if req.replace_index is not None else len(step.expected_images) - 1,
+    }
 
 
 # ------------------------------------------------------------------

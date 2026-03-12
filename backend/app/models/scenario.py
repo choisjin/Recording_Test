@@ -71,6 +71,7 @@ class CropItem(BaseModel):
     """Multi-crop expected image entry."""
     image: str          # filename of the cropped expected image
     label: str = ""     # optional user label
+    roi: Optional[ROI] = None  # crop region on the source screenshot
 
 
 class Step(BaseModel):
