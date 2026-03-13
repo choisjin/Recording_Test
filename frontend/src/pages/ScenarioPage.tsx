@@ -10,6 +10,7 @@ import {
 } from '@ant-design/icons';
 import { scenarioApi, resultsApi, deviceApi } from '../services/api';
 import { useSettings } from '../context/SettingsContext';
+import { useTranslation } from '../i18n';
 import { useWebcam } from '../hooks/useWebcam';
 import WebcamPanel from '../components/WebcamPanel';
 
@@ -123,12 +124,13 @@ const formatDuration = (ms: number) => {
   return `${min}m ${remSec}s`;
 };
 
-const formatTime = (iso: string) => {
+const formatTime = (iso: string, lang: string = 'ko') => {
   if (!iso) return '-';
-  try { return new Date(iso).toLocaleString('ko-KR'); } catch { return iso; }
+  try { return new Date(iso).toLocaleString(lang === 'ko' ? 'ko-KR' : 'en-US'); } catch { return iso; }
 };
 
 export default function ScenarioPage() {
+  const { t, lang } = useTranslation();
   const { settings, uploadWebcamRecording, saveExcelToDir, saveExportZipToDir } = useSettings();
   const webcam = useWebcam();
   const [scenarios, setScenarios] = useState<string[]>([]);
@@ -215,7 +217,7 @@ export default function ScenarioPage() {
     try {
       const res = await scenarioApi.list();
       setScenarios(res.data.scenarios);
-    } catch { message.error('시나리오 목록 불러오기 실패'); }
+    } catch { message.error(t('scenario.listFailed')); }
   };
 
   const fetchGroups = async () => {
@@ -230,7 +232,7 @@ export default function ScenarioPage() {
     try {
       const res = await resultsApi.list();
       setResults(res.data.results);
-    } catch { message.error('결과 목록 불러오기 실패'); }
+    } catch { message.error(t('scenario.resultsListFailed')); }
     setResultsLoading(false);
   };
 
@@ -292,21 +294,21 @@ export default function ScenarioPage() {
       const res = await scenarioApi.get(name);
       setSelectedScenario(res.data);
       setDetailVisible(true);
-    } catch { message.error('시나리오 로드 실패'); }
+    } catch { message.error(t('scenario.loadFailed')); }
   };
 
   const deleteScenario = async (name: string) => {
     Modal.confirm({
-      title: '시나리오 삭제',
-      content: `"${name}" 시나리오를 삭제하시겠습니까?`,
+      title: t('scenario.deleteTitle'),
+      content: t('scenario.deleteConfirm', { name }),
       onOk: async () => {
         try {
           await scenarioApi.delete(name);
-          message.success('삭제 완료');
+          message.success(t('common.deleteComplete'));
           if (selectedName === name) setSelectedName(null);
           fetchScenarios();
           fetchGroups();
-        } catch { message.error('삭제 실패'); }
+        } catch { message.error(t('common.deleteFailed')); }
       },
     });
   };
@@ -325,12 +327,12 @@ export default function ScenarioPage() {
     }
     try {
       await scenarioApi.rename(selectedName, renameNewName.trim());
-      message.success('이름 변경 완료');
+      message.success(t('scenario.renameSuccess'));
       setRenameModalVisible(false);
       setSelectedName(renameNewName.trim());
       fetchScenarios();
     } catch (e: any) {
-      message.error(e.response?.data?.detail || '이름 변경 실패');
+      message.error(e.response?.data?.detail || t('scenario.renameFailed'));
     }
   };
 
@@ -345,10 +347,10 @@ export default function ScenarioPage() {
     if (!selectedName || !copyName.trim()) return;
     try {
       await scenarioApi.copy(selectedName, copyName.trim());
-      message.success('복사 완료');
+      message.success(t('scenario.copySuccess'));
       setCopyModalVisible(false);
       fetchScenarios();
-    } catch { message.error('복사 실패'); }
+    } catch { message.error(t('scenario.copyFailed')); }
   };
 
   // --- Merge ---
@@ -360,15 +362,15 @@ export default function ScenarioPage() {
 
   const doMerge = async () => {
     if (mergeTargets.length < 2 || !mergeName.trim()) {
-      message.warning('2개 이상의 시나리오와 이름을 입력하세요');
+      message.warning(t('scenario.mergeMinWarning'));
       return;
     }
     try {
       await scenarioApi.merge(mergeTargets, mergeName.trim());
-      message.success('합치기 완료');
+      message.success(t('scenario.mergeSuccess'));
       setMergeModalVisible(false);
       fetchScenarios();
-    } catch { message.error('합치기 실패'); }
+    } catch { message.error(t('scenario.mergeFailed')); }
   };
 
   // --- Export / Import ---
@@ -383,14 +385,14 @@ export default function ScenarioPage() {
           exportAll,
         );
         setExportModalVisible(false);
-        message.success(`내보내기 저장 완료: ${path}`);
+        message.success(t('scenario.exportSaveComplete', { path }));
         setExportLoading(false);
         return;
       } catch (serverErr: any) {
         const status = serverErr.response?.status;
         if (status !== 400) {
           const detail = serverErr.response?.data?.detail || serverErr.message || String(serverErr);
-          message.error(`내보내기 저장 실패: ${detail}`);
+          message.error(t('scenario.exportSaveFailed', { detail }));
           setExportLoading(false);
           return;
         }
@@ -411,8 +413,8 @@ export default function ScenarioPage() {
       a.click();
       window.URL.revokeObjectURL(url);
       setExportModalVisible(false);
-      message.success('내보내기 완료');
-    } catch { message.error('내보내기 실패'); }
+      message.success(t('scenario.exportComplete'));
+    } catch { message.error(t('scenario.exportFailed')); }
     setExportLoading(false);
   };
 
@@ -433,7 +435,7 @@ export default function ScenarioPage() {
         defaults[`g:${g.name}`] = { action: g.conflict ? 'skip' : 'import' };
       }
       setImportResolutions(defaults);
-    } catch { message.error('ZIP 파일 분석 실패'); }
+    } catch { message.error(t('scenario.importFailed')); }
     setImportLoading(false);
   };
 
@@ -453,13 +455,13 @@ export default function ScenarioPage() {
       }
       const res = await scenarioApi.importApply(importFile, { scenarios: scenarioRes, groups: groupRes });
       const d = res.data;
-      message.success(`가져오기 완료: 시나리오 ${d.imported_scenarios?.length || 0}개, 그룹 ${d.imported_groups?.length || 0}개`);
+      message.success(t('scenario.importComplete', { scenarios: String(d.imported_scenarios?.length || 0), groups: String(d.imported_groups?.length || 0) }));
       setImportModalVisible(false);
       setImportFile(null);
       setImportPreviewData(null);
       fetchScenarios();
       fetchGroups();
-    } catch { message.error('가져오기 실패'); }
+    } catch { message.error(t('scenario.importFailed')); }
     setImportLoading(false);
   };
 
@@ -470,8 +472,8 @@ export default function ScenarioPage() {
       const res = await scenarioApi.createGroup(newGroupName.trim());
       setGroups(res.data.groups);
       setNewGroupName('');
-      message.success('그룹 생성 완료');
-    } catch { message.error('그룹 생성 실패'); }
+      message.success(t('scenario.groupCreateSuccess'));
+    } catch { message.error(t('scenario.groupCreateFailed')); }
   };
 
   const deleteGroup = async (gName: string) => {
@@ -479,8 +481,8 @@ export default function ScenarioPage() {
       const res = await scenarioApi.deleteGroup(gName);
       setGroups(res.data.groups);
       if (selectedGroup === gName) setSelectedGroup(null);
-      message.success('그룹 삭제 완료');
-    } catch { message.error('그룹 삭제 실패'); }
+      message.success(t('scenario.groupDeleteSuccess'));
+    } catch { message.error(t('scenario.groupDeleteFailed')); }
   };
 
   const addToGroup = async (gName: string, sName: string) => {
@@ -488,21 +490,21 @@ export default function ScenarioPage() {
       const res = await scenarioApi.addToGroup(gName, sName);
       setGroups(res.data.groups);
       fetchScenarioStepsCache([sName]);
-    } catch { message.error('그룹 추가 실패'); }
+    } catch { message.error(t('scenario.groupAddFailed')); }
   };
 
   const removeFromGroup = async (gName: string, sName: string) => {
     try {
       const res = await scenarioApi.removeFromGroup(gName, sName);
       setGroups(res.data.groups);
-    } catch { message.error('그룹 제거 실패'); }
+    } catch { message.error(t('scenario.groupRemoveFailed')); }
   };
 
   const reorderGroup = async (gName: string, ordered: string[]) => {
     try {
       const res = await scenarioApi.reorderGroup(gName, ordered);
       setGroups(res.data.groups);
-    } catch { message.error('순서 변경 실패'); }
+    } catch { message.error(t('scenario.reorderFailed')); }
   };
 
   const moveInGroup = (gName: string, members: GroupEntry[], idx: number, dir: -1 | 1) => {
@@ -517,7 +519,7 @@ export default function ScenarioPage() {
     try {
       const res = await scenarioApi.updateGroupStepJumps(gName, entryIdx, stepId, on_pass_goto, on_fail_goto);
       setGroups(res.data.groups);
-    } catch { message.error('스텝 조건부 이동 설정 실패'); }
+    } catch { message.error(t('scenario.stepJumpFailed')); }
   };
 
   const toggleExpandEntry = (key: string) => {
@@ -536,7 +538,7 @@ export default function ScenarioPage() {
       const res = await scenarioApi.get(name);
       scenarioData = res.data;
       setPlaybackScenario(scenarioData);
-    } catch { message.error('시나리오 로드 실패'); return; }
+    } catch { message.error(t('scenario.loadFailed')); return; }
 
     // If scenario has device_map, show mapping modal for confirmation
     const dmap = scenarioData.device_map || {};
@@ -585,12 +587,12 @@ export default function ScenarioPage() {
         setCurrentStepId(result.step_id + 1);
       } else if (msg.type === 'playback_complete') {
         setPlaying(false); setCurrentStepId(null);
-        message.success(repeat > 1 ? `재생 완료 (${repeat}회)` : '재생 완료');
+        message.success(repeat > 1 ? t('scenario.playCompleteRepeat', { count: String(repeat) }) : t('scenario.playComplete'));
         ws.close(); fetchResults();
       } else if (msg.type === 'preflight_error') {
         setPlaying(false); setCurrentStepId(null);
         Modal.error({
-          title: '디바이스 연결 확인 실패',
+          title: t('scenario.deviceCheckFailed'),
           content: (
             <div style={{ maxHeight: 300, overflowY: 'auto' }}>
               {(msg.errors || []).map((e: string, i: number) => (
@@ -605,17 +607,17 @@ export default function ScenarioPage() {
         message.error(msg.message); ws.close(); fetchResults();
       } else if (msg.type === 'playback_stopped') {
         setPlaying(false); setCurrentStepId(null);
-        message.info('재생 중지됨'); ws.close(); fetchResults();
+        message.info(t('scenario.playStopped')); ws.close(); fetchResults();
       }
     };
-    ws.onerror = () => { setPlaying(false); setCurrentStepId(null); message.error('WebSocket 연결 실패'); };
+    ws.onerror = () => { setPlaying(false); setCurrentStepId(null); message.error(t('scenario.websocketFailed')); };
     ws.onclose = () => { wsRef.current = null; };
   };
 
   // --- Group playback ---
   const playGroup = async (gName: string) => {
     const members = groups[gName] || [];
-    if (members.length === 0) { message.warning('그룹에 시나리오가 없습니다'); return; }
+    if (members.length === 0) { message.warning(t('scenario.noScenariosInGroup')); return; }
 
     // Collect device_maps from all member scenarios
     const mergedMap: Record<string, string> = {};
@@ -682,12 +684,12 @@ export default function ScenarioPage() {
         setStepResults((prev) => [...prev, result]);
       } else if (msg.type === 'playback_complete') {
         setPlaying(false); setPlayingGroupName(null); setCurrentStepId(null);
-        message.success(`그룹 "${gName}" 재생 완료`);
+        message.success(t('scenario.playComplete'));
         ws.close(); fetchResults();
       } else if (msg.type === 'preflight_error') {
         setPlaying(false); setPlayingGroupName(null); setCurrentStepId(null);
         Modal.error({
-          title: '디바이스 연결 확인 실패',
+          title: t('scenario.deviceCheckFailed'),
           content: (
             <div style={{ maxHeight: 300, overflowY: 'auto' }}>
               {(msg.errors || []).map((e: string, i: number) => (
@@ -702,10 +704,10 @@ export default function ScenarioPage() {
         message.error(msg.message); ws.close(); fetchResults();
       } else if (msg.type === 'playback_stopped') {
         setPlaying(false); setPlayingGroupName(null); setCurrentStepId(null);
-        message.info('재생 중지됨'); ws.close(); fetchResults();
+        message.info(t('scenario.playStopped')); ws.close(); fetchResults();
       }
     };
-    ws.onerror = () => { setPlaying(false); setPlayingGroupName(null); setCurrentStepId(null); message.error('WebSocket 연결 실패'); };
+    ws.onerror = () => { setPlaying(false); setPlayingGroupName(null); setCurrentStepId(null); message.error(t('scenario.websocketFailed')); };
     ws.onclose = () => { wsRef.current = null; };
   };
 
@@ -722,21 +724,21 @@ export default function ScenarioPage() {
       setResultDetail(res.data);
       setResultDetailFilename(filename);
       setResultDetailVisible(true);
-    } catch { message.error('결과 상세 불러오기 실패'); }
+    } catch { message.error(t('scenario.resultDetailFailed')); }
   };
 
   const deleteResult = (filename: string) => {
     Modal.confirm({
-      title: '결과 삭제',
-      content: `"${filename}" 결과를 삭제하시겠습니까?`,
-      okText: '삭제', okType: 'danger', cancelText: '취소',
+      title: t('scenario.deleteResultTitle'),
+      content: t('scenario.deleteResultConfirm', { name: filename }),
+      okText: t('common.delete'), okType: 'danger', cancelText: t('common.cancel'),
       onOk: async () => {
         try {
           await resultsApi.delete(filename);
-          message.success('삭제 완료');
+          message.success(t('common.deleteComplete'));
           fetchResults();
           if (resultDetailFilename === filename) { setResultDetailVisible(false); setResultDetail(null); }
-        } catch { message.error('삭제 실패'); }
+        } catch { message.error(t('common.deleteFailed')); }
       },
     });
   };
@@ -747,13 +749,13 @@ export default function ScenarioPage() {
       console.log('[exportExcel] trying saveExcelToDir', filename);
       const path = await saveExcelToDir(filename);
       console.log('[exportExcel] success:', path);
-      message.success(`Excel 저장 완료: ${path}`);
+      message.success(t('scenario.excelSaveComplete', { path }));
       return;
     } catch (serverErr: any) {
       console.error('[exportExcel] saveExcelToDir failed:', serverErr);
       console.error('[exportExcel] response:', serverErr.response?.status, serverErr.response?.data);
       const detail = serverErr.response?.data?.detail || serverErr.message || String(serverErr);
-      message.error(`Excel 서버 저장 실패: ${detail}`);
+      message.error(t('scenario.excelSaveFailed', { detail }));
     }
     // Fallback: browser download
     try {
@@ -763,7 +765,7 @@ export default function ScenarioPage() {
       const a = document.createElement('a');
       a.href = url; a.download = filename.replace('.json', '.xlsx'); a.click();
       window.URL.revokeObjectURL(url);
-    } catch (e: any) { message.error(e.response?.data?.detail || 'Excel 내보내기 실패'); }
+    } catch (e: any) { message.error(e.response?.data?.detail || t('scenario.excelExportFailed')); }
   };
 
   // --- Columns ---
@@ -775,17 +777,17 @@ export default function ScenarioPage() {
   const scenarioStepColumns = [
     { title: 'ID', dataIndex: 'id', key: 'id', width: 60 },
     { title: 'Remark', dataIndex: 'description', key: 'description', ellipsis: true },
-    { title: '유형', dataIndex: 'type', key: 'type', render: (t: string) => <Tag>{t}</Tag> },
-    { title: '디바이스', dataIndex: 'device_id', key: 'device_id', width: 120, render: (v: string) => v ? <Tag color={v.startsWith('Android') ? 'green' : v.startsWith('Serial') ? 'purple' : 'geekblue'}>{v}</Tag> : '-' },
+    { title: t('common.type'), dataIndex: 'type', key: 'type', render: (val: string) => <Tag>{val}</Tag> },
+    { title: t('scenario.device'), dataIndex: 'device_id', key: 'device_id', width: 120, render: (v: string) => v ? <Tag color={v.startsWith('Android') ? 'green' : v.startsWith('Serial') ? 'purple' : 'geekblue'}>{v}</Tag> : '-' },
     {
-      title: '기대이미지', dataIndex: 'expected_image', key: 'expected_image', width: 90,
+      title: t('scenario.expectedImage'), dataIndex: 'expected_image', key: 'expected_image', width: 90,
       render: (v: string | null) => {
         const url = selectedScenario ? expectedImageUrl(selectedScenario.name, v) : null;
         return url ? <Image src={url} alt="expected" style={{ maxHeight: 60, maxWidth: 60 }} /> : '-';
       },
     },
-    { title: '파라미터', dataIndex: 'params', key: 'params', render: (p: any) => <code style={{ fontSize: 11 }}>{JSON.stringify(p)}</code> },
-    { title: '딜레이', dataIndex: 'delay_after_ms', key: 'delay', width: 80, render: (v: number) => `${v}ms` },
+    { title: t('scenario.parameters'), dataIndex: 'params', key: 'params', render: (p: any) => <code style={{ fontSize: 11 }}>{JSON.stringify(p)}</code> },
+    { title: t('scenario.delay'), dataIndex: 'delay_after_ms', key: 'delay', width: 80, render: (v: number) => `${v}ms` },
   ];
 
   const playbackSteps = playbackScenario?.steps || [];
@@ -795,24 +797,24 @@ export default function ScenarioPage() {
   const errorCount = stepResults.filter((r) => r.status === 'error').length;
 
   const makeStepResultColumns = (totalRepeat: number) => [
-    { title: <div>Time Stamp<br /><span style={{ fontSize: 11, color: '#888' }}>실행 시각</span></div>, dataIndex: 'timestamp', key: 'timestamp', width: 150, render: (v: string | null) => v ? formatTime(v) : '-' },
-    { title: <div>Repeat<br /><span style={{ fontSize: 11, color: '#888' }}>현재/총</span></div>, dataIndex: 'repeat_index', key: 'repeat', width: 75, align: 'center' as const, render: (v: number) => `${v}/${totalRepeat}` },
-    { title: <div>Step<br /><span style={{ fontSize: 11, color: '#888' }}>순서</span></div>, dataIndex: 'step_id', key: 'step_id', width: 55, align: 'center' as const },
-    { title: <div>Device<br /><span style={{ fontSize: 11, color: '#888' }}>장치</span></div>, dataIndex: 'device_id', key: 'device_id', width: 120, render: (v: string) => v ? <Tag color={v.startsWith('Android') ? 'green' : v.startsWith('Serial') ? 'purple' : 'geekblue'}>{v}</Tag> : '-' },
+    { title: <div>Time Stamp<br /><span style={{ fontSize: 11, color: '#888' }}>{t('scenario.colTimestamp')}</span></div>, dataIndex: 'timestamp', key: 'timestamp', width: 150, render: (v: string | null) => v ? formatTime(v, lang) : '-' },
+    { title: <div>Repeat<br /><span style={{ fontSize: 11, color: '#888' }}>{t('scenario.colCurrentTotal')}</span></div>, dataIndex: 'repeat_index', key: 'repeat', width: 75, align: 'center' as const, render: (v: number) => `${v}/${totalRepeat}` },
+    { title: <div>Step<br /><span style={{ fontSize: 11, color: '#888' }}>{t('scenario.colOrder')}</span></div>, dataIndex: 'step_id', key: 'step_id', width: 55, align: 'center' as const },
+    { title: <div>Device<br /><span style={{ fontSize: 11, color: '#888' }}>{t('scenario.colDevice')}</span></div>, dataIndex: 'device_id', key: 'device_id', width: 120, render: (v: string) => v ? <Tag color={v.startsWith('Android') ? 'green' : v.startsWith('Serial') ? 'purple' : 'geekblue'}>{v}</Tag> : '-' },
     { title: <div>Command<br /><span style={{ fontSize: 11, color: '#888' }}>action</span></div>, dataIndex: 'command', key: 'command', ellipsis: true, render: (v: string, r: StepResultData) => v || r.message || '-' },
-    { title: <div>Remark<br /><span style={{ fontSize: 11, color: '#888' }}>설명</span></div>, dataIndex: 'description', key: 'description', width: 150, ellipsis: true, render: (v: string) => v || '-' },
-    { title: <div>Status<br /><span style={{ fontSize: 11, color: '#888' }}>결과</span></div>, dataIndex: 'status', key: 'status', width: 90, align: 'center' as const, render: (s: string) => <Tag color={statusColor(s)}>{s.toUpperCase()}</Tag> },
-    { title: <div>Delay<br /><span style={{ fontSize: 11, color: '#888' }}>설정</span></div>, dataIndex: 'delay_ms', key: 'delay', width: 80, align: 'center' as const, render: (ms: number) => ms ? formatDuration(ms) : '-' },
-    { title: <div>Duration<br /><span style={{ fontSize: 11, color: '#888' }}>실제</span></div>, dataIndex: 'execution_time_ms', key: 'duration', width: 90, align: 'center' as const, render: (ms: number) => formatDuration(ms) },
-    { title: '비교', key: 'compare', width: 70, align: 'center' as const, render: (_: any, r: StepResultData) => (r.expected_image || r.actual_image) ? <Button size="small" onClick={() => setCompareStep(r)}>비교</Button> : '-' },
+    { title: <div>Remark<br /><span style={{ fontSize: 11, color: '#888' }}>{t('common.description')}</span></div>, dataIndex: 'description', key: 'description', width: 150, ellipsis: true, render: (v: string) => v || '-' },
+    { title: <div>Status<br /><span style={{ fontSize: 11, color: '#888' }}>{t('common.result')}</span></div>, dataIndex: 'status', key: 'status', width: 90, align: 'center' as const, render: (s: string) => <Tag color={statusColor(s)}>{s.toUpperCase()}</Tag> },
+    { title: <div>Delay<br /><span style={{ fontSize: 11, color: '#888' }}>{t('scenario.colSetting')}</span></div>, dataIndex: 'delay_ms', key: 'delay', width: 80, align: 'center' as const, render: (ms: number) => ms ? formatDuration(ms) : '-' },
+    { title: <div>Duration<br /><span style={{ fontSize: 11, color: '#888' }}>{t('scenario.colActual')}</span></div>, dataIndex: 'execution_time_ms', key: 'duration', width: 90, align: 'center' as const, render: (ms: number) => formatDuration(ms) },
+    { title: t('scenario.compare'), key: 'compare', width: 70, align: 'center' as const, render: (_: any, r: StepResultData) => (r.expected_image || r.actual_image) ? <Button size="small" onClick={() => setCompareStep(r)}>{t('scenario.compare')}</Button> : '-' },
   ];
 
   const resultsColumns = [
-    { title: '시나리오', dataIndex: 'scenario_name', key: 'name', width: 200, ellipsis: true, sorter: (a: ResultSummary, b: ResultSummary) => a.scenario_name.localeCompare(b.scenario_name) },
-    { title: '상태', dataIndex: 'status', key: 'status', width: 90, filters: [{ text: 'PASS', value: 'pass' }, { text: 'FAIL', value: 'fail' }, { text: 'WARNING', value: 'warning' }, { text: 'ERROR', value: 'error' }], onFilter: (value: any, record: ResultSummary) => record.status === value, render: (s: string) => <Tag color={statusColor(s)}>{s.toUpperCase()}</Tag> },
-    { title: '결과', key: 'counts', width: 180, render: (_: any, r: ResultSummary) => (<Space size={4}><Tag color="green">{r.passed_steps}P</Tag><Tag color="red">{r.failed_steps}F</Tag>{r.warning_steps > 0 && <Tag color="orange">{r.warning_steps}W</Tag>}{r.error_steps > 0 && <Tag color="volcano">{r.error_steps}E</Tag>}<span style={{ color: '#888' }}>/ {r.total_steps}</span></Space>) },
-    { title: '실행 시간', key: 'time', width: 200, render: (_: any, r: ResultSummary) => <span style={{ whiteSpace: 'nowrap' }}>{formatTime(r.started_at)}</span>, sorter: (a: ResultSummary, b: ResultSummary) => (a.started_at || '').localeCompare(b.started_at || ''), defaultSortOrder: 'descend' as const },
-    { title: '작업', key: 'actions', width: 200, render: (_: any, record: ResultSummary) => (<Space size={4}><Tooltip title="상세보기"><Button size="small" icon={<EyeOutlined />} onClick={() => viewResultDetail(record.filename)}>상세</Button></Tooltip><Tooltip title="Excel"><Button size="small" icon={<DownloadOutlined />} onClick={() => exportExcel(record.filename)} /></Tooltip><Tooltip title="삭제"><Button size="small" danger icon={<DeleteOutlined />} onClick={() => deleteResult(record.filename)} /></Tooltip></Space>) },
+    { title: t('scenario.title'), dataIndex: 'scenario_name', key: 'name', width: 200, ellipsis: true, sorter: (a: ResultSummary, b: ResultSummary) => a.scenario_name.localeCompare(b.scenario_name) },
+    { title: t('common.status'), dataIndex: 'status', key: 'status', width: 90, filters: [{ text: 'PASS', value: 'pass' }, { text: 'FAIL', value: 'fail' }, { text: 'WARNING', value: 'warning' }, { text: 'ERROR', value: 'error' }], onFilter: (value: any, record: ResultSummary) => record.status === value, render: (s: string) => <Tag color={statusColor(s)}>{s.toUpperCase()}</Tag> },
+    { title: t('common.result'), key: 'counts', width: 180, render: (_: any, r: ResultSummary) => (<Space size={4}><Tag color="green">{r.passed_steps}P</Tag><Tag color="red">{r.failed_steps}F</Tag>{r.warning_steps > 0 && <Tag color="orange">{r.warning_steps}W</Tag>}{r.error_steps > 0 && <Tag color="volcano">{r.error_steps}E</Tag>}<span style={{ color: '#888' }}>/ {r.total_steps}</span></Space>) },
+    { title: t('results.execTime'), key: 'time', width: 200, render: (_: any, r: ResultSummary) => <span style={{ whiteSpace: 'nowrap' }}>{formatTime(r.started_at, lang)}</span>, sorter: (a: ResultSummary, b: ResultSummary) => (a.started_at || '').localeCompare(b.started_at || ''), defaultSortOrder: 'descend' as const },
+    { title: t('common.actions'), key: 'actions', width: 200, render: (_: any, record: ResultSummary) => (<Space size={4}><Tooltip title={t('common.details')}><Button size="small" icon={<EyeOutlined />} onClick={() => viewResultDetail(record.filename)}>{t('common.details')}</Button></Tooltip><Tooltip title="Excel"><Button size="small" icon={<DownloadOutlined />} onClick={() => exportExcel(record.filename)} /></Tooltip><Tooltip title={t('common.delete')}><Button size="small" danger icon={<DeleteOutlined />} onClick={() => deleteResult(record.filename)} /></Tooltip></Space>) },
   ];
 
   const totalTime = (steps: StepResultData[]) => steps.reduce((sum, s) => sum + (s.execution_time_ms || 0), 0);
@@ -842,30 +844,30 @@ export default function ScenarioPage() {
       <div style={{ display: 'flex', gap: 8 }}>
       <Card
         style={{ flex: 1, minWidth: 0 }}
-        title="시나리오"
+        title={t('scenario.title')}
         extra={
           <Space>
             <Button icon={<FolderOutlined />} size="small" onClick={() => {
               setGroupModalVisible(true);
               const allNames = Object.values(groups).flatMap((ms) => ms.map((m) => m.name));
               if (allNames.length > 0) fetchScenarioStepsCache(allNames);
-            }}>그룹 관리</Button>
-            <Button icon={<MergeCellsOutlined />} size="small" onClick={openMergeModal}>합치기</Button>
-            <Button icon={<ExportOutlined />} size="small" onClick={() => { setExportSelectedScenarios([]); setExportSelectedGroups([]); setExportAll(false); setExportModalVisible(true); }}>내보내기</Button>
-            <Button icon={<ImportOutlined />} size="small" onClick={() => { setImportFile(null); setImportPreviewData(null); setImportModalVisible(true); }}>가져오기</Button>
-            <Button onClick={() => { fetchScenarios(); fetchGroups(); }} size="small">새로고침</Button>
+            }}>{t('scenario.groupManage')}</Button>
+            <Button icon={<MergeCellsOutlined />} size="small" onClick={openMergeModal}>{t('scenario.mergeTitle')}</Button>
+            <Button icon={<ExportOutlined />} size="small" onClick={() => { setExportSelectedScenarios([]); setExportSelectedGroups([]); setExportAll(false); setExportModalVisible(true); }}>{t('scenario.exportTitle')}</Button>
+            <Button icon={<ImportOutlined />} size="small" onClick={() => { setImportFile(null); setImportPreviewData(null); setImportModalVisible(true); }}>{t('scenario.importTitle')}</Button>
+            <Button onClick={() => { fetchScenarios(); fetchGroups(); }} size="small">{t('common.refresh')}</Button>
           </Space>
         }
       >
         {/* Group filter */}
         <Space wrap style={{ width: '100%', marginBottom: 12 }}>
-          <span style={{ fontSize: 13, color: '#888' }}>그룹:</span>
+          <span style={{ fontSize: 13, color: '#888' }}>{t('scenario.groupLabel')}:</span>
           <Tag
             color={selectedGroup === null ? 'blue' : undefined}
             style={{ cursor: 'pointer' }}
             onClick={() => setSelectedGroup(null)}
           >
-            전체 ({scenarios.length})
+            {t('scenario.all')} ({scenarios.length})
           </Tag>
           {Object.entries(groups).map(([gName, members]) => {
             const validCount = members.filter((m) => scenarios.includes(m.name)).length;
@@ -879,7 +881,7 @@ export default function ScenarioPage() {
                   <FolderOutlined /> {gName} ({validCount})
                 </Tag>
                 {validCount > 0 && (
-                  <Tooltip title={`"${gName}" 그룹 전체 재생`}>
+                  <Tooltip title={t('scenario.playGroupAll', { name: gName })}>
                     <Button
                       size="small"
                       type="text"
@@ -898,7 +900,7 @@ export default function ScenarioPage() {
         {/* Group play repeat */}
         {selectedGroup && (groups[selectedGroup] || []).length > 0 && (
           <Space style={{ marginBottom: 12 }}>
-            <span style={{ fontSize: 13, color: '#888' }}>그룹 재생:</span>
+            <span style={{ fontSize: 13, color: '#888' }}>{t('scenario.groupPlay')}:</span>
             <InputNumber
               min={1} max={999} size="small"
               value={getRepeatCount(selectedGroup)}
@@ -906,15 +908,15 @@ export default function ScenarioPage() {
               style={{ width: 60 }}
               disabled={playing}
             />
-            <span style={{ fontSize: 12, color: '#888' }}>회</span>
+            <span style={{ fontSize: 12, color: '#888' }}>{t('scenario.times')}</span>
             {playing && playingGroupName === selectedGroup ? (
-              <Button danger size="small" icon={<StopOutlined />} onClick={stopPlayback}>중지</Button>
+              <Button danger size="small" icon={<StopOutlined />} onClick={stopPlayback}>{t('scenario.stop')}</Button>
             ) : (
               <Button type="primary" size="small" icon={<PlayCircleOutlined />}
                 disabled={playing}
                 onClick={() => playGroup(selectedGroup)}
               >
-                그룹 재생 ({(groups[selectedGroup] || []).length}개)
+                {t('scenario.groupPlay')} ({(groups[selectedGroup] || []).length})
               </Button>
             )}
           </Space>
@@ -924,18 +926,18 @@ export default function ScenarioPage() {
         <Space wrap style={{ width: '100%' }}>
           <Select
             showSearch
-            placeholder="시나리오 선택"
+            placeholder={t('scenario.scenarioSelect')}
             value={selectedName}
             onChange={(v) => setSelectedName(v)}
             style={{ minWidth: 260 }}
             options={filteredScenarios.map((n) => ({ label: n, value: n }))}
-            notFoundContent="시나리오 없음"
+            notFoundContent={t('scenario.noScenarios')}
           />
-          <Button icon={<EyeOutlined />} disabled={!selectedName} onClick={() => selectedName && viewScenario(selectedName)}>보기</Button>
-          <Button icon={<EditOutlined />} disabled={!selectedName || playing} onClick={openRenameModal}>이름변경</Button>
-          <Button icon={<CopyOutlined />} disabled={!selectedName || playing} onClick={openCopyModal}>복사</Button>
+          <Button icon={<EyeOutlined />} disabled={!selectedName} onClick={() => selectedName && viewScenario(selectedName)}>{t('scenario.view')}</Button>
+          <Button icon={<EditOutlined />} disabled={!selectedName || playing} onClick={openRenameModal}>{t('scenario.rename')}</Button>
+          <Button icon={<CopyOutlined />} disabled={!selectedName || playing} onClick={openCopyModal}>{t('common.copy')}</Button>
           {playing && playingName === selectedName ? (
-            <Button danger icon={<StopOutlined />} onClick={stopPlayback}>중지</Button>
+            <Button danger icon={<StopOutlined />} onClick={stopPlayback}>{t('scenario.stop')}</Button>
           ) : (
             <>
               <InputNumber
@@ -945,23 +947,23 @@ export default function ScenarioPage() {
                 style={{ width: 65 }}
                 disabled={playing || !selectedName}
               />
-              <span style={{ fontSize: 13, color: '#888' }}>회</span>
+              <span style={{ fontSize: 13, color: '#888' }}>{t('scenario.times')}</span>
               <Button type="primary" icon={<PlayCircleOutlined />}
                 loading={playing && playingName === selectedName}
                 disabled={playing || !selectedName}
                 onClick={() => selectedName && playScenario(selectedName)}
-              >재생</Button>
+              >{t('scenario.play')}</Button>
             </>
           )}
           <Button danger icon={<DeleteOutlined />} disabled={playing || !selectedName}
-            onClick={() => selectedName && deleteScenario(selectedName)}>삭제</Button>
+            onClick={() => selectedName && deleteScenario(selectedName)}>{t('common.delete')}</Button>
 
           {/* Quick group assign */}
           {selectedName && Object.keys(groups).length > 0 && (
             <>
               <Divider type="vertical" />
               <Select
-                placeholder="그룹에 추가"
+                placeholder={t('scenario.addToGroup')}
                 style={{ width: 140 }}
                 size="small"
                 value={undefined}
@@ -996,13 +998,13 @@ export default function ScenarioPage() {
       {(playing || stepResults.length > 0) && playbackScenario && (
         <Card
           title={<Space>
-            <span>재생: {playingGroupName ? `[${playingGroupName}]` : ''} {currentGroupScenario || playbackScenario.name}</span>
-            {playingGroupName && groupScenarioTotal > 0 && <Tag color="cyan">{groupScenarioIndex}/{groupScenarioTotal} 시나리오</Tag>}
-            {totalIterations > 1 && <Tag color="purple">{currentIteration} / {totalIterations}회</Tag>}
-            {playing && <Tag color="processing">진행 중...</Tag>}
-            {!playing && stepResults.length > 0 && <Tag color={failCount + errorCount > 0 ? 'red' : warnCount > 0 ? 'orange' : 'green'}>완료</Tag>}
+            <span>{t('scenario.play')}: {playingGroupName ? `[${playingGroupName}]` : ''} {currentGroupScenario || playbackScenario.name}</span>
+            {playingGroupName && groupScenarioTotal > 0 && <Tag color="cyan">{groupScenarioIndex}/{groupScenarioTotal} {t('scenario.title')}</Tag>}
+            {totalIterations > 1 && <Tag color="purple">{currentIteration} / {totalIterations}{t('scenario.times')}</Tag>}
+            {playing && <Tag color="processing">{t('scenario.inProgress')}</Tag>}
+            {!playing && stepResults.length > 0 && <Tag color={failCount + errorCount > 0 ? 'red' : warnCount > 0 ? 'orange' : 'green'}>{t('scenario.complete')}</Tag>}
           </Space>}
-          extra={<Space><span>Pass: {passCount}</span><span>Fail: {failCount}</span><span>Warning: {warnCount}</span><span>Error: {errorCount}</span><span>/ {playbackSteps.length} 스텝</span></Space>}
+          extra={<Space><span>Pass: {passCount}</span><span>Fail: {failCount}</span><span>Warning: {warnCount}</span><span>Error: {errorCount}</span><span>/ {playbackSteps.length} {t('scenario.steps')}</span></Space>}
           style={{ marginTop: 8 }}
         >
           <Table columns={makeStepResultColumns(totalIterations)} dataSource={stepResults} rowKey={(_r, idx) => `${idx}`} size="small" pagination={false}
@@ -1011,23 +1013,23 @@ export default function ScenarioPage() {
       )}
 
       {/* ===== 테스트 결과 목록 ===== */}
-      <Card title="테스트 결과" extra={<Button icon={<ReloadOutlined />} onClick={fetchResults} loading={resultsLoading} size="small">새로고침</Button>} style={{ marginTop: 8 }}>
+      <Card title={t('scenario.testResults')} extra={<Button icon={<ReloadOutlined />} onClick={fetchResults} loading={resultsLoading} size="small">{t('common.refresh')}</Button>} style={{ marginTop: 8 }}>
         <Table columns={resultsColumns} dataSource={results} rowKey="filename" size="small" pagination={{ pageSize: 10, showSizeChanger: true }} />
       </Card>
 
       {/* ===== 그룹 관리 모달 ===== */}
-      <Modal title="그룹 관리" open={groupModalVisible} onCancel={() => setGroupModalVisible(false)} footer={null} width={960}
+      <Modal title={t('scenario.groupManage')} open={groupModalVisible} onCancel={() => setGroupModalVisible(false)} footer={null} width={960}
         styles={{ body: { maxHeight: '75vh', overflowY: 'auto' } }}
       >
         <Space style={{ marginBottom: 8 }}>
           <Input
-            placeholder="새 그룹 이름"
+            placeholder={t('scenario.newGroupName')}
             value={newGroupName}
             onChange={(e) => setNewGroupName(e.target.value)}
             onPressEnter={createGroup}
             style={{ width: 200 }}
           />
-          <Button icon={<FolderAddOutlined />} type="primary" onClick={createGroup}>생성</Button>
+          <Button icon={<FolderAddOutlined />} type="primary" onClick={createGroup}>{t('scenario.create')}</Button>
         </Space>
         <Collapse
           accordion
@@ -1037,18 +1039,18 @@ export default function ScenarioPage() {
               <Space>
                 <FolderOutlined />
                 <span>{gName}</span>
-                <Tag>{members.length}개</Tag>
+                <Tag>{members.length}</Tag>
               </Space>
             ),
             extra: (
-              <Button size="small" danger icon={<DeleteOutlined />} onClick={(e) => { e.stopPropagation(); deleteGroup(gName); }}>삭제</Button>
+              <Button size="small" danger icon={<DeleteOutlined />} onClick={(e) => { e.stopPropagation(); deleteGroup(gName); }}>{t('common.delete')}</Button>
             ),
             children: (
               <>
                 <List
                   size="small"
                   dataSource={members}
-                  locale={{ emptyText: '시나리오 없음' }}
+                  locale={{ emptyText: t('scenario.noScenarios') }}
                   renderItem={(entry, idx) => {
                     const entryKey = `${gName}:${idx}`;
                     const isExpanded = expandedEntries.has(entryKey);
@@ -1073,14 +1075,14 @@ export default function ScenarioPage() {
                             style={{ width: 140 }}
                             value={jump ? jump.scenario : undefined}
                             allowClear
-                            placeholder="다음으로"
+                            placeholder={t('scenario.nextTo')}
                             onChange={(v) => {
                               const newJump = v == null ? null : { scenario: v as number, step: 0 };
                               if (field === 'pass') onUpdate(newJump, failGoto);
                               else onUpdate(passGoto, newJump);
                             }}
                           >
-                            <Select.Option value={-1}>종료 (END)</Select.Option>
+                            <Select.Option value={-1}>{t('scenario.end')} (END)</Select.Option>
                             {members.map((m, mi) => (
                               <Select.Option key={mi} value={mi}>#{mi + 1} {m.name}</Select.Option>
                             ))}
@@ -1115,9 +1117,9 @@ export default function ScenarioPage() {
                             onClick={() => { toggleExpandEntry(entryKey); if (!isExpanded && steps.length === 0) fetchScenarioStepsCache([entry.name]); }}
                           />
                           <span style={{ flex: 1, fontWeight: 500 }}>{entry.name}</span>
-                          {!scenarios.includes(entry.name) && <Tag color="red">없음</Tag>}
+                          {!scenarios.includes(entry.name) && <Tag color="red">{t('scenario.missing')}</Tag>}
                           {hasAnyJump && <BranchesOutlined style={{ color: '#722ed1', fontSize: 13 }} />}
-                          <span style={{ color: '#888', fontSize: 11 }}>{steps.length}스텝</span>
+                          <span style={{ color: '#888', fontSize: 11 }}>{steps.length} {t('scenario.steps')}</span>
                           <Button size="small" type="text" icon={<ArrowUpOutlined />}
                             disabled={idx === 0}
                             onClick={() => moveInGroup(gName, members, idx, -1)}
@@ -1134,8 +1136,8 @@ export default function ScenarioPage() {
                         {/* 펼쳐진 스텝 목록 */}
                         {isExpanded && (
                           <div style={{ paddingLeft: 36, marginTop: 6, borderLeft: '2px solid #303030', marginLeft: 18 }}>
-                            <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>스텝별 조건부 이동:</div>
-                            {steps.length === 0 && <div style={{ color: '#666', fontSize: 12, padding: 4 }}>스텝 로딩 중...</div>}
+                            <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>{t('scenario.stepConditionalJump')}:</div>
+                            {steps.length === 0 && <div style={{ color: '#666', fontSize: 12, padding: 4 }}>{t('scenario.stepsLoading')}</div>}
                             {steps.map((step: any, si: number) => {
                               const sid = step.id;
                               const sj = stepJumps[String(sid)] || { on_pass_goto: null, on_fail_goto: null };
@@ -1156,7 +1158,7 @@ export default function ScenarioPage() {
                                       <Button size="small" type="link" danger style={{ fontSize: 11, padding: 0, alignSelf: 'flex-start' }}
                                         icon={<ClearOutlined />}
                                         onClick={() => updateGroupStepJumps(gName, idx, sid, null, null)}
-                                      >초기화</Button>
+                                      >{t('scenario.reset')}</Button>
                                     )}
                                   </div>
                                 </div>
@@ -1169,7 +1171,7 @@ export default function ScenarioPage() {
                   }}
                 />
                 <Select
-                  placeholder="시나리오 추가"
+                  placeholder={t('scenario.addScenario')}
                   size="small"
                   style={{ width: '100%', marginTop: 8 }}
                   value={undefined}
@@ -1180,22 +1182,22 @@ export default function ScenarioPage() {
             ),
           }))}
         />
-        {Object.keys(groups).length === 0 && <div style={{ textAlign: 'center', color: '#888', padding: 20 }}>그룹이 없습니다</div>}
+        {Object.keys(groups).length === 0 && <div style={{ textAlign: 'center', color: '#888', padding: 20 }}>{t('scenario.noGroups')}</div>}
       </Modal>
 
       {/* ===== 복사 모달 ===== */}
-      <Modal title={`"${selectedName}" 이름 변경`} open={renameModalVisible} onCancel={() => setRenameModalVisible(false)} onOk={doRename} okText="변경">
-        <Input value={renameNewName} onChange={(e) => setRenameNewName(e.target.value)} placeholder="새 시나리오 이름" />
+      <Modal title={t('scenario.renameTitle', { name: selectedName || '' })} open={renameModalVisible} onCancel={() => setRenameModalVisible(false)} onOk={doRename} okText={t('common.change')}>
+        <Input value={renameNewName} onChange={(e) => setRenameNewName(e.target.value)} placeholder={t('scenario.newScenarioName')} />
       </Modal>
 
-      <Modal title={`"${selectedName}" 복사`} open={copyModalVisible} onCancel={() => setCopyModalVisible(false)} onOk={doCopy} okText="복사">
-        <Input value={copyName} onChange={(e) => setCopyName(e.target.value)} placeholder="새 시나리오 이름" />
+      <Modal title={t('scenario.copyTitle', { name: selectedName || '' })} open={copyModalVisible} onCancel={() => setCopyModalVisible(false)} onOk={doCopy} okText={t('common.copy')}>
+        <Input value={copyName} onChange={(e) => setCopyName(e.target.value)} placeholder={t('scenario.newScenarioName')} />
       </Modal>
 
       {/* ===== 합치기 모달 ===== */}
-      <Modal title="시나리오 합치기" open={mergeModalVisible} onCancel={() => setMergeModalVisible(false)} onOk={doMerge} okText="합치기" width={500}>
+      <Modal title={t('scenario.mergeTitle')} open={mergeModalVisible} onCancel={() => setMergeModalVisible(false)} onOk={doMerge} okText={t('scenario.mergeTitle')} width={500}>
         <div style={{ marginBottom: 12 }}>
-          <div style={{ marginBottom: 8, color: '#888', fontSize: 12 }}>합칠 시나리오를 순서대로 선택하세요:</div>
+          <div style={{ marginBottom: 8, color: '#888', fontSize: 12 }}>{t('scenario.mergeInstruction')}</div>
           {mergeTargets.map((name, idx) => (
             <Space key={idx} style={{ display: 'flex', marginBottom: 4 }}>
               <Tag color="blue">{idx + 1}</Tag>
@@ -1204,7 +1206,7 @@ export default function ScenarioPage() {
             </Space>
           ))}
           <Select
-            placeholder="시나리오 추가"
+            placeholder={t('scenario.addScenario')}
             style={{ width: '100%', marginTop: 4 }}
             value={undefined}
             onChange={(v: string) => { if (v) setMergeTargets((prev) => [...prev, v]); }}
@@ -1213,18 +1215,18 @@ export default function ScenarioPage() {
         </div>
         <Divider />
         <Space>
-          <span style={{ color: '#888' }}>이름:</span>
-          <Input value={mergeName} onChange={(e) => setMergeName(e.target.value)} placeholder="합쳐진 시나리오 이름" style={{ width: 300 }} />
+          <span style={{ color: '#888' }}>{t('scenario.nameLabel')}:</span>
+          <Input value={mergeName} onChange={(e) => setMergeName(e.target.value)} placeholder={t('scenario.mergedScenarioName')} style={{ width: 300 }} />
         </Space>
       </Modal>
 
       {/* ===== 시나리오 상세 모달 ===== */}
-      <Modal title={selectedScenario?.name || '시나리오 상세'} open={detailVisible} onCancel={() => setDetailVisible(false)} width={900} footer={null}>
+      <Modal title={selectedScenario?.name || t('scenario.scenarioDetail')} open={detailVisible} onCancel={() => setDetailVisible(false)} width={900} footer={null}>
         {selectedScenario && (
           <>
             <Descriptions column={2} size="small" style={{ marginBottom: 8 }}>
-              <Descriptions.Item label="설명">{selectedScenario.description || '-'}</Descriptions.Item>
-              <Descriptions.Item label="디바이스 매핑">
+              <Descriptions.Item label={t('common.description')}>{selectedScenario.description || '-'}</Descriptions.Item>
+              <Descriptions.Item label={t('scenario.deviceMapping')}>
                 {Object.keys(selectedScenario.device_map || {}).length > 0
                   ? Object.entries(selectedScenario.device_map).map(([alias, real]) => (
                     <Tag key={alias} color={alias.startsWith('Android') ? 'green' : alias.startsWith('Serial') ? 'purple' : 'geekblue'}>
@@ -1233,8 +1235,8 @@ export default function ScenarioPage() {
                   ))
                   : selectedScenario.device_serial || '-'}
               </Descriptions.Item>
-              <Descriptions.Item label="해상도">{selectedScenario.resolution ? `${selectedScenario.resolution.width}×${selectedScenario.resolution.height}` : '-'}</Descriptions.Item>
-              <Descriptions.Item label="스텝 수">{selectedScenario.steps.length}</Descriptions.Item>
+              <Descriptions.Item label={t('scenario.resolution')}>{selectedScenario.resolution ? `${selectedScenario.resolution.width}×${selectedScenario.resolution.height}` : '-'}</Descriptions.Item>
+              <Descriptions.Item label={t('scenario.stepCount')}>{selectedScenario.steps.length}</Descriptions.Item>
             </Descriptions>
             <Table columns={scenarioStepColumns} dataSource={selectedScenario.steps} rowKey="id" size="small" pagination={false} />
           </>
@@ -1243,21 +1245,21 @@ export default function ScenarioPage() {
 
       {/* ===== 결과 상세 모달 ===== */}
       <Modal
-        title={<Space><span>{resultDetail?.scenario_name || '결과 상세'}</span>{resultDetail && <Tag color={statusColor(resultDetail.status)}>{resultDetail.status.toUpperCase()}</Tag>}</Space>}
+        title={<Space><span>{resultDetail?.scenario_name || t('scenario.resultDetail')}</span>{resultDetail && <Tag color={statusColor(resultDetail.status)}>{resultDetail.status.toUpperCase()}</Tag>}</Space>}
         open={resultDetailVisible} onCancel={() => setResultDetailVisible(false)} width={1200}
-        footer={<Space><Button icon={<DownloadOutlined />} onClick={() => resultDetailFilename && exportExcel(resultDetailFilename)}>Excel 내보내기</Button><Button danger icon={<DeleteOutlined />} onClick={() => resultDetailFilename && deleteResult(resultDetailFilename)}>삭제</Button></Space>}
+        footer={<Space><Button icon={<DownloadOutlined />} onClick={() => resultDetailFilename && exportExcel(resultDetailFilename)}>{t('scenario.excelExport')}</Button><Button danger icon={<DeleteOutlined />} onClick={() => resultDetailFilename && deleteResult(resultDetailFilename)}>{t('common.delete')}</Button></Space>}
       >
         {resultDetail && (
           <>
             <Descriptions bordered size="small" column={4} style={{ marginBottom: 8 }}>
-              <Descriptions.Item label="시나리오">{resultDetail.scenario_name}</Descriptions.Item>
-              <Descriptions.Item label="디바이스">{resultDetail.device_serial || '-'}</Descriptions.Item>
-              <Descriptions.Item label="시작">{formatTime(resultDetail.started_at)}</Descriptions.Item>
-              <Descriptions.Item label="종료">{formatTime(resultDetail.finished_at)}</Descriptions.Item>
-              <Descriptions.Item label="총 실행시간"><strong>{formatDuration(totalTime(resultDetail.step_results))}</strong></Descriptions.Item>
-              <Descriptions.Item label="Repeat">{resultDetail.total_repeat}회</Descriptions.Item>
-              <Descriptions.Item label="결과"><Space size={4}><Tag color="green">{resultDetail.passed_steps} Pass</Tag><Tag color="red">{resultDetail.failed_steps} Fail</Tag>{resultDetail.warning_steps > 0 && <Tag color="orange">{resultDetail.warning_steps} Warning</Tag>}{resultDetail.error_steps > 0 && <Tag color="volcano">{resultDetail.error_steps} Error</Tag>}</Space></Descriptions.Item>
-              <Descriptions.Item label="상태"><Tag color={statusColor(resultDetail.status)} style={{ fontSize: 14 }}>{resultDetail.status.toUpperCase()}</Tag></Descriptions.Item>
+              <Descriptions.Item label={t('scenario.title')}>{resultDetail.scenario_name}</Descriptions.Item>
+              <Descriptions.Item label={t('scenario.device')}>{resultDetail.device_serial || '-'}</Descriptions.Item>
+              <Descriptions.Item label={t('scenario.startTime')}>{formatTime(resultDetail.started_at, lang)}</Descriptions.Item>
+              <Descriptions.Item label={t('scenario.endTime')}>{formatTime(resultDetail.finished_at, lang)}</Descriptions.Item>
+              <Descriptions.Item label={t('scenario.totalExecTime')}><strong>{formatDuration(totalTime(resultDetail.step_results))}</strong></Descriptions.Item>
+              <Descriptions.Item label="Repeat">{resultDetail.total_repeat}{t('scenario.times')}</Descriptions.Item>
+              <Descriptions.Item label={t('common.result')}><Space size={4}><Tag color="green">{resultDetail.passed_steps} Pass</Tag><Tag color="red">{resultDetail.failed_steps} Fail</Tag>{resultDetail.warning_steps > 0 && <Tag color="orange">{resultDetail.warning_steps} Warning</Tag>}{resultDetail.error_steps > 0 && <Tag color="volcano">{resultDetail.error_steps} Error</Tag>}</Space></Descriptions.Item>
+              <Descriptions.Item label={t('common.status')}><Tag color={statusColor(resultDetail.status)} style={{ fontSize: 14 }}>{resultDetail.status.toUpperCase()}</Tag></Descriptions.Item>
             </Descriptions>
             <Table columns={makeStepResultColumns(resultDetail.total_repeat)} dataSource={resultDetail.step_results} rowKey={(_r, idx) => `rd-${idx}`} size="small" pagination={false}
               rowClassName={(r: StepResultData) => r.status === 'fail' ? 'row-fail' : r.status === 'error' ? 'row-error' : r.status === 'warning' ? 'row-warning' : ''} />
@@ -1266,26 +1268,26 @@ export default function ScenarioPage() {
       </Modal>
 
       {/* ===== 이미지 비교 모달 ===== */}
-      <Modal title={`스텝 ${compareStep?.step_id} 비교`} open={!!compareStep} onCancel={() => setCompareStep(null)} width={1100} footer={null} zIndex={1100}>
+      <Modal title={t('scenario.stepCompare', { id: String(compareStep?.step_id) })} open={!!compareStep} onCancel={() => setCompareStep(null)} width={1100} footer={null} zIndex={1100}>
         {compareStep && (
           <>
             <Space style={{ marginBottom: 8 }} wrap>
               <Tag color={statusColor(compareStep.status)}>{compareStep.status.toUpperCase()}</Tag>
               {compareStep.compare_mode && compareStep.compare_mode !== 'full' && (
                 <Tag color="purple">
-                  {compareStep.compare_mode === 'single_crop' ? '단일크롭' : compareStep.compare_mode === 'full_exclude' ? '영역제외' : compareStep.compare_mode === 'multi_crop' ? '멀티크롭' : compareStep.compare_mode}
+                  {compareStep.compare_mode === 'single_crop' ? t('scenario.singleCrop') : compareStep.compare_mode === 'full_exclude' ? t('scenario.excludeArea') : compareStep.compare_mode === 'multi_crop' ? t('scenario.multiCrop') : compareStep.compare_mode}
                 </Tag>
               )}
-              {compareStep.similarity_score != null && <span>유사도: {(compareStep.similarity_score * 100).toFixed(2)}%</span>}
-              {compareStep.match_location && <Tag color="blue">매칭 위치: ({compareStep.match_location.x},{compareStep.match_location.y}) {compareStep.match_location.width}x{compareStep.match_location.height}</Tag>}
+              {compareStep.similarity_score != null && <span>{t('scenario.similarity')}: {(compareStep.similarity_score * 100).toFixed(2)}%</span>}
+              {compareStep.match_location && <Tag color="blue">{t('scenario.matchLocation')}: ({compareStep.match_location.x},{compareStep.match_location.y}) {compareStep.match_location.width}x{compareStep.match_location.height}</Tag>}
               <span style={{ color: '#888' }}>Duration: {formatDuration(compareStep.execution_time_ms)}</span>
             </Space>
             <Row gutter={16}>
               <Col span={12}>
                 <Card size="small" title={
-                  compareStep.compare_mode === 'full_exclude' ? '기대 이미지 (제외 영역 표시)'
-                  : compareStep.compare_mode === 'multi_crop' ? '기대 이미지 (크롭 영역)'
-                  : '기대 이미지 (Expected)'
+                  compareStep.compare_mode === 'full_exclude' ? t('scenario.expectedExclude')
+                  : compareStep.compare_mode === 'multi_crop' ? t('scenario.expectedCrop')
+                  : t('scenario.expectedImage2')
                 }>
                   {compareStep.expected_image ? (
                     <Image
@@ -1293,33 +1295,33 @@ export default function ScenarioPage() {
                       alt="Expected"
                       style={{ width: '100%' }}
                     />
-                  ) : <div style={{ textAlign: 'center', padding: 40, color: '#666' }}>이미지 없음</div>}
+                  ) : <div style={{ textAlign: 'center', padding: 40, color: '#666' }}>{t('scenario.noImage')}</div>}
                 </Card>
               </Col>
               <Col span={12}>
-                <Card size="small" title="실제 이미지 (Actual)">
-                  {compareStep.actual_annotated_image ? <Image src={`${imageUrl(compareStep.actual_annotated_image)!}?t=${Date.now()}`} alt="Actual (annotated)" style={{ width: '100%' }} /> : compareStep.actual_image ? <CompareImage src={imageUrl(compareStep.actual_image)!} roi={compareStep.roi} alt="Actual" /> : <div style={{ textAlign: 'center', padding: 40, color: '#666' }}>이미지 없음</div>}
+                <Card size="small" title={t('scenario.actualImage')}>
+                  {compareStep.actual_annotated_image ? <Image src={`${imageUrl(compareStep.actual_annotated_image)!}?t=${Date.now()}`} alt="Actual (annotated)" style={{ width: '100%' }} /> : compareStep.actual_image ? <CompareImage src={imageUrl(compareStep.actual_image)!} roi={compareStep.roi} alt="Actual" /> : <div style={{ textAlign: 'center', padding: 40, color: '#666' }}>{t('scenario.noImage')}</div>}
                 </Card>
               </Col>
             </Row>
             {compareStep.diff_image && (
               <div style={{ marginTop: 12 }}>
-                <Card size="small" title="차이 히트맵 (Diff)"><Image src={`${imageUrl(compareStep.diff_image)!}?t=${Date.now()}`} alt="Diff" style={{ width: '100%' }} /></Card>
+                <Card size="small" title={t('scenario.diffHeatmap')}><Image src={`${imageUrl(compareStep.diff_image)!}?t=${Date.now()}`} alt="Diff" style={{ width: '100%' }} /></Card>
               </div>
             )}
             {compareStep.compare_mode === 'multi_crop' && compareStep.sub_results?.length > 0 && (
               <div style={{ marginTop: 12 }}>
-                <Card size="small" title="크롭별 상세 결과">
+                <Card size="small" title={t('scenario.cropDetailResult')}>
                   <Table
                     dataSource={compareStep.sub_results}
                     rowKey={(_r, idx) => `sub-${idx}`}
                     size="small"
                     pagination={false}
                     columns={[
-                      { title: '라벨', dataIndex: 'label', key: 'label', render: (v: string) => v || '-' },
-                      { title: '점수', dataIndex: 'score', key: 'score', width: 100, render: (v: number) => `${(v * 100).toFixed(2)}%` },
-                      { title: '상태', dataIndex: 'status', key: 'status', width: 80, render: (s: string) => <Tag color={statusColor(s)}>{s.toUpperCase()}</Tag> },
-                      { title: '매칭 위치', key: 'loc', width: 200, render: (_: any, r: SubResultData) => r.match_location ? `(${r.match_location.x},${r.match_location.y}) ${r.match_location.width}x${r.match_location.height}` : '-' },
+                      { title: t('scenario.label'), dataIndex: 'label', key: 'label', render: (v: string) => v || '-' },
+                      { title: t('scenario.score'), dataIndex: 'score', key: 'score', width: 100, render: (v: number) => `${(v * 100).toFixed(2)}%` },
+                      { title: t('common.status'), dataIndex: 'status', key: 'status', width: 80, render: (s: string) => <Tag color={statusColor(s)}>{s.toUpperCase()}</Tag> },
+                      { title: t('scenario.matchLocation'), key: 'loc', width: 200, render: (_: any, r: SubResultData) => r.match_location ? `(${r.match_location.x},${r.match_location.y}) ${r.match_location.width}x${r.match_location.height}` : '-' },
                     ]}
                   />
                 </Card>
@@ -1327,7 +1329,7 @@ export default function ScenarioPage() {
             )}
             {compareStep.compare_mode === 'full_exclude' && (
               <div style={{ marginTop: 12 }}>
-                <Card size="small"><span style={{ color: '#888' }}>제외 영역이 적용된 SSIM 비교 결과입니다. 빨간 박스 영역은 비교에서 제외되었습니다.</span></Card>
+                <Card size="small"><span style={{ color: '#888' }}>{t('scenario.excludeAreaDescription')}</span></Card>
               </div>
             )}
           </>
@@ -1336,7 +1338,7 @@ export default function ScenarioPage() {
 
       {/* ===== 디바이스 매핑 모달 ===== */}
       <Modal
-        title="디바이스 매핑 확인"
+        title={t('scenario.deviceMappingCheck')}
         open={deviceMapModalVisible}
         onCancel={() => setDeviceMapModalVisible(false)}
         onOk={() => {
@@ -1348,10 +1350,10 @@ export default function ScenarioPage() {
             startPlayback(name, deviceMapEditing);
           }
         }}
-        okText="재생"
+        okText={t('scenario.play')}
         width={600}
       >
-        <p style={{ marginBottom: 12, color: '#888' }}>시나리오에 사용된 디바이스와 현재 연결된 디바이스를 매핑합니다.</p>
+        <p style={{ marginBottom: 12, color: '#888' }}>{t('scenario.deviceMappingDescription')}</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {Object.entries(deviceMapEditing).map(([alias, realId]) => {
             const connected = connectedDevices.find(d => d.id === realId);
@@ -1371,7 +1373,7 @@ export default function ScenarioPage() {
                       <Space size={4}>
                         <Tag color={d.status === 'device' || d.status === 'connected' ? 'green' : d.status === 'offline' || d.status === 'disconnected' ? 'red' : 'default'} style={{ marginRight: 0 }}>{d.type}</Tag>
                         {d.name}
-                        {d.status === 'offline' || d.status === 'disconnected' ? <span style={{ color: '#ff4d4f' }}>(연결 끊김)</span> : null}
+                        {d.status === 'offline' || d.status === 'disconnected' ? <span style={{ color: '#ff4d4f' }}>({t('scenario.disconnected')})</span> : null}
                       </Space>
                     </Select.Option>
                   ))}
@@ -1385,11 +1387,11 @@ export default function ScenarioPage() {
 
       {/* ===== 내보내기 모달 ===== */}
       <Modal
-        title="시나리오 내보내기"
+        title={t('scenario.exportTitle')}
         open={exportModalVisible}
         onCancel={() => setExportModalVisible(false)}
         onOk={doExport}
-        okText="다운로드"
+        okText={t('common.download')}
         confirmLoading={exportLoading}
         okButtonProps={{ disabled: !exportAll && exportSelectedScenarios.length === 0 && exportSelectedGroups.length === 0 }}
         width={500}
@@ -1408,12 +1410,12 @@ export default function ScenarioPage() {
           }}
           style={{ marginBottom: 12 }}
         >
-          <strong>전체 선택</strong>
+          <strong>{t('scenario.selectAll')}</strong>
         </Checkbox>
 
         {Object.keys(groups).length > 0 && (
           <>
-            <Divider style={{ margin: '8px 0' }}>그룹</Divider>
+            <Divider style={{ margin: '8px 0' }}>{t('scenario.groupLabel')}</Divider>
             <Checkbox.Group
               value={exportSelectedGroups}
               onChange={(vals) => {
@@ -1429,14 +1431,14 @@ export default function ScenarioPage() {
             >
               {Object.entries(groups).map(([gn, members]) => (
                 <Checkbox key={gn} value={gn}>
-                  <FolderOutlined /> {gn} ({members.length}개 시나리오)
+                  <FolderOutlined /> {gn} ({members.length})
                 </Checkbox>
               ))}
             </Checkbox.Group>
           </>
         )}
 
-        <Divider style={{ margin: '8px 0' }}>시나리오</Divider>
+        <Divider style={{ margin: '8px 0' }}>{t('scenario.title')}</Divider>
         <div style={{ maxHeight: 300, overflowY: 'auto' }}>
           <Checkbox.Group
             value={exportSelectedScenarios}
@@ -1452,11 +1454,11 @@ export default function ScenarioPage() {
 
       {/* ===== 가져오기 모달 ===== */}
       <Modal
-        title="시나리오 가져오기"
+        title={t('scenario.importTitle')}
         open={importModalVisible}
         onCancel={() => { setImportModalVisible(false); setImportFile(null); setImportPreviewData(null); }}
         onOk={doImport}
-        okText="가져오기"
+        okText={t('common.import')}
         confirmLoading={importLoading}
         okButtonProps={{ disabled: !importPreviewData }}
         width={650}
@@ -1469,18 +1471,18 @@ export default function ScenarioPage() {
             showUploadList={false}
           >
             <p style={{ fontSize: 40, color: '#999' }}><UploadOutlined /></p>
-            <p>ZIP 파일을 드래그하거나 클릭하여 선택하세요</p>
+            <p>{t('scenario.importDragText')}</p>
           </Upload.Dragger>
         ) : (
           <>
             <div style={{ marginBottom: 12 }}>
               <Tag color="blue">{importFile?.name}</Tag>
-              <Button size="small" type="link" onClick={() => { setImportFile(null); setImportPreviewData(null); }}>다른 파일 선택</Button>
+              <Button size="small" type="link" onClick={() => { setImportFile(null); setImportPreviewData(null); }}>{t('scenario.selectOtherFile')}</Button>
             </div>
 
             {importPreviewData.scenarios.length > 0 && (
               <>
-                <Divider style={{ margin: '8px 0' }}>시나리오 ({importPreviewData.scenarios.length}개)</Divider>
+                <Divider style={{ margin: '8px 0' }}>{t('scenario.title')} ({importPreviewData.scenarios.length})</Divider>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {importPreviewData.scenarios.map((s) => {
                     const key = `s:${s.name}`;
@@ -1490,7 +1492,7 @@ export default function ScenarioPage() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: s.conflict ? 4 : 0 }}>
                           {s.conflict ? <WarningOutlined style={{ color: '#faad14' }} /> : <CheckCircleOutlined style={{ color: '#52c41a' }} />}
                           <strong>{s.name}</strong>
-                          {s.conflict && <Tag color="warning" style={{ marginLeft: 'auto' }}>이름 충돌</Tag>}
+                          {s.conflict && <Tag color="warning" style={{ marginLeft: 'auto' }}>{t('scenario.nameConflict')}</Tag>}
                         </div>
                         {s.conflict && (
                           <div style={{ marginLeft: 22 }}>
@@ -1499,14 +1501,14 @@ export default function ScenarioPage() {
                               onChange={(e) => setImportResolutions((prev) => ({ ...prev, [key]: { ...prev[key], action: e.target.value } }))}
                               size="small"
                             >
-                              <Radio value="skip">건너뛰기</Radio>
-                              <Radio value="overwrite">덮어쓰기</Radio>
-                              <Radio value="rename">이름 변경</Radio>
+                              <Radio value="skip">{t('scenario.skip')}</Radio>
+                              <Radio value="overwrite">{t('scenario.overwrite')}</Radio>
+                              <Radio value="rename">{t('scenario.rename')}</Radio>
                             </Radio.Group>
                             {res.action === 'rename' && (
                               <Input
                                 size="small"
-                                placeholder="새 이름"
+                                placeholder={t('scenario.newNamePlaceholder')}
                                 value={res.new_name || ''}
                                 onChange={(e) => setImportResolutions((prev) => ({ ...prev, [key]: { ...prev[key], new_name: e.target.value } }))}
                                 style={{ width: 200, marginTop: 4 }}
@@ -1523,7 +1525,7 @@ export default function ScenarioPage() {
 
             {importPreviewData.groups.length > 0 && (
               <>
-                <Divider style={{ margin: '8px 0' }}>그룹 ({importPreviewData.groups.length}개)</Divider>
+                <Divider style={{ margin: '8px 0' }}>{t('scenario.groupLabel')} ({importPreviewData.groups.length})</Divider>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {importPreviewData.groups.map((g) => {
                     const key = `g:${g.name}`;
@@ -1533,7 +1535,7 @@ export default function ScenarioPage() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: g.conflict ? 4 : 0 }}>
                           {g.conflict ? <WarningOutlined style={{ color: '#faad14' }} /> : <CheckCircleOutlined style={{ color: '#52c41a' }} />}
                           <FolderOutlined /> <strong>{g.name}</strong>
-                          {g.conflict && <Tag color="warning" style={{ marginLeft: 'auto' }}>이름 충돌</Tag>}
+                          {g.conflict && <Tag color="warning" style={{ marginLeft: 'auto' }}>{t('scenario.nameConflict')}</Tag>}
                         </div>
                         {g.conflict && (
                           <div style={{ marginLeft: 22 }}>
@@ -1542,15 +1544,15 @@ export default function ScenarioPage() {
                               onChange={(e) => setImportResolutions((prev) => ({ ...prev, [key]: { ...prev[key], action: e.target.value } }))}
                               size="small"
                             >
-                              <Radio value="skip">건너뛰기</Radio>
-                              <Radio value="overwrite">덮어쓰기</Radio>
-                              <Radio value="merge">합치기</Radio>
-                              <Radio value="rename">이름 변경</Radio>
+                              <Radio value="skip">{t('scenario.skip')}</Radio>
+                              <Radio value="overwrite">{t('scenario.overwrite')}</Radio>
+                              <Radio value="merge">{t('scenario.mergeTitle')}</Radio>
+                              <Radio value="rename">{t('scenario.rename')}</Radio>
                             </Radio.Group>
                             {res.action === 'rename' && (
                               <Input
                                 size="small"
-                                placeholder="새 이름"
+                                placeholder={t('scenario.newNamePlaceholder')}
                                 value={res.new_name || ''}
                                 onChange={(e) => setImportResolutions((prev) => ({ ...prev, [key]: { ...prev[key], new_name: e.target.value } }))}
                                 style={{ width: 200, marginTop: 4 }}

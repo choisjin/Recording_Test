@@ -3,6 +3,7 @@ import { Button, Card, Col, Input, InputNumber, List, Modal, Row, Select, Space,
 import { ReloadOutlined, MobileOutlined, PlusOutlined, DisconnectOutlined, UsbOutlined, WifiOutlined, SearchOutlined, EditOutlined, SyncOutlined } from '@ant-design/icons';
 import { useDevice, ManagedDevice } from '../context/DeviceContext';
 import { deviceApi } from '../services/api';
+import { useTranslation } from '../i18n';
 
 const { Option } = Select;
 
@@ -31,6 +32,7 @@ interface SerialPort {
 }
 
 export default function DevicePage() {
+  const { t } = useTranslation();
   const { primaryDevices, auxiliaryDevices, loading, fetchDevices, connectDevice, disconnectDevice } = useDevice();
 
   // ADB reconnect state
@@ -40,10 +42,10 @@ export default function DevicePage() {
     setReconnecting(true);
     try {
       await deviceApi.adbRestart();
-      message.success('ADB 서버 재시작 완료');
+      message.success(t('device.adbRestart'));
       await fetchDevices();
     } catch {
-      message.error('ADB 서버 재시작 실패');
+      message.error(t('device.adbRestartFailed'));
     }
     setReconnecting(false);
   };
@@ -93,7 +95,7 @@ export default function DevicePage() {
       const result = await disconnectDevice(deviceId);
       message.info(result);
     } catch {
-      message.error('해제 실패');
+      message.error(t('device.disconnectFailed'));
     }
   };
 
@@ -117,7 +119,7 @@ export default function DevicePage() {
       setScannedAdb(res.data.adb_devices || []);
       setScannedSerial(res.data.serial_ports || []);
     } catch {
-      message.error('스캔 실패');
+      message.error(t('device.scanFailed'));
     }
     setScanning(false);
   };
@@ -126,7 +128,7 @@ export default function DevicePage() {
     const moduleConnType = getModuleConnectType(selectedModule);
     const fields = getModuleConnectFields(selectedModule);
     if (moduleConnType !== 'none' && moduleConnType !== 'can' && !connectAddress.trim()) {
-      message.warning('주소를 입력하세요');
+      message.warning(t('device.addressPlaceholder'));
       return;
     }
     setConnecting(true);
@@ -149,7 +151,7 @@ export default function DevicePage() {
       setExtraFieldValues({});
       setModalOpen(false);
     } catch (e: any) {
-      message.error(e.response?.data?.detail || '연결 실패');
+      message.error(e.response?.data?.detail || t('device.connectFailed'));
     }
     setConnecting(false);
   };
@@ -162,7 +164,7 @@ export default function DevicePage() {
       message.success(result);
       setModalOpen(false);
     } catch (e: any) {
-      message.error(e.response?.data?.detail || '연결 실패');
+      message.error(e.response?.data?.detail || t('device.connectFailed'));
     }
     setConnecting(false);
   };
@@ -220,11 +222,11 @@ export default function DevicePage() {
         updates.extra_fields = editExtraFields;
       }
       await deviceApi.updateDevice(editDevice.id, updates);
-      message.success('디바이스 정보 수정됨');
+      message.success(t('device.editSuccess'));
       setEditModalOpen(false);
       await fetchDevices();
     } catch (e: any) {
-      message.error(e.response?.data?.detail || '수정 실패');
+      message.error(e.response?.data?.detail || t('device.editFailed'));
     }
     setEditSaving(false);
   };
@@ -245,8 +247,8 @@ export default function DevicePage() {
   const allDevices = [...primaryDevices, ...auxiliaryDevices];
 
   const getCategoryTag = (category: string) => {
-    if (category === 'primary') return <Tag color="blue">주</Tag>;
-    return <Tag color="orange">보조</Tag>;
+    if (category === 'primary') return <Tag color="blue">{t('device.primary')}</Tag>;
+    return <Tag color="orange">{t('device.auxiliary')}</Tag>;
   };
 
   const renderDeviceList = () => (
@@ -262,7 +264,7 @@ export default function DevicePage() {
                 onClick={handleAdbReconnect}
                 loading={reconnecting}
               >
-                재연결
+                {t('device.reconnect')}
               </Button>,
             ] : []),
             <Button
@@ -270,7 +272,7 @@ export default function DevicePage() {
               icon={<EditOutlined />}
               onClick={() => openEditModal(d)}
             >
-              수정
+              {t('common.edit')}
             </Button>,
             <Button
               danger
@@ -278,7 +280,7 @@ export default function DevicePage() {
               icon={<DisconnectOutlined />}
               onClick={() => handleDisconnect(d.id)}
             >
-              해제
+              {t('common.disconnect')}
             </Button>,
           ]}
         >
@@ -316,7 +318,7 @@ export default function DevicePage() {
           />
         </List.Item>
       )}
-      locale={{ emptyText: '등록된 장치가 없습니다' }}
+      locale={{ emptyText: t('device.noDevicesRegistered') }}
     />
   );
 
@@ -350,9 +352,9 @@ export default function DevicePage() {
   };
 
   const serialColumns = [
-    { title: '포트', dataIndex: 'port', key: 'port', render: (v: string) => <Tag color="blue">{v}</Tag> },
-    { title: '설명', dataIndex: 'description', key: 'description' },
-    { title: '제조사', dataIndex: 'manufacturer', key: 'manufacturer' },
+    { title: t('device.port'), dataIndex: 'port', key: 'port', render: (v: string) => <Tag color="blue">{v}</Tag> },
+    { title: t('common.description'), dataIndex: 'description', key: 'description' },
+    { title: t('device.manufacturer'), dataIndex: 'manufacturer', key: 'manufacturer' },
     { title: 'VID:PID', key: 'vidpid', render: (_: any, r: SerialPort) => r.vid ? `${r.vid}:${r.pid}` : '-' },
     {
       title: '',
@@ -360,7 +362,7 @@ export default function DevicePage() {
       width: 100,
       render: (_: any, r: SerialPort) => (
         <Button size="small" type="primary" loading={connecting} onClick={() => handleAddSerial(r.port, r.description)}>
-          추가
+          {t('common.add')}
         </Button>
       ),
     },
@@ -371,15 +373,15 @@ export default function DevicePage() {
   return (
     <div>
       <Space style={{ marginBottom: 8 }}>
-        <Button icon={<ReloadOutlined />} onClick={fetchDevices} loading={loading}>새로고침</Button>
+        <Button icon={<ReloadOutlined />} onClick={fetchDevices} loading={loading}>{t('common.refresh')}</Button>
       </Space>
 
       <Card
-        title={`디바이스 (${allDevices.length})`}
+        title={`${t('device.title')} (${allDevices.length})`}
         extra={
           <Space>
-            <Button icon={<PlusOutlined />} type="primary" size="small" onClick={() => openAddModal('primary')}>주 디바이스 추가</Button>
-            <Button icon={<PlusOutlined />} size="small" onClick={() => openAddModal('auxiliary')}>보조 디바이스 추가</Button>
+            <Button icon={<PlusOutlined />} type="primary" size="small" onClick={() => openAddModal('primary')}>{t('device.addPrimary')}</Button>
+            <Button icon={<PlusOutlined />} size="small" onClick={() => openAddModal('auxiliary')}>{t('device.addAuxiliary')}</Button>
           </Space>
         }
       >
@@ -388,7 +390,7 @@ export default function DevicePage() {
 
       {/* 장치 추가 모달 */}
       <Modal
-        title={`${modalCategory === 'primary' ? '주' : '보조'} 디바이스 추가`}
+        title={t('device.addModalTitle', { category: modalCategory === 'primary' ? t('device.primary') : t('device.auxiliary') })}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         width={700}
@@ -398,22 +400,22 @@ export default function DevicePage() {
           items={[
             {
               key: 'scan',
-              label: <span><SearchOutlined /> 스캔</span>,
+              label: <span><SearchOutlined /> {t('device.scan')}</span>,
               children: (
                 <div>
                   <Button icon={<ReloadOutlined />} onClick={handleScan} loading={scanning} style={{ marginBottom: 8 }}>
-                    다시 스캔
+                    {t('device.rescan')}
                   </Button>
 
                   {modalCategory === 'primary' && scannedAdb.length > 0 && (
                     <>
-                      <div style={{ fontWeight: 'bold', marginBottom: 8 }}>감지된 ADB 디바이스</div>
+                      <div style={{ fontWeight: 'bold', marginBottom: 8 }}>{t('device.detectedAdb')}</div>
                       <List
                         size="small"
                         dataSource={scannedAdb}
                         renderItem={(d) => (
                           <List.Item actions={[
-                            <Button size="small" type="primary" loading={connecting} onClick={() => handleAddAdb(d.serial)}>추가</Button>
+                            <Button size="small" type="primary" loading={connecting} onClick={() => handleAddAdb(d.serial)}>{t('common.add')}</Button>
                           ]}>
                             <Tag color="green">{d.serial}</Tag> {d.model} <Tag>{d.status}</Tag>
                           </List.Item>
@@ -424,15 +426,15 @@ export default function DevicePage() {
 
                   {scannedSerial.length > 0 && (
                     <>
-                      <div style={{ fontWeight: 'bold', marginBottom: 8, marginTop: 8 }}>감지된 시리얼 포트</div>
+                      <div style={{ fontWeight: 'bold', marginBottom: 8, marginTop: 8 }}>{t('device.detectedSerial')}</div>
                       {modalCategory === 'auxiliary' && (
                         <Space style={{ marginBottom: 8, width: '100%' }} direction="vertical">
                           {modules.length > 0 && (
                             <div>
-                              <span style={{ marginRight: 8, color: '#888', fontSize: 12 }}>lge.auto 모듈:</span>
+                              <span style={{ marginRight: 8, color: '#888', fontSize: 12 }}>{`${t('device.module')}:`}</span>
                               <Select
                                 allowClear
-                                placeholder="모듈 선택 (선택사항)"
+                                placeholder={t('device.moduleSelect')}
                                 value={scanSelectedModule}
                                 onChange={setScanSelectedModule}
                                 style={{ width: 280 }}
@@ -463,7 +465,7 @@ export default function DevicePage() {
 
                   {scannedSerial.length === 0 && scannedAdb.length === 0 && !scanning && (
                     <div style={{ color: '#666', textAlign: 'center', padding: 24 }}>
-                      감지된 장치가 없습니다.
+                      {t('device.noDevicesFound')}
                     </div>
                   )}
                 </div>
@@ -471,7 +473,7 @@ export default function DevicePage() {
             },
             {
               key: 'manual',
-              label: <span><WifiOutlined /> 수동 연결</span>,
+              label: <span><WifiOutlined /> {t('device.manualConnect')}</span>,
               children: (() => {
                 const moduleConnType = getModuleConnectType(selectedModule);
                 const connectFields = getModuleConnectFields(selectedModule);
@@ -480,7 +482,7 @@ export default function DevicePage() {
                     {modalCategory === 'auxiliary' && modules.length > 0 && (
                       <Select
                         allowClear
-                        placeholder="lge.auto 모듈 선택 (선택사항)"
+                        placeholder={t('device.moduleSelect')}
                         value={selectedModule}
                         onChange={(v) => {
                           setSelectedModule(v);
@@ -498,14 +500,14 @@ export default function DevicePage() {
                     {(!selectedModule || moduleConnType === undefined) && (
                       <Select value={connectType} onChange={setConnectType} style={{ width: '100%' }}>
                         <Option value="adb">ADB (WiFi / TCP)</Option>
-                        <Option value="serial">시리얼 포트 (COM / USB)</Option>
+                        <Option value="serial">{t('device.serialPort')}</Option>
                       </Select>
                     )}
 
                     {moduleConnType === 'serial' && (
                       <>
                         <Input
-                          placeholder="예: COM3"
+                          placeholder={t('device.comPlaceholder')}
                           value={connectAddress}
                           onChange={(e) => setConnectAddress(e.target.value)}
                           onPressEnter={handleConnect}
@@ -524,7 +526,7 @@ export default function DevicePage() {
 
                     {moduleConnType === 'socket' && (
                       <Input
-                        placeholder="예: 192.168.1.100 (IP 주소)"
+                        placeholder={t('device.ipPlaceholder')}
                         value={connectAddress}
                         onChange={(e) => setConnectAddress(e.target.value)}
                         onPressEnter={handleConnect}
@@ -539,14 +541,14 @@ export default function DevicePage() {
 
                     {moduleConnType === 'none' && (
                       <div style={{ color: '#888', fontSize: 12, padding: '8px 0' }}>
-                        이 모듈은 별도 연결 정보가 필요하지 않습니다.
+                        {t('device.noConnectionRequired')}
                       </div>
                     )}
 
                     {!selectedModule && (
                       <>
                         <Input
-                          placeholder={connectType === 'adb' ? '예: 192.168.1.100:5555' : '예: COM3'}
+                          placeholder={connectType === 'adb' ? t('device.adbPlaceholder') : t('device.comPlaceholder')}
                           value={connectAddress}
                           onChange={(e) => setConnectAddress(e.target.value)}
                           onPressEnter={handleConnect}
@@ -577,7 +579,7 @@ export default function DevicePage() {
                       loading={connecting}
                       block
                     >
-                      연결
+                      {t('common.connect')}
                     </Button>
                   </Space>
                 );
@@ -589,22 +591,22 @@ export default function DevicePage() {
 
       {/* 디바이스 수정 모달 */}
       <Modal
-        title="디바이스 정보 수정"
+        title={t('device.editTitle')}
         open={editModalOpen}
         onCancel={() => setEditModalOpen(false)}
         onOk={handleSaveEdit}
         confirmLoading={editSaving}
-        okText="저장"
-        cancelText="취소"
+        okText={t('common.save')}
+        cancelText={t('common.cancel')}
       >
         {editDevice && (
           <Space direction="vertical" style={{ width: '100%' }}>
             <div>
-              <span style={{ fontSize: 12, color: '#888' }}>이름:</span>
+              <span style={{ fontSize: 12, color: '#888' }}>{`${t('common.name')}:`}</span>
               <Input value={editName} onChange={(e) => setEditName(e.target.value)} />
             </div>
             <div>
-              <span style={{ fontSize: 12, color: '#888' }}>주소:</span>
+              <span style={{ fontSize: 12, color: '#888' }}>{`${t('common.address')}:`}</span>
               <Input value={editAddress} onChange={(e) => setEditAddress(e.target.value)} />
             </div>
             {(editDevice.type === 'serial' || editDevice.info?.baudrate) && (
@@ -620,10 +622,10 @@ export default function DevicePage() {
             )}
             {editDevice.category === 'auxiliary' && (
               <div>
-                <span style={{ fontSize: 12, color: '#888' }}>lge.auto 모듈:</span>
+                <span style={{ fontSize: 12, color: '#888' }}>{`${t('device.module')}:`}</span>
                 <Select
                   allowClear
-                  placeholder="모듈 선택"
+                  placeholder={t('device.moduleSelectPlaceholder')}
                   value={editModule}
                   onChange={setEditModule}
                   style={{ width: '100%' }}

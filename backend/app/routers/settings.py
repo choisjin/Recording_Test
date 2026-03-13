@@ -19,6 +19,7 @@ _DEFAULTS = {
     "webcam_save_dir": "",
     "excel_export_dir": "",
     "scenario_export_dir": "",
+    "language": "ko",
 }
 
 
@@ -46,6 +47,7 @@ class UpdateSettingsRequest(BaseModel):
     webcam_save_dir: Optional[str] = None
     excel_export_dir: Optional[str] = None
     scenario_export_dir: Optional[str] = None
+    language: Optional[str] = None
 
 
 @router.post("")
@@ -59,6 +61,8 @@ async def update_settings(req: UpdateSettingsRequest):
         current["excel_export_dir"] = req.excel_export_dir
     if req.scenario_export_dir is not None:
         current["scenario_export_dir"] = req.scenario_export_dir
+    if req.language is not None:
+        current["language"] = req.language
     _save(current)
     return current
 
@@ -185,7 +189,7 @@ async def save_export_zip(req: SaveExportZipRequest):
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"디렉토리 생성 실패: {e}")
 
-    from .scenario import recording_svc
+    from ..dependencies import recording_service as recording_svc
     scenario_names = req.scenarios
     group_names = req.groups
 

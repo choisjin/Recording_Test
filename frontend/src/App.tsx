@@ -8,6 +8,7 @@ import {
 } from '@ant-design/icons';
 import { DeviceProvider } from './context/DeviceContext';
 import { SettingsProvider, useSettings } from './context/SettingsContext';
+import { useTranslation } from './i18n';
 import DevicePage from './pages/DevicePage';
 import RecordPage from './pages/RecordPage';
 import ScenarioPage from './pages/ScenarioPage';
@@ -15,17 +16,19 @@ import SettingsPage from './pages/SettingsPage';
 
 const { Sider, Content } = Layout;
 
-const pages = [
-  { key: '/', icon: <DesktopOutlined />, label: '디바이스', component: <DevicePage /> },
-  { key: '/record', icon: <VideoCameraOutlined />, label: '녹화', component: <RecordPage /> },
-  { key: '/scenarios', icon: <PlayCircleOutlined />, label: '시나리오', component: <ScenarioPage /> },
-  { key: '/settings', icon: <SettingOutlined />, label: '설정', component: <SettingsPage /> },
+const pageKeys = [
+  { key: '/', icon: <DesktopOutlined />, labelKey: 'nav.device' as const, component: <DevicePage /> },
+  { key: '/record', icon: <VideoCameraOutlined />, labelKey: 'nav.record' as const, component: <RecordPage /> },
+  { key: '/scenarios', icon: <PlayCircleOutlined />, labelKey: 'nav.scenario' as const, component: <ScenarioPage /> },
+  { key: '/settings', icon: <SettingOutlined />, labelKey: 'nav.settings' as const, component: <SettingsPage /> },
 ];
 
 function AppContent() {
   const [activeKey, setActiveKey] = useState('/');
   const { settings } = useSettings();
+  const { t } = useTranslation();
 
+  const pages = pageKeys.map(p => ({ ...p, label: t(p.labelKey) }));
   const menuItems = pages.map(({ key, icon, label }) => ({ key, icon, label }));
 
   const isDark = settings.theme === 'dark';

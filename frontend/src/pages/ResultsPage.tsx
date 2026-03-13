@@ -3,6 +3,7 @@ import { Button, Card, Col, Descriptions, Image, Modal, Row, Space, Table, Tag, 
 import { DeleteOutlined, DownloadOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons';
 import { resultsApi } from '../services/api';
 import { useSettings } from '../context/SettingsContext';
+import { useTranslation } from '../i18n';
 
 interface ResultSummary {
   filename: string;
@@ -137,6 +138,7 @@ const AnnotatedOverlay = React.memo(({ subResults, expectedImage }: {
 
 export default function ResultsPage() {
   const { settings, saveExcelToDir } = useSettings();
+  const { t, lang } = useTranslation();
   const [results, setResults] = useState<ResultSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [detail, setDetail] = useState<ResultDetail | null>(null);
@@ -150,7 +152,7 @@ export default function ResultsPage() {
       const res = await resultsApi.list();
       setResults(res.data.results);
     } catch {
-      message.error('결과 목록 불러오기 실패');
+      message.error(t('results.listFailed'));
     }
     setLoading(false);
   };
@@ -162,28 +164,28 @@ export default function ResultsPage() {
       setDetailFilename(filename);
       setDetailVisible(true);
     } catch {
-      message.error('결과 상세 불러오기 실패');
+      message.error(t('results.detailFailed'));
     }
   };
 
   const deleteResult = (filename: string) => {
     Modal.confirm({
-      title: '결과 삭제',
-      content: `"${filename}" 결과를 삭제하시겠습니까?`,
-      okText: '삭제',
+      title: t('results.deleteTitle'),
+      content: t('results.deleteConfirm', { name: filename }),
+      okText: t('common.delete'),
       okType: 'danger',
-      cancelText: '취소',
+      cancelText: t('common.cancel'),
       onOk: async () => {
         try {
           await resultsApi.delete(filename);
-          message.success('삭제 완료');
+          message.success(t('common.deleteComplete'));
           fetchResults();
           if (detailFilename === filename) {
             setDetailVisible(false);
             setDetail(null);
           }
         } catch {
-          message.error('삭제 실패');
+          message.error(t('common.deleteFailed'));
         }
       },
     });
@@ -193,14 +195,14 @@ export default function ResultsPage() {
     // Always try server-side save first
     try {
       const path = await saveExcelToDir(filename);
-      message.success(`Excel 저장 완료: ${path}`);
+      message.success(t('results.excelSaveComplete', { path }));
       return;
     } catch (serverErr: any) {
       const status = serverErr.response?.status;
       const detail = serverErr.response?.data?.detail || '';
       if (status !== 400 || !detail.includes('경로가 설정되지')) {
         if (status) {
-          message.error(`Excel 저장 실패 (${status}): ${detail}`);
+          message.error(t('results.excelSaveFailed', { status, detail }));
           return;
         }
       }
@@ -218,7 +220,7 @@ export default function ResultsPage() {
       a.click();
       window.URL.revokeObjectURL(url);
     } catch (e: any) {
-      message.error(e.response?.data?.detail || 'Excel 내보내기 실패');
+      message.error(e.response?.data?.detail || t('results.excelExportFailed'));
     }
   };
 
@@ -242,7 +244,7 @@ export default function ResultsPage() {
   const formatTime = (iso: string) => {
     if (!iso) return '-';
     try {
-      return new Date(iso).toLocaleString('ko-KR');
+      return new Date(iso).toLocaleString(lang === 'ko' ? 'ko-KR' : 'en-US');
     } catch {
       return iso;
     }
@@ -250,13 +252,13 @@ export default function ResultsPage() {
 
   const columns = [
     {
-      title: '시나리오',
+      title: t('results.scenario'),
       dataIndex: 'scenario_name',
       key: 'name',
       sorter: (a: ResultSummary, b: ResultSummary) => a.scenario_name.localeCompare(b.scenario_name),
     },
     {
-      title: '상태',
+      title: t('common.status'),
       dataIndex: 'status',
       key: 'status',
       width: 90,
@@ -270,7 +272,7 @@ export default function ResultsPage() {
       render: (s: string) => <Tag color={statusColor(s)}>{s.toUpperCase()}</Tag>,
     },
     {
-      title: '결과',
+      title: t('common.result'),
       key: 'counts',
       width: 180,
       render: (_: any, r: ResultSummary) => (
@@ -284,7 +286,7 @@ export default function ResultsPage() {
       ),
     },
     {
-      title: '실행 시간',
+      title: t('results.execTime'),
       key: 'time',
       width: 160,
       render: (_: any, r: ResultSummary) => formatTime(r.started_at),
@@ -292,20 +294,20 @@ export default function ResultsPage() {
       defaultSortOrder: 'descend' as const,
     },
     {
-      title: '작업',
+      title: t('common.actions'),
       key: 'actions',
       width: 200,
       render: (_: any, record: ResultSummary) => (
         <Space size={4}>
-          <Tooltip title="상세보기">
+          <Tooltip title={t('results.viewDetail')}>
             <Button size="small" icon={<EyeOutlined />} onClick={() => viewDetail(record.filename)}>
-              상세
+              {t('common.details')}
             </Button>
           </Tooltip>
-          <Tooltip title="Excel 내보내기">
+          <Tooltip title={t('results.excelExport')}>
             <Button size="small" icon={<DownloadOutlined />} onClick={() => exportExcel(record.filename)} />
           </Tooltip>
-          <Tooltip title="삭제">
+          <Tooltip title={t('common.delete')}>
             <Button size="small" danger icon={<DeleteOutlined />} onClick={() => deleteResult(record.filename)} />
           </Tooltip>
         </Space>
@@ -315,27 +317,27 @@ export default function ResultsPage() {
 
   const stepColumns = [
     {
-      title: <div>Time Stamp<br /><span style={{ fontSize: 11, color: '#888' }}>실행 시각</span></div>,
+      title: <div>Time Stamp<br /><span style={{ fontSize: 11, color: '#888' }}>{t('results.timestamp')}</span></div>,
       dataIndex: 'timestamp',
       key: 'timestamp',
       width: 160,
       render: (v: string | null) => v ? formatTime(v) : '-',
     },
     {
-      title: <div>Repeat<br /><span style={{ fontSize: 11, color: '#888' }}>현재/총</span></div>,
+      title: <div>Repeat<br /><span style={{ fontSize: 11, color: '#888' }}>{t('results.repeat')}</span></div>,
       key: 'repeat',
       width: 80,
       render: (_: any, r: StepResultDetail) => detail ? `${r.repeat_index ?? 1}/${detail.total_repeat}` : '-',
     },
     {
-      title: <div>Step<br /><span style={{ fontSize: 11, color: '#888' }}>순서</span></div>,
+      title: <div>Step<br /><span style={{ fontSize: 11, color: '#888' }}>{t('results.step')}</span></div>,
       dataIndex: 'step_id',
       key: 'step_id',
       width: 60,
       align: 'center' as const,
     },
     {
-      title: <div>Device<br /><span style={{ fontSize: 11, color: '#888' }}>장치</span></div>,
+      title: <div>Device<br /><span style={{ fontSize: 11, color: '#888' }}>{t('results.deviceCol')}</span></div>,
       dataIndex: 'device_id',
       key: 'device_id',
       width: 120,
@@ -350,7 +352,7 @@ export default function ResultsPage() {
       render: (v: string, r: StepResultDetail) => v || r.message || '-',
     },
     {
-      title: <div>Status<br /><span style={{ fontSize: 11, color: '#888' }}>결과</span></div>,
+      title: <div>Status<br /><span style={{ fontSize: 11, color: '#888' }}>{t('results.resultCol')}</span></div>,
       dataIndex: 'status',
       key: 'status',
       width: 90,
@@ -358,7 +360,7 @@ export default function ResultsPage() {
       render: (s: string) => <Tag color={statusColor(s)}>{s.toUpperCase()}</Tag>,
     },
     {
-      title: <div>Delay<br /><span style={{ fontSize: 11, color: '#888' }}>설정 딜레이</span></div>,
+      title: <div>Delay<br /><span style={{ fontSize: 11, color: '#888' }}>{t('results.delaySet')}</span></div>,
       dataIndex: 'delay_ms',
       key: 'delay',
       width: 90,
@@ -366,7 +368,7 @@ export default function ResultsPage() {
       render: (v: number) => v ? formatDuration(v) : '-',
     },
     {
-      title: <div>Duration<br /><span style={{ fontSize: 11, color: '#888' }}>실제 시간</span></div>,
+      title: <div>Duration<br /><span style={{ fontSize: 11, color: '#888' }}>{t('results.duration')}</span></div>,
       dataIndex: 'execution_time_ms',
       key: 'duration',
       width: 100,
@@ -374,7 +376,7 @@ export default function ResultsPage() {
       render: (v: number) => formatDuration(v),
     },
     {
-      title: '비교',
+      title: t('scenario.compare'),
       key: 'compare',
       width: 70,
       align: 'center' as const,
@@ -382,7 +384,7 @@ export default function ResultsPage() {
         if (r.expected_image || r.actual_image) {
           return (
             <Button size="small" onClick={() => setCompareStep(r)}>
-              비교
+              {t('scenario.compare')}
             </Button>
           );
         }
@@ -394,10 +396,10 @@ export default function ResultsPage() {
   return (
     <div>
       <Card
-        title="테스트 실행 결과"
+        title={t('results.title')}
         extra={
           <Button icon={<ReloadOutlined />} onClick={fetchResults} loading={loading}>
-            새로고침
+            {t('common.refresh')}
           </Button>
         }
       >
@@ -414,7 +416,7 @@ export default function ResultsPage() {
       <Modal
         title={
           <Space>
-            <span>{detail?.scenario_name || '결과 상세'}</span>
+            <span>{detail?.scenario_name || t('scenario.resultDetail')}</span>
             {detail && <Tag color={statusColor(detail.status)}>{detail.status.toUpperCase()}</Tag>}
           </Space>
         }
@@ -427,14 +429,14 @@ export default function ResultsPage() {
               icon={<DownloadOutlined />}
               onClick={() => detailFilename && exportExcel(detailFilename)}
             >
-              Excel 내보내기
+              {t('results.excelExport')}
             </Button>
             <Button
               danger
               icon={<DeleteOutlined />}
               onClick={() => detailFilename && deleteResult(detailFilename)}
             >
-              삭제
+              {t('common.delete')}
             </Button>
           </Space>
         }
@@ -447,15 +449,15 @@ export default function ResultsPage() {
               column={4}
               style={{ marginBottom: 16 }}
             >
-              <Descriptions.Item label="시나리오">{detail.scenario_name}</Descriptions.Item>
-              <Descriptions.Item label="디바이스">{detail.device_serial || '-'}</Descriptions.Item>
-              <Descriptions.Item label="시작">{formatTime(detail.started_at)}</Descriptions.Item>
-              <Descriptions.Item label="종료">{formatTime(detail.finished_at)}</Descriptions.Item>
-              <Descriptions.Item label="총 실행시간">
+              <Descriptions.Item label={t('results.scenario')}>{detail.scenario_name}</Descriptions.Item>
+              <Descriptions.Item label={t('scenario.device')}>{detail.device_serial || '-'}</Descriptions.Item>
+              <Descriptions.Item label={t('scenario.startTime')}>{formatTime(detail.started_at)}</Descriptions.Item>
+              <Descriptions.Item label={t('scenario.endTime')}>{formatTime(detail.finished_at)}</Descriptions.Item>
+              <Descriptions.Item label={t('results.totalExecTime')}>
                 <strong>{formatDuration(totalTime(detail.step_results))}</strong>
               </Descriptions.Item>
-              <Descriptions.Item label="Repeat">{detail.total_repeat}회</Descriptions.Item>
-              <Descriptions.Item label="결과">
+              <Descriptions.Item label="Repeat">{detail.total_repeat}{t('results.times')}</Descriptions.Item>
+              <Descriptions.Item label={t('common.result')}>
                 <Space size={4}>
                   <Tag color="green">{detail.passed_steps} Pass</Tag>
                   <Tag color="red">{detail.failed_steps} Fail</Tag>
@@ -463,7 +465,7 @@ export default function ResultsPage() {
                   {detail.error_steps > 0 && <Tag color="volcano">{detail.error_steps} Error</Tag>}
                 </Space>
               </Descriptions.Item>
-              <Descriptions.Item label="상태">
+              <Descriptions.Item label={t('common.status')}>
                 <Tag color={statusColor(detail.status)} style={{ fontSize: 14 }}>
                   {detail.status.toUpperCase()}
                 </Tag>
@@ -488,7 +490,7 @@ export default function ResultsPage() {
 
       {/* Image comparison modal */}
       <Modal
-        title={`스텝 ${compareStep?.step_id} 비교`}
+        title={t('results.stepCompare', { id: String(compareStep?.step_id || '') })}
         open={!!compareStep}
         onCancel={() => setCompareStep(null)}
         width={1100}
@@ -500,20 +502,20 @@ export default function ResultsPage() {
               <Tag color={statusColor(compareStep.status)}>{compareStep.status.toUpperCase()}</Tag>
               {compareStep.compare_mode && compareStep.compare_mode !== 'full' && (
                 <Tag color="purple">
-                  {compareStep.compare_mode === 'single_crop' ? '단일크롭'
-                    : compareStep.compare_mode === 'full_exclude' ? '영역제외'
-                    : compareStep.compare_mode === 'multi_crop' ? '멀티크롭'
+                  {compareStep.compare_mode === 'single_crop' ? t('results.singleCrop')
+                    : compareStep.compare_mode === 'full_exclude' ? t('results.excludeArea')
+                    : compareStep.compare_mode === 'multi_crop' ? t('results.multiCrop')
                     : compareStep.compare_mode}
                 </Tag>
               )}
               {compareStep.similarity_score != null && (
                 <span>
-                  유사도: {(compareStep.similarity_score * 100).toFixed(2)}%
+                  {t('results.similarity')}: {(compareStep.similarity_score * 100).toFixed(2)}%
                 </span>
               )}
               {compareStep.match_location && (
                 <Tag color="blue">
-                  매칭 위치: ({compareStep.match_location.x},{compareStep.match_location.y})
+                  {t('results.matchLocation')}: ({compareStep.match_location.x},{compareStep.match_location.y})
                   {' '}{compareStep.match_location.width}x{compareStep.match_location.height}
                 </Tag>
               )}
@@ -522,9 +524,9 @@ export default function ResultsPage() {
             <Row gutter={16}>
               <Col span={12}>
                 <Card size="small" title={
-                  compareStep.compare_mode === 'full_exclude' ? '기대 이미지 (제외 영역 표시 → Actual)'
-                  : compareStep.compare_mode === 'multi_crop' ? '기대 이미지 (크롭 영역 → Actual)'
-                  : '기대 이미지 (Expected)'
+                  compareStep.compare_mode === 'full_exclude' ? t('results.expectedExclude')
+                  : compareStep.compare_mode === 'multi_crop' ? t('results.expectedCrop')
+                  : t('results.expectedImage')
                 }>
                   {compareStep.expected_image ? (
                     <div style={{ position: 'relative' }}>
@@ -539,12 +541,12 @@ export default function ResultsPage() {
                       )}
                     </div>
                   ) : (
-                    <div style={{ textAlign: 'center', padding: 40, color: '#666' }}>이미지 없음</div>
+                    <div style={{ textAlign: 'center', padding: 40, color: '#666' }}>{t('common.noImage')}</div>
                   )}
                 </Card>
               </Col>
               <Col span={12}>
-                <Card size="small" title="실제 이미지 (Actual)">
+                <Card size="small" title={t('results.actualImage')}>
                   {compareStep.actual_annotated_image ? (
                     <Image
                       src={`${imageUrl(compareStep.actual_annotated_image)!}?t=${Date.now()}`}
@@ -558,14 +560,14 @@ export default function ResultsPage() {
                       style={{ width: '100%' }}
                     />
                   ) : (
-                    <div style={{ textAlign: 'center', padding: 40, color: '#666' }}>이미지 없음</div>
+                    <div style={{ textAlign: 'center', padding: 40, color: '#666' }}>{t('common.noImage')}</div>
                   )}
                 </Card>
               </Col>
             </Row>
             {compareStep.diff_image && (
               <div style={{ marginTop: 12 }}>
-                <Card size="small" title="차이 히트맵 (Diff)">
+                <Card size="small" title={t('results.diffHeatmap')}>
                   <Image
                     src={`${imageUrl(compareStep.diff_image)!}?t=${Date.now()}`}
                     alt="Diff"
@@ -576,28 +578,28 @@ export default function ResultsPage() {
             )}
             {compareStep.compare_mode === 'full_exclude' && (
               <div style={{ marginTop: 12 }}>
-                <Card size="small" title="영역 제외 비교">
+                <Card size="small" title={t('results.excludeAreaCompare')}>
                   <Space wrap>
-                    <Tag color="red">제외 영역 적용</Tag>
+                    <Tag color="red">{t('results.excludeAreaApplied')}</Tag>
                     <span style={{ fontSize: 13, color: '#ccc' }}>{compareStep.message}</span>
                   </Space>
                   <div style={{ marginTop: 8, fontSize: 12, color: '#888' }}>
-                    실제 이미지에서 회색 반투명 영역이 제외된 부분입니다. Diff 히트맵에서도 해당 영역은 제외됩니다.
+                    {t('results.excludeAreaDesc')}
                   </div>
                 </Card>
               </div>
             )}
             {compareStep.compare_mode === 'multi_crop' && compareStep.sub_results?.length > 0 && (
               <div style={{ marginTop: 12 }}>
-                <Card size="small" title={`개별 크롭 비교 결과 (${compareStep.sub_results.length}개)`}>
+                <Card size="small" title={t('results.cropResults', { count: String(compareStep.sub_results.length) })}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                     <thead>
                       <tr style={{ borderBottom: '1px solid #303030' }}>
                         <th style={{ padding: '4px 8px', textAlign: 'left' }}>#</th>
-                        <th style={{ padding: '4px 8px', textAlign: 'left' }}>라벨</th>
-                        <th style={{ padding: '4px 8px', textAlign: 'center' }}>상태</th>
-                        <th style={{ padding: '4px 8px', textAlign: 'right' }}>유사도</th>
-                        <th style={{ padding: '4px 8px', textAlign: 'right' }}>매칭 위치</th>
+                        <th style={{ padding: '4px 8px', textAlign: 'left' }}>{t('results.label')}</th>
+                        <th style={{ padding: '4px 8px', textAlign: 'center' }}>{t('common.status')}</th>
+                        <th style={{ padding: '4px 8px', textAlign: 'right' }}>{t('results.similarity')}</th>
+                        <th style={{ padding: '4px 8px', textAlign: 'right' }}>{t('results.matchLocation')}</th>
                       </tr>
                     </thead>
                     <tbody>

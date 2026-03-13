@@ -3,11 +3,14 @@ import axios from 'axios';
 
 const api = axios.create({ baseURL: '/api' });
 
+export type Language = 'ko' | 'en';
+
 export interface AppSettings {
   theme: 'light' | 'dark';
   webcam_save_dir: string;
   excel_export_dir: string;
   scenario_export_dir: string;
+  language: Language;
 }
 
 interface SettingsContextType {
@@ -25,6 +28,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   webcam_save_dir: '',
   excel_export_dir: '',
   scenario_export_dir: '',
+  language: 'ko',
 };
 
 const SettingsContext = createContext<SettingsContextType | null>(null);

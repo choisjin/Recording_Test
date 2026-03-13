@@ -1,11 +1,16 @@
-"""lge.auto module introspection and execution service."""
+"""Module introspection and execution service.
+
+Supports both lge.auto modules and local plugins (backend/app/plugins/).
+"""
 
 from __future__ import annotations
 
 import asyncio
+import importlib
 import inspect
 import functools
 import logging
+from pathlib import Path
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -16,9 +21,47 @@ _instances: dict[str, Any] = {}
 # Cache: module_name -> list of function info
 _module_functions_cache: dict[str, list[dict]] = {}
 
+# Plugins directory
+_PLUGINS_DIR = Path(__file__).resolve().parent.parent / "plugins"
+
+
+def _list_plugin_modules() -> list[dict]:
+    """Discover local plugins in the plugins directory."""
+    plugins = []
+    if not _PLUGINS_DIR.is_dir():
+        return plugins
+    for py_file in _PLUGINS_DIR.glob("*.py"):
+        if py_file.name.startswith("_"):
+            continue
+        module_name = py_file.stem
+        try:
+            mod = importlib.import_module(f"app.plugins.{module_name}")
+            cls = getattr(mod, module_name, None)
+            if cls is None:
+                continue
+            # Determine connect_type from constructor signature
+            sig = inspect.signature(cls.__init__)
+            params = [p for p in sig.parameters if p != "self"]
+            if "port" in params or "bps" in params:
+                connect_type = "serial"
+            elif "host" in params:
+                connect_type = "socket"
+            else:
+                connect_type = "none"
+            plugins.append({
+                "name": module_name,
+                "label": module_name,
+                "connect_type": connect_type,
+                "connect_fields": [],
+                "_source": "plugin",
+            })
+        except Exception as e:
+            logger.warning("Cannot load plugin %s: %s", module_name, e)
+    return plugins
+
 
 def list_available_modules() -> list[dict]:
-    """List all available lge.auto modules."""
+    """List all available modules (lge.auto + local plugins)."""
     # connect_params: fields required when adding a device with this module
     #   "serial" = needs COM port + baudrate (default connection type)
     #   "socket" = needs IP host address
@@ -81,10 +124,35 @@ def list_available_modules() -> list[dict]:
     for m in modules:
         try:
             __import__(f"lge.auto.{m['name']}", fromlist=[m["name"]])
+            m["_source"] = "lge.auto"
             available.append(m)
         except Exception:
             pass
+
+    # Add local plugins
+    available.extend(_list_plugin_modules())
     return available
+
+
+def _import_module_class(module_name: str):
+    """Import and return the class for a given module name (lge.auto or plugin)."""
+    # Try local plugin first
+    try:
+        mod = importlib.import_module(f"app.plugins.{module_name}")
+        cls = getattr(mod, module_name, None)
+        if cls is not None:
+            return cls
+    except Exception:
+        pass
+    # Try lge.auto
+    try:
+        mod = __import__(f"lge.auto.{module_name}", fromlist=[module_name])
+        cls = getattr(mod, module_name, None)
+        if cls is not None:
+            return cls
+    except Exception as e:
+        logger.warning("Cannot import module %s: %s", module_name, e)
+    return None
 
 
 def get_module_functions(module_name: str) -> list[dict]:
@@ -92,13 +160,8 @@ def get_module_functions(module_name: str) -> list[dict]:
     if module_name in _module_functions_cache:
         return _module_functions_cache[module_name]
 
-    try:
-        mod = __import__(f"lge.auto.{module_name}", fromlist=[module_name])
-        cls = getattr(mod, module_name, None)
-        if cls is None:
-            return []
-    except Exception as e:
-        logger.warning("Cannot import lge.auto.%s: %s", module_name, e)
+    cls = _import_module_class(module_name)
+    if cls is None:
         return []
 
     functions = []
@@ -135,8 +198,9 @@ def get_module_functions(module_name: str) -> list[dict]:
 def _get_instance(module_name: str, constructor_kwargs: Optional[dict] = None) -> Any:
     """Get or create a singleton instance of the module class."""
     if module_name not in _instances:
-        mod = __import__(f"lge.auto.{module_name}", fromlist=[module_name])
-        cls = getattr(mod, module_name)
+        cls = _import_module_class(module_name)
+        if cls is None:
+            raise ValueError(f"Module '{module_name}' not found")
         # Try to pass constructor kwargs (e.g. port, bps) if the class needs them
         if constructor_kwargs:
             sig = inspect.signature(cls.__init__)
