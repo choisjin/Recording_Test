@@ -42,6 +42,9 @@ def _validate_serial(port: str, baudrate: int) -> str:
 def _send_serial_persistent(conn, data: str, read_timeout: float = 1.0) -> str:
     """Send data on an already-open serial connection and return the response."""
     import time
+    # Ensure newline terminator for Arduino readStringUntil('\n')
+    if not data.endswith("\n"):
+        data += "\n"
     conn.write(data.encode())
     conn.flush()
     time.sleep(read_timeout)
@@ -397,6 +400,9 @@ class DeviceManager:
             raise ValueError(f"Serial device {device_id} not found")
         loop = asyncio.get_event_loop()
         conn = await loop.run_in_executor(None, self._get_serial_conn, device_id)
-        return await loop.run_in_executor(
+        logger.info("Serial send [%s] port=%s open=%s data=%r", device_id, dev.address, conn.is_open, data)
+        result = await loop.run_in_executor(
             None, functools.partial(_send_serial_persistent, conn, data, read_timeout)
         )
+        logger.info("Serial recv [%s] response=%r", device_id, result)
+        return result
