@@ -53,7 +53,7 @@ async def start_recording(req: StartRecordingRequest):
 async def add_step(req: AddStepRequest):
     """Add a step to the current recording."""
     try:
-        step = await recording_svc.add_step(
+        step, response = await recording_svc.add_step(
             step_type=req.type,
             params=req.params,
             device_id=req.device_id,
@@ -63,7 +63,10 @@ async def add_step(req: AddStepRequest):
             similarity_threshold=req.similarity_threshold,
             skip_execute=req.skip_execute,
         )
-        return {"status": "ok", "step": step.model_dump()}
+        result = {"status": "ok", "step": step.model_dump()}
+        if response is not None:
+            result["response"] = response
+        return result
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

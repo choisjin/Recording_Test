@@ -109,11 +109,10 @@ class RecordingService:
         roi: Optional[dict] = None,
         similarity_threshold: float = 0.95,
         skip_execute: bool = False,
-    ) -> Step:
+    ) -> tuple[Step, str | None]:
         """Add a recorded step and optionally execute the action on the target device.
 
-        Expected images are NOT captured automatically — the user saves them
-        manually via the save-expected-image endpoint.
+        Returns (step, response) where response is non-None for serial_command.
         """
         if not self._recording or self._current_scenario is None:
             raise RuntimeError("Not recording")
@@ -121,8 +120,9 @@ class RecordingService:
         self._step_counter += 1
         step_id = self._step_counter
 
+        response = None
         if not skip_execute:
-            await self._execute_step_action(step_type, params, device_id)
+            response = await self._execute_step_action(step_type, params, device_id)
 
         # Ensure device_id is recorded in device_map (maps to real address)
         mapped_id = self._ensure_device_mapped(device_id) if device_id else None
@@ -141,7 +141,7 @@ class RecordingService:
         self._current_scenario.steps.append(step)
         self._last_action_time = time.time()
         logger.info("Step %d recorded: %s on device %s", step_id, step_type.value, device_id or "default")
-        return step
+        return step, response
 
     async def stop_recording(self) -> Scenario:
         """Stop recording and save the scenario."""
@@ -608,8 +608,8 @@ class RecordingService:
     # Internal
     # ------------------------------------------------------------------
 
-    async def _execute_step_action(self, step_type: StepType, params: dict, device_id: str = "") -> None:
-        """Execute an action on the target device."""
+    async def _execute_step_action(self, step_type: StepType, params: dict, device_id: str = "") -> str | None:
+        """Execute an action on the target device. Returns response for serial_command."""
         if step_type == StepType.MODULE_COMMAND:
             from .module_service import execute_module_function
             module_name = params.get("module", "")
@@ -622,14 +622,16 @@ class RecordingService:
                 if dev:
                     ctor_kwargs = _build_ctor_kwargs(dev)
             await execute_module_function(module_name, func_name, func_args, ctor_kwargs)
+            return None
         elif step_type == StepType.SERIAL_COMMAND:
             if not device_id:
                 raise ValueError("serial_command requires a device_id")
-            await self.dm.send_serial_command(
+            response = await self.dm.send_serial_command(
                 device_id,
                 params["data"],
                 params.get("read_timeout", 1.0),
             )
+            return response
         elif step_type == StepType.WAIT:
             await _async_sleep(params.get("duration_ms", 1000) / 1000.0)
         else:
@@ -654,6 +656,7 @@ class RecordingService:
                 await self.adb.key_event(params["keycode"], serial=serial)
             elif step_type == StepType.ADB_COMMAND:
                 await self.adb.run_shell_command(params["command"], serial=serial)
+        return None
 
 
 async def _async_sleep(seconds: float) -> None:

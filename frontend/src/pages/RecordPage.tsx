@@ -203,6 +203,8 @@ export default function RecordPage() {
   const [delayMs, setDelayMs] = useState(1000);
   const [stepDesc, setStepDesc] = useState('');
   const [serialData, setSerialData] = useState('');
+  const [serialResponse, setSerialResponse] = useState('');
+  const [serialSending, setSerialSending] = useState(false);
 
   // Module command
   const [moduleFunctions, setModuleFunctions] = useState<{ name: string; params: { name: string; required: boolean; default?: string }[] }[]>([]);
@@ -1003,6 +1005,19 @@ export default function RecordPage() {
     }
   };
 
+  // Send serial command directly (without recording)
+  const sendSerialCommand = async () => {
+    if (!stepDeviceId || !serialData.trim()) return;
+    setSerialSending(true);
+    try {
+      const res = await deviceApi.input(stepDeviceId, 'serial_command', { data: serialData });
+      setSerialResponse(res.data.response ?? '(no response)');
+    } catch (e: any) {
+      setSerialResponse(`Error: ${e.response?.data?.detail || e.message}`);
+    }
+    setSerialSending(false);
+  };
+
   const addManualStep = async () => {
     if (!recording) return;
     let params: Record<string, any> = {};
@@ -1034,8 +1049,11 @@ export default function RecordPage() {
           stepType === 'serial_command' ? `Serial: ${serialData.substring(0, 30)}` : ''
         ),
         delay_after_ms: delayMs,
-        skip_execute: true,
+        skip_execute: stepType !== 'serial_command',
       });
+      if (stepType === 'serial_command' && res.data.response) {
+        setSerialResponse(res.data.response);
+      }
       setSteps((prev) => [...prev, res.data.step]);
       setStepDesc('');
       setSerialData('');
@@ -1429,11 +1447,13 @@ export default function RecordPage() {
                   </Tooltip>
                 </span>
               )}
-              <span style={{ minWidth: 100, maxWidth: 220 }}>
+              <span style={{ minWidth: 100, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {s.type === 'wait'
                   ? `${s.params.duration_ms}ms 대기`
                   : s.type === 'module_command'
                   ? `${s.params.module}::${s.params.function}()`
+                  : s.type === 'serial_command'
+                  ? <><Tag color="purple" style={{ margin: 0 }}>Serial</Tag> {s.params.data}</>
                   : JSON.stringify(s.params)}
               </span>
               {s.type !== 'wait' && (
@@ -1846,12 +1866,34 @@ export default function RecordPage() {
                     })()}
                   </>
                 ) : stepType === 'serial_command' ? (
-                  <TextArea
-                    placeholder={t('record.serialPlaceholder')}
-                    value={serialData}
-                    onChange={(e) => setSerialData(e.target.value)}
-                    rows={3}
-                  />
+                  <>
+                    <TextArea
+                      placeholder={t('record.serialPlaceholder')}
+                      value={serialData}
+                      onChange={(e) => setSerialData(e.target.value)}
+                      onPressEnter={(e) => { if (e.ctrlKey) { e.preventDefault(); sendSerialCommand(); } }}
+                      rows={3}
+                    />
+                    <Button
+                      type="default"
+                      icon={<ThunderboltOutlined />}
+                      onClick={sendSerialCommand}
+                      loading={serialSending}
+                      disabled={!stepDeviceId || !serialData.trim()}
+                      block
+                    >
+                      {t('record.serialSend')}
+                    </Button>
+                    {serialResponse && (
+                      <div style={{
+                        background: '#1a1a1a', border: '1px solid #333', borderRadius: 4,
+                        padding: '4px 8px', fontSize: 12, fontFamily: 'monospace',
+                        maxHeight: 100, overflow: 'auto', whiteSpace: 'pre-wrap', color: '#52c41a',
+                      }}>
+                        {serialResponse}
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <Input
                     placeholder={
