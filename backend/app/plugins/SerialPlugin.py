@@ -2,9 +2,13 @@
 
 Provides basic serial port operations (send, read, send+read)
 without depending on lge.auto.
+
+NOTE: ``import serial`` is deferred to Connect() so that the plugin
+can be *discovered* (listed in the module dropdown) even on machines
+where pyserial is not installed.
 """
 
-import serial
+from __future__ import annotations
 
 
 class SerialPlugin:
@@ -13,7 +17,7 @@ class SerialPlugin:
     def __init__(self, port: str = "", bps: int = 115200):
         self.port = port
         self.bps = bps
-        self._serial: serial.Serial | None = None
+        self._serial = None  # serial.Serial instance (lazy import)
 
     # ------------------------------------------------------------------
     # Connection
@@ -23,6 +27,7 @@ class SerialPlugin:
         """Open the serial port."""
         if self._serial and self._serial.is_open:
             return "Already connected"
+        import serial
         self._serial = serial.Serial(self.port, self.bps, timeout=1)
         return f"Connected to {self.port} @ {self.bps}"
 
