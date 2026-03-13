@@ -10,6 +10,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from ..dependencies import adb_service as adb_svc
+from ..dependencies import device_manager as dm
 from ..dependencies import playback_service as playback_svc
 from ..dependencies import recording_service as recording_svc
 from ..models.scenario import ROI, CompareMode, CropItem, Scenario, StepType
@@ -213,9 +214,13 @@ async def capture_expected_image(req: CaptureExpectedImageRequest):
 
     step = scenario.steps[req.step_index]
 
+    # Resolve device alias (e.g. "Android_1") to real ADB serial
+    dev = dm.get_device(req.device_id)
+    adb_serial = dev.address if dev else req.device_id
+
     # Take screenshot via ADB
     try:
-        png_bytes = await adb_svc.screencap_bytes(serial=req.device_id)
+        png_bytes = await adb_svc.screencap_bytes(serial=adb_serial)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Screenshot failed: {e}")
 
