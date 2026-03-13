@@ -42,6 +42,9 @@ def _validate_serial(port: str, baudrate: int) -> str:
 def _send_serial_persistent(conn, data: str, read_timeout: float = 1.0) -> str:
     """Send data on an already-open serial connection and return the response."""
     import time
+    # Drain any leftover data before sending
+    if conn.in_waiting:
+        conn.read(conn.in_waiting)
     # Ensure newline terminator for Arduino readStringUntil('\n')
     if not data.endswith("\n"):
         data += "\n"
@@ -51,7 +54,8 @@ def _send_serial_persistent(conn, data: str, read_timeout: float = 1.0) -> str:
     response = b""
     while conn.in_waiting:
         response += conn.read(conn.in_waiting)
-    return response.decode(errors="replace")
+    # Strip null bytes from response
+    return response.replace(b"\x00", b"").decode(errors="replace").strip()
 
 
 class ManagedDevice:
@@ -359,12 +363,13 @@ class DeviceManager:
         baudrate = dev.info.get("baudrate", 115200)
         conn = pyserial.Serial(port, baudrate=baudrate, timeout=1)
         self._serial_conns[device_id] = conn
-        # Wait for Arduino reset to finish on first open
+        # Wait for Arduino bootloader + setup() to finish
         import time
-        time.sleep(2)
-        # Drain any startup messages
-        while conn.in_waiting:
-            conn.read(conn.in_waiting)
+        time.sleep(3)
+        # Drain all startup garbage (null bytes, boot messages, etc.)
+        conn.reset_input_buffer()
+        conn.reset_output_buffer()
+        logger.info("Serial port opened and drained: %s (%s @ %d)", device_id, port, baudrate)
         return conn
 
     def _close_serial_conn(self, device_id: str) -> None:

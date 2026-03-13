@@ -225,11 +225,16 @@ async def update_device(req: UpdateDeviceRequest):
     if not dev:
         raise HTTPException(status_code=404, detail=f"Device {req.device_id} not found")
 
+    need_serial_reconnect = False
     if req.name is not None:
         dev.name = req.name
     if req.address is not None:
+        if req.address != dev.address:
+            need_serial_reconnect = True
         dev.address = req.address
     if req.baudrate is not None:
+        if req.baudrate != dev.info.get("baudrate"):
+            need_serial_reconnect = True
         dev.info["baudrate"] = req.baudrate
     if req.module is not None:
         dev.info["module"] = req.module
@@ -250,6 +255,22 @@ async def update_device(req: UpdateDeviceRequest):
     # Persist changes if auxiliary device
     if dev.category == "auxiliary":
         dm._save_auxiliary_devices()
+
+    # Reopen serial connection if address or baudrate changed
+    if need_serial_reconnect and dev.type == "serial":
+        dm._close_serial_conn(req.device_id)
+        try:
+            import asyncio
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, dm._get_serial_conn, req.device_id)
+        except Exception as e:
+            dev.status = "disconnected"
+            return {
+                "result": f"updated (reconnect failed: {e})",
+                "device": dev.to_dict(),
+                "primary": [d.to_dict() for d in dm.list_primary()],
+                "auxiliary": [d.to_dict() for d in dm.list_auxiliary()],
+            }
 
     return {
         "result": "updated",

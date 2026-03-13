@@ -25,6 +25,17 @@ _module_functions_cache: dict[str, list[dict]] = {}
 _PLUGINS_DIR = Path(__file__).resolve().parent.parent / "plugins"
 
 
+def _load_plugin_from_file(py_file: Path):
+    """Load a plugin module directly from file path (no package dependency)."""
+    module_name = py_file.stem
+    spec = importlib.util.spec_from_file_location(f"plugins.{module_name}", str(py_file))
+    if spec is None or spec.loader is None:
+        return None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def _list_plugin_modules() -> list[dict]:
     """Discover local plugins in the plugins directory."""
     plugins = []
@@ -35,7 +46,9 @@ def _list_plugin_modules() -> list[dict]:
             continue
         module_name = py_file.stem
         try:
-            mod = importlib.import_module(f"app.plugins.{module_name}")
+            mod = _load_plugin_from_file(py_file)
+            if mod is None:
+                continue
             cls = getattr(mod, module_name, None)
             if cls is None:
                 continue
@@ -138,14 +151,18 @@ def list_available_modules() -> list[dict]:
 
 def _import_module_class(module_name: str):
     """Import and return the class for a given module name (lge.auto or plugin)."""
-    # Try local plugin first
-    try:
-        mod = importlib.import_module(f"app.plugins.{module_name}")
-        cls = getattr(mod, module_name, None)
-        if cls is not None:
-            return cls
-    except Exception:
-        pass
+    # Try local plugin first (file-based loading to avoid package path issues)
+    py_file = _PLUGINS_DIR / f"{module_name}.py"
+    if py_file.is_file():
+        try:
+            mod = _load_plugin_from_file(py_file)
+            if mod is not None:
+                cls = getattr(mod, module_name, None)
+                if cls is not None:
+                    return cls
+        except Exception as e:
+            logger.warning("Cannot load plugin %s from file: %s", module_name, e)
+
     # Try lge.auto
     try:
         mod = __import__(f"lge.auto.{module_name}", fromlist=[module_name])
