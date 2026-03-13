@@ -28,12 +28,13 @@ def _build_constructor_kwargs(dev) -> dict | None:
 
 
 class ConnectRequest(BaseModel):
-    type: str  # "adb" | "serial" | "module"
+    type: str  # "adb" | "serial" | "module" | "hkmc6th"
     category: str = ""  # "primary" | "auxiliary" — auto-detected if empty
-    address: str = ""  # COM port for serial, IP for socket, etc.
+    address: str = ""  # COM port for serial, IP for socket/HKMC, etc.
     baudrate: Optional[int] = 115200
+    port: Optional[int] = None  # TCP port for HKMC6th
     name: Optional[str] = ""
-    device_id: Optional[str] = ""  # custom device ID/alias (e.g. "Android_1", "Serial_1")
+    device_id: Optional[str] = ""  # custom device ID/alias (e.g. "Android_1", "HKMC_1")
     module: Optional[str] = None  # lge.auto module name (e.g. "POWER", "CAN")
     connect_type: Optional[str] = None  # "serial" | "socket" | "can" | "none"
     extra_fields: Optional[dict] = None  # Additional module-specific fields
@@ -94,6 +95,18 @@ async def connect_device(req: ConnectRequest):
             }
         except RuntimeError as e:
             raise HTTPException(status_code=400, detail=str(e))
+    elif req.type == "hkmc6th":
+        if not req.address or not req.port:
+            raise HTTPException(status_code=400, detail="HKMC6th requires address (IP) and port (TCP port)")
+        try:
+            dev = await dm.add_hkmc6th_device(req.address, req.port, device_id=custom_id, name=req.name or "")
+            return {
+                "result": f"HKMC connected: {dev.name} (ID: {dev.id})",
+                "primary": [d.to_dict() for d in dm.list_primary()],
+                "auxiliary": [d.to_dict() for d in dm.list_auxiliary()],
+            }
+        except RuntimeError as e:
+            raise HTTPException(status_code=400, detail=str(e))
     elif req.type == "module":
         category = req.category or "auxiliary"
         dev = await dm.add_module_device(
@@ -135,13 +148,19 @@ async def get_device_info(device_id: str):
             return await adb.get_device_info(dev.address)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
+    elif dev.type == "hkmc6th":
+        hkmc = dm.get_hkmc_service(device_id)
+        info = dev.to_dict()
+        if hkmc:
+            info["hkmc_info"] = hkmc.get_info()
+        return info
     else:
         return dev.to_dict()
 
 
 class InputRequest(BaseModel):
     device_id: str
-    action: str  # "tap" | "swipe" | "input_text" | "key_event" | "adb_command" | "serial_command" | "module_command"
+    action: str  # "tap" | "swipe" | "input_text" | "key_event" | "adb_command" | "serial_command" | "module_command" | "hkmc_touch" | "hkmc_swipe" | "hkmc_key"
     params: dict
 
 
@@ -170,8 +189,32 @@ async def device_input(req: InputRequest):
             )
             return {"result": "ok", "response": response}
 
+        if req.action in ("hkmc_touch", "hkmc_swipe", "hkmc_key"):
+            if not dev or dev.type != "hkmc6th":
+                raise HTTPException(status_code=400, detail=f"HKMC device {req.device_id} not found")
+            hkmc = dm.get_hkmc_service(req.device_id)
+            if not hkmc:
+                raise HTTPException(status_code=400, detail=f"HKMC device {req.device_id} not connected")
+            p = req.params
+            screen_type = p.get("screen_type", "front_center")
+            if req.action == "hkmc_touch":
+                await hkmc.async_tap(p["x"], p["y"], screen_type)
+            elif req.action == "hkmc_swipe":
+                await hkmc.async_swipe(p["x1"], p["y1"], p["x2"], p["y2"], screen_type)
+            elif req.action == "hkmc_key":
+                key_name = p.get("key_name")
+                if key_name:
+                    await hkmc.async_send_key_by_name(
+                        key_name, p.get("sub_cmd", 0x43), p.get("monitor", 0x00), p.get("direction")
+                    )
+                else:
+                    await hkmc.async_send_key(
+                        p["cmd"], p["sub_cmd"], p["key_data"], p.get("monitor", 0x00), p.get("direction")
+                    )
+            return {"result": "ok"}
+
         # ADB actions — allow even if device is not in managed list (race with refresh)
-        if dev and dev.type != "adb":
+        if dev and dev.type not in ("adb", None):
             raise HTTPException(status_code=400, detail=f"Action '{req.action}' requires an ADB device")
 
         # Resolve alias to real ADB serial address
@@ -295,18 +338,49 @@ async def module_functions(module_name: str):
     return {"module": module_name, "functions": functions}
 
 
+@router.get("/hkmc-keys")
+async def list_hkmc_keys():
+    """List all available HKMC hardware key names."""
+    from ..services.hkmc6th_service import HKMC_KEYS, SHORT_KEY, LONG_KEY, PRESS_KEY, RELEASE_KEY, DIAL_ACTION
+    keys = []
+    for name, info in HKMC_KEYS.items():
+        group = name.split("_")[0]  # MKBD, CCP, RRC, SWRC, MIRROR
+        keys.append({
+            "name": name,
+            "group": group,
+            "is_dial": info.get("dial", False),
+        })
+    return {
+        "keys": keys,
+        "sub_commands": {
+            "SHORT_KEY": SHORT_KEY,
+            "LONG_KEY": LONG_KEY,
+            "PRESS_KEY": PRESS_KEY,
+            "RELEASE_KEY": RELEASE_KEY,
+            "DIAL_ACTION": DIAL_ACTION,
+        },
+    }
+
+
 @router.get("/screenshot/{device_id}")
-async def get_screenshot(device_id: str, fmt: str = "jpeg"):
+async def get_screenshot(device_id: str, fmt: str = "jpeg", screen_type: str = "front_center"):
     """Capture and return a screenshot for a specific primary device."""
     dev = dm.get_device(device_id)
-    if dev and dev.type != "adb":
-        raise HTTPException(status_code=400, detail="Screenshot only available for ADB devices")
-    # Resolve alias to real ADB serial address
-    adb_serial = dev.address if dev else device_id
-    # Allow screenshot even if device is not yet in managed list (e.g. race with refresh)
     try:
-        img_bytes = await adb.screencap_bytes(serial=adb_serial, fmt=fmt)
-        b64 = base64.b64encode(img_bytes).decode("ascii")
-        return {"image": b64, "format": fmt}
+        if dev and dev.type == "hkmc6th":
+            hkmc = dm.get_hkmc_service(device_id)
+            if not hkmc:
+                raise HTTPException(status_code=400, detail=f"HKMC device {device_id} not connected")
+            img_bytes = await hkmc.async_screencap_bytes(screen_type=screen_type, fmt=fmt)
+            b64 = base64.b64encode(img_bytes).decode("ascii")
+            return {"image": b64, "format": fmt}
+        elif dev and dev.type not in ("adb",):
+            raise HTTPException(status_code=400, detail="Screenshot only available for ADB or HKMC devices")
+        else:
+            # ADB device
+            adb_serial = dev.address if dev else device_id
+            img_bytes = await adb.screencap_bytes(serial=adb_serial, fmt=fmt)
+            b64 = base64.b64encode(img_bytes).decode("ascii")
+            return {"image": b64, "format": fmt}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

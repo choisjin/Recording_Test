@@ -8,10 +8,11 @@ const api = axios.create({
 export const deviceApi = {
   list: () => api.get('/device/list'),
   getInfo: (deviceId: string) => api.get(`/device/info/${deviceId}`),
-  screenshot: (deviceId: string) => api.get(`/device/screenshot/${deviceId}`, { params: { fmt: 'jpeg' } }),
+  screenshot: (deviceId: string, screenType?: string) => api.get(`/device/screenshot/${deviceId}`, { params: { fmt: 'jpeg', screen_type: screenType || 'front_center' } }),
   scan: () => api.get('/device/scan'),
-  connect: (type: string, address: string, baudrate?: number, name?: string, category?: string, module?: string, connect_type?: string, extra_fields?: Record<string, any>, device_id?: string) =>
-    api.post('/device/connect', { type, address, baudrate, name, category, module, connect_type, extra_fields, device_id }),
+  connect: (type: string, address: string, baudrate?: number, name?: string, category?: string, module?: string, connect_type?: string, extra_fields?: Record<string, any>, device_id?: string, port?: number) =>
+    api.post('/device/connect', { type, address, baudrate, name, category, module, connect_type, extra_fields, device_id, port }),
+  listHkmcKeys: () => api.get('/device/hkmc-keys'),
   disconnect: (deviceId: string) => api.post('/device/disconnect', { address: deviceId }),
   updateDevice: (device_id: string, updates: Record<string, any>) =>
     api.post('/device/update', { device_id, ...updates }),
@@ -43,8 +44,8 @@ export const scenarioApi = {
   playbackStatus: () => api.get('/scenario/playback/status'),
   saveExpectedImage: (scenarioName: string, stepIndex: number, imageBase64: string, crop?: { x: number; y: number; width: number; height: number }, compareMode?: string, cropLabel?: string) =>
     api.post('/scenario/record/save-expected-image', { scenario_name: scenarioName, step_index: stepIndex, image_base64: imageBase64, crop, compare_mode: compareMode, crop_label: cropLabel }),
-  captureExpectedImage: (scenarioName: string, stepIndex: number, deviceId: string, crop?: { x: number; y: number; width: number; height: number }, compareMode?: string, cropLabel?: string) =>
-    api.post('/scenario/record/capture-expected-image', { scenario_name: scenarioName, step_index: stepIndex, device_id: deviceId, crop, compare_mode: compareMode, crop_label: cropLabel }),
+  captureExpectedImage: (scenarioName: string, stepIndex: number, deviceId: string, crop?: { x: number; y: number; width: number; height: number }, compareMode?: string, cropLabel?: string, screenType?: string) =>
+    api.post('/scenario/record/capture-expected-image', { scenario_name: scenarioName, step_index: stepIndex, device_id: deviceId, crop, compare_mode: compareMode, crop_label: cropLabel, screen_type: screenType || 'front_center' }),
   removeCrop: (scenarioName: string, stepIndex: number, cropIndex: number) =>
     api.post('/scenario/record/remove-crop', { scenario_name: scenarioName, step_index: stepIndex, crop_index: cropIndex }),
   cropFromExpected: (scenarioName: string, stepIndex: number, crop: { x: number; y: number; width: number; height: number }, cropLabel?: string, replaceIndex?: number) =>
