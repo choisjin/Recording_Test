@@ -39,21 +39,16 @@ def _validate_serial(port: str, baudrate: int) -> str:
     return f"OK: {port} @ {baudrate} baud"
 
 
-def _send_serial(port: str, baudrate: int, data: str, read_timeout: float = 1.0) -> str:
-    """Send data to a serial port and return the response."""
-    import serial
+def _send_serial_persistent(conn, data: str, read_timeout: float = 1.0) -> str:
+    """Send data on an already-open serial connection and return the response."""
     import time
-    s = serial.Serial(port, baudrate=baudrate, timeout=read_timeout)
-    try:
-        s.write(data.encode())
-        s.flush()
-        time.sleep(read_timeout)
-        response = b""
-        while s.in_waiting:
-            response += s.read(s.in_waiting)
-        return response.decode(errors="replace")
-    finally:
-        s.close()
+    conn.write(data.encode())
+    conn.flush()
+    time.sleep(read_timeout)
+    response = b""
+    while conn.in_waiting:
+        response += conn.read(conn.in_waiting)
+    return response.decode(errors="replace")
 
 
 class ManagedDevice:
@@ -95,6 +90,7 @@ class DeviceManager:
     def __init__(self, adb: ADBService):
         self.adb = adb
         self._devices: dict[str, ManagedDevice] = {}
+        self._serial_conns: dict[str, "serial.Serial"] = {}  # device_id -> open serial connection
         self._load_auxiliary_devices()
 
     def _load_auxiliary_devices(self) -> None:
@@ -242,13 +238,7 @@ class DeviceManager:
         return await loop.run_in_executor(None, _scan_serial_ports)
 
     async def add_serial_device(self, port: str, baudrate: int = 115200, name: str = "", category: str = "auxiliary", device_id: str = "") -> ManagedDevice:
-        """Add a serial device to the managed list."""
-        loop = asyncio.get_event_loop()
-        try:
-            await loop.run_in_executor(None, functools.partial(_validate_serial, port, baudrate))
-        except Exception as e:
-            raise RuntimeError(f"Cannot open {port}: {e}")
-
+        """Add a serial device and open a persistent connection."""
         final_id = device_id or self._generate_device_id("serial")
         dev = ManagedDevice(
             id=final_id,
@@ -261,6 +251,17 @@ class DeviceManager:
         )
         self._devices[final_id] = dev
         self._save_auxiliary_devices()
+
+        # Open persistent connection (validates port + keeps it open)
+        loop = asyncio.get_event_loop()
+        try:
+            await loop.run_in_executor(None, self._get_serial_conn, final_id)
+        except Exception as e:
+            # Remove device if connection fails
+            self._devices.pop(final_id, None)
+            self._save_auxiliary_devices()
+            raise RuntimeError(f"Cannot open {port}: {e}")
+
         return dev
 
     async def add_module_device(self, address: str, module: str, connect_type: str = "none",
@@ -314,6 +315,7 @@ class DeviceManager:
         else:
             result = f"Removed {dev.id}"
 
+        self._close_serial_conn(dev.id)
         self._devices.pop(dev.id, None)
         self._save_auxiliary_devices()
         return result
@@ -341,13 +343,60 @@ class DeviceManager:
                 return d
         return None
 
+    def _get_serial_conn(self, device_id: str):
+        """Get or create a persistent serial connection (no DTR reset on reuse)."""
+        import serial as pyserial
+        dev = self.get_device(device_id)
+        if not dev:
+            raise ValueError(f"Device {device_id} not found")
+        conn = self._serial_conns.get(device_id)
+        if conn and conn.is_open:
+            return conn
+        port = dev.address
+        baudrate = dev.info.get("baudrate", 115200)
+        conn = pyserial.Serial(port, baudrate=baudrate, timeout=1)
+        self._serial_conns[device_id] = conn
+        # Wait for Arduino reset to finish on first open
+        import time
+        time.sleep(2)
+        # Drain any startup messages
+        while conn.in_waiting:
+            conn.read(conn.in_waiting)
+        return conn
+
+    def _close_serial_conn(self, device_id: str) -> None:
+        """Close a persistent serial connection."""
+        conn = self._serial_conns.pop(device_id, None)
+        if conn and conn.is_open:
+            conn.close()
+
+    async def open_all_serial_connections(self) -> None:
+        """Open persistent serial connections for all registered serial devices."""
+        loop = asyncio.get_event_loop()
+        for dev in self._devices.values():
+            if dev.type != "serial":
+                continue
+            try:
+                await loop.run_in_executor(None, self._get_serial_conn, dev.id)
+                dev.status = "connected"
+                logger.info("Serial connection opened: %s (%s)", dev.id, dev.address)
+            except Exception as e:
+                dev.status = "disconnected"
+                logger.warning("Failed to open serial %s (%s): %s", dev.id, dev.address, e)
+
+    def close_all_serial_connections(self) -> None:
+        """Close all persistent serial connections (called on shutdown)."""
+        for device_id in list(self._serial_conns.keys()):
+            self._close_serial_conn(device_id)
+            logger.info("Serial connection closed: %s", device_id)
+
     async def send_serial_command(self, device_id: str, data: str, read_timeout: float = 1.0) -> str:
         """Send a command to a serial device and return the response."""
         dev = self.get_device(device_id)
         if not dev or dev.type != "serial":
             raise ValueError(f"Serial device {device_id} not found")
-        baudrate = dev.info.get("baudrate", 115200)
         loop = asyncio.get_event_loop()
+        conn = await loop.run_in_executor(None, self._get_serial_conn, device_id)
         return await loop.run_in_executor(
-            None, functools.partial(_send_serial, dev.address, baudrate, data, read_timeout)
+            None, functools.partial(_send_serial_persistent, conn, data, read_timeout)
         )

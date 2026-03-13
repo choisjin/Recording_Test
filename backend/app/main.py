@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -13,16 +14,30 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
 from .routers import device, results, scenario, settings
-from .dependencies import adb_service, playback_service, recording_service
+from .dependencies import adb_service, device_manager, playback_service, recording_service
 from .models.scenario import ScenarioResult
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup / shutdown lifecycle."""
+    # --- Startup ---
+    logger.info("Opening persistent serial connections...")
+    await device_manager.open_all_serial_connections()
+    yield
+    # --- Shutdown ---
+    logger.info("Closing all serial connections...")
+    device_manager.close_all_serial_connections()
+
+
 app = FastAPI(
     title="Android System Auto Test Recording",
     description="녹화(Record) → 재생(Playback) → 검증(Verify) 웹 기반 자동화 도구",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 # CORS — allow React dev server
