@@ -1530,7 +1530,7 @@ export default function RecordPage() {
                   step={100}
                   value={s.delay_after_ms}
                   onChange={(v) => setSteps(prev => prev.map((st, i) => i === index ? { ...st, delay_after_ms: v || 0 } : st))}
-                  addonAfter="ms"
+                  suffix="ms"
                   style={{ width: 110, marginLeft: 8 }}
                 />
               )}
@@ -1746,7 +1746,7 @@ export default function RecordPage() {
                     step={100}
                     value={pollInterval}
                     onChange={(v) => setPollInterval(v || 500)}
-                    addonAfter="ms"
+                    suffix="ms"
                     style={{ width: 100 }}
                   />
                 </Space>
@@ -1840,7 +1840,7 @@ export default function RecordPage() {
                     style={{ flex: 1 }}
                     onChange={loadScenario}
                     value={undefined}
-                    onDropdownVisibleChange={(open) => { if (open) fetchSavedScenarios(); }}
+                    onOpenChange={(open) => { if (open) fetchSavedScenarios(); }}
                   >
                     {savedScenarios.map(n => (
                       <Option key={n} value={n}>{n}</Option>
@@ -1927,7 +1927,7 @@ export default function RecordPage() {
                     step={100}
                     value={delayMs}
                     onChange={(v) => setDelayMs(v || 1000)}
-                    addonAfter="ms"
+                    suffix="ms"
                   />
                 </Space>
 
@@ -2060,7 +2060,7 @@ export default function RecordPage() {
                   step={100}
                   value={waitDurationMs}
                   onChange={(v) => { const val = v || 1000; setWaitDurationMs(val); waitDurationRef.current = val; }}
-                  addonAfter="ms"
+                  suffix="ms"
                   style={{ width: 120 }}
                 />
                 <Button size="small" icon={<PlusOutlined />} onClick={() => addWaitStep()}>
