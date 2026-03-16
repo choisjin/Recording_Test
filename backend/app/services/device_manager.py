@@ -335,7 +335,14 @@ class DeviceManager:
 
     def get_hkmc_service(self, device_id: str) -> Optional[HKMC6thService]:
         """Get HKMC6thService instance for a device. Returns None if not found."""
-        return self._hkmc_conns.get(device_id)
+        svc = self._hkmc_conns.get(device_id)
+        if svc:
+            return svc
+        # Fallback: device_map이 address로 해석된 경우, address로 디바이스를 찾아 ID로 재조회
+        dev = self.get_device(device_id)
+        if dev and dev.type == "hkmc6th":
+            return self._hkmc_conns.get(dev.id)
+        return None
 
     async def refresh_auxiliary(self) -> None:
         """Check connectivity of auxiliary/HKMC devices and update their status."""

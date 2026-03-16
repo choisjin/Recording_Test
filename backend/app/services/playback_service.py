@@ -556,8 +556,9 @@ class PlaybackService:
                 return None  # serial device, no screenshot
             if dev and dev.type == "hkmc6th":
                 screen_type = step.screen_type or step.params.get("screen_type", "front_center")
-                return {"type": "hkmc6th", "id": real_id, "screen_type": screen_type}
-            return {"type": "adb", "id": real_id}
+                return {"type": "hkmc6th", "id": dev.id, "screen_type": screen_type}
+            # ADB: dev.id 사용 (address fallback으로 찾은 경우 대응)
+            return {"type": "adb", "id": dev.id if dev else real_id}
         # For wait steps without device_id, find the first available primary device
         if step.type == StepType.WAIT:
             primary = self.dm.list_primary()
