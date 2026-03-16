@@ -427,17 +427,32 @@ class HKMC6thService:
     # Screenshot
     # ------------------------------------------------------------------
 
+    # 화면 크기를 응답하지 않는 에이전트용 기본값
+    _DEFAULT_SCREEN_SIZES = {
+        "front_center": (1920, 720),
+        "rear_left":    (1920, 720),
+        "rear_right":   (1920, 720),
+        "cluster":      (1920, 720),
+    }
+
     def get_screen_size(self, screen_type: str = "front_center") -> tuple[int, int]:
-        """Return (width, height) for the given screen type."""
+        """Return (width, height) for the given screen type. Falls back to defaults if 0."""
         if screen_type == "front_center":
-            return self.screen_width_front, self.screen_height_front
+            w, h = self.screen_width_front, self.screen_height_front
         elif screen_type == "rear_left":
-            return self.screen_width_rear_l, self.screen_height_rear_l
+            w, h = self.screen_width_rear_l, self.screen_height_rear_l
         elif screen_type == "rear_right":
-            return self.screen_width_rear_r, self.screen_height_rear_r
+            w, h = self.screen_width_rear_r, self.screen_height_rear_r
         elif screen_type == "cluster":
-            return self.screen_width_cluster, self.screen_height_cluster
-        return self.screen_width_front, self.screen_height_front
+            w, h = self.screen_width_cluster, self.screen_height_cluster
+        else:
+            w, h = self.screen_width_front, self.screen_height_front
+        # 0이면 기본값 사용
+        if w == 0 or h == 0:
+            dw, dh = self._DEFAULT_SCREEN_SIZES.get(screen_type, (1920, 720))
+            logger.info("Screen size 0 for %s, using default %dx%d", screen_type, dw, dh)
+            return dw, dh
+        return w, h
 
     def _request_img(self, left: int, top: int, right: int, bottom: int,
                      filename: str, screen_type_bits: Optional[int] = None) -> None:

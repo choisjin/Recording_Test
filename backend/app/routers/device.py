@@ -385,6 +385,9 @@ async def get_screenshot(device_id: str, fmt: str = "jpeg", screen_type: str = "
             hkmc = dm.get_hkmc_service(device_id)
             if not hkmc:
                 raise HTTPException(status_code=400, detail=f"HKMC device {device_id} not connected")
+            w, h = hkmc.get_screen_size(screen_type)
+            logger.debug("[HKMC SCREENSHOT] device=%s screen=%s size=%dx%d connected=%s",
+                         device_id, screen_type, w, h, hkmc.is_connected)
             img_bytes = await hkmc.async_screencap_bytes(screen_type=screen_type, fmt=fmt)
             b64 = base64.b64encode(img_bytes).decode("ascii")
             return {"image": b64, "format": fmt}
