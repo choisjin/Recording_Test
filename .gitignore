@@ -46,4 +46,8 @@ IVIHKMC6thAppMemInfo.py
 IVIHKMC6thPlugin.py
 IVIHKMC6thClient.py
 IVIHKMC6thProtocol.py
+<<<<<<< HEAD
+backend/settings.json
+=======
 .playwright-mcp/
+>>>>>>> c628722dd3900523a28305e57eba2b530828a25c
