@@ -665,8 +665,7 @@ class HKMC6thService:
             data.append(direction)
         data.append(monitor)
 
-        with self._send_lock:
-            self._make_send_packet(cmd, sub_cmd, resp, data)
+        self._make_send_packet(cmd, sub_cmd, resp, data)
 
     def send_key_by_name(self, key_name: str, sub_cmd: int = SHORT_KEY,
                          monitor: int = 0x00, direction: Optional[int] = None) -> None:

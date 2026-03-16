@@ -174,8 +174,6 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
   const refreshScreenshot = useCallback(async () => {
     const deviceId = screenshotDeviceIdRef.current;
     if (!deviceId) return;
-    // HKMC WebSocket 연결 중이면 별도 요청 불필요 (자동 갱신)
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) return;
     await pollFn();
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
@@ -197,14 +195,9 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    if (isHkmcDevice(screenshotDeviceId)) {
-      // HKMC: WebSocket 바이너리 스트리밍
-      startWsStream(screenshotDeviceId, screenType);
-    } else {
-      // ADB: HTTP 폴링
-      pollFn();
-      intervalRef.current = setInterval(pollFn, pollInterval);
-    }
+    // HKMC/ADB 모두 REST 폴링 (HKMC 에이전트는 동시 명령 처리 불가)
+    pollFn();
+    intervalRef.current = setInterval(pollFn, pollInterval);
 
     return () => {
       if (intervalRef.current) {
