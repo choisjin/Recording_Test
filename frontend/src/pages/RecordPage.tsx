@@ -1739,16 +1739,18 @@ export default function RecordPage() {
                       <Option value="cluster">{t('record.hkmcCluster')}</Option>
                     </Select>
                   )}
-                  <InputNumber
-                    size="small"
-                    min={100}
-                    max={5000}
-                    step={100}
-                    value={pollInterval}
-                    onChange={(v) => setPollInterval(v || 500)}
-                    suffix="ms"
-                    style={{ width: 100 }}
-                  />
+                  {!isScreenHkmc && (
+                    <InputNumber
+                      size="small"
+                      min={100}
+                      max={5000}
+                      step={100}
+                      value={pollInterval}
+                      onChange={(v) => setPollInterval(v || 500)}
+                      suffix="ms"
+                      style={{ width: 100 }}
+                    />
+                  )}
                 </Space>
               )
             }
