@@ -510,23 +510,32 @@ class TestStepRequest(BaseModel):
 async def test_step(req: TestStepRequest):
     """Execute a single step on the device and verify against expected image."""
     device_map: dict = {}
+
     if req.step_data:
         # Use the step data sent from frontend (may differ from saved file)
         from ..models.scenario import Step
         step = Step(**req.step_data)
         scenario_name = req.scenario_name
-        # Load device_map from scenario for alias resolution
-        try:
-            scenario = await recording_svc.load_scenario(req.scenario_name)
-            device_map = dict(scenario.device_map) if scenario.device_map else {}
-        except FileNotFoundError:
-            pass
+        # Load device_map from in-memory scenario or saved file
+        cur = recording_svc._current_scenario
+        if cur and cur.name == req.scenario_name and cur.device_map:
+            device_map = dict(cur.device_map)
+        else:
+            try:
+                scenario = await recording_svc.load_scenario(req.scenario_name)
+                device_map = dict(scenario.device_map) if scenario.device_map else {}
+            except FileNotFoundError:
+                pass
     else:
-        # Fallback: load from saved scenario file
-        try:
-            scenario = await recording_svc.load_scenario(req.scenario_name)
-        except FileNotFoundError:
-            raise HTTPException(status_code=404, detail=f"Scenario '{req.scenario_name}' not found")
+        # 녹화 중 메모리 시나리오 또는 저장된 파일에서 로드
+        cur = recording_svc._current_scenario
+        if cur and cur.name == req.scenario_name:
+            scenario = cur
+        else:
+            try:
+                scenario = await recording_svc.load_scenario(req.scenario_name)
+            except FileNotFoundError:
+                raise HTTPException(status_code=404, detail=f"Scenario '{req.scenario_name}' not found")
 
         if req.step_index < 0 or req.step_index >= len(scenario.steps):
             raise HTTPException(status_code=400, detail=f"Invalid step index: {req.step_index}")

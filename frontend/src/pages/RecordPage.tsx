@@ -549,7 +549,7 @@ export default function RecordPage() {
     }
     setTestingStepIndex(stepIdx);
     try {
-      const currentStep = steps[stepIdx];
+      const { _imageVer, ...currentStep } = steps[stepIdx];
       const res = await scenarioApi.testStep(scenarioName, stepIdx, currentStep);
       setTestResult(res.data);
       setTestResultModalOpen(true);
@@ -1201,8 +1201,11 @@ export default function RecordPage() {
         await scenarioApi.rename(originalScenarioName, newName);
         setOriginalScenarioName(newName);
       }
-      // Re-index step IDs
-      const reindexed = steps.map((s, i) => ({ ...s, id: i + 1 }));
+      // Re-index step IDs, _imageVer 등 프론트엔드 전용 필드 제거
+      const reindexed = steps.map((s, i) => {
+        const { _imageVer, ...rest } = s;
+        return { ...rest, id: i + 1 };
+      });
       await scenarioApi.update(newName, {
         name: newName,
         description,
