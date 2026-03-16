@@ -79,6 +79,7 @@ interface Step {
   compare_mode?: 'full' | 'single_crop' | 'full_exclude' | 'multi_crop';
   exclude_rois?: ROI[];
   expected_images?: CropItem[];
+  _imageVer?: number; // 미리보기 캐시 버스팅용 (프론트엔드 전용)
 }
 
 interface HkmcKeyInfo {
@@ -528,7 +529,7 @@ export default function RecordPage() {
     if (!scenarioName || !screenshotDeviceId) return;
     try {
       const res = await scenarioApi.captureExpectedImage(scenarioName, stepIdx, screenshotDeviceId, undefined, undefined, undefined, isScreenHkmc ? screenType : undefined);
-      setSteps(prev => prev.map((s, i) => i === stepIdx ? { ...s, expected_image: res.data.filename } : s));
+      setSteps(prev => prev.map((s, i) => i === stepIdx ? { ...s, expected_image: res.data.filename, _imageVer: Date.now() } : s));
       message.success(t('record.expectedSaved', { index: stepIdx + 1 }));
     } catch (e: any) {
       message.error(e.response?.data?.detail || t('record.expectedImageSaveFailed'));
@@ -632,7 +633,7 @@ export default function RecordPage() {
         const res = await scenarioApi.captureExpectedImage(
           scenarioName, captureStepIndex, screenshotDeviceId, crop, undefined, undefined, isScreenHkmc ? screenType : undefined,
         );
-        setSteps(prev => prev.map((s, i) => i === captureStepIndex ? { ...s, expected_image: res.data.filename } : s));
+        setSteps(prev => prev.map((s, i) => i === captureStepIndex ? { ...s, expected_image: res.data.filename, _imageVer: Date.now() } : s));
         message.success(t('record.cropExpectedSaved', { index: captureStepIndex + 1, size: `${rw}×${rh}` }));
         setCaptureModalOpen(false);
         setCaptureStepIndex(null);
@@ -767,7 +768,7 @@ export default function RecordPage() {
     if (!step?.expected_image && scenarioName && screenshotDeviceId) {
       try {
         const res = await scenarioApi.captureExpectedImage(scenarioName, index, screenshotDeviceId, undefined, undefined, undefined, isScreenHkmc ? screenType : undefined);
-        setSteps(prev => prev.map((s, i) => i === index ? { ...s, expected_image: res.data.filename } : s));
+        setSteps(prev => prev.map((s, i) => i === index ? { ...s, expected_image: res.data.filename, _imageVer: Date.now() } : s));
         message.success(t('record.expectedFullCapture'));
       } catch {
         message.error(t('record.expectedCaptureFailed'));
@@ -910,7 +911,7 @@ export default function RecordPage() {
     if (!step?.expected_image && scenarioName && screenshotDeviceId) {
       try {
         const res = await scenarioApi.captureExpectedImage(scenarioName, stepIdx, screenshotDeviceId, undefined, undefined, undefined, isScreenHkmc ? screenType : undefined);
-        setSteps(prev => prev.map((s, i) => i === stepIdx ? { ...s, expected_image: res.data.filename } : s));
+        setSteps(prev => prev.map((s, i) => i === stepIdx ? { ...s, expected_image: res.data.filename, _imageVer: Date.now() } : s));
         message.success(t('record.expectedFullCapture'));
       } catch (e: any) {
         message.error(t('record.expectedCaptureFailed'));
@@ -1499,7 +1500,7 @@ export default function RecordPage() {
                   {s.compare_mode === 'full_exclude' && (s.exclude_rois?.length || 0) > 0 ? (
                     <Tooltip title={t('record.expectedWithExclude')}>
                       <span><AnnotatedThumbnail
-                        src={`/screenshots/${scenarioName}/${s.expected_image}`}
+                        src={`/screenshots/${scenarioName}/${s.expected_image}?v=${s._imageVer || ''}`}
                         regions={s.exclude_rois || []}
                         color="red"
                         height={40}
@@ -1508,7 +1509,7 @@ export default function RecordPage() {
                   ) : s.compare_mode === 'multi_crop' && (s.expected_images?.length || 0) > 0 ? (
                     <Tooltip title={t('record.expectedWithCrop')}>
                       <span><AnnotatedThumbnail
-                        src={`/screenshots/${scenarioName}/${s.expected_image}`}
+                        src={`/screenshots/${scenarioName}/${s.expected_image}?v=${s._imageVer || ''}`}
                         regions={(s.expected_images || []).map(ci => ci.roi).filter((r): r is ROI => !!r)}
                         color="green"
                         height={40}
@@ -1517,7 +1518,7 @@ export default function RecordPage() {
                   ) : (
                     <Tooltip title={t('record.expectedImageClick')}>
                       <Image
-                        src={`/screenshots/${scenarioName}/${s.expected_image}`}
+                        src={`/screenshots/${scenarioName}/${s.expected_image}?v=${s._imageVer || ''}`}
                         alt="expected"
                         style={{ height: 40, width: 22, objectFit: 'cover', borderRadius: 2, cursor: 'pointer' }}
                         preview={{ mask: false }}
