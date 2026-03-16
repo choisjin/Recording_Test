@@ -151,6 +151,21 @@ def list_available_modules() -> list[dict]:
     return available
 
 
+def get_tcp_scan_ports() -> list[int]:
+    """모듈 정의에서 scan_ports를 수집 (import 가능 여부 무관)."""
+    # list_available_modules()는 import 가능한 모듈만 반환하므로,
+    # 여기서는 전체 정의 목록에서 직접 수집
+    modules = [
+        {"name": "BENCH", "scan_ports": [25000]},
+        {"name": "CCIC_LOGGER_LIBRARY", "scan_ports": [25000]},
+    ]
+    port_set: set[int] = set()
+    for m in modules:
+        if m.get("scan_ports"):
+            port_set.update(m["scan_ports"])
+    return list(port_set)
+
+
 def _import_module_class(module_name: str):
     """Import and return the class for a given module name (lge.auto or plugin)."""
     # Try local plugin first (file-based loading to avoid package path issues)

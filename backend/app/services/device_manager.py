@@ -187,6 +187,7 @@ async def _scan_tcp_generic(
                 pass
 
     unique = list({str(s): s for s in subnets}.values())
+    logger.info("TCP scan: discovered %d subnets: %s", len(unique), [str(s) for s in unique])
 
     candidate_ips: set[str] = set()
     for subnet in unique:
@@ -194,6 +195,8 @@ async def _scan_tcp_generic(
             ip_str = str(host)
             if ip_str not in local_ips:
                 candidate_ips.add(ip_str)
+
+    logger.info("TCP scan: %d candidate IPs across %d subnets, ports=%s", len(candidate_ips), len(unique), ports)
 
     if not candidate_ips:
         return []
@@ -217,6 +220,7 @@ async def _scan_tcp_generic(
             deduped.append(r)
             logger.info("TCP scan: found open port at %s:%d", r["ip"], r["port"])
 
+    logger.info("TCP scan: completed, found %d devices", len(deduped))
     return deduped
 
 
@@ -483,13 +487,12 @@ class DeviceManager:
     async def scan_tcp(self, ports: list[int] | None = None) -> list[dict]:
         """LAN에서 지정 TCP 포트가 열린 호스트를 탐색 (보조디바이스용)."""
         if ports is None:
-            # socket 타입 모듈의 scan_ports에서 수집
-            from .module_service import list_available_modules
-            port_set: set[int] = set()
-            for m in list_available_modules():
-                if m.get("connect_type") == "socket" and m.get("scan_ports"):
-                    port_set.update(m["scan_ports"])
-            ports = list(port_set)
+            from .module_service import get_tcp_scan_ports
+            ports = get_tcp_scan_ports()
+        if not ports:
+            logger.info("TCP scan: no scan_ports configured, skipping")
+            return []
+        logger.info("TCP scan: scanning ports %s", ports)
         return await _scan_tcp_generic(ports)
 
     async def add_serial_device(self, port: str, baudrate: int = 115200, name: str = "", category: str = "auxiliary", device_id: str = "") -> ManagedDevice:
