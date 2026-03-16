@@ -82,7 +82,7 @@ const translations = {
     'device.adbPlaceholder': '예: 192.168.1.100:5555',
     'device.hkmcIpPlaceholder': '예: 192.168.1.100',
     'device.hkmcPortPlaceholder': 'TCP 포트 (기본 5000)',
-    'device.detectedHkmc': '감지된 HKMC 디바이스 (UDP)',
+    'device.detectedHkmc': '감지된 HKMC 디바이스',
 
     // === Settings Page ===
     'settings.theme': 'UI 테마',
@@ -519,7 +519,7 @@ const translations = {
     'device.adbPlaceholder': 'e.g. 192.168.1.100:5555',
     'device.hkmcIpPlaceholder': 'e.g. 192.168.1.100',
     'device.hkmcPortPlaceholder': 'TCP port (default 5000)',
-    'device.detectedHkmc': 'Detected HKMC Devices (UDP)',
+    'device.detectedHkmc': 'Detected HKMC Devices',
 
     // === Settings Page ===
     'settings.theme': 'UI Theme',

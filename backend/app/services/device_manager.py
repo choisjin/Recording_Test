@@ -33,85 +33,106 @@ def _scan_serial_ports() -> list[dict]:
     return ports
 
 
-def _scan_hkmc_udp(port: int = 6655, timeout: float = 3.0) -> list[dict]:
-    """UDP 포트 6655에서 HKMC 디바이스 브로드캐스트를 수신한다.
+HKMC_SCAN_PORTS = [6655, 5000]
+HKMC_HANDSHAKE_VALUES = {
+    bytes.fromhex("6161000000035e002185fd6f6f"),
+    bytes.fromhex("6161000000035e0000df856f6f"),
+}
 
-    1) 포트 6655에 바인딩하여 디바이스가 보내는 브로드캐스트 수신
-    2) 동시에 브로드캐스트 패킷을 전송하여 응답 유도
-    3) timeout 동안 수신된 모든 고유 IP 수집
-    """
-    import socket
-    import select
-    import time
 
-    found: dict[str, dict] = {}  # ip -> info
-    local_ips = set()
-
-    # 로컬 IP 주소 수집 (자기 자신 필터링용)
-    try:
-        hostname = socket.gethostname()
-        for addr_info in socket.getaddrinfo(hostname, None, socket.AF_INET):
-            local_ips.add(addr_info[4][0])
-    except Exception:
-        pass
-    local_ips.add("127.0.0.1")
-
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.setblocking(False)
-
-    try:
-        # 6655 포트에 바인딩 — 디바이스가 이 포트로 보내는 브로드캐스트 수신
-        sock.bind(("", port))
-
-        # 브로드캐스트 전송 (디바이스가 응답형인 경우 대비)
-        broadcast_addrs = {"255.255.255.255"}
+async def _probe_hkmc_host(
+    ip: str, port: int, timeout: float, semaphore: asyncio.Semaphore
+) -> dict | None:
+    """단일 IP에 TCP 연결 시도 + HKMC 핸드셰이크 검증."""
+    async with semaphore:
         try:
-            import netifaces
-            for iface in netifaces.interfaces():
-                addrs = netifaces.ifaddresses(iface)
-                for info in addrs.get(netifaces.AF_INET, []):
-                    bcast = info.get("broadcast")
-                    if bcast:
-                        broadcast_addrs.add(bcast)
-        except ImportError:
-            pass
-
-        for addr in broadcast_addrs:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(ip, port), timeout=timeout
+            )
             try:
-                sock.sendto(b"", (addr, port))
-            except OSError:
+                data = await asyncio.wait_for(reader.read(13), timeout=2.0)
+                verified = data in HKMC_HANDSHAKE_VALUES
+            except Exception:
+                verified = False
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except Exception:
+                pass
+            if verified:
+                return {"ip": ip, "port": port}
+            return None
+        except (asyncio.TimeoutError, OSError, ConnectionRefusedError):
+            return None
+
+
+async def _scan_hkmc_tcp(
+    ports: list[int] | None = None,
+    connect_timeout: float = 0.3,
+    max_concurrent: int = 100,
+) -> list[dict]:
+    """LAN 서브넷의 모든 IP에 TCP 연결을 시도하여 HKMC 에이전트를 탐지한다."""
+    import ipaddress
+    import ifaddr
+
+    if ports is None:
+        ports = HKMC_SCAN_PORTS
+
+    # 로컬 IP 수집
+    local_ips: set[str] = {"127.0.0.1"}
+    subnets: list[ipaddress.IPv4Network] = []
+
+    for adapter in ifaddr.get_adapters():
+        for ip_info in adapter.ips:
+            if not isinstance(ip_info.ip, str):  # IPv6 튜플 제외
+                continue
+            ip_str = ip_info.ip
+            prefix = ip_info.network_prefix
+            if ip_str.startswith("127.") or ip_str.startswith("169.254."):
+                continue
+            local_ips.add(ip_str)
+            try:
+                net = ipaddress.IPv4Network(f"{ip_str}/{prefix}", strict=False)
+                # /20보다 큰 서브넷은 제외 (대규모 스캔 방지)
+                if net.prefixlen >= 20:
+                    subnets.append(net)
+            except ValueError:
                 pass
 
-        # 수신 대기
-        deadline = time.time() + timeout
-        while True:
-            remaining = deadline - time.time()
-            if remaining <= 0:
-                break
-            ready, _, _ = select.select([sock], [], [], min(remaining, 0.5))
-            if ready:
-                try:
-                    data, (ip, src_port) = sock.recvfrom(4096)
-                    # 자기 자신은 제외
-                    if ip in local_ips:
-                        continue
-                    if ip not in found:
-                        found[ip] = {
-                            "ip": ip,
-                            "port": 5000,  # 기본 TCP 포트
-                            "raw": data.hex() if data else "",
-                        }
-                        logger.info("HKMC UDP scan: found device at %s (data=%s)", ip, data.hex() if data else "empty")
-                except OSError:
-                    pass
-    except OSError as e:
-        logger.warning("HKMC UDP scan bind failed (port %d may be in use): %s", port, e)
-    finally:
-        sock.close()
+    # 서브넷 중복 제거
+    unique = list({str(s): s for s in subnets}.values())
 
-    return list(found.values())
+    # 후보 IP 생성
+    candidate_ips: set[str] = set()
+    for subnet in unique:
+        for host in subnet.hosts():
+            ip_str = str(host)
+            if ip_str not in local_ips:
+                candidate_ips.add(ip_str)
+
+    if not candidate_ips:
+        return []
+
+    # 모든 후보 IP × 모든 포트에 대해 병렬 프로브
+    semaphore = asyncio.Semaphore(max_concurrent)
+    tasks = [
+        _probe_hkmc_host(ip, port, connect_timeout, semaphore)
+        for ip in candidate_ips
+        for port in ports
+    ]
+    results = await asyncio.gather(*tasks)
+    found = [r for r in results if r is not None]
+
+    # 같은 IP가 여러 포트에서 발견될 경우 첫 번째만 유지
+    seen_ips: set[str] = set()
+    deduped: list[dict] = []
+    for r in found:
+        if r["ip"] not in seen_ips:
+            seen_ips.add(r["ip"])
+            deduped.append(r)
+            logger.info("HKMC TCP scan: found device at %s:%d", r["ip"], r["port"])
+
+    return deduped
 
 
 def _validate_serial(port: str, baudrate: int) -> str:
@@ -364,9 +385,8 @@ class DeviceManager:
         return await loop.run_in_executor(None, _scan_serial_ports)
 
     async def scan_hkmc(self) -> list[dict]:
-        """UDP 브로드캐스트로 HKMC 디바이스 스캔."""
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _scan_hkmc_udp)
+        """TCP 포트 스캔으로 LAN 상의 HKMC 디바이스 탐지."""
+        return await _scan_hkmc_tcp()
 
     async def add_serial_device(self, port: str, baudrate: int = 115200, name: str = "", category: str = "auxiliary", device_id: str = "") -> ManagedDevice:
         """Add a serial device and open a persistent connection."""
