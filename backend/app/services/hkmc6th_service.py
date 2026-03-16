@@ -528,7 +528,11 @@ class HKMC6thService:
             img_data.append((screen_bits >> 8) & 0xFF)
             img_data.append(screen_bits & 0xFF)
 
+        t0 = time.time()
         with self._send_lock:
+            lock_wait = time.time() - t0
+            if lock_wait > 0.05:
+                logger.info("[SCREENSHOT] lock 대기: %.3fs", lock_wait)
             self._make_send_packet(CMD_GETIMG, 0, 0, img_data)
 
         if not self._img_event.wait(timeout=timeout):
@@ -575,10 +579,22 @@ class HKMC6thService:
         st = SCREEN_TOUCH_MAP.get(screen_type, 0)
         press_event = [x, y, PRESS_KEY, st]
         release_event = [x, y, RELEASE_KEY, st]
-        with self._send_lock:
+        t0 = time.time()
+        acquired = self._send_lock.acquire(timeout=3)
+        lock_wait = time.time() - t0
+        if not acquired:
+            logger.error("[TAP] lock 획득 실패 (3초 타임아웃), 스킵")
+            return
+        try:
             self._lcd_touch_ext_6th([press_event])
+            logger.info("[TAP] PRESS (%d,%d) lock_wait=%.3fs", x, y, lock_wait)
             time.sleep(0.1)
             self._lcd_touch_ext_6th([release_event])
+            logger.info("[TAP] RELEASE (%d,%d)", x, y)
+        except Exception as e:
+            logger.error("[TAP] 에러: %s", e)
+        finally:
+            self._send_lock.release()
 
     def long_press(self, x: int, y: int, duration_ms: int = 3000,
                    screen_type: str = "front_center") -> None:
