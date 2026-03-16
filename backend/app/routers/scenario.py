@@ -201,7 +201,8 @@ async def save_expected_image(req: SaveExpectedImageRequest):
 class CaptureExpectedImageRequest(BaseModel):
     scenario_name: str
     step_index: int  # 0-based
-    device_id: str  # ADB serial to take screenshot from
+    device_id: str  # ADB serial or HKMC device ID to take screenshot from
+    screen_type: str = "front_center"  # HKMC screen type
     crop: Optional[dict] = None  # {x, y, width, height} in device pixels
     compare_mode: Optional[str] = None  # "multi_crop" to append
     crop_label: str = ""
@@ -217,13 +218,17 @@ async def capture_expected_image(req: CaptureExpectedImageRequest):
 
     step = scenario.steps[req.step_index]
 
-    # Resolve device alias (e.g. "Android_1") to real ADB serial
+    # Resolve device and take screenshot
     dev = dm.get_device(req.device_id)
-    adb_serial = dev.address if dev else req.device_id
-
-    # Take screenshot via ADB
     try:
-        png_bytes = await adb_svc.screencap_bytes(serial=adb_serial)
+        if dev and dev.type == "hkmc6th":
+            hkmc = dm.get_hkmc_service(req.device_id)
+            if not hkmc:
+                raise HTTPException(status_code=400, detail=f"HKMC device {req.device_id} not connected")
+            png_bytes = await hkmc.async_screencap_bytes(screen_type=req.screen_type, fmt="png")
+        else:
+            adb_serial = dev.address if dev else req.device_id
+            png_bytes = await adb_svc.screencap_bytes(serial=adb_serial)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Screenshot failed: {e}")
 

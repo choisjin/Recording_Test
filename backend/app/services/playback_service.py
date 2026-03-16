@@ -272,13 +272,24 @@ class PlaybackService:
             # Wait
             await asyncio.sleep(step.delay_after_ms / 1000.0)
 
-            # Capture actual screenshot (only for ADB devices)
-            adb_serial = self._resolve_adb_serial(step)
-            if adb_serial:
+            # Capture actual screenshot (ADB or HKMC)
+            ss_device = self._resolve_screenshot_device(step)
+            actual_path = None
+            if ss_device:
                 actual_dir = SCREENSHOTS_DIR / scenario_name / "actual"
                 actual_dir.mkdir(parents=True, exist_ok=True)
                 actual_path = str(actual_dir / f"{file_prefix}.png")
-                await self.adb.screencap(actual_path, serial=adb_serial)
+
+                if ss_device["type"] == "adb":
+                    await self.adb.screencap(actual_path, serial=ss_device["id"])
+                elif ss_device["type"] == "hkmc6th":
+                    hkmc_svc = self.dm.get_hkmc_service(ss_device["id"])
+                    if hkmc_svc:
+                        img_bytes = await hkmc_svc.async_screencap_bytes(
+                            screen_type=ss_device.get("screen_type", "front_center"), fmt="png"
+                        )
+                        Path(actual_path).write_bytes(img_bytes)
+
                 actual_rel = f"{scenario_name}/actual/{file_prefix}.png"
                 step_result.actual_image = actual_rel
 
@@ -473,7 +484,8 @@ class PlaybackService:
 
                         step_result.message = f"Similarity: {judgement['score']:.4f}"
                 else:
-                    step_result.message = f"Executed on {adb_serial} (기대 이미지 없음)"
+                    dev_label = ss_device["id"] if ss_device else step.device_id or "default"
+                    step_result.message = f"Executed on {dev_label} (기대 이미지 없음)"
             else:
                 step_result.message = f"Executed on {step.device_id or 'default'}"
 
@@ -507,6 +519,15 @@ class PlaybackService:
             return f"serial \"{p.get('data', '')}\""
         elif step.type == StepType.MODULE_COMMAND:
             return f"{p.get('module', '')}::{p.get('function', '')}()"
+        elif step.type == StepType.HKMC_TOUCH:
+            st = step.screen_type or p.get("screen_type", "")
+            return f"hkmc_touch ({p.get('x', 0)}, {p.get('y', 0)}) [{st}]"
+        elif step.type == StepType.HKMC_SWIPE:
+            st = step.screen_type or p.get("screen_type", "")
+            return f"hkmc_swipe ({p.get('x1',0)},{p.get('y1',0)})→({p.get('x2',0)},{p.get('y2',0)}) [{st}]"
+        elif step.type == StepType.HKMC_KEY:
+            key = p.get("key_name", f"0x{p.get('key_data', 0):02X}")
+            return f"hkmc_key {key}"
         return step.type.value
 
     def _resolve_real_device_id(self, step: Step) -> Optional[str]:
@@ -515,11 +536,17 @@ class PlaybackService:
             return None
         return self._resolve_alias(step.device_id, self._device_map)
 
-    def _resolve_adb_serial(self, step: Step) -> Optional[str]:
-        """Resolve the ADB serial for a step. Returns None for non-ADB steps."""
+    def _resolve_screenshot_device(self, step: Step) -> Optional[dict]:
+        """Resolve which device to take screenshots from.
+
+        Returns:
+            {"type": "adb", "id": serial} or
+            {"type": "hkmc6th", "id": device_id, "screen_type": ...} or
+            None (no screenshot possible)
+        """
         if step.type in (StepType.SERIAL_COMMAND, StepType.MODULE_COMMAND):
             return None
-        # Wait steps: only need ADB serial when expected_image is set
+        # Wait steps: only need screenshot when expected_image is set
         if step.type == StepType.WAIT and not step.expected_image:
             return None
         real_id = self._resolve_real_device_id(step)
@@ -527,12 +554,28 @@ class PlaybackService:
             dev = self.dm.get_device(real_id)
             if dev and dev.type == "serial":
                 return None  # serial device, no screenshot
-            return real_id
-        # For wait steps without device_id, find the first available ADB device
+            if dev and dev.type == "hkmc6th":
+                screen_type = step.screen_type or step.params.get("screen_type", "front_center")
+                return {"type": "hkmc6th", "id": real_id, "screen_type": screen_type}
+            return {"type": "adb", "id": real_id}
+        # For wait steps without device_id, find the first available primary device
         if step.type == StepType.WAIT:
             primary = self.dm.list_primary()
             if primary:
-                return primary[0].id
+                dev = primary[0]
+                if dev.type == "hkmc6th":
+                    return {"type": "hkmc6th", "id": dev.id, "screen_type": "front_center"}
+                return {"type": "adb", "id": dev.id}
+        return None
+
+    def _resolve_adb_serial(self, step: Step) -> Optional[str]:
+        """Resolve the ADB serial for a step. Returns None for non-ADB steps.
+
+        Backward-compatible wrapper around _resolve_screenshot_device.
+        """
+        info = self._resolve_screenshot_device(step)
+        if info and info["type"] == "adb":
+            return info["id"]
         return None
 
     async def _run_action(self, step: Step) -> None:
@@ -559,6 +602,29 @@ class PlaybackService:
                 params["data"],
                 params.get("read_timeout", 1.0),
             )
+        elif step.type in (StepType.HKMC_TOUCH, StepType.HKMC_SWIPE, StepType.HKMC_KEY):
+            if not real_id:
+                raise ValueError("HKMC step requires device_id")
+            hkmc = self.dm.get_hkmc_service(real_id)
+            if not hkmc:
+                raise ValueError(f"HKMC device {real_id} not connected")
+            screen_type = step.screen_type or params.get("screen_type", "front_center")
+            if step.type == StepType.HKMC_TOUCH:
+                await hkmc.async_tap(params["x"], params["y"], screen_type)
+            elif step.type == StepType.HKMC_SWIPE:
+                await hkmc.async_swipe(params["x1"], params["y1"], params["x2"], params["y2"], screen_type)
+            elif step.type == StepType.HKMC_KEY:
+                key_name = params.get("key_name")
+                if key_name:
+                    sub_cmd = params.get("sub_cmd", 0x43)
+                    monitor = params.get("monitor", 0x00)
+                    direction = params.get("direction")
+                    await hkmc.async_send_key_by_name(key_name, sub_cmd, monitor, direction)
+                else:
+                    await hkmc.async_send_key(
+                        params["cmd"], params["sub_cmd"], params["key_data"],
+                        params.get("monitor", 0x00), params.get("direction"),
+                    )
         elif step.type == StepType.WAIT:
             await asyncio.sleep(params.get("duration_ms", 1000) / 1000.0)
         else:

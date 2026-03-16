@@ -56,10 +56,11 @@ export default function DevicePage() {
   const [scanning, setScanning] = useState(false);
   const [scannedAdb, setScannedAdb] = useState<any[]>([]);
   const [scannedSerial, setScannedSerial] = useState<SerialPort[]>([]);
-  const [connectType, setConnectType] = useState<'adb' | 'serial' | 'module'>('adb');
+  const [connectType, setConnectType] = useState<'adb' | 'serial' | 'module' | 'hkmc6th'>('adb');
   const [connectAddress, setConnectAddress] = useState('');
   const [baudrate, setBaudrate] = useState(115200);
   const [connecting, setConnecting] = useState(false);
+  const [hkmcPort, setHkmcPort] = useState(5000);
 
   // Module
   const [modules, setModules] = useState<ModuleInfo[]>([]);
@@ -145,7 +146,8 @@ export default function DevicePage() {
           extra[f.name] = extraFieldValues[f.name] ?? f.default ?? '';
         }
       }
-      const result = await connectDevice(devType, connectAddress.trim(), baudrate, '', modalCategory, selectedModule, moduleConnType, extra);
+      const tcpPort = devType === 'hkmc6th' ? hkmcPort : undefined;
+      const result = await connectDevice(devType, connectAddress.trim(), baudrate, '', modalCategory, selectedModule, moduleConnType, extra, '', tcpPort);
       message.success(result);
       setConnectAddress('');
       setExtraFieldValues({});
@@ -237,6 +239,7 @@ export default function DevicePage() {
   };
 
   const getTypeTag = (dev: ManagedDevice) => {
+    if (dev.type === 'hkmc6th') return <Tag color="volcano">HKMC</Tag>;
     if (dev.type === 'module') return <Tag color="geekblue">Module</Tag>;
     if (dev.type === 'serial') return <Tag color="purple">Serial</Tag>;
     if (dev.type === 'adb' && dev.address?.includes(':')) return <Tag color="blue">WiFi</Tag>;
@@ -500,6 +503,7 @@ export default function DevicePage() {
                     {(!selectedModule || moduleConnType === undefined) && (
                       <Select value={connectType} onChange={setConnectType} style={{ width: '100%' }}>
                         <Option value="adb">ADB (WiFi / TCP)</Option>
+                        {modalCategory === 'primary' && <Option value="hkmc6th">HKMC 6th (TCP)</Option>}
                         <Option value="serial">{t('device.serialPort')}</Option>
                       </Select>
                     )}
@@ -545,7 +549,27 @@ export default function DevicePage() {
                       </div>
                     )}
 
-                    {!selectedModule && (
+                    {!selectedModule && connectType === 'hkmc6th' && (
+                      <>
+                        <Input
+                          placeholder={t('device.hkmcIpPlaceholder')}
+                          value={connectAddress}
+                          onChange={(e) => setConnectAddress(e.target.value)}
+                          onPressEnter={handleConnect}
+                        />
+                        <div>
+                          <span style={{ fontSize: 12, color: '#888', marginRight: 8 }}>TCP Port:</span>
+                          <InputNumber
+                            value={hkmcPort}
+                            onChange={(v) => setHkmcPort(v || 5000)}
+                            min={1} max={65535}
+                            style={{ width: 150 }}
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {!selectedModule && connectType !== 'hkmc6th' && (
                       <>
                         <Input
                           placeholder={connectType === 'adb' ? t('device.adbPlaceholder') : t('device.comPlaceholder')}

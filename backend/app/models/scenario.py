@@ -16,6 +16,9 @@ class StepType(str, Enum):
     ADB_COMMAND = "adb_command"
     SERIAL_COMMAND = "serial_command"
     MODULE_COMMAND = "module_command"
+    HKMC_TOUCH = "hkmc_touch"
+    HKMC_SWIPE = "hkmc_swipe"
+    HKMC_KEY = "hkmc_key"
 
 
 class TapParams(BaseModel):
@@ -78,6 +81,7 @@ class Step(BaseModel):
     id: int
     type: StepType
     device_id: Optional[str] = None  # target device for this step
+    screen_type: Optional[str] = None  # front_center|rear_left|rear_right|cluster (HKMC only)
     params: dict[str, Any]
     delay_after_ms: int = 1000
     expected_image: Optional[str] = None

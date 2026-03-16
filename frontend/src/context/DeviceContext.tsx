@@ -3,7 +3,7 @@ import { deviceApi } from '../services/api';
 
 export interface ManagedDevice {
   id: string;
-  type: string; // "adb" | "serial" | "module"
+  type: string; // "adb" | "serial" | "module" | "hkmc6th"
   category: string; // "primary" | "auxiliary"
   address: string;
   status: string;
@@ -16,7 +16,7 @@ interface DeviceContextType {
   auxiliaryDevices: ManagedDevice[];
   loading: boolean;
   fetchDevices: () => Promise<void>;
-  connectDevice: (type: string, address: string, baudrate?: number, name?: string, category?: string, module?: string, connect_type?: string, extra_fields?: Record<string, any>, device_id?: string) => Promise<string>;
+  connectDevice: (type: string, address: string, baudrate?: number, name?: string, category?: string, module?: string, connect_type?: string, extra_fields?: Record<string, any>, device_id?: string, port?: number) => Promise<string>;
   disconnectDevice: (deviceId: string) => Promise<string>;
   // Screenshot for a specific primary device
   screenshotDeviceId: string;
@@ -25,6 +25,9 @@ interface DeviceContextType {
   // Screenshot polling interval (ms)
   pollInterval: number;
   setPollInterval: (ms: number) => void;
+  // HKMC screen type for screenshot polling
+  screenType: string;
+  setScreenType: (st: string) => void;
   // Force immediate screenshot refresh (call after action)
   refreshScreenshot: () => void;
 }
@@ -38,13 +41,19 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
   const [screenshotDeviceId, setScreenshotDeviceId] = useState('');
   const [screenshot, setScreenshot] = useState('');
   const [pollInterval, setPollInterval] = useState(500);
+  const [screenType, setScreenType] = useState('front_center');
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const screenshotDeviceIdRef = useRef('');
+  const screenTypeRef = useRef('front_center');
 
-  // Keep ref in sync with state for use in refreshScreenshot
+  // Keep refs in sync with state for use in pollFn/refreshScreenshot
   useEffect(() => {
     screenshotDeviceIdRef.current = screenshotDeviceId;
   }, [screenshotDeviceId]);
+
+  useEffect(() => {
+    screenTypeRef.current = screenType;
+  }, [screenType]);
 
   const updateDeviceLists = (data: any) => {
     if (data.primary) setPrimaryDevices(data.primary);
@@ -60,8 +69,8 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
     setLoading(false);
   };
 
-  const connectDevice = async (type: string, address: string, baudrate?: number, name?: string, category?: string, module?: string, connect_type?: string, extra_fields?: Record<string, any>, device_id?: string): Promise<string> => {
-    const res = await deviceApi.connect(type, address, baudrate, name, category, module, connect_type, extra_fields, device_id);
+  const connectDevice = async (type: string, address: string, baudrate?: number, name?: string, category?: string, module?: string, connect_type?: string, extra_fields?: Record<string, any>, device_id?: string, port?: number): Promise<string> => {
+    const res = await deviceApi.connect(type, address, baudrate, name, category, module, connect_type, extra_fields, device_id, port);
     updateDeviceLists(res.data);
     return res.data.result;
   };
@@ -86,9 +95,10 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
     if (pollInFlightRef.current) return; // skip if previous request still pending
     pollInFlightRef.current = true;
     try {
-      const res = await deviceApi.screenshot(deviceId);
+      const res = await deviceApi.screenshot(deviceId, screenTypeRef.current);
       // Only update if the device hasn't changed while the request was in-flight
-      if (deviceId === screenshotDeviceIdRef.current) {
+      // and the server returned a non-empty image (empty = transient capture failure)
+      if (deviceId === screenshotDeviceIdRef.current && res.data.image) {
         const fmt = res.data.format || 'jpeg';
         const mime = fmt === 'jpeg' ? 'image/jpeg' : 'image/png';
         setScreenshot(`data:${mime};base64,${res.data.image}`);
@@ -126,7 +136,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
         intervalRef.current = null;
       }
 };
-  }, [screenshotDeviceId, pollInterval, pollFn]);
+  }, [screenshotDeviceId, pollInterval, screenType, pollFn]);
 
   return (
     <DeviceContext.Provider value={{
@@ -141,6 +151,8 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
       screenshot,
       pollInterval,
       setPollInterval,
+      screenType,
+      setScreenType,
       refreshScreenshot,
     }}>
       {children}

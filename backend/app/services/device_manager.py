@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 from .adb_service import ADBService
+from .hkmc6th_service import HKMC6thService
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +99,7 @@ class DeviceManager:
         self.adb = adb
         self._devices: dict[str, ManagedDevice] = {}
         self._serial_conns: dict[str, "serial.Serial"] = {}  # device_id -> open serial connection
+        self._hkmc_conns: dict[str, HKMC6thService] = {}  # device_id -> HKMC6thService
         self._load_auxiliary_devices()
 
     def _load_auxiliary_devices(self) -> None:
@@ -122,11 +124,13 @@ class DeviceManager:
             logger.warning("Failed to load auxiliary devices: %s", e)
 
     def _generate_device_id(self, dev_type: str, module_name: str = "") -> str:
-        """Auto-generate a device ID like Android_1, Serial_1, POWER_1, etc."""
+        """Auto-generate a device ID like Android_1, Serial_1, HKMC_1, POWER_1, etc."""
         if dev_type == "adb":
             prefix = "Android"
         elif dev_type == "serial":
             prefix = "Serial"
+        elif dev_type == "hkmc6th":
+            prefix = "HKMC"
         elif dev_type == "module" and module_name:
             prefix = module_name
         else:
@@ -141,8 +145,8 @@ class DeviceManager:
         return f"{prefix}_{max_num + 1}"
 
     def _save_auxiliary_devices(self) -> None:
-        """Persist all manually registered devices (auxiliary + ADB with custom IDs) to disk."""
-        aux = [d.to_dict() for d in self._devices.values() if d.category == "auxiliary" or d.type == "adb"]
+        """Persist all manually registered devices (auxiliary + ADB + HKMC) to disk."""
+        aux = [d.to_dict() for d in self._devices.values() if d.category == "auxiliary" or d.type in ("adb", "hkmc6th")]
         try:
             _AUX_DEVICES_FILE.write_text(json.dumps(aux, ensure_ascii=False, indent=2), encoding="utf-8")
         except Exception as e:
@@ -202,12 +206,46 @@ class DeviceManager:
         self._save_auxiliary_devices()  # persist all non-adb + adb with custom IDs
         return dev
 
+    async def add_hkmc6th_device(self, host: str, port: int, device_id: str = "", name: str = "") -> ManagedDevice:
+        """Connect to an HKMC 6th gen IVI device over TCP and register it."""
+        final_id = device_id or self._generate_device_id("hkmc6th")
+        display_name = name or f"HKMC ({host}:{port})"
+
+        svc = HKMC6thService(host, port, device_id=final_id)
+        ok = await svc.async_connect()
+        if not ok:
+            raise RuntimeError(f"Cannot connect to HKMC agent at {host}:{port}")
+
+        info = svc.get_info()
+        dev = ManagedDevice(
+            id=final_id,
+            type="hkmc6th",
+            category="primary",
+            address=host,
+            status="connected",
+            name=display_name,
+            info={"port": port, "agent_version": svc.agent_version, "screens": info["screens"]},
+        )
+        self._devices[final_id] = dev
+        self._hkmc_conns[final_id] = svc
+        self._save_auxiliary_devices()
+        return dev
+
+    def get_hkmc_service(self, device_id: str) -> Optional[HKMC6thService]:
+        """Get HKMC6thService instance for a device. Returns None if not found."""
+        return self._hkmc_conns.get(device_id)
+
     async def refresh_auxiliary(self) -> None:
-        """Check connectivity of auxiliary devices and update their status."""
+        """Check connectivity of auxiliary/HKMC devices and update their status."""
         loop = asyncio.get_event_loop()
         available_ports = {p["port"] for p in await loop.run_in_executor(None, _scan_serial_ports)}
 
         for dev in self._devices.values():
+            # Check HKMC primary devices
+            if dev.type == "hkmc6th":
+                hkmc = self._hkmc_conns.get(dev.id)
+                dev.status = "connected" if (hkmc and hkmc.is_connected) else "disconnected"
+                continue
             if dev.category != "auxiliary":
                 continue
             ct = dev.info.get("connect_type", "serial" if dev.type == "serial" else "none")
@@ -323,6 +361,10 @@ class DeviceManager:
             result = f"Removed {dev.id}"
 
         self._close_serial_conn(dev.id)
+        # Close HKMC connection if applicable
+        hkmc = self._hkmc_conns.pop(dev.id, None)
+        if hkmc:
+            hkmc.disconnect()
         self._devices.pop(dev.id, None)
         self._save_auxiliary_devices()
         return result
@@ -379,24 +421,45 @@ class DeviceManager:
             conn.close()
 
     async def open_all_serial_connections(self) -> None:
-        """Open persistent serial connections for all registered serial devices."""
+        """Open persistent serial/HKMC connections for all registered devices."""
         loop = asyncio.get_event_loop()
         for dev in self._devices.values():
-            if dev.type != "serial":
-                continue
-            try:
-                await loop.run_in_executor(None, self._get_serial_conn, dev.id)
-                dev.status = "connected"
-                logger.info("Serial connection opened: %s (%s)", dev.id, dev.address)
-            except Exception as e:
-                dev.status = "disconnected"
-                logger.warning("Failed to open serial %s (%s): %s", dev.id, dev.address, e)
+            if dev.type == "serial":
+                try:
+                    await loop.run_in_executor(None, self._get_serial_conn, dev.id)
+                    dev.status = "connected"
+                    logger.info("Serial connection opened: %s (%s)", dev.id, dev.address)
+                except Exception as e:
+                    dev.status = "disconnected"
+                    logger.warning("Failed to open serial %s (%s): %s", dev.id, dev.address, e)
+            elif dev.type == "hkmc6th":
+                port = dev.info.get("port", 0)
+                if not port:
+                    continue
+                try:
+                    svc = HKMC6thService(dev.address, port, device_id=dev.id)
+                    ok = await svc.async_connect()
+                    if ok:
+                        self._hkmc_conns[dev.id] = svc
+                        dev.status = "connected"
+                        dev.info["agent_version"] = svc.agent_version
+                        dev.info["screens"] = svc.get_info()["screens"]
+                        logger.info("HKMC connection opened: %s (%s:%d)", dev.id, dev.address, port)
+                    else:
+                        dev.status = "disconnected"
+                except Exception as e:
+                    dev.status = "disconnected"
+                    logger.warning("Failed to open HKMC %s (%s:%d): %s", dev.id, dev.address, port, e)
 
     def close_all_serial_connections(self) -> None:
-        """Close all persistent serial connections (called on shutdown)."""
+        """Close all persistent serial/HKMC connections (called on shutdown)."""
         for device_id in list(self._serial_conns.keys()):
             self._close_serial_conn(device_id)
             logger.info("Serial connection closed: %s", device_id)
+        for device_id, hkmc in list(self._hkmc_conns.items()):
+            hkmc.disconnect()
+            logger.info("HKMC connection closed: %s", device_id)
+        self._hkmc_conns.clear()
 
     async def send_serial_command(self, device_id: str, data: str, read_timeout: float = 1.0) -> str:
         """Send a command to a serial device and return the response."""

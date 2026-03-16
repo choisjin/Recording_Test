@@ -68,6 +68,7 @@ interface Step {
   id: number;
   type: string;
   device_id: string | null;
+  screen_type?: string | null;
   params: Record<string, any>;
   delay_after_ms: number;
   description: string;
@@ -78,6 +79,12 @@ interface Step {
   compare_mode?: 'full' | 'single_crop' | 'full_exclude' | 'multi_crop';
   exclude_rois?: ROI[];
   expected_images?: CropItem[];
+}
+
+interface HkmcKeyInfo {
+  name: string;
+  group: string;
+  is_dial: boolean;
 }
 
 // Annotated thumbnail: draws expected image with colored region rectangles
@@ -150,7 +157,7 @@ export default function RecordPage() {
   const {
     primaryDevices, auxiliaryDevices, fetchDevices,
     screenshotDeviceId, setScreenshotDeviceId, screenshot,
-    pollInterval, setPollInterval, refreshScreenshot,
+    pollInterval, setPollInterval, screenType, setScreenType, refreshScreenshot,
   } = useDevice();
 
   const [recording, setRecording] = useState(false);
@@ -210,6 +217,10 @@ export default function RecordPage() {
   const [moduleFunctions, setModuleFunctions] = useState<{ name: string; params: { name: string; required: boolean; default?: string }[] }[]>([]);
   const [selectedModuleFunc, setSelectedModuleFunc] = useState('');
   const [moduleFuncArgs, setModuleFuncArgs] = useState<Record<string, string>>({});
+
+  // HKMC hardware keys
+  const [hkmcKeys, setHkmcKeys] = useState<HkmcKeyInfo[]>([]);
+  const [hkmcSubCommands, setHkmcSubCommands] = useState<Record<string, number>>({});
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const allDevices = [...primaryDevices, ...auxiliaryDevices];
@@ -293,9 +304,11 @@ export default function RecordPage() {
   const stepDevice = allDevices.find(d => d.id === stepDeviceId);
   const isStepPrimary = stepDevice?.category === 'primary';
   const isStepAuxiliary = stepDevice?.category === 'auxiliary';
+  const isStepHkmc = stepDevice?.type === 'hkmc6th';
 
   // Get current screen device info
   const screenDevice = primaryDevices.find(d => d.id === screenshotDeviceId);
+  const isScreenHkmc = screenDevice?.type === 'hkmc6th';
   const deviceRes = screenDevice?.info?.resolution ?? { width: 1080, height: 1920 };
 
   // Note: step device selection no longer auto-switches the screenshot.
@@ -317,11 +330,25 @@ export default function RecordPage() {
         setStepType('serial_command');
         setModuleFunctions([]);
       }
-    } else if (isStepPrimary && (stepType === 'serial_command' || stepType === 'module_command')) {
+    } else if (isStepHkmc) {
+      setStepType('hkmc_touch');
+      setModuleFunctions([]);
+    } else if (isStepPrimary && (stepType === 'serial_command' || stepType === 'module_command' || stepType.startsWith('hkmc_'))) {
       setStepType('tap');
       setModuleFunctions([]);
     }
   }, [stepDeviceId]);
+
+  // Fetch HKMC hardware keys once (when any HKMC device exists)
+  useEffect(() => {
+    const hasHkmc = primaryDevices.some(d => d.type === 'hkmc6th');
+    if (hasHkmc && hkmcKeys.length === 0) {
+      deviceApi.listHkmcKeys().then(res => {
+        setHkmcKeys(res.data.keys || []);
+        setHkmcSubCommands(res.data.sub_commands || {});
+      }).catch(() => {});
+    }
+  }, [primaryDevices]);
 
   // Stop screenshot polling & webcam when leaving page
   useEffect(() => {
@@ -343,22 +370,44 @@ export default function RecordPage() {
     };
   };
 
+  // Map generic gesture actions to HKMC equivalents when target is HKMC device
+  const resolveAction = useCallback((action: string, targetDevice: string): string => {
+    const dev = allDevices.find(d => d.id === targetDevice);
+    if (dev?.type !== 'hkmc6th') return action;
+    if (action === 'tap') return 'hkmc_touch';
+    if (action === 'swipe') return 'hkmc_swipe';
+    if (action === 'long_press') return 'hkmc_touch'; // HKMC has no long_press, treat as touch
+    return action;
+  }, [allDevices]);
+
+  // Inject screen_type into params for HKMC actions
+  const resolveParams = useCallback((action: string, params: Record<string, any>, targetDevice: string): Record<string, any> => {
+    const dev = allDevices.find(d => d.id === targetDevice);
+    if (dev?.type === 'hkmc6th' && (action === 'hkmc_touch' || action === 'hkmc_swipe' || action === 'hkmc_key')) {
+      return { ...params, screen_type: screenType };
+    }
+    return params;
+  }, [allDevices, screenType]);
+
   // Execute or record an action
   const executeAction = useCallback(async (action: string, params: Record<string, any>, desc: string) => {
     const targetDevice = recording ? (stepDeviceId || screenshotDeviceId) : screenshotDeviceId;
     if (!targetDevice) return;
 
+    const resolvedAction = resolveAction(action, targetDevice);
+    const resolvedParams = resolveParams(resolvedAction, params, targetDevice);
+
     if (recording) {
       // Optimistic UI: show step immediately
       const tempId = steps.length + 1;
       const optimisticStep: Step = {
-        id: tempId, type: action, device_id: targetDevice,
-        params, delay_after_ms: delayMs, description: desc, expected_image: null,
+        id: tempId, type: resolvedAction, device_id: targetDevice,
+        params: resolvedParams, delay_after_ms: delayMs, description: desc, expected_image: null,
       };
       setSteps((prev) => [...prev, optimisticStep]);
 
       // Execute on device immediately for fast response
-      deviceApi.input(targetDevice, action, params).then(() => {
+      deviceApi.input(targetDevice, resolvedAction, resolvedParams).then(() => {
         refreshScreenshot();
       }).catch((e: any) => {
         message.error(e.response?.data?.detail || t('record.inputFailed'));
@@ -368,9 +417,9 @@ export default function RecordPage() {
       pendingStepsRef.current += 1;
       setHasPendingSteps(true);
       scenarioApi.addStep({
-        type: action,
+        type: resolvedAction,
         device_id: targetDevice,
-        params,
+        params: resolvedParams,
         description: desc,
         delay_after_ms: delayMs,
         skip_execute: true,
@@ -389,13 +438,13 @@ export default function RecordPage() {
       });
     } else {
       // Fire input and refresh in parallel — don't wait for input to complete
-      deviceApi.input(targetDevice, action, params).catch((e: any) => {
+      deviceApi.input(targetDevice, resolvedAction, resolvedParams).catch((e: any) => {
         message.error(e.response?.data?.detail || t('record.inputFailed'));
       });
       // Short delay then refresh (device needs a moment to process input)
       setTimeout(() => refreshScreenshot(), 150);
     }
-  }, [recording, stepDeviceId, screenshotDeviceId, delayMs, refreshScreenshot]);
+  }, [recording, stepDeviceId, screenshotDeviceId, delayMs, refreshScreenshot, resolveAction, resolveParams]);
 
   // --- ROI Modal logic ---
   // Draw on the ROI canvas using the captured screenshot (not reactive screenshot)
@@ -453,7 +502,7 @@ export default function RecordPage() {
   const saveExpectedFull = useCallback(async (stepIdx: number) => {
     if (!scenarioName || !screenshotDeviceId) return;
     try {
-      const res = await scenarioApi.captureExpectedImage(scenarioName, stepIdx, screenshotDeviceId);
+      const res = await scenarioApi.captureExpectedImage(scenarioName, stepIdx, screenshotDeviceId, undefined, undefined, undefined, isScreenHkmc ? screenType : undefined);
       setSteps(prev => prev.map((s, i) => i === stepIdx ? { ...s, expected_image: res.data.filename } : s));
       message.success(t('record.expectedSaved', { index: stepIdx + 1 }));
     } catch (e: any) {
@@ -556,7 +605,7 @@ export default function RecordPage() {
       const crop = { x: rx, y: ry, width: rw, height: rh };
       try {
         const res = await scenarioApi.captureExpectedImage(
-          scenarioName, captureStepIndex, screenshotDeviceId, crop,
+          scenarioName, captureStepIndex, screenshotDeviceId, crop, undefined, undefined, isScreenHkmc ? screenType : undefined,
         );
         setSteps(prev => prev.map((s, i) => i === captureStepIndex ? { ...s, expected_image: res.data.filename } : s));
         message.success(t('record.cropExpectedSaved', { index: captureStepIndex + 1, size: `${rw}×${rh}` }));
@@ -692,7 +741,7 @@ export default function RecordPage() {
     const step = steps[index];
     if (!step?.expected_image && scenarioName && screenshotDeviceId) {
       try {
-        const res = await scenarioApi.captureExpectedImage(scenarioName, index, screenshotDeviceId);
+        const res = await scenarioApi.captureExpectedImage(scenarioName, index, screenshotDeviceId, undefined, undefined, undefined, isScreenHkmc ? screenType : undefined);
         setSteps(prev => prev.map((s, i) => i === index ? { ...s, expected_image: res.data.filename } : s));
         message.success(t('record.expectedFullCapture'));
       } catch {
@@ -835,7 +884,7 @@ export default function RecordPage() {
     const step = steps[stepIdx];
     if (!step?.expected_image && scenarioName && screenshotDeviceId) {
       try {
-        const res = await scenarioApi.captureExpectedImage(scenarioName, stepIdx, screenshotDeviceId);
+        const res = await scenarioApi.captureExpectedImage(scenarioName, stepIdx, screenshotDeviceId, undefined, undefined, undefined, isScreenHkmc ? screenType : undefined);
         setSteps(prev => prev.map((s, i) => i === stepIdx ? { ...s, expected_image: res.data.filename } : s));
         message.success(t('record.expectedFullCapture'));
       } catch (e: any) {
@@ -1037,6 +1086,8 @@ export default function RecordPage() {
       params = { duration_ms: delayMs };
     } else if (stepType === 'adb_command') {
       params = { command: stepDesc };
+    } else if (stepType === 'hkmc_key') {
+      params = { key_name: stepDesc, screen_type: screenType };
     }
 
     try {
@@ -1046,7 +1097,8 @@ export default function RecordPage() {
         params,
         description: stepDesc || (
           stepType === 'module_command' ? `${stepDeviceModule}::${selectedModuleFunc}()` :
-          stepType === 'serial_command' ? `Serial: ${serialData.substring(0, 30)}` : ''
+          stepType === 'serial_command' ? `Serial: ${serialData.substring(0, 30)}` :
+          stepType === 'hkmc_key' ? `HKMC Key: ${stepDesc}` : ''
         ),
         delay_after_ms: delayMs,
         skip_execute: true,
@@ -1301,9 +1353,10 @@ export default function RecordPage() {
     const elapsed = Date.now() - startTime;
     const step = steps[editStepIndex];
 
-    if (step.type === 'swipe') {
+    if (step.type === 'swipe' || step.type === 'hkmc_swipe') {
       const durationMs = Math.max(200, Math.min(elapsed, 3000));
-      const newParams = { x1: startX, y1: startY, x2: endX, y2: endY, duration_ms: durationMs };
+      const base = step.type === 'hkmc_swipe' ? { screen_type: step.params.screen_type } : {};
+      const newParams = { ...base, x1: startX, y1: startY, x2: endX, y2: endY, duration_ms: durationMs };
       setEditStepParams(newParams);
       setSteps((prev) => prev.map((s, i) => i === editStepIndex ? { ...s, params: newParams } : s));
       setEditStepIndex(null);
@@ -1316,8 +1369,9 @@ export default function RecordPage() {
       setEditStepIndex(null);
       message.success(t('record.longPressUpdated', { index: editStepIndex + 1 }));
     } else {
-      // tap — just use start coords
-      const newParams = { x: startX, y: startY };
+      // tap / hkmc_touch — just use start coords
+      const base = step.type === 'hkmc_touch' ? { screen_type: step.params.screen_type } : {};
+      const newParams = { ...base, x: startX, y: startY };
       setEditStepParams(newParams);
       setSteps((prev) => prev.map((s, i) => i === editStepIndex ? { ...s, params: newParams } : s));
       setEditStepIndex(null);
@@ -1364,6 +1418,14 @@ export default function RecordPage() {
       }
       return types;
     }
+    if (isStepHkmc) {
+      return [
+        { value: 'hkmc_touch', label: t('record.hkmcTouch') },
+        { value: 'hkmc_swipe', label: t('record.hkmcSwipe') },
+        { value: 'hkmc_key', label: t('record.hkmcKey') },
+        { value: 'wait', label: t('record.wait') },
+      ];
+    }
     return [
       { value: 'tap', label: 'Tap' },
       { value: 'long_press', label: t('record.longPress') },
@@ -1404,7 +1466,8 @@ export default function RecordPage() {
                 style={{ flex: 1, maxWidth: 200 }}
               />
               {getDeviceTag(s.device_id)}
-              <Tag color={s.type === 'wait' ? 'cyan' : undefined}>{s.type}</Tag>
+              <Tag color={s.type === 'wait' ? 'cyan' : s.type.startsWith('hkmc_') ? 'volcano' : undefined}>{s.type}</Tag>
+              {s.screen_type && <Tag color="geekblue" style={{ margin: 0 }}>{s.screen_type}</Tag>}
               {s.expected_image && scenarioName && (
                 <span style={{ display: 'inline-flex', alignItems: 'center', position: 'relative', marginRight: 4 }}>
                   {/* Annotated thumbnail for full_exclude / multi_crop; plain image otherwise */}
@@ -1451,6 +1514,12 @@ export default function RecordPage() {
                   ? `${s.params.module}::${s.params.function}()`
                   : s.type === 'serial_command'
                   ? <><Tag color="purple" style={{ margin: 0 }}>Serial</Tag> {s.params.data}</>
+                  : s.type === 'hkmc_touch'
+                  ? `touch (${s.params.x},${s.params.y})`
+                  : s.type === 'hkmc_swipe'
+                  ? `swipe (${s.params.x1},${s.params.y1})→(${s.params.x2},${s.params.y2})`
+                  : s.type === 'hkmc_key'
+                  ? <><Tag color="volcano" style={{ margin: 0 }}>KEY</Tag> {s.params.key_name || `cmd:${s.params.cmd}`}</>
                   : JSON.stringify(s.params)}
               </span>
               {s.type !== 'wait' && (
@@ -1461,7 +1530,7 @@ export default function RecordPage() {
                   step={100}
                   value={s.delay_after_ms}
                   onChange={(v) => setSteps(prev => prev.map((st, i) => i === index ? { ...st, delay_after_ms: v || 0 } : st))}
-                  addonAfter="ms"
+                  suffix="ms"
                   style={{ width: 110, marginLeft: 8 }}
                 />
               )}
@@ -1657,6 +1726,19 @@ export default function RecordPage() {
                       <Option key={d.id} value={d.id}>{d.name || d.id}</Option>
                     ))}
                   </Select>
+                  {isScreenHkmc && (
+                    <Select
+                      size="small"
+                      value={screenType}
+                      onChange={setScreenType}
+                      style={{ width: 120 }}
+                    >
+                      <Option value="front_center">{t('record.hkmcFront')}</Option>
+                      <Option value="rear_left">{t('record.hkmcRearL')}</Option>
+                      <Option value="rear_right">{t('record.hkmcRearR')}</Option>
+                      <Option value="cluster">{t('record.hkmcCluster')}</Option>
+                    </Select>
+                  )}
                   <InputNumber
                     size="small"
                     min={100}
@@ -1664,7 +1746,7 @@ export default function RecordPage() {
                     step={100}
                     value={pollInterval}
                     onChange={(v) => setPollInterval(v || 500)}
-                    addonAfter="ms"
+                    suffix="ms"
                     style={{ width: 100 }}
                   />
                 </Space>
@@ -1693,6 +1775,38 @@ export default function RecordPage() {
                     ? `${lastGesture} → ${recording ? t('record.gestureRecord') : t('record.directExec')}`
                     : t('record.gestureHint', { device: screenDevice?.name || screenshotDeviceId || '' })}
                 </div>
+                {/* HKMC Hardware Key Panel */}
+                {isScreenHkmc && hkmcKeys.length > 0 && (
+                  <div style={{ marginTop: 4, width: '100%', maxHeight: 120, overflow: 'auto' }}>
+                    {['MKBD', 'CCP', 'RRC', 'SWRC', 'MIRROR'].map(group => {
+                      const groupKeys = hkmcKeys.filter(k => k.group === group);
+                      if (groupKeys.length === 0) return null;
+                      return (
+                        <div key={group} style={{ marginBottom: 2 }}>
+                          <span style={{ fontSize: 10, color: '#888', marginRight: 4 }}>{group}</span>
+                          {groupKeys.map(k => {
+                            const label = k.name.replace(`${group}_`, '');
+                            return (
+                              <Button
+                                key={k.name}
+                                size="small"
+                                style={{ fontSize: 10, padding: '0 4px', height: 22, margin: '0 1px 1px 0' }}
+                                onClick={() => {
+                                  const action = 'hkmc_key';
+                                  const params = { key_name: k.name, screen_type: screenType };
+                                  const desc = `HKMC Key: ${k.name}`;
+                                  executeAction(action, params, desc);
+                                }}
+                              >
+                                {label}
+                              </Button>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </>
             ) : (
               <div style={{ color: '#666', textAlign: 'center', padding: 24 }}>
@@ -1726,7 +1840,7 @@ export default function RecordPage() {
                     style={{ flex: 1 }}
                     onChange={loadScenario}
                     value={undefined}
-                    onDropdownVisibleChange={(open) => { if (open) fetchSavedScenarios(); }}
+                    onOpenChange={(open) => { if (open) fetchSavedScenarios(); }}
                   >
                     {savedScenarios.map(n => (
                       <Option key={n} value={n}>{n}</Option>
@@ -1813,7 +1927,7 @@ export default function RecordPage() {
                     step={100}
                     value={delayMs}
                     onChange={(v) => setDelayMs(v || 1000)}
-                    addonAfter="ms"
+                    suffix="ms"
                   />
                 </Space>
 
@@ -1891,6 +2005,20 @@ export default function RecordPage() {
                       </div>
                     )}
                   </>
+                ) : stepType === 'hkmc_key' ? (
+                  <>
+                    <Select
+                      showSearch
+                      placeholder={t('record.hkmcSelectKey')}
+                      value={stepDesc || undefined}
+                      onChange={(v) => setStepDesc(v)}
+                      style={{ width: '100%' }}
+                      options={hkmcKeys.map(k => ({
+                        label: `[${k.group}] ${k.name.replace(`${k.group}_`, '')}${k.is_dial ? ' (dial)' : ''}`,
+                        value: k.name,
+                      }))}
+                    />
+                  </>
                 ) : (
                   <Input
                     placeholder={
@@ -1904,7 +2032,7 @@ export default function RecordPage() {
                   />
                 )}
 
-                {['input_text', 'key_event', 'wait', 'adb_command', 'serial_command', 'module_command'].includes(stepType) && (
+                {['input_text', 'key_event', 'wait', 'adb_command', 'serial_command', 'module_command', 'hkmc_key'].includes(stepType) && (
                   <Button
                     icon={<PlusOutlined />}
                     onClick={addManualStep}
@@ -1932,7 +2060,7 @@ export default function RecordPage() {
                   step={100}
                   value={waitDurationMs}
                   onChange={(v) => { const val = v || 1000; setWaitDurationMs(val); waitDurationRef.current = val; }}
-                  addonAfter="ms"
+                  suffix="ms"
                   style={{ width: 120 }}
                 />
                 <Button size="small" icon={<PlusOutlined />} onClick={() => addWaitStep()}>
@@ -2137,10 +2265,10 @@ export default function RecordPage() {
         title={editStepIndex != null ? t('record.editStepTitle', { index: editStepIndex + 1, type: steps[editStepIndex]?.type }) : ''}
         open={editStepIndex != null}
         onCancel={() => setEditStepIndex(null)}
-        width={['tap', 'long_press', 'swipe'].includes(steps[editStepIndex ?? 0]?.type) ? '80vw' : 500}
-        style={['tap', 'long_press', 'swipe'].includes(steps[editStepIndex ?? 0]?.type) ? { top: 20 } : undefined}
+        width={['tap', 'long_press', 'swipe', 'hkmc_touch', 'hkmc_swipe'].includes(steps[editStepIndex ?? 0]?.type) ? '80vw' : 500}
+        style={['tap', 'long_press', 'swipe', 'hkmc_touch', 'hkmc_swipe'].includes(steps[editStepIndex ?? 0]?.type) ? { top: 20 } : undefined}
         footer={
-          ['tap', 'long_press', 'swipe'].includes(steps[editStepIndex ?? 0]?.type)
+          ['tap', 'long_press', 'swipe', 'hkmc_touch', 'hkmc_swipe'].includes(steps[editStepIndex ?? 0]?.type)
             ? <Button onClick={() => setEditStepIndex(null)}>{t('common.cancel')}</Button>
             : (
               <Space>
@@ -2150,7 +2278,7 @@ export default function RecordPage() {
             )
         }
         afterOpenChange={(open) => {
-          if (open && ['tap', 'long_press', 'swipe'].includes(steps[editStepIndex ?? 0]?.type)) {
+          if (open && ['tap', 'long_press', 'swipe', 'hkmc_touch', 'hkmc_swipe'].includes(steps[editStepIndex ?? 0]?.type)) {
             setTimeout(drawEditCanvas, 100);
           }
         }}
@@ -2159,13 +2287,13 @@ export default function RecordPage() {
           const step = steps[editStepIndex];
           if (!step) return null;
 
-          if (['tap', 'long_press', 'swipe'].includes(step.type)) {
+          if (['tap', 'long_press', 'swipe', 'hkmc_touch', 'hkmc_swipe'].includes(step.type)) {
             return (
               <div>
                 <div style={{ marginBottom: 8, color: '#888', fontSize: 12 }}>
-                  {step.type === 'tap' && t('record.tapHint')}
+                  {(step.type === 'tap' || step.type === 'hkmc_touch') && t('record.tapHint')}
                   {step.type === 'long_press' && t('record.longPressHint')}
-                  {step.type === 'swipe' && t('record.swipeHint')}
+                  {(step.type === 'swipe' || step.type === 'hkmc_swipe') && t('record.swipeHint')}
                 </div>
                 <div style={{ marginBottom: 8 }}>
                   <Tag>{t('record.currentParams', { params: JSON.stringify(step.params) })}</Tag>
@@ -2288,6 +2416,24 @@ export default function RecordPage() {
                 ) : (
                   <div style={{ color: '#888' }}>{t('record.noParams')}</div>
                 )}
+              </div>
+            );
+          }
+
+          if (step.type === 'hkmc_key') {
+            return (
+              <div>
+                <div style={{ marginBottom: 8, fontWeight: 600 }}>{t('record.hkmcKey')}</div>
+                <Select
+                  showSearch
+                  value={editStepParams.key_name ?? ''}
+                  onChange={(v) => setEditStepParams({ ...editStepParams, key_name: v })}
+                  style={{ width: '100%' }}
+                  options={hkmcKeys.map(k => ({
+                    label: `[${k.group}] ${k.name.replace(`${k.group}_`, '')}${k.is_dial ? ' (dial)' : ''}`,
+                    value: k.name,
+                  }))}
+                />
               </div>
             );
           }
