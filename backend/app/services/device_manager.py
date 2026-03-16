@@ -34,15 +34,27 @@ def _scan_serial_ports() -> list[dict]:
 
 
 def _scan_hkmc_udp(port: int = 6655, timeout: float = 3.0) -> list[dict]:
-    """UDP 브로드캐스트로 LAN 상의 HKMC 디바이스를 스캔한다.
+    """UDP 포트 6655에서 HKMC 디바이스 브로드캐스트를 수신한다.
 
-    1) 모든 네트워크 인터페이스의 브로드캐스트 주소 + 255.255.255.255로 빈 UDP 패킷 전송
-    2) timeout 동안 수신 대기하여 응답한 IP 수집
+    1) 포트 6655에 바인딩하여 디바이스가 보내는 브로드캐스트 수신
+    2) 동시에 브로드캐스트 패킷을 전송하여 응답 유도
+    3) timeout 동안 수신된 모든 고유 IP 수집
     """
     import socket
     import select
+    import time
 
     found: dict[str, dict] = {}  # ip -> info
+    local_ips = set()
+
+    # 로컬 IP 주소 수집 (자기 자신 필터링용)
+    try:
+        hostname = socket.gethostname()
+        for addr_info in socket.getaddrinfo(hostname, None, socket.AF_INET):
+            local_ips.add(addr_info[4][0])
+    except Exception:
+        pass
+    local_ips.add("127.0.0.1")
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
@@ -50,9 +62,10 @@ def _scan_hkmc_udp(port: int = 6655, timeout: float = 3.0) -> list[dict]:
     sock.setblocking(False)
 
     try:
-        sock.bind(("", 0))
+        # 6655 포트에 바인딩 — 디바이스가 이 포트로 보내는 브로드캐스트 수신
+        sock.bind(("", port))
 
-        # 브로드캐스트 대상 주소 수집
+        # 브로드캐스트 전송 (디바이스가 응답형인 경우 대비)
         broadcast_addrs = {"255.255.255.255"}
         try:
             import netifaces
@@ -63,18 +76,15 @@ def _scan_hkmc_udp(port: int = 6655, timeout: float = 3.0) -> list[dict]:
                     if bcast:
                         broadcast_addrs.add(bcast)
         except ImportError:
-            # netifaces 없으면 기본 브로드캐스트만 사용
             pass
 
-        # 브로드캐스트 전송
         for addr in broadcast_addrs:
             try:
                 sock.sendto(b"", (addr, port))
             except OSError:
                 pass
 
-        # 응답 수신
-        import time
+        # 수신 대기
         deadline = time.time() + timeout
         while True:
             remaining = deadline - time.time()
@@ -83,15 +93,21 @@ def _scan_hkmc_udp(port: int = 6655, timeout: float = 3.0) -> list[dict]:
             ready, _, _ = select.select([sock], [], [], min(remaining, 0.5))
             if ready:
                 try:
-                    data, (ip, _) = sock.recvfrom(4096)
+                    data, (ip, src_port) = sock.recvfrom(4096)
+                    # 자기 자신은 제외
+                    if ip in local_ips:
+                        continue
                     if ip not in found:
                         found[ip] = {
                             "ip": ip,
                             "port": 5000,  # 기본 TCP 포트
                             "raw": data.hex() if data else "",
                         }
+                        logger.info("HKMC UDP scan: found device at %s (data=%s)", ip, data.hex() if data else "empty")
                 except OSError:
                     pass
+    except OSError as e:
+        logger.warning("HKMC UDP scan bind failed (port %d may be in use): %s", port, e)
     finally:
         sock.close()
 
