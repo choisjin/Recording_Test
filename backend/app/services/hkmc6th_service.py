@@ -157,6 +157,7 @@ class HKMC6thService:
         self._connected = False
         self._recv_thread: Optional[threading.Thread] = None
         self._exit_flag = False
+        self._send_lock = threading.Lock()  # 송신 시퀀스 보호 (press-release 등)
 
         # Receive state
         self._recv_queue: queue.Queue = queue.Queue()
@@ -457,7 +458,8 @@ class HKMC6thService:
             data.append((screen_type_bits >> 8) & 0xFF)
             data.append(screen_type_bits & 0xFF)
 
-        self._make_send_packet(CMD_GETIMG, 0, 0, data)
+        with self._send_lock:
+            self._make_send_packet(CMD_GETIMG, 0, 0, data)
 
     def screencap(self, output_path: str, screen_type: str = "front_center",
                   timeout: float = 10.0) -> str:
@@ -530,9 +532,10 @@ class HKMC6thService:
         st = SCREEN_TOUCH_MAP.get(screen_type, 0)
         press_event = [x, y, PRESS_KEY, st]
         release_event = [x, y, RELEASE_KEY, st]
-        self._lcd_touch_ext_6th([press_event])
-        time.sleep(0.02)
-        self._lcd_touch_ext_6th([release_event])
+        with self._send_lock:
+            self._lcd_touch_ext_6th([press_event])
+            time.sleep(0.05)
+            self._lcd_touch_ext_6th([release_event])
 
     def long_press(self, x: int, y: int, duration_ms: int = 3000,
                    screen_type: str = "front_center") -> None:
@@ -540,15 +543,17 @@ class HKMC6thService:
         st = SCREEN_TOUCH_MAP.get(screen_type, 0)
         press_event = [x, y, PRESS_KEY, st]
         release_event = [x, y, RELEASE_KEY, st]
-        self._lcd_touch_ext_6th([press_event])
-        time.sleep(duration_ms / 1000.0)
-        self._lcd_touch_ext_6th([release_event])
+        with self._send_lock:
+            self._lcd_touch_ext_6th([press_event])
+            time.sleep(duration_ms / 1000.0)
+            self._lcd_touch_ext_6th([release_event])
 
     def swipe(self, x1: int, y1: int, x2: int, y2: int,
               screen_type: str = "front_center") -> None:
         """Swipe (drag) from (x1, y1) to (x2, y2) using lcdDrag."""
         st = SCREEN_TOUCH_MAP.get(screen_type, 0)
-        self._lcd_drag(x1, y1, x2, y2, st)
+        with self._send_lock:
+            self._lcd_drag(x1, y1, x2, y2, st)
 
     def _lcd_touch_ext_6th(self, events: list[list[int]]) -> None:
         """Send extended touch event for 6th gen (with screen type per finger).
@@ -620,7 +625,8 @@ class HKMC6thService:
             data.append(direction)
         data.append(monitor)
 
-        self._make_send_packet(cmd, sub_cmd, resp, data)
+        with self._send_lock:
+            self._make_send_packet(cmd, sub_cmd, resp, data)
 
     def send_key_by_name(self, key_name: str, sub_cmd: int = SHORT_KEY,
                          monitor: int = 0x00, direction: Optional[int] = None) -> None:
