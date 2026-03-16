@@ -633,7 +633,7 @@ export default function RecordPage() {
         const res = await scenarioApi.captureExpectedImage(
           scenarioName, captureStepIndex, screenshotDeviceId, crop, undefined, undefined, isScreenHkmc ? screenType : undefined,
         );
-        setSteps(prev => prev.map((s, i) => i === captureStepIndex ? { ...s, expected_image: res.data.filename, _imageVer: Date.now() } : s));
+        setSteps(prev => prev.map((s, i) => i === captureStepIndex ? { ...s, expected_image: res.data.filename, roi: crop, _imageVer: Date.now() } : s));
         message.success(t('record.cropExpectedSaved', { index: captureStepIndex + 1, size: `${rw}×${rh}` }));
         setCaptureModalOpen(false);
         setCaptureStepIndex(null);
