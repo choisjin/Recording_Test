@@ -33,6 +33,71 @@ def _scan_serial_ports() -> list[dict]:
     return ports
 
 
+def _scan_hkmc_udp(port: int = 6655, timeout: float = 3.0) -> list[dict]:
+    """UDP 브로드캐스트로 LAN 상의 HKMC 디바이스를 스캔한다.
+
+    1) 모든 네트워크 인터페이스의 브로드캐스트 주소 + 255.255.255.255로 빈 UDP 패킷 전송
+    2) timeout 동안 수신 대기하여 응답한 IP 수집
+    """
+    import socket
+    import select
+
+    found: dict[str, dict] = {}  # ip -> info
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.setblocking(False)
+
+    try:
+        sock.bind(("", 0))
+
+        # 브로드캐스트 대상 주소 수집
+        broadcast_addrs = {"255.255.255.255"}
+        try:
+            import netifaces
+            for iface in netifaces.interfaces():
+                addrs = netifaces.ifaddresses(iface)
+                for info in addrs.get(netifaces.AF_INET, []):
+                    bcast = info.get("broadcast")
+                    if bcast:
+                        broadcast_addrs.add(bcast)
+        except ImportError:
+            # netifaces 없으면 기본 브로드캐스트만 사용
+            pass
+
+        # 브로드캐스트 전송
+        for addr in broadcast_addrs:
+            try:
+                sock.sendto(b"", (addr, port))
+            except OSError:
+                pass
+
+        # 응답 수신
+        import time
+        deadline = time.time() + timeout
+        while True:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                break
+            ready, _, _ = select.select([sock], [], [], min(remaining, 0.5))
+            if ready:
+                try:
+                    data, (ip, _) = sock.recvfrom(4096)
+                    if ip not in found:
+                        found[ip] = {
+                            "ip": ip,
+                            "port": 5000,  # 기본 TCP 포트
+                            "raw": data.hex() if data else "",
+                        }
+                except OSError:
+                    pass
+    finally:
+        sock.close()
+
+    return list(found.values())
+
+
 def _validate_serial(port: str, baudrate: int) -> str:
     import serial
     s = serial.Serial(port, baudrate=baudrate, timeout=1)
@@ -281,6 +346,11 @@ class DeviceManager:
         """Scan available serial ports."""
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, _scan_serial_ports)
+
+    async def scan_hkmc(self) -> list[dict]:
+        """UDP 브로드캐스트로 HKMC 디바이스 스캔."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _scan_hkmc_udp)
 
     async def add_serial_device(self, port: str, baudrate: int = 115200, name: str = "", category: str = "auxiliary", device_id: str = "") -> ManagedDevice:
         """Add a serial device and open a persistent connection."""

@@ -56,6 +56,7 @@ export default function DevicePage() {
   const [scanning, setScanning] = useState(false);
   const [scannedAdb, setScannedAdb] = useState<any[]>([]);
   const [scannedSerial, setScannedSerial] = useState<SerialPort[]>([]);
+  const [scannedHkmc, setScannedHkmc] = useState<{ ip: string; port: number; raw: string }[]>([]);
   const [connectType, setConnectType] = useState<'adb' | 'serial' | 'module' | 'hkmc6th'>('adb');
   const [connectAddress, setConnectAddress] = useState('');
   const [baudrate, setBaudrate] = useState(115200);
@@ -119,6 +120,7 @@ export default function DevicePage() {
       const res = await deviceApi.scan();
       setScannedAdb(res.data.adb_devices || []);
       setScannedSerial(res.data.serial_ports || []);
+      setScannedHkmc(res.data.hkmc_devices || []);
     } catch {
       message.error(t('device.scanFailed'));
     }
@@ -180,6 +182,18 @@ export default function DevicePage() {
     } catch (e: any) {
       await fetchDevices();
       setModalOpen(false);
+    }
+    setConnecting(false);
+  };
+
+  const handleAddHkmc = async (ip: string, port: number) => {
+    setConnecting(true);
+    try {
+      const result = await connectDevice('hkmc6th', ip, undefined, '', 'primary', undefined, undefined, undefined, '', port);
+      message.success(result);
+      setModalOpen(false);
+    } catch (e: any) {
+      message.error(e.response?.data?.detail || t('device.connectFailed'));
     }
     setConnecting(false);
   };
@@ -466,7 +480,24 @@ export default function DevicePage() {
                     </>
                   )}
 
-                  {scannedSerial.length === 0 && scannedAdb.length === 0 && !scanning && (
+                  {modalCategory === 'primary' && scannedHkmc.length > 0 && (
+                    <>
+                      <div style={{ fontWeight: 'bold', marginBottom: 8, marginTop: 8 }}>{t('device.detectedHkmc')}</div>
+                      <List
+                        size="small"
+                        dataSource={scannedHkmc}
+                        renderItem={(d) => (
+                          <List.Item actions={[
+                            <Button size="small" type="primary" loading={connecting} onClick={() => handleAddHkmc(d.ip, d.port)}>{t('common.add')}</Button>
+                          ]}>
+                            <Tag color="volcano">HKMC</Tag> <Tag color="blue">{d.ip}</Tag> <span style={{ color: '#888' }}>TCP: {d.port}</span>
+                          </List.Item>
+                        )}
+                      />
+                    </>
+                  )}
+
+                  {scannedSerial.length === 0 && scannedAdb.length === 0 && scannedHkmc.length === 0 && !scanning && (
                     <div style={{ color: '#666', textAlign: 'center', padding: 24 }}>
                       {t('device.noDevicesFound')}
                     </div>

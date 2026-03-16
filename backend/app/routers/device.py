@@ -57,12 +57,18 @@ async def list_devices():
 
 @router.get("/scan")
 async def scan_ports():
-    """Scan all available connection targets: ADB devices + serial/COM ports."""
-    adb_devices = await adb.list_devices()
-    serial_ports = await dm.scan_serial()
+    """Scan all available connection targets: ADB devices + serial/COM ports + HKMC (UDP)."""
+    import asyncio
+    adb_task = adb.list_devices()
+    serial_task = dm.scan_serial()
+    hkmc_task = dm.scan_hkmc()
+    adb_devices, serial_ports, hkmc_devices = await asyncio.gather(
+        adb_task, serial_task, hkmc_task
+    )
     return {
         "adb_devices": [d.to_dict() for d in adb_devices],
         "serial_ports": serial_ports,
+        "hkmc_devices": hkmc_devices,
     }
 
 
