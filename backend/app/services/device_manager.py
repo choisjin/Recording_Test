@@ -135,36 +135,41 @@ async def _scan_hkmc_tcp(
     return deduped
 
 
-async def _probe_tcp_open(
-    ip: str, port: int, timeout: float, semaphore: asyncio.Semaphore
-) -> dict | None:
-    """단일 IP:port에 TCP 연결이 열리는지만 확인 (핸드셰이크 없음)."""
-    async with semaphore:
-        try:
-            reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(ip, port), timeout=timeout
-            )
-            writer.close()
-            try:
-                await writer.wait_closed()
-            except Exception:
-                pass
+BENCH_UDP_SCAN_PORTS = [25000]
+# BATTERY_CHECK 프로브: [0x55, 0xAA, sender=100, seq=0, cmd=0x20, subcmd=0x02, len=0x00, 0x00]
+BENCH_UDP_PROBE = bytes([0x55, 0xAA, 100, 0, 0x20, 0x02, 0x00, 0x00])
+
+
+def _probe_udp_bench_sync(ip: str, port: int, timeout: float) -> dict | None:
+    """UDP 프로브 전송 후 응답이 있으면 벤치로 판정."""
+    import socket
+    sock = None
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(timeout)
+        sock.sendto(BENCH_UDP_PROBE, (ip, port))
+        data, addr = sock.recvfrom(256)
+        if len(data) >= 2 and data[0] == 0x55 and data[1] == 0xAA:
             return {"ip": ip, "port": port}
-        except (asyncio.TimeoutError, OSError, ConnectionRefusedError):
-            return None
+    except Exception:
+        pass
+    finally:
+        if sock:
+            sock.close()
+    return None
 
 
-async def _scan_tcp_generic(
-    ports: list[int],
-    connect_timeout: float = 0.3,
-    max_concurrent: int = 100,
+async def _scan_udp_bench(
+    ports: list[int] | None = None,
+    probe_timeout: float = 0.5,
+    max_concurrent: int = 50,
 ) -> list[dict]:
-    """LAN 서브넷에서 지정 TCP 포트가 열린 호스트를 탐색한다."""
+    """LAN 서브넷에서 UDP 벤치 디바이스를 탐색한다."""
     import ipaddress
     import ifaddr
 
-    if not ports:
-        return []
+    if ports is None:
+        ports = BENCH_UDP_SCAN_PORTS
 
     # 로컬 IP 수집
     local_ips: set[str] = {"127.0.0.1"}
@@ -187,7 +192,7 @@ async def _scan_tcp_generic(
                 pass
 
     unique = list({str(s): s for s in subnets}.values())
-    logger.info("TCP scan: discovered %d subnets: %s", len(unique), [str(s) for s in unique])
+    logger.info("UDP bench scan: %d subnets: %s", len(unique), [str(s) for s in unique])
 
     candidate_ips: set[str] = set()
     for subnet in unique:
@@ -196,21 +201,30 @@ async def _scan_tcp_generic(
             if ip_str not in local_ips:
                 candidate_ips.add(ip_str)
 
-    logger.info("TCP scan: %d candidate IPs across %d subnets, ports=%s", len(candidate_ips), len(unique), ports)
-
     if not candidate_ips:
         return []
 
+    logger.info("UDP bench scan: %d candidate IPs, ports=%s", len(candidate_ips), ports)
+
+    # 병렬 UDP 프로브 (executor 기반)
+    loop = asyncio.get_event_loop()
     semaphore = asyncio.Semaphore(max_concurrent)
+
+    async def _probe_with_sem(ip: str, port: int):
+        async with semaphore:
+            return await loop.run_in_executor(
+                None, _probe_udp_bench_sync, ip, port, probe_timeout
+            )
+
     tasks = [
-        _probe_tcp_open(ip, port, connect_timeout, semaphore)
+        _probe_with_sem(ip, port)
         for ip in candidate_ips
         for port in ports
     ]
     results = await asyncio.gather(*tasks)
     found = [r for r in results if r is not None]
 
-    # IP+port 별 중복 제거
+    # 중복 제거
     seen: set[str] = set()
     deduped: list[dict] = []
     for r in found:
@@ -218,9 +232,9 @@ async def _scan_tcp_generic(
         if key not in seen:
             seen.add(key)
             deduped.append(r)
-            logger.info("TCP scan: found open port at %s:%d", r["ip"], r["port"])
+            logger.info("UDP bench scan: found at %s:%d", r["ip"], r["port"])
 
-    logger.info("TCP scan: completed, found %d devices", len(deduped))
+    logger.info("UDP bench scan: completed, found %d devices", len(deduped))
     return deduped
 
 
@@ -452,17 +466,27 @@ class DeviceManager:
                 port = dev.address
                 dev.status = "connected" if port in available_ports else "disconnected"
             elif ct == "socket":
-                # Quick TCP connection check
                 import socket
                 host = dev.address
-                port_num = dev.info.get("port", 0)
-                if host and port_num:
+                udp_port = dev.info.get("udp_port", 0)
+                tcp_port = dev.info.get("port", 0)
+                if host and udp_port:
+                    # UDP 벤치: 프로브로 상태 확인
+                    try:
+                        ok = await loop.run_in_executor(
+                            None, _probe_udp_bench_sync, host, int(udp_port), 1.0
+                        )
+                        dev.status = "connected" if ok else "disconnected"
+                    except Exception:
+                        dev.status = "disconnected"
+                elif host and tcp_port:
+                    # TCP 소켓 모듈: 연결 확인
                     try:
                         def _check_socket():
                             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                             s.settimeout(1)
                             try:
-                                s.connect((host, int(port_num)))
+                                s.connect((host, int(tcp_port)))
                                 s.close()
                                 return True
                             except Exception:
@@ -472,7 +496,6 @@ class DeviceManager:
                         dev.status = "connected" if ok else "disconnected"
                     except Exception:
                         dev.status = "disconnected"
-                # If no port info, leave status as-is
             # For 'none', 'can', etc. — we can't check, leave status as-is
 
     async def scan_serial(self) -> list[dict]:
@@ -484,16 +507,9 @@ class DeviceManager:
         """TCP 포트 스캔으로 LAN 상의 HKMC 디바이스 탐지."""
         return await _scan_hkmc_tcp()
 
-    async def scan_tcp(self, ports: list[int] | None = None) -> list[dict]:
-        """LAN에서 지정 TCP 포트가 열린 호스트를 탐색 (보조디바이스용)."""
-        if ports is None:
-            from .module_service import get_tcp_scan_ports
-            ports = get_tcp_scan_ports()
-        if not ports:
-            logger.info("TCP scan: no scan_ports configured, skipping")
-            return []
-        logger.info("TCP scan: scanning ports %s", ports)
-        return await _scan_tcp_generic(ports)
+    async def scan_bench(self) -> list[dict]:
+        """LAN에서 UDP 벤치 디바이스 탐색."""
+        return await _scan_udp_bench()
 
     async def add_serial_device(self, port: str, baudrate: int = 115200, name: str = "", category: str = "auxiliary", device_id: str = "") -> ManagedDevice:
         """Add a serial device and open a persistent connection."""

@@ -28,7 +28,11 @@ def _build_ctor_kwargs(dev) -> dict | None:
     if ct == "serial":
         return {"port": dev.address, "bps": dev.info.get("baudrate", 115200)}
     elif ct == "socket":
-        return {"host": dev.address}
+        kwargs = {"host": dev.address}
+        for k, v in dev.info.items():
+            if k not in ("module", "connect_type"):
+                kwargs[k] = v
+        return kwargs
     elif ct == "can":
         return {k: v for k, v in dev.info.items() if k not in ("module", "connect_type")}
     return None

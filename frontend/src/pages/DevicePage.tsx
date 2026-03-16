@@ -57,7 +57,7 @@ export default function DevicePage() {
   const [scannedAdb, setScannedAdb] = useState<any[]>([]);
   const [scannedSerial, setScannedSerial] = useState<SerialPort[]>([]);
   const [scannedHkmc, setScannedHkmc] = useState<{ ip: string; port: number; raw: string }[]>([]);
-  const [scannedTcp, setScannedTcp] = useState<{ ip: string; port: number }[]>([]);
+  const [scannedBench, setScannedBench] = useState<{ ip: string; port: number }[]>([]);
   const [connectType, setConnectType] = useState<'adb' | 'serial' | 'module' | 'hkmc6th'>('adb');
   const [connectAddress, setConnectAddress] = useState('');
   const [baudrate, setBaudrate] = useState(115200);
@@ -122,7 +122,7 @@ export default function DevicePage() {
       setScannedAdb(res.data.adb_devices || []);
       setScannedSerial(res.data.serial_ports || []);
       setScannedHkmc(res.data.hkmc_devices || []);
-      setScannedTcp(res.data.tcp_devices || []);
+      setScannedBench(res.data.bench_devices || []);
     } catch {
       message.error(t('device.scanFailed'));
     }
@@ -200,18 +200,12 @@ export default function DevicePage() {
     setConnecting(false);
   };
 
-  const handleAddTcp = async (ip: string, port: number) => {
-    const moduleName = scanSelectedModule;
-    const moduleConnType = getModuleConnectType(moduleName);
+  const handleAddBench = async (ip: string, port: number) => {
+    const moduleName = scanSelectedModule || 'CCIC_BENCH';
     setConnecting(true);
     try {
-      let result: string;
-      if (moduleName && (moduleConnType === 'socket' || moduleConnType === 'none')) {
-        result = await connectDevice('module', ip, undefined, '', 'auxiliary', moduleName, moduleConnType);
-      } else {
-        // 모듈 미선택 시 module 타입으로 추가 (address = ip)
-        result = await connectDevice('module', ip, undefined, `TCP ${ip}:${port}`, 'auxiliary', moduleName, 'socket');
-      }
+      const extra = { udp_port: port };
+      const result = await connectDevice('module', ip, undefined, '', 'auxiliary', moduleName, 'socket', extra);
       message.success(result);
       setModalOpen(false);
     } catch (e: any) {
@@ -519,37 +513,37 @@ export default function DevicePage() {
                     </>
                   )}
 
-                  {modalCategory === 'auxiliary' && scannedTcp.length > 0 && (
+                  {modalCategory === 'auxiliary' && scannedBench.length > 0 && (
                     <>
-                      <div style={{ fontWeight: 'bold', marginBottom: 8, marginTop: 8 }}>{t('device.detectedTcp')}</div>
+                      <div style={{ fontWeight: 'bold', marginBottom: 8, marginTop: 8 }}>{t('device.detectedBench')}</div>
                       {modules.length > 0 && (
                         <div style={{ marginBottom: 8 }}>
                           <span style={{ marginRight: 8, color: '#888', fontSize: 12 }}>{`${t('device.module')}:`}</span>
                           <Select
-                            allowClear
                             placeholder={t('device.moduleSelect')}
                             value={scanSelectedModule}
                             onChange={setScanSelectedModule}
                             style={{ width: 280 }}
+                            defaultValue="CCIC_BENCH"
                             options={modules.filter(m => m.connect_type === 'socket').map(m => ({ label: m.label, value: m.name }))}
                           />
                         </div>
                       )}
                       <List
                         size="small"
-                        dataSource={scannedTcp}
+                        dataSource={scannedBench}
                         renderItem={(d) => (
                           <List.Item actions={[
-                            <Button size="small" type="primary" loading={connecting} onClick={() => handleAddTcp(d.ip, d.port)}>{t('common.add')}</Button>
+                            <Button size="small" type="primary" loading={connecting} onClick={() => handleAddBench(d.ip, d.port)}>{t('common.add')}</Button>
                           ]}>
-                            <Tag color="geekblue">TCP</Tag> <Tag color="blue">{d.ip}</Tag> <span style={{ color: '#888' }}>Port: {d.port}</span>
+                            <Tag color="orange">Bench</Tag> <Tag color="blue">{d.ip}</Tag> <span style={{ color: '#888' }}>UDP: {d.port}</span>
                           </List.Item>
                         )}
                       />
                     </>
                   )}
 
-                  {scannedSerial.length === 0 && scannedAdb.length === 0 && scannedHkmc.length === 0 && scannedTcp.length === 0 && !scanning && (
+                  {scannedSerial.length === 0 && scannedAdb.length === 0 && scannedHkmc.length === 0 && scannedBench.length === 0 && !scanning && (
                     <div style={{ color: '#666', textAlign: 'center', padding: 24 }}>
                       {t('device.noDevicesFound')}
                     </div>

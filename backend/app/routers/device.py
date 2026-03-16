@@ -23,7 +23,12 @@ def _build_constructor_kwargs(dev) -> dict | None:
     if connect_type == "serial":
         return {"port": dev.address, "bps": dev.info.get("baudrate", 115200)}
     elif connect_type == "socket":
-        return {"host": dev.address}
+        kwargs = {"host": dev.address}
+        # 추가 필드 전달 (예: udp_port) — 생성자 시그니처 매칭으로 필터링됨
+        for k, v in dev.info.items():
+            if k not in ("module", "connect_type"):
+                kwargs[k] = v
+        return kwargs
     elif connect_type == "can":
         # CAN modules store extra fields in device info
         return {k: v for k, v in dev.info.items() if k not in ("module", "connect_type")}
@@ -60,20 +65,20 @@ async def list_devices():
 
 @router.get("/scan")
 async def scan_ports():
-    """Scan all available connection targets: ADB devices + serial/COM ports + HKMC (TCP) + generic TCP."""
+    """Scan all available connection targets: ADB + serial + HKMC (TCP) + UDP bench."""
     import asyncio
     adb_task = adb.list_devices()
     serial_task = dm.scan_serial()
     hkmc_task = dm.scan_hkmc()
-    tcp_task = dm.scan_tcp()
-    adb_devices, serial_ports, hkmc_devices, tcp_devices = await asyncio.gather(
-        adb_task, serial_task, hkmc_task, tcp_task
+    bench_task = dm.scan_bench()
+    adb_devices, serial_ports, hkmc_devices, bench_devices = await asyncio.gather(
+        adb_task, serial_task, hkmc_task, bench_task
     )
     return {
         "adb_devices": [d.to_dict() for d in adb_devices],
         "serial_ports": serial_ports,
         "hkmc_devices": hkmc_devices,
-        "tcp_devices": tcp_devices,
+        "bench_devices": bench_devices,
     }
 
 

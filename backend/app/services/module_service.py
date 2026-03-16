@@ -103,9 +103,11 @@ def list_available_modules() -> list[dict]:
         {"name": "CANAT", "label": "CANAT", "connect_type": "serial",
          "connect_fields": []},
         {"name": "BENCH", "label": "BENCH", "connect_type": "socket",
-         "connect_fields": [], "scan_ports": [25000]},
-        {"name": "CCIC_LOGGER_LIBRARY", "label": "CCIC_LOGGER_LIBRARY", "connect_type": "socket",
-         "connect_fields": [], "scan_ports": [25000]},
+         "connect_fields": []},
+        {"name": "CCIC_BENCH", "label": "CCIC_BENCH", "connect_type": "socket",
+         "connect_fields": [
+             {"name": "udp_port", "label": "UDP Port", "type": "number", "default": "25000"},
+         ]},
         {"name": "IVIQEBenchIOClient", "label": "IVIQEBenchIOClient", "connect_type": "serial",
          "connect_fields": []},
         {"name": "SP25Bench", "label": "SP25Bench", "connect_type": "serial",
@@ -144,26 +146,17 @@ def list_available_modules() -> list[dict]:
             m["_source"] = "lge.auto"
             available.append(m)
         except Exception:
-            pass
+            # lge.auto에 없으면 플러그인 폴백
+            if (_PLUGINS_DIR / f"{m['name']}.py").is_file():
+                m["_source"] = "plugin"
+                available.append(m)
 
-    # Add local plugins
-    available.extend(_list_plugin_modules())
+    # 아직 등록되지 않은 추가 플러그인
+    listed_names = {m["name"] for m in available}
+    for p in _list_plugin_modules():
+        if p["name"] not in listed_names:
+            available.append(p)
     return available
-
-
-def get_tcp_scan_ports() -> list[int]:
-    """모듈 정의에서 scan_ports를 수집 (import 가능 여부 무관)."""
-    # list_available_modules()는 import 가능한 모듈만 반환하므로,
-    # 여기서는 전체 정의 목록에서 직접 수집
-    modules = [
-        {"name": "BENCH", "scan_ports": [25000]},
-        {"name": "CCIC_LOGGER_LIBRARY", "scan_ports": [25000]},
-    ]
-    port_set: set[int] = set()
-    for m in modules:
-        if m.get("scan_ports"):
-            port_set.update(m["scan_ports"])
-    return list(port_set)
 
 
 def _import_module_class(module_name: str):
