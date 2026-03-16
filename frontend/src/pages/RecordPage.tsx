@@ -281,6 +281,31 @@ export default function RecordPage() {
     startTime: number; active: boolean;
   }>({ startX: 0, startY: 0, startTime: 0, active: false });
 
+  // blob URL → data URL 변환 (HKMC WebSocket blob URL은 다음 프레임에 revoke 됨)
+  const snapshotScreenshot = useCallback((): Promise<string> => {
+    const src = screenshot || '';
+    if (!src) return Promise.resolve('');
+    if (!src.startsWith('blob:')) return Promise.resolve(src);
+
+    return new Promise<string>((resolve) => {
+      const img = new window.Image();
+      img.onload = () => {
+        const cvs = document.createElement('canvas');
+        cvs.width = img.naturalWidth;
+        cvs.height = img.naturalHeight;
+        const ctx = cvs.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0);
+          resolve(cvs.toDataURL('image/png'));
+        } else {
+          resolve(src);
+        }
+      };
+      img.onerror = () => resolve(src);
+      img.src = src;
+    });
+  }, [screenshot]);
+
   // Fetch devices on mount & sync recording state with backend
   useEffect(() => {
     fetchDevices();
@@ -510,11 +535,11 @@ export default function RecordPage() {
     }
   }, [scenarioName, screenshotDeviceId]);
 
-  const openCaptureModal = useCallback((stepIdx: number) => {
-    captureScreenshotRef.current = screenshot || '';
+  const openCaptureModal = useCallback(async (stepIdx: number) => {
+    captureScreenshotRef.current = await snapshotScreenshot();
     setCaptureStepIndex(stepIdx);
     setCaptureModalOpen(true);
-  }, [screenshot]);
+  }, [snapshotScreenshot]);
 
   const testStep = useCallback(async (stepIdx: number) => {
     if (!scenarioName) {
@@ -616,18 +641,18 @@ export default function RecordPage() {
         message.error(e.response?.data?.detail || t('record.expectedImageSaveFailed'));
       }
     }
-  }, [captureStepIndex, scenarioName, screenshotDeviceId]);
+  }, [captureStepIndex, scenarioName, screenshotDeviceId, isScreenHkmc, screenType, t]);
 
   useEffect(() => {
     if (captureModalOpen) setTimeout(() => drawCaptureCanvas(), 50);
   }, [captureModalOpen]);
 
   // Open ROI modal — freeze the current screenshot
-  const openRoiModal = useCallback((index: number) => {
-    roiScreenshotRef.current = screenshot || '';
+  const openRoiModal = useCallback(async (index: number) => {
+    roiScreenshotRef.current = await snapshotScreenshot();
     setRoiEditingIndex(index);
     setRoiModalOpen(true);
-  }, [screenshot]);
+  }, [snapshotScreenshot]);
 
   // ROI modal mouse handlers (native resolution)
   const roiMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -734,7 +759,7 @@ export default function RecordPage() {
   }, [excludeRoiEditingIndex, excludeRoiSelectedIdx, steps]);
 
   const openExcludeRoiModal = useCallback(async (index: number) => {
-    excludeRoiScreenshotRef.current = screenshot || '';
+    excludeRoiScreenshotRef.current = await snapshotScreenshot();
     setExcludeRoiEditingIndex(index);
     setExcludeRoiSelectedIdx(null);
     // Auto-capture full screenshot as expected_image if not set
@@ -750,7 +775,7 @@ export default function RecordPage() {
       }
     }
     setExcludeRoiModalOpen(true);
-  }, [screenshot, steps, scenarioName, screenshotDeviceId]);
+  }, [snapshotScreenshot, steps, scenarioName, screenshotDeviceId, isScreenHkmc, screenType, t]);
 
   const excludeRoiMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = excludeRoiCanvasRef.current;
@@ -877,7 +902,7 @@ export default function RecordPage() {
   }, [multiCropEditingIndex, multiCropSelectedIdx, steps]);
 
   const openMultiCropModal = useCallback(async (stepIdx: number) => {
-    multiCropScreenshotRef.current = screenshot || '';
+    multiCropScreenshotRef.current = await snapshotScreenshot();
     setMultiCropEditingIndex(stepIdx);
     setMultiCropSelectedIdx(null);
     // Auto-capture full screenshot as expected_image if not set
@@ -893,7 +918,7 @@ export default function RecordPage() {
       }
     }
     setMultiCropModalOpen(true);
-  }, [screenshot, steps, scenarioName, screenshotDeviceId]);
+  }, [snapshotScreenshot, steps, scenarioName, screenshotDeviceId, isScreenHkmc, screenType, t]);
 
   const multiCropMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = multiCropCanvasRef.current;
