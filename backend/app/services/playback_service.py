@@ -690,6 +690,9 @@ class PlaybackService:
                 result = {"type": "adb", "id": dev.id, "serial": dev.address}
                 if adb_screen is not None:
                     result["screen_type"] = adb_screen
+                elif len(dev.info.get("displays", [])) > 1:
+                    # 멀티 디스플레이: screen_type 미지정 시 display 0 기본값
+                    result["screen_type"] = "0"
                 return result
         # device_id 없거나, 보조 디바이스인 경우 → 첫 번째 primary 디바이스로 스크린샷
         primary = self.dm.list_primary()
