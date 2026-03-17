@@ -219,7 +219,9 @@ async def _scan_network_hosts(
             local_ips.add(ip_str)
             try:
                 net = ipaddress.IPv4Network(f"{ip_str}/{prefix}", strict=False)
-                if net.prefixlen >= 20:
+                # 벤치 전용 네트워크만 대상 (192.168.x.x)
+                # 10.x.x.x (사내), 172.16-31.x.x (기업) 등 대규모 네트워크 제외
+                if net.prefixlen >= 20 and ip_str.startswith("192.168."):
                     subnets.append(net)
             except ValueError:
                 pass
