@@ -136,27 +136,22 @@ async def _scan_hkmc_tcp(
 
 
 BENCH_UDP_SCAN_PORTS = [25000]
-# BATTERY_CHECK 프로브: [0x55, 0xAA, sender=100, seq=0, cmd=0x20, subcmd=0x02, len=0x00, 0x00]
 BENCH_UDP_PROBE = bytes([0x55, 0xAA, 100, 0, 0x20, 0x02, 0x00, 0x00])
 
 
 def _probe_udp_bench_sync(ip: str, port: int, timeout: float) -> dict | None:
-    """UDP 프로브 전송 후 응답이 있으면 벤치로 판정.
-
-    레거시와 동일: connect() → sendto() → settimeout → recv → settimeout(None)
-    """
+    """UDP 프로브 전송 후 0x55 0xAA 응답이면 verified."""
     import socket as _socket
     sock = None
     try:
         sock = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
-        # 레거시와 동일: connect로 기본 목적지 설정
         sock.connect((ip, port))
         sock.sendto(BENCH_UDP_PROBE, (ip, port))
         sock.settimeout(timeout)
         data = sock.recv(16)
         sock.settimeout(None)
         if len(data) >= 2 and data[0] == 0x55 and data[1] == 0xAA:
-            return {"ip": ip, "port": port}
+            return {"ip": ip, "port": port, "verified": True}
     except Exception:
         pass
     finally:
@@ -168,19 +163,48 @@ def _probe_udp_bench_sync(ip: str, port: int, timeout: float) -> dict | None:
     return None
 
 
-async def _scan_udp_bench(
-    ports: list[int] | None = None,
-    probe_timeout: float = 2.0,
+def _get_arp_hosts() -> set[str]:
+    """시스템 ARP 테이블에서 알려진 호스트 IP 수집."""
+    import subprocess
+    hosts: set[str] = set()
+    try:
+        result = subprocess.run("arp -a", capture_output=True, text=True,
+                                shell=True, timeout=5)
+        for line in result.stdout.splitlines():
+            m = re.search(r"(\d+\.\d+\.\d+\.\d+)", line)
+            if m:
+                ip = m.group(1)
+                if not ip.endswith(".255") and not ip.startswith("224.") and not ip.startswith("239."):
+                    hosts.add(ip)
+    except Exception:
+        pass
+    return hosts
+
+
+async def _ping_host(ip: str) -> str | None:
+    """단일 호스트 ping (Windows)."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "ping", "-n", "1", "-w", "500", ip,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        rc = await asyncio.wait_for(proc.wait(), timeout=2.0)
+        return ip if rc == 0 else None
+    except Exception:
+        return None
+
+
+async def _scan_network_hosts(
     max_concurrent: int = 50,
 ) -> list[dict]:
-    """LAN 서브넷에서 UDP 벤치 디바이스를 탐색한다."""
+    """LAN 서브넷의 활성 호스트 탐지 (ARP + ping + UDP 프로브)."""
     import ipaddress
     import ifaddr
 
-    if ports is None:
-        ports = BENCH_UDP_SCAN_PORTS
+    ports = BENCH_UDP_SCAN_PORTS
 
-    # 로컬 IP 수집
+    # 로컬 IP 수집 & 서브넷 탐지
     local_ips: set[str] = {"127.0.0.1"}
     subnets: list[ipaddress.IPv4Network] = []
 
@@ -201,8 +225,9 @@ async def _scan_udp_bench(
                 pass
 
     unique = list({str(s): s for s in subnets}.values())
-    logger.info("UDP bench scan: %d subnets: %s", len(unique), [str(s) for s in unique])
+    logger.info("Network scan: %d subnets: %s", len(unique), [str(s) for s in unique])
 
+    # 서브넷별 후보 IP
     candidate_ips: set[str] = set()
     for subnet in unique:
         for host in subnet.hosts():
@@ -213,38 +238,66 @@ async def _scan_udp_bench(
     if not candidate_ips:
         return []
 
-    logger.info("UDP bench scan: %d candidate IPs, ports=%s", len(candidate_ips), ports)
-
-    # 병렬 UDP 프로브 (executor 기반)
+    # 1단계: ARP 테이블에서 이미 알려진 호스트
     loop = asyncio.get_event_loop()
+    arp_hosts = await loop.run_in_executor(None, _get_arp_hosts)
+    subnet_arp = candidate_ips & arp_hosts
+    logger.info("Network scan: ARP table has %d hosts on target subnets", len(subnet_arp))
+
+    # 2단계: ARP에 없는 IP는 ping 스윕 (병렬)
+    ping_targets = candidate_ips - arp_hosts
     semaphore = asyncio.Semaphore(max_concurrent)
 
-    async def _probe_with_sem(ip: str, port: int):
+    async def _ping_with_sem(ip: str):
         async with semaphore:
+            return await _ping_host(ip)
+
+    if ping_targets:
+        logger.info("Network scan: pinging %d additional IPs...", len(ping_targets))
+        ping_results = await asyncio.gather(*[_ping_with_sem(ip) for ip in ping_targets])
+        ping_alive = {ip for ip in ping_results if ip is not None}
+    else:
+        ping_alive = set()
+
+    # 3단계: 활성 호스트에 UDP 프로브
+    all_alive = subnet_arp | ping_alive
+    logger.info("Network scan: %d alive hosts, running UDP probe...", len(all_alive))
+
+    udp_sem = asyncio.Semaphore(max_concurrent)
+
+    async def _udp_with_sem(ip: str, port: int):
+        async with udp_sem:
             return await loop.run_in_executor(
-                None, _probe_udp_bench_sync, ip, port, probe_timeout
+                None, _probe_udp_bench_sync, ip, port, 2.0
             )
 
-    tasks = [
-        _probe_with_sem(ip, port)
-        for ip in candidate_ips
+    udp_results = await asyncio.gather(*[
+        _udp_with_sem(ip, port)
+        for ip in all_alive
         for port in ports
-    ]
-    results = await asyncio.gather(*tasks)
-    found = [r for r in results if r is not None]
+    ])
+    udp_verified: dict[str, dict] = {}
+    for r in udp_results:
+        if r is not None:
+            udp_verified[r["ip"]] = r
 
-    # 중복 제거
+    # 결과 조합: verified + unverified 호스트
+    results: list[dict] = []
     seen: set[str] = set()
-    deduped: list[dict] = []
-    for r in found:
-        key = f"{r['ip']}:{r['port']}"
-        if key not in seen:
-            seen.add(key)
-            deduped.append(r)
-            logger.info("UDP bench scan: found at %s:%d", r["ip"], r["port"])
+    for ip in sorted(all_alive):
+        if ip in seen:
+            continue
+        seen.add(ip)
+        if ip in udp_verified:
+            results.append(udp_verified[ip])
+            logger.info("Network scan: %s:%d (UDP verified)", ip, udp_verified[ip]["port"])
+        else:
+            results.append({"ip": ip, "port": ports[0], "verified": False})
+            logger.info("Network scan: %s (reachable, unverified)", ip)
 
-    logger.info("UDP bench scan: completed, found %d devices", len(deduped))
-    return deduped
+    logger.info("Network scan: completed, %d hosts (%d verified)",
+                len(results), len(udp_verified))
+    return results
 
 
 def _validate_serial(port: str, baudrate: int) -> str:
@@ -541,8 +594,8 @@ class DeviceManager:
         return await _scan_hkmc_tcp()
 
     async def scan_bench(self) -> list[dict]:
-        """LAN에서 UDP 벤치 디바이스 탐색."""
-        return await _scan_udp_bench()
+        """LAN에서 네트워크 호스트 탐색 (ARP + ping + UDP 프로브)."""
+        return await _scan_network_hosts()
 
     async def add_serial_device(self, port: str, baudrate: int = 115200, name: str = "", category: str = "auxiliary", device_id: str = "") -> ManagedDevice:
         """Add a serial device and open a persistent connection."""

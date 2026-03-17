@@ -57,7 +57,7 @@ export default function DevicePage() {
   const [scannedAdb, setScannedAdb] = useState<any[]>([]);
   const [scannedSerial, setScannedSerial] = useState<SerialPort[]>([]);
   const [scannedHkmc, setScannedHkmc] = useState<{ ip: string; port: number; raw: string }[]>([]);
-  const [scannedBench, setScannedBench] = useState<{ ip: string; port: number }[]>([]);
+  const [scannedBench, setScannedBench] = useState<{ ip: string; port: number; verified?: boolean }[]>([]);
   const [connectType, setConnectType] = useState<'adb' | 'serial' | 'module' | 'hkmc6th'>('adb');
   const [connectAddress, setConnectAddress] = useState('');
   const [baudrate, setBaudrate] = useState(115200);
@@ -536,7 +536,13 @@ export default function DevicePage() {
                           <List.Item actions={[
                             <Button size="small" type="primary" loading={connecting} onClick={() => handleAddBench(d.ip, d.port)}>{t('common.add')}</Button>
                           ]}>
-                            <Tag color="orange">Bench</Tag> <Tag color="blue">{d.ip}</Tag> <span style={{ color: '#888' }}>UDP: {d.port}</span>
+                            {d.verified
+                              ? <Tag color="green">Bench</Tag>
+                              : <Tag color="default">Host</Tag>
+                            }
+                            <Tag color="blue">{d.ip}</Tag>
+                            <span style={{ color: '#888' }}>UDP: {d.port}</span>
+                            {d.verified && <Tag color="green" style={{ marginLeft: 4 }}>응답확인</Tag>}
                           </List.Item>
                         )}
                       />
