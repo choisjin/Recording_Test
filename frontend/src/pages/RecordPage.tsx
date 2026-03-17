@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { Button, Card, Col, Image, Input, Modal, Row, Select, Space, InputNumber, message, List, Tag, Popover, Tooltip } from 'antd';
+import { Button, Card, Col, Image, Input, Modal, Row, Select, Space, InputNumber, message, List, Tag, Popover, Tooltip, Splitter } from 'antd';
 import { PlayCircleOutlined, PauseOutlined, PlusOutlined, SwapOutlined, FolderOpenOutlined, SaveOutlined, DeleteOutlined, ArrowUpOutlined, ArrowDownOutlined, BranchesOutlined, ScissorOutlined, CameraOutlined, ThunderboltOutlined, CheckCircleOutlined, CloseCircleOutlined, WarningOutlined, EditOutlined } from '@ant-design/icons';
 import { deviceApi, scenarioApi } from '../services/api';
 import { useDevice } from '../context/DeviceContext';
@@ -1726,17 +1726,9 @@ export default function RecordPage() {
   return (
     <div style={{ height: 'calc(100vh - 80px)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       <style>{`@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }`}</style>
-      <div style={{ flex: 1, display: 'flex', gap: 8, minHeight: 0 }}>
-        {/* Left panel: Device screen + Webcam */}
-        <div style={{
-          width: isPortrait ? 460 : '45%',
-          minWidth: isPortrait ? 400 : 400,
-          maxWidth: isPortrait ? 520 : '50%',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 8,
-          overflow: 'hidden',
-        }}>
+      <Splitter style={{ flex: 1, minHeight: 0 }}>
+        <Splitter.Panel defaultSize="40%" min="20%" max="70%" style={{ display: 'flex', flexDirection: 'column', gap: 8, overflow: 'hidden' }}>
+          {/* Left panel: Device screen + Webcam */}
           <Card
             size="small"
             title={
@@ -1868,10 +1860,10 @@ export default function RecordPage() {
 
           {/* Webcam panel */}
           <WebcamPanel webcam={webcam} />
-        </div>
+        </Splitter.Panel>
 
-        {/* Right panel: Controls + Steps */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0, overflow: 'hidden' }}>
+        <Splitter.Panel style={{ display: 'flex', flexDirection: 'column', gap: 8, overflow: 'hidden' }}>
+          {/* Right panel: Controls + Steps */}
           <Card size="small" title={t('record.control')}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {/* Row 1: 시나리오 불러오기 + 이름 */}
@@ -2120,8 +2112,8 @@ export default function RecordPage() {
           >
             {stepListMemo}
           </Card>
-        </div>
-      </div>
+        </Splitter.Panel>
+      </Splitter>
 
       {/* Expected Image Crop Modal */}
       <Modal
