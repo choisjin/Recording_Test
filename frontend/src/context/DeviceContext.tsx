@@ -110,6 +110,10 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
   // --- WebSocket cleanup helper ---
   const closeWs = useCallback(() => {
     if (wsRef.current) {
+      // 이전 WebSocket의 이벤트 핸들러 제거 (close 완료 전 프레임 수신 방지)
+      wsRef.current.onmessage = null;
+      wsRef.current.onclose = null;
+      wsRef.current.onerror = null;
       wsRef.current.close();
       wsRef.current = null;
     }
