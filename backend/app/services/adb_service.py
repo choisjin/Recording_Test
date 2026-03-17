@@ -207,9 +207,9 @@ class ADBService:
     # ------------------------------------------------------------------
 
     def _display_flag(self, display_id: Optional[int]) -> str:
-        """display_id가 0이 아닌 경우 --display-id 플래그 반환."""
+        """display_id가 0이 아닌 경우 -d 플래그 반환."""
         if display_id is not None and display_id != 0:
-            return f"--display-id {display_id} "
+            return f"-d {display_id} "
         return ""
 
     async def tap(self, x: int, y: int, serial: Optional[str] = None, display_id: Optional[int] = None) -> str:
