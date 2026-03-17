@@ -341,7 +341,8 @@ class PlaybackService:
                         if dev_obj:
                             from .adb_service import resolve_sf_display_id
                             sf_did = resolve_sf_display_id(dev_obj.info, adb_did)
-                    await self.adb.screencap(actual_path, serial=ss_device["id"], sf_display_id=sf_did)
+                    adb_serial = ss_device.get("serial") or ss_device["id"]
+                    await self.adb.screencap(actual_path, serial=adb_serial, sf_display_id=sf_did)
                 elif ss_device["type"] == "hkmc6th":
                     hkmc_svc = self.dm.get_hkmc_service(ss_device["id"])
                     if hkmc_svc:
@@ -684,9 +685,9 @@ class PlaybackService:
                 screen_type = step.screen_type or step.params.get("screen_type", "front_center")
                 return {"type": "hkmc6th", "id": dev.id, "screen_type": screen_type}
             elif dev:
-                # ADB
+                # ADB — dev.address가 실제 ADB 시리얼
                 adb_screen = step.screen_type or step.params.get("screen_type")
-                result = {"type": "adb", "id": dev.id}
+                result = {"type": "adb", "id": dev.id, "serial": dev.address}
                 if adb_screen is not None:
                     result["screen_type"] = adb_screen
                 return result
@@ -696,7 +697,7 @@ class PlaybackService:
             dev = primary[0]
             if dev.type == "hkmc6th":
                 return {"type": "hkmc6th", "id": dev.id, "screen_type": "front_center"}
-            return {"type": "adb", "id": dev.id}
+            return {"type": "adb", "id": dev.id, "serial": dev.address}
         return None
 
     def _resolve_adb_serial(self, step: Step) -> Optional[str]:
@@ -759,12 +760,14 @@ class PlaybackService:
         elif step.type == StepType.WAIT:
             await self._interruptible_sleep(params.get("duration_ms", 1000) / 1000.0)
         else:
-            # ADB actions
-            serial = real_id
-            if serial:
-                dev = self.dm.get_device(serial)
+            # ADB actions — real_id를 ADB 시리얼(dev.address)로 변환
+            adb_serial = real_id
+            if adb_serial:
+                dev = self.dm.get_device(adb_serial)
                 if dev and dev.type != "adb":
-                    raise ValueError(f"Device {serial} is not an ADB device, cannot run {step.type.value}")
+                    raise ValueError(f"Device {adb_serial} is not an ADB device, cannot run {step.type.value}")
+                if dev:
+                    adb_serial = dev.address  # 커스텀 ID → 실제 ADB 시리얼
 
             # screen_type이 숫자면 ADB display_id로 사용
             adb_display_id = None
@@ -778,20 +781,20 @@ class PlaybackService:
                     pass
 
             if step.type == StepType.TAP:
-                await self.adb.tap(params["x"], params["y"], serial=serial, display_id=adb_display_id)
+                await self.adb.tap(params["x"], params["y"], serial=adb_serial, display_id=adb_display_id)
             elif step.type == StepType.LONG_PRESS:
-                await self.adb.long_press(params["x"], params["y"], params.get("duration_ms", 1000), serial=serial, display_id=adb_display_id)
+                await self.adb.long_press(params["x"], params["y"], params.get("duration_ms", 1000), serial=adb_serial, display_id=adb_display_id)
             elif step.type == StepType.SWIPE:
                 await self.adb.swipe(
                     params["x1"], params["y1"],
                     params["x2"], params["y2"],
                     params.get("duration_ms", 300),
-                    serial=serial, display_id=adb_display_id,
+                    serial=adb_serial, display_id=adb_display_id,
                 )
             elif step.type == StepType.INPUT_TEXT:
-                await self.adb.input_text(params["text"], serial=serial, display_id=adb_display_id)
+                await self.adb.input_text(params["text"], serial=adb_serial, display_id=adb_display_id)
             elif step.type == StepType.KEY_EVENT:
-                await self.adb.key_event(params["keycode"], serial=serial, display_id=adb_display_id)
+                await self.adb.key_event(params["keycode"], serial=adb_serial, display_id=adb_display_id)
             elif step.type == StepType.ADB_COMMAND:
                 await self.adb.run_shell_command(params["command"], serial=serial)
 
