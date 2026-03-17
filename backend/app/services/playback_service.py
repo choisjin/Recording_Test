@@ -620,33 +620,34 @@ class PlaybackService:
             {"type": "hkmc6th", "id": device_id, "screen_type": ...} or
             None (no screenshot possible)
         """
-        if step.type in (StepType.SERIAL_COMMAND, StepType.MODULE_COMMAND):
+        # 스크린샷 불필요한 경우: serial/module이면서 기대이미지 없음, wait이면서 기대이미지 없음
+        if step.type in (StepType.SERIAL_COMMAND, StepType.MODULE_COMMAND) and not step.expected_image:
             return None
-        # Wait steps: only need screenshot when expected_image is set
         if step.type == StepType.WAIT and not step.expected_image:
             return None
         real_id = self._resolve_real_device_id(step)
         if real_id:
             dev = self.dm.get_device(real_id)
-            if dev and dev.type == "serial":
-                return None  # serial device, no screenshot
-            if dev and dev.type == "hkmc6th":
+            if dev and dev.type in ("serial", "module"):
+                # 보조 디바이스는 스크린샷 불가 → primary 디바이스로 폴백
+                pass
+            elif dev and dev.type == "hkmc6th":
                 screen_type = step.screen_type or step.params.get("screen_type", "front_center")
                 return {"type": "hkmc6th", "id": dev.id, "screen_type": screen_type}
-            # ADB: dev.id 사용 (address fallback으로 찾은 경우 대응)
-            adb_screen = step.screen_type or step.params.get("screen_type")
-            result = {"type": "adb", "id": dev.id if dev else real_id}
-            if adb_screen is not None:
-                result["screen_type"] = adb_screen
-            return result
-        # For wait steps without device_id, find the first available primary device
-        if step.type == StepType.WAIT:
-            primary = self.dm.list_primary()
-            if primary:
-                dev = primary[0]
-                if dev.type == "hkmc6th":
-                    return {"type": "hkmc6th", "id": dev.id, "screen_type": "front_center"}
-                return {"type": "adb", "id": dev.id}
+            elif dev:
+                # ADB
+                adb_screen = step.screen_type or step.params.get("screen_type")
+                result = {"type": "adb", "id": dev.id}
+                if adb_screen is not None:
+                    result["screen_type"] = adb_screen
+                return result
+        # device_id 없거나, 보조 디바이스인 경우 → 첫 번째 primary 디바이스로 스크린샷
+        primary = self.dm.list_primary()
+        if primary:
+            dev = primary[0]
+            if dev.type == "hkmc6th":
+                return {"type": "hkmc6th", "id": dev.id, "screen_type": "front_center"}
+            return {"type": "adb", "id": dev.id}
         return None
 
     def _resolve_adb_serial(self, step: Step) -> Optional[str]:
