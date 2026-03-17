@@ -1752,7 +1752,7 @@ export default function RecordPage() {
                     }}
                     placeholder={t('record.primaryDevice')}
                     size="small"
-                    style={{ width: 140 }}
+                    style={{ width: 280 }}
                   >
                     {primaryDevices.map(d => (
                       <Option key={d.id} value={d.id}>{d.name || d.id}</Option>
@@ -1763,7 +1763,7 @@ export default function RecordPage() {
                       size="small"
                       value={screenType}
                       onChange={setScreenType}
-                      style={{ width: 120 }}
+                      style={{ width: 240 }}
                     >
                       <Option value="front_center">{t('record.hkmcFront')}</Option>
                       <Option value="rear_left">{t('record.hkmcRearL')}</Option>
@@ -1776,7 +1776,7 @@ export default function RecordPage() {
                       size="small"
                       value={screenType}
                       onChange={setScreenType}
-                      style={{ width: 140 }}
+                      style={{ width: 280 }}
                     >
                       {adbDisplays.map(d => (
                         <Option key={d.id} value={String(d.id)}>{d.name}{d.width ? ` (${d.width}x${d.height})` : ` (ID:${d.id})`}</Option>
