@@ -332,11 +332,16 @@ class PlaybackService:
                     if _st is not None:
                         try:
                             adb_did = int(_st)
-                            if adb_did == 0:
-                                adb_did = None
                         except (ValueError, TypeError):
                             pass
-                    await self.adb.screencap(actual_path, serial=ss_device["id"], display_id=adb_did)
+                    # SF display ID 조회
+                    sf_did = None
+                    if adb_did is not None:
+                        dev_obj = self.dm.get_device(ss_device["id"])
+                        if dev_obj:
+                            from .adb_service import resolve_sf_display_id
+                            sf_did = resolve_sf_display_id(dev_obj.info, adb_did)
+                    await self.adb.screencap(actual_path, serial=ss_device["id"], sf_display_id=sf_did)
                 elif ss_device["type"] == "hkmc6th":
                     hkmc_svc = self.dm.get_hkmc_service(ss_device["id"])
                     if hkmc_svc:

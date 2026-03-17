@@ -228,7 +228,15 @@ async def capture_expected_image(req: CaptureExpectedImageRequest):
             png_bytes = await hkmc.async_screencap_bytes(screen_type=req.screen_type, fmt="png")
         else:
             adb_serial = dev.address if dev else req.device_id
-            png_bytes = await adb_svc.screencap_bytes(serial=adb_serial)
+            # screen_type → SF display ID 변환
+            from ..services.adb_service import resolve_sf_display_id
+            adb_did = None
+            try:
+                adb_did = int(req.screen_type)
+            except (ValueError, TypeError):
+                pass
+            sf_did = resolve_sf_display_id(dev.info if dev else None, adb_did)
+            png_bytes = await adb_svc.screencap_bytes(serial=adb_serial, sf_display_id=sf_did)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Screenshot failed: {e}")
 

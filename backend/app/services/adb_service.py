@@ -16,6 +16,19 @@ logger = logging.getLogger(__name__)
 ADB_PATH = os.environ.get("ADB_PATH", "adb")
 
 
+def resolve_sf_display_id(dev_info: dict | None, logical_id: int | None) -> str | None:
+    """logical display ID → SurfaceFlinger display ID 변환.
+
+    dev_info: ManagedDevice.info dict (displays 리스트 포함).
+    """
+    if logical_id is None or not dev_info:
+        return None
+    for d in dev_info.get("displays", []):
+        if d.get("id") == logical_id:
+            return d.get("sf_id")
+    return None
+
+
 def _run_sync(cmd: str, timeout: int = 10) -> tuple[str, str, int]:
     """Run a command synchronously and return (stdout, stderr, returncode)."""
     try:
@@ -148,22 +161,45 @@ class ADBService:
         }
 
     async def list_displays(self, serial: Optional[str] = None) -> list[dict]:
-        """디바이스의 디스플레이 목록 조회."""
+        """디바이스의 디스플레이 목록 조회 (SurfaceFlinger display ID 포함)."""
         s = serial or self._active_serial
         if not s:
             return []
-        output = await self._run_device(s, "shell dumpsys SurfaceFlinger --display-id")
-        displays: list[dict] = []
-        # 기본 디스플레이(0)는 항상 포함
-        displays.append({"id": 0, "name": "Default"})
-        # dumpsys display로 추가 디스플레이 탐색
         disp_output = await self._run_device(s, "shell dumpsys display")
-        seen_ids = {0}
-        for m in re.finditer(r"mDisplayId=(\d+)", disp_output):
-            did = int(m.group(1))
-            if did not in seen_ids:
-                seen_ids.add(did)
-                displays.append({"id": did, "name": f"Display {did}"})
+
+        displays: list[dict] = []
+        seen_sf_ids: set[str] = set()
+
+        # DisplayDeviceInfo 라인에서 SF ID, 해상도, 이름 추출
+        # (등장 순서 = logical display ID 0, 1, 2 …)
+        for line in disp_output.split("\n"):
+            if "DisplayDeviceInfo" not in line or 'uniqueId="local:' not in line:
+                continue
+            sf_m = re.search(r'uniqueId="local:(\d+)"', line)
+            if not sf_m or sf_m.group(1) in seen_sf_ids:
+                continue
+            sf_id = sf_m.group(1)
+            seen_sf_ids.add(sf_id)
+
+            res_m = re.search(r"(\d{3,5})\s*x\s*(\d{3,5})", line)
+            name_m = re.search(r"DeviceProductInfo\{name=(\S+?)[,}]", line)
+
+            w = int(res_m.group(1)) if res_m else 0
+            h = int(res_m.group(2)) if res_m else 0
+            name = name_m.group(1) if name_m else f"Display {len(displays)}"
+
+            displays.append({
+                "id": len(displays),
+                "sf_id": sf_id,
+                "name": name,
+                "width": w,
+                "height": h,
+            })
+
+        # 파싱 실패 시 기본 디스플레이
+        if not displays:
+            displays.append({"id": 0, "sf_id": None, "name": "Default"})
+
         return displays
 
     # ------------------------------------------------------------------
@@ -227,13 +263,18 @@ class ADBService:
     # Screenshot
     # ------------------------------------------------------------------
 
-    async def screencap(self, save_path: str, serial: Optional[str] = None, display_id: Optional[int] = None) -> str:
-        """Capture a screenshot and save as PNG."""
+    async def screencap(self, save_path: str, serial: Optional[str] = None,
+                        display_id: Optional[int] = None,
+                        sf_display_id: Optional[str] = None) -> str:
+        """Capture a screenshot and save as PNG.
+
+        sf_display_id: SurfaceFlinger display ID (긴 숫자). 제공 시 -d 플래그로 사용.
+        """
         s = serial or self._active_serial
         if not s:
             raise ValueError("No device selected")
         Path(save_path).parent.mkdir(parents=True, exist_ok=True)
-        dflag = f"--display-id {display_id} " if display_id else ""
+        dflag = f"-d {sf_display_id} " if sf_display_id else ""
         cmd = f'{ADB_PATH} -s {s} exec-out screencap {dflag}-p > "{save_path}"'
         loop = asyncio.get_event_loop()
         stdout, stderr, rc = await loop.run_in_executor(None, functools.partial(_run_sync, cmd))
@@ -241,12 +282,17 @@ class ADBService:
             logger.error("screencap save error: %s", stderr)
         return save_path
 
-    async def screencap_bytes(self, serial: Optional[str] = None, fmt: str = "png", display_id: Optional[int] = None) -> bytes:
-        """Capture a screenshot and return image bytes (png or jpeg)."""
+    async def screencap_bytes(self, serial: Optional[str] = None, fmt: str = "png",
+                              display_id: Optional[int] = None,
+                              sf_display_id: Optional[str] = None) -> bytes:
+        """Capture a screenshot and return image bytes (png or jpeg).
+
+        sf_display_id: SurfaceFlinger display ID (긴 숫자). 제공 시 -d 플래그로 사용.
+        """
         s = serial or self._active_serial
         if not s:
             raise ValueError("No device selected")
-        dflag = f"--display-id {display_id} " if display_id else ""
+        dflag = f"-d {sf_display_id} " if sf_display_id else ""
         cmd = f"{ADB_PATH} -s {s} exec-out screencap {dflag}-p"
         loop = asyncio.get_event_loop()
         stdout, stderr, rc = await loop.run_in_executor(None, functools.partial(_run_sync_bytes, cmd))

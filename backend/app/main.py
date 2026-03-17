@@ -15,6 +15,7 @@ from pathlib import Path
 
 from .routers import device, results, scenario, settings
 from .dependencies import adb_service, device_manager, playback_service, recording_service
+from .services.adb_service import resolve_sf_display_id
 from .models.scenario import ScenarioResult
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -127,13 +128,15 @@ async def websocket_screen_mirror(websocket: WebSocket):
                     adb_display_id = None
                     try:
                         adb_display_id = int(screen_type)
-                        if adb_display_id == 0:
-                            adb_display_id = None
                     except (ValueError, TypeError):
                         pass
+                    # SF display ID 조회
+                    sf_did = resolve_sf_display_id(
+                        dev.info if dev else None, adb_display_id
+                    )
                     adb_serial = dev.address if dev else target_device_id
                     png_bytes = await adb_service.screencap_bytes(
-                        serial=adb_serial or None, display_id=adb_display_id
+                        serial=adb_serial or None, sf_display_id=sf_did
                     )
                     b64 = base64.b64encode(png_bytes).decode("ascii")
                     await websocket.send_json({

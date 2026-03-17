@@ -90,6 +90,23 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(devicePollId);
   }, []);
 
+  // --- 디바이스 변경 시 screenType 자동 설정 ---
+  const prevDeviceIdRef = useRef('');
+  useEffect(() => {
+    if (screenshotDeviceId === prevDeviceIdRef.current) return;
+    prevDeviceIdRef.current = screenshotDeviceId;
+    if (!screenshotDeviceId) return;
+    const dev = primaryDevices.find(d => d.id === screenshotDeviceId);
+    if (!dev) return;
+    if (dev.type === 'hkmc6th') {
+      setScreenType('front_center');
+    } else if (dev.type === 'adb' && (dev.info?.displays?.length ?? 0) > 1) {
+      setScreenType(String(dev.info.displays[0]?.id ?? 0));
+    } else {
+      setScreenType('0');
+    }
+  }, [screenshotDeviceId, primaryDevices]);
+
   // --- WebSocket cleanup helper ---
   const closeWs = useCallback(() => {
     if (wsRef.current) {

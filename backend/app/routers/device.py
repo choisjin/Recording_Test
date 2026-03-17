@@ -10,6 +10,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 from ..dependencies import adb_service as adb, device_manager as dm
+from ..services.adb_service import resolve_sf_display_id
 from ..services.module_service import list_available_modules, get_module_functions, execute_module_function
 
 
@@ -425,7 +426,8 @@ async def get_screenshot(device_id: str, fmt: str = "jpeg", screen_type: str = "
             # ADB device
             adb_serial = dev.address if dev else device_id
             display_id = _parse_adb_display_id(screen_type)
-            img_bytes = await adb.screencap_bytes(serial=adb_serial, fmt=fmt, display_id=display_id)
+            sf_did = resolve_sf_display_id(dev.info if dev else None, display_id)
+            img_bytes = await adb.screencap_bytes(serial=adb_serial, fmt=fmt, sf_display_id=sf_did)
             b64 = base64.b64encode(img_bytes).decode("ascii")
             return {"image": b64, "format": fmt}
     except HTTPException:

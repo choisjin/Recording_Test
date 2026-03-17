@@ -336,9 +336,13 @@ export default function RecordPage() {
   const screenDevice = primaryDevices.find(d => d.id === screenshotDeviceId);
   const isScreenHkmc = screenDevice?.type === 'hkmc6th';
   const isScreenAdb = screenDevice?.type === 'adb';
-  const adbDisplays: { id: number; name: string }[] = screenDevice?.info?.displays || [];
+  const adbDisplays: { id: number; name: string; sf_id?: string; width?: number; height?: number }[] = screenDevice?.info?.displays || [];
   const hasMultiDisplay = isScreenAdb && adbDisplays.length > 1;
-  const deviceRes = screenDevice?.info?.resolution ?? { width: 1080, height: 1920 };
+  // 멀티 디스플레이: 선택된 디스플레이 해상도 사용
+  const selectedDisplay = hasMultiDisplay ? adbDisplays.find(d => String(d.id) === screenType) : null;
+  const deviceRes = selectedDisplay?.width
+    ? { width: selectedDisplay.width, height: selectedDisplay.height }
+    : screenDevice?.info?.resolution ?? { width: 1080, height: 1920 };
 
   // Note: step device selection no longer auto-switches the screenshot.
   // The screenshot device is only changed via the explicit device selector.
@@ -1775,7 +1779,7 @@ export default function RecordPage() {
                       style={{ width: 140 }}
                     >
                       {adbDisplays.map(d => (
-                        <Option key={d.id} value={String(d.id)}>{d.name} (ID:{d.id})</Option>
+                        <Option key={d.id} value={String(d.id)}>{d.name}{d.width ? ` (${d.width}x${d.height})` : ` (ID:${d.id})`}</Option>
                       ))}
                     </Select>
                   )}
