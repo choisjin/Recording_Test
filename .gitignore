@@ -51,3 +51,5 @@ backend/settings.json
 =======
 .playwright-mcp/
 >>>>>>> c628722dd3900523a28305e57eba2b530828a25c
+device-page-screenshot.png
+record-page.png
