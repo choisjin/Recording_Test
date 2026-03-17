@@ -419,9 +419,12 @@ export default function RecordPage() {
     if (dev?.type === 'hkmc6th' && (action === 'hkmc_touch' || action === 'hkmc_swipe' || action === 'hkmc_key')) {
       return { ...params, screen_type: screenType };
     }
-    // ADB multi-display: screen_type이 '0'이 아닌 경우에만 주입
-    if (dev?.type === 'adb' && screenType && screenType !== '0' && screenType !== 'front_center') {
-      return { ...params, screen_type: screenType };
+    // ADB multi-display: 모든 디스플레이에 screen_type 주입 (display 0 포함 — screencap에 SF display ID 필요)
+    if (dev?.type === 'adb' && screenType && screenType !== 'front_center') {
+      const isMultiDisplay = (dev.info?.displays?.length ?? 0) > 1;
+      if (isMultiDisplay || screenType !== '0') {
+        return { ...params, screen_type: screenType };
+      }
     }
     return params;
   }, [allDevices, screenType]);
