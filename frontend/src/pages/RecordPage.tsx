@@ -545,7 +545,7 @@ export default function RecordPage() {
     } catch (e: any) {
       message.error(e.response?.data?.detail || t('record.expectedImageSaveFailed'));
     }
-  }, [scenarioName, screenshotDeviceId]);
+  }, [scenarioName, screenshotDeviceId, isScreenHkmc, hasMultiDisplay, screenType, t]);
 
   const openCaptureModal = useCallback(async (stepIdx: number) => {
     captureScreenshotRef.current = await snapshotScreenshot();
@@ -653,7 +653,7 @@ export default function RecordPage() {
         message.error(e.response?.data?.detail || t('record.expectedImageSaveFailed'));
       }
     }
-  }, [captureStepIndex, scenarioName, screenshotDeviceId, isScreenHkmc, screenType, t]);
+  }, [captureStepIndex, scenarioName, screenshotDeviceId, isScreenHkmc, hasMultiDisplay, screenType, t]);
 
   useEffect(() => {
     if (captureModalOpen) setTimeout(() => drawCaptureCanvas(), 50);
@@ -787,7 +787,7 @@ export default function RecordPage() {
       }
     }
     setExcludeRoiModalOpen(true);
-  }, [snapshotScreenshot, steps, scenarioName, screenshotDeviceId, isScreenHkmc, screenType, t]);
+  }, [snapshotScreenshot, steps, scenarioName, screenshotDeviceId, isScreenHkmc, hasMultiDisplay, screenType, t]);
 
   const excludeRoiMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = excludeRoiCanvasRef.current;
@@ -930,7 +930,7 @@ export default function RecordPage() {
       }
     }
     setMultiCropModalOpen(true);
-  }, [snapshotScreenshot, steps, scenarioName, screenshotDeviceId, isScreenHkmc, screenType, t]);
+  }, [snapshotScreenshot, steps, scenarioName, screenshotDeviceId, isScreenHkmc, hasMultiDisplay, screenType, t]);
 
   const multiCropMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = multiCropCanvasRef.current;

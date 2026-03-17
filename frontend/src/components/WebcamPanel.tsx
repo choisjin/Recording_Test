@@ -44,7 +44,7 @@ export default function WebcamPanel({ webcam }: WebcamPanelProps) {
               size="small"
               value={webcamIndex}
               onChange={(v) => { handleWebcamChange(v); }}
-              style={{ width: 180 }}
+              style={{ width: 360 }}
               placeholder={t('webcam.select')}
             >
               {webcamDevices.map((d, i) => (
