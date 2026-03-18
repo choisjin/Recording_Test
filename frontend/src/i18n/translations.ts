@@ -39,6 +39,7 @@ const translations = {
     'common.optional': '선택사항',
     'common.required': '필수',
     'common.default': '기본',
+    'common.backendConnecting': '서버 연결 중...',
 
     // === Nav ===
     'nav.device': '디바이스',
@@ -478,6 +479,7 @@ const translations = {
     'common.optional': 'Optional',
     'common.required': 'Required',
     'common.default': 'Default',
+    'common.backendConnecting': 'Connecting to server...',
 
     // === Nav ===
     'nav.device': 'Devices',

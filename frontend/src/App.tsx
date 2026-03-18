@@ -1,12 +1,14 @@
-import { useEffect, useState } from 'react';
-import { App as AntdApp, Button, ConfigProvider, Layout, Menu, Tooltip, theme } from 'antd';
+import { useEffect, useRef, useState } from 'react';
+import { App as AntdApp, Button, ConfigProvider, Layout, Menu, Spin, Tooltip, theme } from 'antd';
 import {
   BarChartOutlined,
   DesktopOutlined,
+  LoadingOutlined,
   PlayCircleOutlined,
   SettingOutlined,
   VideoCameraOutlined,
 } from '@ant-design/icons';
+import axios from 'axios';
 import { DeviceProvider } from './context/DeviceContext';
 import { SettingsProvider, useSettings } from './context/SettingsContext';
 import { useTranslation } from './i18n';
@@ -32,6 +34,47 @@ function AppContent() {
   const [activeKey, setActiveKey] = useState('/');
   const { settings, uploadWebcamRecording } = useSettings();
   const { t } = useTranslation();
+
+  // --- Backend health polling ---
+  const [backendReady, setBackendReady] = useState(false);
+  const readyRef = useRef(false);
+  const everReadyRef = useRef(false);
+  const activeKeyRef = useRef(activeKey);
+  activeKeyRef.current = activeKey;
+
+  useEffect(() => {
+    let mounted = true;
+
+    const poll = async () => {
+      if (!mounted) return;
+      try {
+        await axios.get('/api/health', { timeout: 3000 });
+        if (!readyRef.current) {
+          const wasEverReady = everReadyRef.current;
+          readyRef.current = true;
+          everReadyRef.current = true;
+          setBackendReady(true);
+          if (wasEverReady) {
+            // 재연결 시 현재 탭 데이터 새로고침
+            setTimeout(() => {
+              window.dispatchEvent(new CustomEvent('tab-change', { detail: activeKeyRef.current }));
+            }, 200);
+          }
+        }
+      } catch {
+        if (readyRef.current) {
+          readyRef.current = false;
+          setBackendReady(false);
+        }
+      }
+      if (mounted) {
+        setTimeout(poll, readyRef.current ? 10000 : 2000);
+      }
+    };
+
+    poll();
+    return () => { mounted = false; };
+  }, []);
 
   // Global webcam
   const webcam = useWebcam();
@@ -104,11 +147,24 @@ function AppContent() {
         </Sider>
         <Layout style={layoutBg ? { background: layoutBg } : undefined}>
           <Content style={{ margin: 8, padding: 12, background: contentBg, borderRadius: 8 }}>
-            {pages.map(({ key, component }) => (
-              <div key={key} style={{ display: activeKey === key ? 'block' : 'none' }}>
-                {component}
+            {backendReady ? (
+              pages.map(({ key, component }) => (
+                <div key={key} style={{ display: activeKey === key ? 'block' : 'none' }}>
+                  {component}
+                </div>
+              ))
+            ) : (
+              <div style={{
+                display: 'flex', flexDirection: 'column',
+                justifyContent: 'center', alignItems: 'center',
+                height: 'calc(100vh - 48px)', gap: 24,
+              }}>
+                <Spin indicator={<LoadingOutlined style={{ fontSize: 48 }} spin />} />
+                <div style={{ color: '#888', fontSize: 16 }}>
+                  {t('common.backendConnecting')}
+                </div>
               </div>
-            ))}
+            )}
           </Content>
         </Layout>
       </Layout>

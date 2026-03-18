@@ -75,6 +75,11 @@ screenshots_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/screenshots", StaticFiles(directory=str(screenshots_dir)), name="screenshots")
 
 
+@app.get("/api/health")
+async def health_check():
+    return {"status": "ok"}
+
+
 @app.get("/")
 async def root():
     return {
