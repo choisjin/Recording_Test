@@ -32,7 +32,7 @@ const pageKeys = [
 
 function AppContent() {
   const [activeKey, setActiveKey] = useState('/');
-  const { settings, uploadWebcamRecording } = useSettings();
+  const { settings, uploadWebcamRecording, fetchSettings } = useSettings();
   const { t } = useTranslation();
 
   // --- Backend health polling ---
@@ -50,16 +50,17 @@ function AppContent() {
       try {
         await axios.get('/api/health', { timeout: 3000 });
         if (!readyRef.current) {
-          const wasEverReady = everReadyRef.current;
           readyRef.current = true;
-          everReadyRef.current = true;
+          // 백엔드 연결 시 설정 다시 불러오기 (테마 등)
+          await fetchSettings();
           setBackendReady(true);
-          if (wasEverReady) {
+          if (everReadyRef.current) {
             // 재연결 시 현재 탭 데이터 새로고침
             setTimeout(() => {
               window.dispatchEvent(new CustomEvent('tab-change', { detail: activeKeyRef.current }));
             }, 200);
           }
+          everReadyRef.current = true;
         }
       } catch {
         if (readyRef.current) {

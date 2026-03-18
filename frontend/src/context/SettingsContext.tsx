@@ -16,6 +16,7 @@ export interface AppSettings {
 interface SettingsContextType {
   settings: AppSettings;
   loading: boolean;
+  fetchSettings: () => Promise<void>;
   updateSettings: (partial: Partial<AppSettings>) => Promise<void>;
   uploadWebcamRecording: (blob: Blob, filename: string) => Promise<string>;
   saveExcelToDir: (resultFilename: string) => Promise<string>;
@@ -37,11 +38,17 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    api.get('/settings').then(res => {
+  const fetchSettings = useCallback(async () => {
+    try {
+      const res = await api.get('/settings');
       setSettings({ ...DEFAULT_SETTINGS, ...res.data });
-    }).catch(() => {}).finally(() => setLoading(false));
+    } catch { /* ignore */ }
+    setLoading(false);
   }, []);
+
+  useEffect(() => {
+    fetchSettings();
+  }, [fetchSettings]);
 
   const updateSettings = useCallback(async (partial: Partial<AppSettings>) => {
     const res = await api.post('/settings', partial);
@@ -72,7 +79,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <SettingsContext.Provider value={{ settings, loading, updateSettings, uploadWebcamRecording, saveExcelToDir, saveExportZipToDir, browseFolder }}>
+    <SettingsContext.Provider value={{ settings, loading, fetchSettings, updateSettings, uploadWebcamRecording, saveExcelToDir, saveExportZipToDir, browseFolder }}>
       {children}
     </SettingsContext.Provider>
   );

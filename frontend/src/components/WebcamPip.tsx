@@ -97,8 +97,7 @@ export default function WebcamPip({ webcam, onClose }: WebcamPipProps) {
             style={{ color: '#aaa', width: 24, height: 24, padding: 0 }} />
         </div>
 
-        {!minimized && (
-          <div style={{ padding: 8 }}>
+        <div style={{ padding: 8, display: minimized ? 'none' : undefined }}>
             {/* Video */}
             <div style={{ position: 'relative', marginBottom: 8 }}>
               <video
@@ -185,8 +184,7 @@ export default function WebcamPip({ webcam, onClose }: WebcamPipProps) {
               </div>
             )}
           </div>
-        )}
-      </div>
+        </div>
 
       <style>{`@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }`}</style>
     </ConfigProvider>
