@@ -100,13 +100,8 @@ async def browse_folder(req: BrowseFolderRequest):
 
 @router.post("/upload-webcam")
 async def upload_webcam_recording(file: UploadFile = File(...), filename: str = Form("")):
-    """Save uploaded webcam recording to the configured directory."""
-    settings = _load()
-    save_dir = settings.get("webcam_save_dir", "")
-    if not save_dir:
-        raise HTTPException(status_code=400, detail="웹캠 저장 경로가 설정되지 않았습니다. 설정 탭에서 경로를 지정하세요.")
-
-    dirpath = Path(save_dir)
+    """Save uploaded webcam recording to Results/Video/ directory."""
+    dirpath = Path(__file__).resolve().parent.parent.parent.parent / "Results" / "Video"
     if not dirpath.exists():
         try:
             dirpath.mkdir(parents=True, exist_ok=True)

@@ -74,7 +74,7 @@ screenshots_dir = Path(__file__).resolve().parent.parent / "screenshots"
 screenshots_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/screenshots", StaticFiles(directory=str(screenshots_dir)), name="screenshots")
 
-recordings_dir = Path(__file__).resolve().parent.parent / "recordings"
+recordings_dir = Path(__file__).resolve().parent.parent.parent / "Results" / "Video"
 recordings_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/recordings", StaticFiles(directory=str(recordings_dir)), name="recordings")
 

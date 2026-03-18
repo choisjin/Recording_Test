@@ -5,15 +5,18 @@ import io
 import subprocess
 import shutil
 from pathlib import Path
+from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse, StreamingResponse
 
 router = APIRouter(prefix="/api/results", tags=["results"])
 
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent  # server.py 위치
 RESULTS_DIR = Path(__file__).resolve().parent.parent.parent / "results"
 SCREENSHOTS_DIR = Path(__file__).resolve().parent.parent.parent / "screenshots"
-RECORDINGS_DIR = Path(__file__).resolve().parent.parent.parent / "recordings"
+RECORDINGS_DIR = _PROJECT_ROOT / "Results" / "Video"
+EXPORT_ROOT = _PROJECT_ROOT / "Results"
 
 
 @router.get("/list")
@@ -206,14 +209,72 @@ async def export_result_excel(filename: str):
     )
 
 
+@router.post("/export-bundle/{filename}")
+async def export_result_bundle(filename: str):
+    """결과 내보내기: Excel + 녹화 영상을 Results/{날짜_시간_시나리오}/ 폴더로 복사."""
+    filepath = RESULTS_DIR / filename
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail="Result not found")
+
+    data = json.loads(filepath.read_text(encoding="utf-8"))
+    scenario_name = data.get("scenario_name", "unknown")
+    started_at = data.get("started_at", "")
+
+    # 폴더명: YYYYMMDD_HHMMSS_시나리오이름
+    try:
+        dt = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+        ts = dt.strftime("%Y%m%d_%H%M%S")
+    except Exception:
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe_name = scenario_name.replace(" ", "_").replace("/", "_").replace("\\", "_")
+    folder_name = f"{ts}_{safe_name}"
+    export_dir = EXPORT_ROOT / folder_name
+    export_dir.mkdir(parents=True, exist_ok=True)
+
+    exported_files = []
+
+    # 1) Excel 생성
+    try:
+        wb = _build_excel_workbook(data, filepath)
+        excel_name = filename.replace(".json", ".xlsx")
+        excel_path = export_dir / excel_name
+        wb.save(str(excel_path))
+        exported_files.append(excel_name)
+    except Exception as e:
+        exported_files.append(f"Excel 실패: {e}")
+
+    # 2) 웹캠 녹화 파일 복사
+    base = filename.replace(".json", "")
+    if RECORDINGS_DIR.is_dir():
+        for rec in sorted(RECORDINGS_DIR.glob(f"{base}_webcam_*.webm")):
+            try:
+                shutil.copy2(str(rec), str(export_dir / rec.name))
+                exported_files.append(rec.name)
+            except Exception:
+                pass
+
+    return {
+        "path": str(export_dir),
+        "folder": folder_name,
+        "files": exported_files,
+    }
+
+
 @router.delete("/{filename}")
 async def delete_result(filename: str):
-    """Delete a test result."""
+    """Delete a test result and its associated webcam recordings."""
     filepath = RESULTS_DIR / filename
     if not filepath.exists():
         raise HTTPException(status_code=404, detail="Result not found")
     filepath.unlink()
-    return {"status": "deleted"}
+    # 연결된 웹캠 녹화 파일도 삭제
+    base = filename.replace(".json", "")
+    deleted_recordings = []
+    if RECORDINGS_DIR.is_dir():
+        for rec in RECORDINGS_DIR.glob(f"{base}_webcam_*.webm"):
+            rec.unlink()
+            deleted_recordings.append(rec.name)
+    return {"status": "deleted", "deleted_recordings": deleted_recordings}
 
 
 # --- Webcam recording endpoints ---

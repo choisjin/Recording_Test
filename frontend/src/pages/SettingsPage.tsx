@@ -9,31 +9,20 @@ const { Text } = Typography;
 export default function SettingsPage() {
   const { settings, updateSettings, browseFolder } = useSettings();
   const { t } = useTranslation();
-  const [webcamDir, setWebcamDir] = useState(settings.webcam_save_dir);
   const [excelDir, setExcelDir] = useState(settings.excel_export_dir);
   const [exportDir, setExportDir] = useState(settings.scenario_export_dir);
 
   // Sync local state when settings load
   useEffect(() => {
-    setWebcamDir(settings.webcam_save_dir);
     setExcelDir(settings.excel_export_dir);
     setExportDir(settings.scenario_export_dir);
-  }, [settings.webcam_save_dir, settings.excel_export_dir, settings.scenario_export_dir]);
+  }, [settings.excel_export_dir, settings.scenario_export_dir]);
 
   const handleThemeToggle = async (checked: boolean) => {
     try {
       await updateSettings({ theme: checked ? 'dark' : 'light' });
     } catch {
       message.error(t('settings.themeChanged'));
-    }
-  };
-
-  const handleWebcamDirSave = async () => {
-    try {
-      await updateSettings({ webcam_save_dir: webcamDir.trim() });
-      message.success(t('settings.webcamDirSuccess'));
-    } catch {
-      message.error(t('common.saveFailed'));
     }
   };
 
@@ -94,31 +83,6 @@ export default function SettingsPage() {
             />
             <Text>Dark</Text>
           </Space>
-        </Card>
-
-        <Card title={t('settings.webcamDir')} size="small">
-          <Space.Compact style={{ width: '100%' }}>
-            <Input
-              placeholder={t('settings.webcamDirPlaceholder')}
-              value={webcamDir}
-              onChange={(e) => setWebcamDir(e.target.value)}
-              onPressEnter={handleWebcamDirSave}
-              style={{ flex: 1 }}
-            />
-            <Button
-              icon={<FolderOpenOutlined />}
-              onClick={async () => {
-                try {
-                  const path = await browseFolder(webcamDir);
-                  if (path) { setWebcamDir(path); await updateSettings({ webcam_save_dir: path }); message.success(t('settings.webcamDirSuccess')); }
-                } catch { message.error(t('settings.folderSelectFailed')); }
-              }}
-            />
-            <Button type="primary" onClick={handleWebcamDirSave}>{t('common.save')}</Button>
-          </Space.Compact>
-          <Text type="secondary" style={{ fontSize: 12, marginTop: 4, display: 'block' }}>
-            {t('settings.webcamDirDesc')}
-          </Text>
         </Card>
 
         <Card title={t('settings.excelDir')} size="small">

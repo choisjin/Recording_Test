@@ -115,6 +115,8 @@ export const resultsApi = {
     form.append('end', String(end));
     return api.post(`/results/recordings/${filename}/trim`, form);
   },
+  exportBundle: (filename: string) =>
+    api.post(`/results/export-bundle/${filename}`),
 };
 
 export default api;

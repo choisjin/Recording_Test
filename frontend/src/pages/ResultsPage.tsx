@@ -137,7 +137,7 @@ const AnnotatedOverlay = React.memo(({ subResults, expectedImage }: {
 });
 
 export default function ResultsPage() {
-  const { settings, saveExcelToDir } = useSettings();
+  const { settings } = useSettings();
   const { t, lang } = useTranslation();
   const [results, setResults] = useState<ResultSummary[]>([]);
   const [loading, setLoading] = useState(false);
@@ -248,36 +248,13 @@ export default function ResultsPage() {
     });
   };
 
-  const exportExcel = async (filename: string) => {
-    // Always try server-side save first
+  const exportBundle = async (filename: string) => {
     try {
-      const path = await saveExcelToDir(filename);
-      message.success(t('results.excelSaveComplete', { path }));
-      return;
-    } catch (serverErr: any) {
-      const status = serverErr.response?.status;
-      const detail = serverErr.response?.data?.detail || '';
-      if (status !== 400 || !detail.includes('경로가 설정되지')) {
-        if (status) {
-          message.error(t('results.excelSaveFailed', { status, detail }));
-          return;
-        }
-      }
-    }
-    // Fallback: browser download
-    try {
-      const res = await resultsApi.exportExcel(filename);
-      const blob = new Blob([res.data], {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename.replace('.json', '.xlsx');
-      a.click();
-      window.URL.revokeObjectURL(url);
+      const res = await resultsApi.exportBundle(filename);
+      const { path, files } = res.data;
+      message.success(t('results.exportBundleComplete', { path, count: String(files.length) }));
     } catch (e: any) {
-      message.error(e.response?.data?.detail || t('results.excelExportFailed'));
+      message.error(e.response?.data?.detail || t('results.exportBundleFailed'));
     }
   };
 
@@ -397,8 +374,8 @@ export default function ResultsPage() {
               {t('common.details')}
             </Button>
           </Tooltip>
-          <Tooltip title={t('results.excelExport')}>
-            <Button size="small" icon={<DownloadOutlined />} onClick={() => exportExcel(record.filename)} />
+          <Tooltip title={t('results.exportBundle')}>
+            <Button size="small" icon={<DownloadOutlined />} onClick={() => exportBundle(record.filename)} />
           </Tooltip>
           <Tooltip title={t('common.delete')}>
             <Button size="small" danger icon={<DeleteOutlined />} onClick={() => deleteResult(record.filename)} />
@@ -540,9 +517,9 @@ export default function ResultsPage() {
           <Space>
             <Button
               icon={<DownloadOutlined />}
-              onClick={() => detailFilename && exportExcel(detailFilename)}
+              onClick={() => detailFilename && exportBundle(detailFilename)}
             >
-              {t('results.excelExport')}
+              {t('results.exportBundle')}
             </Button>
             <Button
               danger
