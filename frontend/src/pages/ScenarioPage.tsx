@@ -1069,7 +1069,10 @@ export default function ScenarioPage() {
             {playing && <Tag color="processing">{t('scenario.inProgress')}</Tag>}
             {!playing && stepResults.length > 0 && <Tag color={failCount + errorCount > 0 ? 'red' : warnCount > 0 ? 'orange' : 'green'}>{t('scenario.complete')}</Tag>}
           </Space>}
-          extra={<Space><span>Pass: {passCount}</span><span>Fail: {failCount}</span><span>Warning: {warnCount}</span><span>Error: {errorCount}</span><span>/ {playbackSteps.length} {t('scenario.steps')}</span></Space>}
+          extra={<Space>
+            {playing && <Button danger size="small" icon={<StopOutlined />} onClick={stopPlayback}>{t('scenario.stop')}</Button>}
+            <span>Pass: {passCount}</span><span>Fail: {failCount}</span><span>Warning: {warnCount}</span><span>Error: {errorCount}</span><span>/ {playbackSteps.length} {t('scenario.steps')}</span>
+          </Space>}
           style={{ marginTop: 8 }}
         >
           <Table columns={makeStepResultColumns(totalIterations)} dataSource={stepResults} rowKey={(_r, idx) => `${idx}`} size="small" pagination={false}
