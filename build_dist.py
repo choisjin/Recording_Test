@@ -50,11 +50,13 @@ NPM_CMD = "npm.cmd" if sys.platform == "win32" else "npm"
 
 def _run(cmd, cwd=None, check=True, timeout=180, live_output=False):
     print(f"  > {' '.join(str(c) for c in cmd)}")
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
     if live_output:
-        # 실시간 출력 (컴파일 등 오래 걸리는 작업용)
         proc = subprocess.Popen(
-            cmd, cwd=str(cwd or PROJECT_ROOT),
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+            cmd, cwd=str(cwd or PROJECT_ROOT), env=env,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            encoding="utf-8", errors="replace",
         )
         output_lines = []
         for line in proc.stdout:
@@ -68,8 +70,9 @@ def _run(cmd, cwd=None, check=True, timeout=180, live_output=False):
             raise subprocess.CalledProcessError(result.returncode, cmd)
         return result
     return subprocess.run(
-        cmd, cwd=str(cwd or PROJECT_ROOT),
-        check=check, capture_output=True, text=True, timeout=timeout,
+        cmd, cwd=str(cwd or PROJECT_ROOT), env=env,
+        check=check, capture_output=True,
+        encoding="utf-8", errors="replace", timeout=timeout,
     )
 
 
