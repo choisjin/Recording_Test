@@ -408,7 +408,11 @@ export default function RecordPage() {
 
   // Execute or record an action
   const executeAction = useCallback(async (action: string, params: Record<string, any>, desc: string) => {
-    const targetDevice = recording ? (stepDeviceId || screenshotDeviceId) : screenshotDeviceId;
+    // 화면 제스처(tap/swipe/long_press)는 항상 화면 디바이스로, 나머지는 스텝 디바이스로
+    const isGesture = ['tap', 'swipe', 'long_press'].includes(action);
+    const targetDevice = recording
+      ? (isGesture ? screenshotDeviceId : (stepDeviceId || screenshotDeviceId))
+      : screenshotDeviceId;
     if (!targetDevice) return;
 
     const resolvedAction = resolveAction(action, targetDevice);
