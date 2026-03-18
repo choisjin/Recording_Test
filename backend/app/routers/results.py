@@ -7,7 +7,7 @@ import shutil
 from pathlib import Path
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File
 from fastapi.responses import FileResponse, StreamingResponse
 
 router = APIRouter(prefix="/api/results", tags=["results"])
@@ -282,8 +282,8 @@ async def delete_result(filename: str):
 @router.post("/webcam-upload")
 async def upload_webcam_recording(
     file: UploadFile = File(...),
-    result_filename: str = Form(...),
-    repeat_index: int = Form(1),
+    result_filename: str = Query(...),
+    repeat_index: int = Query(1),
 ):
     """Upload a webcam recording linked to a test result."""
     RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
@@ -323,8 +323,8 @@ async def delete_recording(filename: str):
 @router.post("/recordings/{filename}/trim")
 async def trim_recording(
     filename: str,
-    start: float = Form(...),
-    end: float = Form(...),
+    start: float = Query(...),
+    end: float = Query(...),
 ):
     """Trim a webcam recording (requires ffmpeg)."""
     filepath = RECORDINGS_DIR / filename

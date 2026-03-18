@@ -39,7 +39,6 @@ SKIP_COMPILE = {"__init__.py"}
 INCLUDE_ROOT_FILES = [
     "requirements.txt",
     "setup.bat",
-    "server.py",
 ]
 
 # 배포에 포함할 추가 파일/폴더 (모듈 DLL 등)

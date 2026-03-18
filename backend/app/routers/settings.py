@@ -105,7 +105,7 @@ async def browse_folder(req: BrowseFolderRequest):
 
 
 @router.post("/upload-webcam")
-async def upload_webcam_recording(file: UploadFile = File(...), filename: str = Form("")):
+async def upload_webcam_recording(file: UploadFile = File(...), filename: str = ""):
     """Save uploaded webcam recording to Results/Video/ directory."""
     dirpath = Path(__file__).resolve().parent.parent.parent.parent / "Results" / "Video"
     if not dirpath.exists():
