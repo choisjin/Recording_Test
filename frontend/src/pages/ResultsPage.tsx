@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Button, Card, Collapse, Col, Descriptions, Image, InputNumber, Modal, Row, Select, Space, Table, Tag, Tooltip, message } from 'antd';
-import { DeleteOutlined, DownloadOutlined, EyeOutlined, PlayCircleOutlined, ReloadOutlined, ScissorOutlined, VideoCameraOutlined } from '@ant-design/icons';
+import { Button, Card, Collapse, Col, Descriptions, Image, Input, InputNumber, Modal, Row, Select, Space, Table, Tag, Tooltip, message } from 'antd';
+import { DeleteOutlined, DownloadOutlined, EyeOutlined, PlayCircleOutlined, ReloadOutlined, ScissorOutlined, SearchOutlined, VideoCameraOutlined } from '@ant-design/icons';
 import { resultsApi } from '../services/api';
 import { useSettings } from '../context/SettingsContext';
 import { useTranslation } from '../i18n';
@@ -145,6 +145,10 @@ export default function ResultsPage() {
   const [detailFilename, setDetailFilename] = useState('');
   const [detailVisible, setDetailVisible] = useState(false);
   const [compareStep, setCompareStep] = useState<StepResultDetail | null>(null);
+
+  // 선택 삭제 + 필터
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [scenarioFilter, setScenarioFilter] = useState('');
 
   // Webcam recordings
   const [recordings, setRecordings] = useState<{ filename: string; size: number; url: string }[]>([]);
@@ -310,6 +314,33 @@ export default function ResultsPage() {
     }
   };
 
+  const deleteSelected = () => {
+    if (selectedRowKeys.length === 0) return;
+    Modal.confirm({
+      title: t('results.deleteTitle'),
+      content: `${selectedRowKeys.length}${t('results.deleteSelectedConfirm')}`,
+      okText: t('common.delete'),
+      okType: 'danger',
+      cancelText: t('common.cancel'),
+      onOk: async () => {
+        for (const key of selectedRowKeys) {
+          try { await resultsApi.delete(key as string); } catch { /* skip */ }
+        }
+        message.success(t('common.deleteComplete'));
+        setSelectedRowKeys([]);
+        fetchResults();
+      },
+    });
+  };
+
+  // 시나리오 이름 필터링 + 검색
+  const filteredResults = scenarioFilter
+    ? results.filter(r => r.scenario_name.toLowerCase().includes(scenarioFilter.toLowerCase()))
+    : results;
+
+  // 시나리오 이름 목록 (필터 드롭다운용)
+  const scenarioNames = [...new Set(results.map(r => r.scenario_name))].sort();
+
   const columns = [
     {
       title: t('results.execTime'),
@@ -324,6 +355,8 @@ export default function ResultsPage() {
       dataIndex: 'scenario_name',
       key: 'name',
       sorter: (a: ResultSummary, b: ResultSummary) => a.scenario_name.localeCompare(b.scenario_name),
+      filters: scenarioNames.map(n => ({ text: n, value: n })),
+      onFilter: (value: any, record: ResultSummary) => record.scenario_name === value,
     },
     {
       title: t('common.status'),
@@ -458,17 +491,37 @@ export default function ResultsPage() {
       <Card
         title={t('results.title')}
         extra={
-          <Button icon={<ReloadOutlined />} onClick={fetchResults} loading={loading}>
-            {t('common.refresh')}
-          </Button>
+          <Space>
+            <Input
+              placeholder={t('common.search')}
+              prefix={<SearchOutlined />}
+              value={scenarioFilter}
+              onChange={(e) => setScenarioFilter(e.target.value)}
+              allowClear
+              style={{ width: 200 }}
+              size="small"
+            />
+            {selectedRowKeys.length > 0 && (
+              <Button danger size="small" icon={<DeleteOutlined />} onClick={deleteSelected}>
+                {t('common.delete')} ({selectedRowKeys.length})
+              </Button>
+            )}
+            <Button icon={<ReloadOutlined />} onClick={fetchResults} loading={loading} size="small">
+              {t('common.refresh')}
+            </Button>
+          </Space>
         }
       >
         <Table
           columns={columns}
-          dataSource={results}
+          dataSource={filteredResults}
           rowKey="filename"
           size="small"
           pagination={{ pageSize: 15, showSizeChanger: true }}
+          rowSelection={{
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys(keys),
+          }}
         />
       </Card>
 

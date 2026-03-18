@@ -438,6 +438,7 @@ const translations = {
     'results.score': '점수',
     'results.times': '회',
     'results.totalExecTime': '총 실행시간',
+    'results.deleteSelectedConfirm': '개 결과를 삭제하시겠습니까?',
 
     // === Webcam Recording ===
     'webcam.autoRecord': '웹캠 녹화',
@@ -895,6 +896,7 @@ const translations = {
     'results.score': 'Score',
     'results.times': 'times',
     'results.totalExecTime': 'Total Time',
+    'results.deleteSelectedConfirm': ' result(s)?',
 
     // === Webcam Recording ===
     'webcam.autoRecord': 'Webcam Rec',
