@@ -5,21 +5,15 @@ __pycache__/
 *.pyo
 *.egg-info/
 
-# 빌드 중간 파일 (배포 결과물은 추적)
+# 빌드 중간 파일
 build/
 dist/
 *.c
-!backend/app/**/*.c
 _cython_setup.py
 *.spec
 
 # Node
 frontend/node_modules/
-
-# 배포 포함 — 아래는 gitignore하지 않음:
-# - frontend/dist/     (프로덕션 빌드)
-# - backend/**/*.pyd   (컴파일된 바이너리)
-# - *.exe              (서버 실행 파일)
 
 # Runtime data (사용자 영역)
 backend/screenshots/
@@ -32,20 +26,6 @@ Results/
 # Large binaries (수동 복사)
 *.whl
 
-# Legacy reference files
-BENCH.py
-CAN.py
-CANAT.py
-IVIQEBenchIOClient.py
-IVIQEBenchIOProtocol.py
-IVIQEBenchIOReceive.py
-procResponse.py
-hkmc6th.py
-IVIHKMC6thAppMemInfo.py
-IVIHKMC6thPlugin.py
-IVIHKMC6thClient.py
-IVIHKMC6thProtocol.py
-
 # OS / IDE
 .env
 .vscode/
@@ -57,4 +37,3 @@ Desktop.ini
 .claude/settings.local.json
 .playwright-mcp/
 DLL_DEBUG/
-*.png

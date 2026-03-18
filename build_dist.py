@@ -43,16 +43,30 @@ INCLUDE_ROOT_FILES = [
 ]
 
 # 배포에 포함할 추가 파일/폴더 (모듈 DLL 등)
-INCLUDE_EXTRA = [
-    "CANatTransportProcDll.dll",
-    "CCIC_DEFINITION_LIBRARY.py",
-]
+INCLUDE_EXTRA = []
 
 NPM_CMD = "npm.cmd" if sys.platform == "win32" else "npm"
 
 
-def _run(cmd, cwd=None, check=True, timeout=180):
+def _run(cmd, cwd=None, check=True, timeout=180, live_output=False):
     print(f"  > {' '.join(str(c) for c in cmd)}")
+    if live_output:
+        # 실시간 출력 (컴파일 등 오래 걸리는 작업용)
+        proc = subprocess.Popen(
+            cmd, cwd=str(cwd or PROJECT_ROOT),
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        )
+        output_lines = []
+        for line in proc.stdout:
+            line = line.rstrip()
+            if line:
+                print(f"    {line}")
+                output_lines.append(line)
+        proc.wait()
+        result = subprocess.CompletedProcess(cmd, proc.returncode, "\n".join(output_lines), "")
+        if check and result.returncode != 0:
+            raise subprocess.CalledProcessError(result.returncode, cmd)
+        return result
     return subprocess.run(
         cmd, cwd=str(cwd or PROJECT_ROOT),
         check=check, capture_output=True, text=True, timeout=timeout,
@@ -108,9 +122,9 @@ setup(
     setup_file = PROJECT_ROOT / "_cython_setup.py"
     setup_file.write_text(setup_content, encoding="utf-8")
     try:
-        result = _run([sys.executable, str(setup_file)], check=False)
+        result = _run([sys.executable, str(setup_file)], check=False, live_output=True)
         if result.returncode != 0:
-            print(f"  컴파일 에러:\n{result.stderr[:500]}")
+            print("  컴파일 실패")
             return False
         print("  컴파일 완료")
         return True
@@ -141,7 +155,7 @@ def step_build_exe():
         "--workpath", str(BUILD_DIR / "pyinstaller"),
         "--specpath", str(BUILD_DIR),
         str(PROJECT_ROOT / "server.py"),
-    ], check=False)
+    ], check=False, live_output=True)
     if result.returncode != 0:
         print(f"  PyInstaller 에러:\n{result.stderr[:500]}")
         return False

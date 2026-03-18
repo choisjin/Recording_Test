@@ -86,7 +86,7 @@ echo [5/5] 설정 완료!
 echo ============================================
 echo   수동 복사 필요 파일 (Git 미포함):
 echo     - lge.auto-*.whl  (없으면 위 경고 참고)
-echo     - CANatTransportProcDll.dll
+echo     (CANatTransportProcDll.dll은 backend/app/modules/에 포함됨)
 echo     - server.exe
 echo ============================================
 pause

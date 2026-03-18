@@ -27,6 +27,9 @@ _module_functions_cache: dict[str, list[dict]] = {}
 # Plugins directory
 _PLUGINS_DIR = Path(__file__).resolve().parent.parent / "plugins"
 
+# Modules directory (DLL 등 모듈 런타임 파일)
+_MODULES_DIR = Path(__file__).resolve().parent.parent / "modules"
+
 
 def _load_plugin_from_file(py_file: Path):
     """Load a plugin module directly from file path (no package dependency)."""
@@ -162,12 +165,26 @@ def list_available_modules() -> list[dict]:
     return available
 
 
+def _ensure_module_deps(module_name: str, module_dir: Path) -> None:
+    """모듈이 필요로 하는 DLL 등을 modules/ 폴더에서 모듈 위치로 복사."""
+    import shutil
+    if not _MODULES_DIR.is_dir():
+        return
+    # module_name에 매칭되는 DLL 파일 복사 (예: CANAT → CANatTransportProcDll.dll)
+    for dll in _MODULES_DIR.glob("*.dll"):
+        dest = module_dir / dll.name
+        if not dest.exists():
+            shutil.copy2(str(dll), str(dest))
+            logger.info("Copied %s → %s", dll.name, dest)
+
+
 def _import_module_class(module_name: str):
     """Import and return the class for a given module name (lge.auto or plugin)."""
     # Try local plugin first (file-based loading to avoid package path issues)
     py_file = _PLUGINS_DIR / f"{module_name}.py"
     if py_file.is_file():
         try:
+            _ensure_module_deps(module_name, _PLUGINS_DIR)
             mod = _load_plugin_from_file(py_file)
             if mod is not None:
                 cls = getattr(mod, module_name, None)
@@ -179,6 +196,10 @@ def _import_module_class(module_name: str):
     # Try lge.auto
     try:
         mod = __import__(f"lge.auto.{module_name}", fromlist=[module_name])
+        # lge.auto 모듈 위치에 DLL 등 의존 파일 복사
+        mod_dir = Path(mod.__file__).parent if hasattr(mod, "__file__") else None
+        if mod_dir:
+            _ensure_module_deps(module_name, mod_dir)
         cls = getattr(mod, module_name, None)
         if cls is not None:
             return cls
