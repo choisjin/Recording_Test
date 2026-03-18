@@ -132,6 +132,8 @@ export default function ScenarioPage() {
   // 시나리오 스텝 미리보기
   const [previewSteps, setPreviewSteps] = useState<any[]>([]);
   const [skipStepIds, setSkipStepIds] = useState<Set<number>>(new Set());
+  const selectedNameRef = useRef(selectedName);
+  selectedNameRef.current = selectedName;
 
   // 시나리오 선택 시 스텝 로드
   useEffect(() => {
@@ -252,6 +254,12 @@ export default function ScenarioPage() {
       if ((e as CustomEvent).detail === '/scenarios') {
         fetchScenarios();
         fetchGroups();
+        // 스텝 미리보기 새로고침
+        if (selectedNameRef.current) {
+          scenarioApi.get(selectedNameRef.current).then(res => {
+            setPreviewSteps(res.data.steps || []);
+          }).catch(() => {});
+        }
       }
     };
     window.addEventListener('tab-change', onTabChange);
@@ -1082,99 +1090,100 @@ export default function ScenarioPage() {
         .row-running td { background: rgba(22, 119, 255, 0.08) !important; }
       `}</style>
 
-      {/* ===== 실시간 재생 패널 ===== */}
-      {(playing || stepResults.length > 0) && playbackScenario && (
+      {/* ===== 스텝 패널 (미리보기 + 재생 통합) ===== */}
+      {(selectedName && previewSteps.length > 0) || ((playing || stepResults.length > 0) && playbackScenario) ? (
         <Card
-          title={<Space>
-            <span>{t('scenario.play')}: {playingGroupName ? `[${playingGroupName}]` : ''} {currentGroupScenario || playbackScenario.name}</span>
-            {playingGroupName && groupScenarioTotal > 0 && <Tag color="cyan">{groupScenarioIndex}/{groupScenarioTotal} {t('scenario.title')}</Tag>}
-            {totalIterations > 1 && <Tag color="purple">{currentIteration} / {totalIterations}{t('scenario.times')}</Tag>}
-            {playing && !paused && <Tag color="processing">{t('scenario.inProgress')}</Tag>}
-            {paused && <Tag color="warning">PAUSED</Tag>}
-            {!playing && stepResults.length > 0 && <Tag color={failCount + errorCount > 0 ? 'red' : warnCount > 0 ? 'orange' : 'green'}>{t('scenario.complete')}</Tag>}
-          </Space>}
-          extra={<Space>
-            {playing && !paused && <Button size="small" icon={<PauseOutlined />} onClick={pausePlayback}>일시정지</Button>}
-            {playing && paused && <Button type="primary" size="small" icon={<PlayCircleOutlined />} onClick={resumePlayback}>재개</Button>}
-            {playing && <Button danger size="small" icon={<StopOutlined />} onClick={stopPlayback}>{t('scenario.stop')}</Button>}
-            <span>Pass: {passCount}</span><span>Fail: {failCount}</span><span>Warning: {warnCount}</span><span>Error: {errorCount}</span><span>/ {playbackSteps.length} {t('scenario.steps')}</span>
-          </Space>}
-          style={{ marginTop: 8 }}
-        >
-          <Table columns={makeStepResultColumns(totalIterations)} dataSource={stepResults} rowKey={(_r, idx) => `${idx}`} size="small" pagination={false}
-            rowClassName={(r: StepResultData) => r.status === 'running' ? 'row-running' : r.status === 'fail' ? 'row-fail' : r.status === 'error' ? 'row-error' : r.status === 'pass' ? 'row-pass' : ''} />
-        </Card>
-      )}
-
-      {/* ===== 시나리오 스텝 미리보기 (하단) ===== */}
-      {selectedName && previewSteps.length > 0 && (
-        <Card
-          title={<span>{selectedName} — {previewSteps.length} {t('scenario.steps')} {skipStepIds.size > 0 && <Tag color="orange">{skipStepIds.size} skip</Tag>}</span>}
           size="small"
           style={{ marginTop: 8 }}
+          title={
+            (playing || stepResults.length > 0) && playbackScenario ? (
+              <Space>
+                <span>{t('scenario.play')}: {playingGroupName ? `[${playingGroupName}]` : ''} {currentGroupScenario || playbackScenario.name}</span>
+                {playingGroupName && groupScenarioTotal > 0 && <Tag color="cyan">{groupScenarioIndex}/{groupScenarioTotal} {t('scenario.title')}</Tag>}
+                {totalIterations > 1 && <Tag color="purple">{currentIteration} / {totalIterations}{t('scenario.times')}</Tag>}
+                {playing && !paused && <Tag color="processing">{t('scenario.inProgress')}</Tag>}
+                {paused && <Tag color="warning">PAUSED</Tag>}
+                {!playing && stepResults.length > 0 && <Tag color={failCount + errorCount > 0 ? 'red' : warnCount > 0 ? 'orange' : 'green'}>{t('scenario.complete')}</Tag>}
+              </Space>
+            ) : (
+              <span>{selectedName} — {previewSteps.length} {t('scenario.steps')} {skipStepIds.size > 0 && <Tag color="orange">{skipStepIds.size} skip</Tag>}</span>
+            )
+          }
+          extra={
+            (playing || stepResults.length > 0) ? (
+              <Space>
+                {playing && !paused && <Button size="small" icon={<PauseOutlined />} onClick={pausePlayback}>일시정지</Button>}
+                {playing && paused && <Button type="primary" size="small" icon={<PlayCircleOutlined />} onClick={resumePlayback}>재개</Button>}
+                {playing && <Button danger size="small" icon={<StopOutlined />} onClick={stopPlayback}>{t('scenario.stop')}</Button>}
+                <span>Pass: {passCount}</span><span>Fail: {failCount}</span><span>Warning: {warnCount}</span><span>Error: {errorCount}</span><span>/ {playbackSteps.length} {t('scenario.steps')}</span>
+              </Space>
+            ) : undefined
+          }
         >
-          <div style={{ maxHeight: 400, overflow: 'auto' }}>
-            <Table
-              size="small"
-              pagination={false}
-              dataSource={previewSteps}
-              rowKey="id"
-              rowClassName={(r: any) => skipStepIds.has(r.id) ? 'row-skip' : ''}
-              columns={[
-                {
-                  title: <Checkbox
-                    checked={skipStepIds.size === 0}
-                    indeterminate={skipStepIds.size > 0 && skipStepIds.size < previewSteps.length}
-                    onChange={(e) => {
-                      if (e.target.checked) setSkipStepIds(new Set());
-                      else setSkipStepIds(new Set(previewSteps.map((s: any) => s.id)));
-                    }}
-                  />,
-                  key: 'check', width: 40, align: 'center' as const,
-                  render: (_: any, r: any) => (
-                    <Checkbox
-                      checked={!skipStepIds.has(r.id)}
+          {(playing || stepResults.length > 0) ? (
+            /* 재생 중 / 완료: 결과 테이블 */
+            <Table columns={makeStepResultColumns(totalIterations)} dataSource={stepResults} rowKey={(_r, idx) => `${idx}`} size="small" pagination={false}
+              rowClassName={(r: StepResultData) => r.status === 'running' ? 'row-running' : r.status === 'fail' ? 'row-fail' : r.status === 'error' ? 'row-error' : r.status === 'pass' ? 'row-pass' : ''} />
+          ) : (
+            /* 미리보기: 스텝 편집 테이블 */
+            <div style={{ maxHeight: 400, overflow: 'auto' }}>
+              <Table
+                size="small"
+                pagination={false}
+                dataSource={previewSteps}
+                rowKey="id"
+                rowClassName={(r: any) => skipStepIds.has(r.id) ? 'row-skip' : ''}
+                columns={[
+                  {
+                    title: <Checkbox
+                      checked={skipStepIds.size === 0}
+                      indeterminate={skipStepIds.size > 0 && skipStepIds.size < previewSteps.length}
                       onChange={(e) => {
-                        setSkipStepIds(prev => {
-                          const next = new Set(prev);
-                          if (e.target.checked) next.delete(r.id);
-                          else next.add(r.id);
-                          return next;
-                        });
+                        if (e.target.checked) setSkipStepIds(new Set());
+                        else setSkipStepIds(new Set(previewSteps.map((s: any) => s.id)));
                       }}
-                    />
-                  ),
-                },
-                { title: '#', dataIndex: 'id', key: 'id', width: 40, align: 'center' as const },
-                { title: 'Type', dataIndex: 'type', key: 'type', width: 120, render: (v: string) => <Tag>{v}</Tag> },
-                { title: 'Device', dataIndex: 'device_id', key: 'device', width: 120, render: (v: string) => v ? <Tag color="blue">{v}</Tag> : '-' },
-                { title: t('common.description'), dataIndex: 'description', key: 'desc', ellipsis: true },
-                {
-                  title: 'Delay (ms)', dataIndex: 'delay_after_ms', key: 'delay', width: 120, align: 'center' as const,
-                  render: (v: number, _r: any, idx: number) => (
-                    <InputNumber
-                      size="small"
-                      min={0}
-                      max={Infinity}
-                      step={100}
-                      value={v}
-                      style={{ width: 100 }}
-                      onChange={(val) => {
-                        const updated = [...previewSteps];
-                        updated[idx] = { ...updated[idx], delay_after_ms: val ?? 0 };
-                        setPreviewSteps(updated);
-                        scenarioApi.updateStep(selectedName!, idx, { delay_after_ms: val ?? 0 }).catch(() => {});
-                      }}
-                    />
-                  ),
-                },
-                { title: t('scenario.compare'), key: 'img', width: 50, align: 'center' as const, render: (_: any, r: any) => r.expected_image ? '✓' : '-' },
-              ]}
-            />
-            <style>{`.row-skip td { opacity: 0.35; }`}</style>
-          </div>
+                    />,
+                    key: 'check', width: 40, align: 'center' as const,
+                    render: (_: any, r: any) => (
+                      <Checkbox
+                        checked={!skipStepIds.has(r.id)}
+                        onChange={(e) => {
+                          setSkipStepIds(prev => {
+                            const next = new Set(prev);
+                            if (e.target.checked) next.delete(r.id);
+                            else next.add(r.id);
+                            return next;
+                          });
+                        }}
+                      />
+                    ),
+                  },
+                  { title: '#', dataIndex: 'id', key: 'id', width: 40, align: 'center' as const },
+                  { title: 'Type', dataIndex: 'type', key: 'type', width: 120, render: (v: string) => <Tag>{v}</Tag> },
+                  { title: 'Device', dataIndex: 'device_id', key: 'device', width: 120, render: (v: string) => v ? <Tag color="blue">{v}</Tag> : '-' },
+                  { title: t('common.description'), dataIndex: 'description', key: 'desc', ellipsis: true },
+                  {
+                    title: 'Delay (ms)', dataIndex: 'delay_after_ms', key: 'delay', width: 120, align: 'center' as const,
+                    render: (v: number, _r: any, idx: number) => (
+                      <InputNumber
+                        size="small" min={0} max={Infinity} step={100} value={v} style={{ width: 100 }}
+                        onChange={(val) => {
+                          const updated = [...previewSteps];
+                          updated[idx] = { ...updated[idx], delay_after_ms: val ?? 0 };
+                          setPreviewSteps(updated);
+                          scenarioApi.updateStep(selectedName!, idx, { delay_after_ms: val ?? 0 }).catch(() => {});
+                        }}
+                      />
+                    ),
+                  },
+                  { title: t('scenario.compare'), key: 'img', width: 50, align: 'center' as const, render: (_: any, r: any) => r.expected_image ? '✓' : '-' },
+                ]}
+              />
+              <style>{`.row-skip td { opacity: 0.35; }`}</style>
+            </div>
+          )}
         </Card>
-      )}
+      ) : null}
 
       {/* ===== 그룹 관리 모달 ===== */}
       <Modal title={t('scenario.groupManage')} open={groupModalVisible} onCancel={() => setGroupModalVisible(false)} footer={null} width={960}
