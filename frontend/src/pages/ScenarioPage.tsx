@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button, Card, Checkbox, Col, Collapse, Descriptions, Divider, Image, Input, InputNumber, List, Modal, Radio, Row, Select, Space, Table, Tabs, Tag, Tooltip, Upload, message } from 'antd';
 import {
-  PlayCircleOutlined, DeleteOutlined, EyeOutlined,
+  PlayCircleOutlined, PauseOutlined, DeleteOutlined, EyeOutlined,
   StopOutlined, CopyOutlined, MergeCellsOutlined,
   FolderOutlined, FolderAddOutlined, MinusOutlined,
   ArrowUpOutlined, ArrowDownOutlined, EditOutlined, BranchesOutlined,
@@ -111,6 +111,7 @@ export default function ScenarioPage() {
 
   // Playback
   const [playing, setPlaying] = useState(false);
+  const [paused, setPaused] = useState(false);
   const [playingName, setPlayingName] = useState('');
   const [_currentStepId, setCurrentStepId] = useState<number | null>(null);
   const [stepResults, setStepResults] = useState<StepResultData[]>([]);
@@ -613,7 +614,7 @@ export default function ScenarioPage() {
         });
       } else if (msg.type === 'playback_complete') {
         if (liveDurationRef.current) { clearInterval(liveDurationRef.current); liveDurationRef.current = null; }
-        setPlaying(false); setCurrentStepId(null);
+        setPlaying(false); setPaused(false); setCurrentStepId(null);
         message.success(repeat > 1 ? t('scenario.playCompleteRepeat', { count: String(repeat) }) : t('scenario.playComplete'));
         ws.close();
         // 웹캠 녹화 종료 + 업로드
@@ -650,12 +651,17 @@ export default function ScenarioPage() {
         if (doAutoRecord && webcamRecordingActiveRef.current) { webcam.stopRecordingAuto(); webcamRecordingActiveRef.current = false; webcamBlobsRef.current = []; }
       } else if (msg.type === 'playback_stopped') {
         if (liveDurationRef.current) { clearInterval(liveDurationRef.current); liveDurationRef.current = null; }
-        setPlaying(false); setCurrentStepId(null);
+        setPlaying(false); setPaused(false); setCurrentStepId(null);
         message.info(t('scenario.playStopped')); ws.close();
         if (doAutoRecord && webcamRecordingActiveRef.current) { webcam.stopRecordingAuto(); webcamRecordingActiveRef.current = false; webcamBlobsRef.current = []; }
+      } else if (msg.type === 'playback_paused') {
+        setPaused(true);
+        if (liveDurationRef.current) { clearInterval(liveDurationRef.current); liveDurationRef.current = null; }
+      } else if (msg.type === 'playback_resumed') {
+        setPaused(false);
       }
     };
-    ws.onerror = () => { if (liveDurationRef.current) { clearInterval(liveDurationRef.current); liveDurationRef.current = null; } setPlaying(false); setCurrentStepId(null); message.error(t('scenario.websocketFailed')); };
+    ws.onerror = () => { if (liveDurationRef.current) { clearInterval(liveDurationRef.current); liveDurationRef.current = null; } setPlaying(false); setPaused(false); setCurrentStepId(null); message.error(t('scenario.websocketFailed')); };
     ws.onclose = () => { wsRef.current = null; };
   };
 
@@ -776,7 +782,7 @@ export default function ScenarioPage() {
         });
       } else if (msg.type === 'playback_complete') {
         if (liveDurationRef.current) { clearInterval(liveDurationRef.current); liveDurationRef.current = null; }
-        setPlaying(false); setPlayingGroupName(null); setCurrentStepId(null);
+        setPlaying(false); setPaused(false); setPlayingGroupName(null); setCurrentStepId(null);
         message.success(t('scenario.playComplete'));
         ws.close();
         if (doAutoRecord && webcamRecordingActiveRef.current) {
@@ -812,18 +818,35 @@ export default function ScenarioPage() {
         if (doAutoRecord && webcamRecordingActiveRef.current) { webcam.stopRecordingAuto(); webcamRecordingActiveRef.current = false; webcamBlobsRef.current = []; }
       } else if (msg.type === 'playback_stopped') {
         if (liveDurationRef.current) { clearInterval(liveDurationRef.current); liveDurationRef.current = null; }
-        setPlaying(false); setPlayingGroupName(null); setCurrentStepId(null);
+        setPlaying(false); setPaused(false); setPlayingGroupName(null); setCurrentStepId(null);
         message.info(t('scenario.playStopped')); ws.close();
         if (doAutoRecord && webcamRecordingActiveRef.current) { webcam.stopRecordingAuto(); webcamRecordingActiveRef.current = false; webcamBlobsRef.current = []; }
+      } else if (msg.type === 'playback_paused') {
+        setPaused(true);
+        if (liveDurationRef.current) { clearInterval(liveDurationRef.current); liveDurationRef.current = null; }
+      } else if (msg.type === 'playback_resumed') {
+        setPaused(false);
       }
     };
-    ws.onerror = () => { if (liveDurationRef.current) { clearInterval(liveDurationRef.current); liveDurationRef.current = null; } setPlaying(false); setPlayingGroupName(null); setCurrentStepId(null); message.error(t('scenario.websocketFailed')); };
+    ws.onerror = () => { if (liveDurationRef.current) { clearInterval(liveDurationRef.current); liveDurationRef.current = null; } setPlaying(false); setPaused(false); setPlayingGroupName(null); setCurrentStepId(null); message.error(t('scenario.websocketFailed')); };
     ws.onclose = () => { wsRef.current = null; };
   };
 
   const stopPlayback = () => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ action: 'stop' }));
+    }
+  };
+
+  const pausePlayback = () => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ action: 'pause' }));
+    }
+  };
+
+  const resumePlayback = () => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ action: 'resume' }));
     }
   };
 
@@ -1066,10 +1089,13 @@ export default function ScenarioPage() {
             <span>{t('scenario.play')}: {playingGroupName ? `[${playingGroupName}]` : ''} {currentGroupScenario || playbackScenario.name}</span>
             {playingGroupName && groupScenarioTotal > 0 && <Tag color="cyan">{groupScenarioIndex}/{groupScenarioTotal} {t('scenario.title')}</Tag>}
             {totalIterations > 1 && <Tag color="purple">{currentIteration} / {totalIterations}{t('scenario.times')}</Tag>}
-            {playing && <Tag color="processing">{t('scenario.inProgress')}</Tag>}
+            {playing && !paused && <Tag color="processing">{t('scenario.inProgress')}</Tag>}
+            {paused && <Tag color="warning">PAUSED</Tag>}
             {!playing && stepResults.length > 0 && <Tag color={failCount + errorCount > 0 ? 'red' : warnCount > 0 ? 'orange' : 'green'}>{t('scenario.complete')}</Tag>}
           </Space>}
           extra={<Space>
+            {playing && !paused && <Button size="small" icon={<PauseOutlined />} onClick={pausePlayback}>일시정지</Button>}
+            {playing && paused && <Button type="primary" size="small" icon={<PlayCircleOutlined />} onClick={resumePlayback}>재개</Button>}
             {playing && <Button danger size="small" icon={<StopOutlined />} onClick={stopPlayback}>{t('scenario.stop')}</Button>}
             <span>Pass: {passCount}</span><span>Fail: {failCount}</span><span>Warning: {warnCount}</span><span>Error: {errorCount}</span><span>/ {playbackSteps.length} {t('scenario.steps')}</span>
           </Space>}

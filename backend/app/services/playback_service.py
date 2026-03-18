@@ -46,14 +46,32 @@ class PlaybackService:
         self.dm = device_manager
         self._running = False
         self._should_stop = False
+        self._pause_event = asyncio.Event()
+        self._pause_event.set()  # 초기: 일시정지 아님
         self._device_map: dict[str, str] = {}  # alias -> real device id for current playback
 
     @property
     def is_running(self) -> bool:
         return self._running
 
+    @property
+    def is_paused(self) -> bool:
+        return not self._pause_event.is_set()
+
     async def stop(self) -> None:
         self._should_stop = True
+        self._pause_event.set()  # 일시정지 중이면 풀어서 루프 종료 가능하게
+
+    async def pause(self) -> None:
+        self._pause_event.clear()
+
+    async def resume(self) -> None:
+        self._pause_event.set()
+
+    async def _wait_if_paused(self) -> bool:
+        """일시정지 상태면 재개될 때까지 대기. 중단 시 True 반환."""
+        await self._pause_event.wait()
+        return self._should_stop
 
     async def _interruptible_sleep(self, seconds: float) -> bool:
         """중단 가능한 sleep. _should_stop이면 즉시 반환. 중단 시 True 반환."""
@@ -291,6 +309,12 @@ class PlaybackService:
 
         # File prefix includes cycle number to avoid overwriting across repeats
         file_prefix = f"c{repeat_index}_step_{step.id:03d}"
+
+        # 일시정지 상태면 재개될 때까지 대기
+        if await self._wait_if_paused():
+            step_result.status = "error"
+            step_result.message = "Stopped by user"
+            return step_result
 
         t0 = t1 = t2 = t3 = t4 = start_time
         try:

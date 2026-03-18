@@ -221,14 +221,23 @@ async def websocket_playback(websocket: WebSocket):
     stop_listener_task: asyncio.Task | None = None
 
     async def _listen_for_stop():
-        """재생 중 WebSocket에서 stop 명령을 대기."""
+        """재생 중 WebSocket에서 stop/pause/resume 명령을 대기."""
         try:
             while True:
                 msg = await websocket.receive_json()
-                if msg.get("action") == "stop":
+                cmd = msg.get("action")
+                if cmd == "stop":
                     await playback_service.stop()
                     logger.info("Stop command received during playback")
                     return
+                elif cmd == "pause":
+                    await playback_service.pause()
+                    await websocket.send_json({"type": "playback_paused"})
+                    logger.info("Playback paused")
+                elif cmd == "resume":
+                    await playback_service.resume()
+                    await websocket.send_json({"type": "playback_resumed"})
+                    logger.info("Playback resumed")
         except Exception:
             pass
 
@@ -245,6 +254,7 @@ async def websocket_playback(websocket: WebSocket):
                 skip_steps: set[int] = set(data.get("skip_steps", []))
                 try:
                     playback_service._should_stop = False
+                    playback_service._pause_event.set()
                     stop_listener_task = asyncio.create_task(_listen_for_stop())
 
                     scen = await recording_service.load_scenario(scenario_name)
@@ -345,6 +355,7 @@ async def websocket_playback(websocket: WebSocket):
 
                 try:
                     playback_service._should_stop = False
+                    playback_service._pause_event.set()
                     stop_listener_task = asyncio.create_task(_listen_for_stop())
 
                     # Preflight: check all scenarios in the group
