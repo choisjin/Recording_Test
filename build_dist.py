@@ -172,11 +172,12 @@ def step_package():
     """배포 패키지 조립 (dist/ReplayKit/)."""
     print("\n=== [4/4] 배포 패키지 생성 ===")
 
-    # 기존 내용 정리 (.git, ReplayKit.exe 보존)
+    # 기존 내용 정리 (.git, exe, whl, msi 등 보존)
     DIST_DIR.mkdir(parents=True, exist_ok=True)
-    _preserve = {".git", ".gitignore", "ReplayKit.exe"}
+    _preserve_names = {".git", ".gitignore", ".gitattributes", "ReplayKit.exe"}
+    _preserve_exts = {".whl", ".msi", ".exe"}
     for item in list(DIST_DIR.iterdir()):
-        if item.name in _preserve:
+        if item.name in _preserve_names or item.suffix in _preserve_exts:
             continue
         if item.is_dir():
             shutil.rmtree(item)
