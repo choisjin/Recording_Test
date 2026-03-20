@@ -525,7 +525,12 @@ class DeviceManager:
         cam = VisionCamera(mac=mac, model=model, serial=serial, ip=ip, subnetmask=subnetmask)
         loop = asyncio.get_event_loop()
         try:
-            result = await loop.run_in_executor(None, cam.Connect)
+            result = await asyncio.wait_for(
+                loop.run_in_executor(None, cam.Connect),
+                timeout=30.0,
+            )
+        except asyncio.TimeoutError:
+            raise RuntimeError("VisionCamera connect timeout (30s) — 카메라가 네트워크에 연결되어 있는지 확인하세요")
         except Exception as e:
             raise RuntimeError(f"VisionCamera connect failed: {e}")
 
