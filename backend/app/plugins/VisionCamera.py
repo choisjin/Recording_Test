@@ -121,23 +121,11 @@ class VisionCamera:
         Returns:
             이미지 바이트 데이터
         """
-        # 임시 파일에 캡처 후 읽기
-        tmp_path = self.Capture()
-        try:
-            img = Image.open(tmp_path)
-            buf = io.BytesIO()
-            if fmt.lower() in ("jpg", "jpeg"):
-                img = img.convert("RGB")  # RGBA → RGB (JPEG는 알파 불가)
-                img.save(buf, format="JPEG", quality=85)
-            else:
-                img.save(buf, format="PNG")
-            return buf.getvalue()
-        finally:
-            # 임시 파일 정리
-            try:
-                os.remove(tmp_path)
-            except OSError:
-                pass
+        if not self._client or not self._is_connected:
+            raise RuntimeError("VisionCamera not connected")
+
+        with self._lock:
+            return self._client.md_CaptureBytes(fmt)
 
     def CaptureToFile(self, save_path: str) -> str:
         """지정된 경로에 PNG 이미지 캡처.

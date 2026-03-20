@@ -1,238 +1,260 @@
 # -*- coding: utf-8 -*-
-"""VisionCamera DLL 제어 클라이언트.
+"""VisionCamera 클라이언트 — harvesters + Vimba GenTL 기반.
 
-MATVisionLib.dll을 통해 비전 카메라 연결/캡처/비교 등을 수행.
-References/VisionCameraClient.py 기반으로 Robot Framework 의존성을 제거하고
-플러그인 구조에 맞게 재구성.
+백그라운드 스레드에서 지속적으로 프레임을 캡처하여
+최신 프레임을 즉시 반환하는 방식으로 동작.
 """
 
+import io
 import os
-import sys
-import shutil
+import glob
 import logging
-import ctypes
-from ctypes import c_wchar_p
+import threading
+import time
+import numpy as np
 from pathlib import Path
 from PIL import Image
 
 logger = logging.getLogger(__name__)
 
-# modules/ 디렉토리 (DLL 원본 위치)
-_MODULES_DIR = Path(__file__).resolve().parent.parent / "modules"
 
-# use_last_error=True 로 kernel32 로드해야 GetLastError가 정확함
-_kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+def _find_cti_files() -> list[str]:
+    """Vimba X GenTL producer (.cti) 파일을 자동 탐색."""
+    search_dirs = [
+        r"C:\Program Files\Allied Vision\Vimba X\cti",
+        r"C:\Program Files\Allied Vision\VimbaX\cti",
+        r"C:\Program Files (x86)\Allied Vision\Vimba X\cti",
+    ]
+    for var in ("VIMBA_X_HOME", "VIMBA_HOME"):
+        val = os.environ.get(var, "")
+        if val:
+            search_dirs.append(os.path.join(val, "cti"))
+    gentl = os.environ.get("GENICAM_GENTL64_PATH", "")
+    if gentl:
+        search_dirs.extend(gentl.split(os.pathsep))
 
-# 64bit Python에서 반드시 restype/argtypes 선언 필요 (기본 c_int는 포인터 잘림)
-_kernel32.LoadLibraryExW.argtypes = [ctypes.c_wchar_p, ctypes.c_void_p, ctypes.c_uint32]
-_kernel32.LoadLibraryExW.restype = ctypes.c_void_p
-
-_kernel32.LoadLibraryW.argtypes = [ctypes.c_wchar_p]
-_kernel32.LoadLibraryW.restype = ctypes.c_void_p
-
-_kernel32.FreeLibrary.argtypes = [ctypes.c_void_p]
-_kernel32.FreeLibrary.restype = ctypes.c_int
-
-_kernel32.SetDllDirectoryW.argtypes = [ctypes.c_wchar_p]
-_kernel32.SetDllDirectoryW.restype = ctypes.c_int
-
-
-def _try_load_dll(dll_path: str, modules_dir: str) -> ctypes.CDLL:
-    """단계별 진단과 함께 DLL 로드를 시도한다."""
-    diag = []
-
-    # --- 진단 1: 파일 존재 확인 ---
-    if not os.path.isfile(dll_path):
-        raise FileNotFoundError(f"DLL 파일 없음: {dll_path}")
-    diag.append(f"파일 존재: OK ({os.path.getsize(dll_path)} bytes)")
-
-    # --- 진단 2: DONT_RESOLVE_DLL_REFERENCES 로 PE 유효성 확인 ---
-    # 의존성 해석 없이 DLL 파일 자체만 로드 — 파일 손상/아키텍처 불일치 검출
-    DONT_RESOLVE = 0x00000001
-    handle = _kernel32.LoadLibraryExW(dll_path, None, DONT_RESOLVE)
-    if not handle:
-        err = ctypes.get_last_error()
-        diag.append(f"PE 유효성: FAIL (LoadLibraryExW DONT_RESOLVE error={err})")
-        detail = "\n".join(diag)
-        raise OSError(
-            f"DLL 파일 자체가 유효하지 않음 (손상 또는 아키텍처 불일치).\n"
-            f"Python: {'64bit' if sys.maxsize > 2**32 else '32bit'}\n"
-            f"{detail}"
-        )
-    _kernel32.FreeLibrary(handle)
-    diag.append("PE 유효성: OK")
-
-    # --- 진단 3: SetDllDirectory 설정 후 정상 로드 시도 ---
-    _kernel32.SetDllDirectoryW(modules_dir)
-    try:
-        dll = ctypes.CDLL(dll_path, winmode=0)
-        diag.append("로드: OK (SetDllDirectory + winmode=0)")
-        logger.info("DLL loaded: %s\n%s", dll_path, "\n".join(diag))
-        return dll
-    except Exception as e:
-        err = ctypes.get_last_error()
-        diag.append(f"로드 실패: {e} (GetLastError={err})")
-    finally:
-        _kernel32.SetDllDirectoryW(None)
-
-    # --- 진단 4: os.add_dll_directory 시도 ---
-    if hasattr(os, "add_dll_directory"):
-        try:
-            cookie = os.add_dll_directory(modules_dir)
-            try:
-                dll = ctypes.CDLL(dll_path)
-                diag.append("로드: OK (add_dll_directory)")
-                logger.info("DLL loaded: %s\n%s", dll_path, "\n".join(diag))
-                return dll
-            except Exception as e:
-                diag.append(f"add_dll_directory 로드 실패: {e}")
-            finally:
-                cookie.close()
-        except Exception as e:
-            diag.append(f"add_dll_directory 등록 실패: {e}")
-
-    # 모든 방법 실패 → 상세 진단 출력
-    detail = "\n  ".join(diag)
-    raise OSError(
-        f"DLL 의존성 해석 실패: {Path(dll_path).name}\n"
-        f"  {detail}\n"
-        f"  → DLL 파일은 유효하지만 의존하는 다른 DLL을 찾을 수 없습니다.\n"
-        f"  → 테스트 PC에 GigE Vision / SVGigE SDK가 설치되어 있는지 확인하세요.\n"
-        f"  → 또는 누락된 DLL을 modules/ 디렉토리에 복사하세요."
-    )
+    cti_files = []
+    for d in search_dirs:
+        if os.path.isdir(d):
+            cti_files.extend(glob.glob(os.path.join(d, "*.cti")))
+    return list(set(cti_files))
 
 
-def _diagnose_dependency(dll_name: str, modules_dir: str) -> str:
-    """개별 DLL 로드를 시도하고 결과를 문자열로 반환."""
-    dll_path = os.path.join(modules_dir, dll_name)
-    if not os.path.isfile(dll_path):
-        return f"{dll_name}: 파일 없음"
+def _component_to_pil(comp) -> Image.Image:
+    """harvesters component → PIL Image (RGB)."""
+    data = comp.data
+    w, h = comp.width, comp.height
 
-    # PE 유효성만 확인
-    DONT_RESOLVE = 0x00000001
-    handle = _kernel32.LoadLibraryExW(dll_path, None, DONT_RESOLVE)
-    if not handle:
-        err = ctypes.get_last_error()
-        return f"{dll_name}: PE 로드 실패 (error={err}) — 아키텍처 불일치 또는 파일 손상"
-    _kernel32.FreeLibrary(handle)
-
-    # 의존성 포함 로드
-    _kernel32.SetDllDirectoryW(modules_dir)
-    handle = _kernel32.LoadLibraryW(dll_path)
-    err = ctypes.get_last_error()
-    _kernel32.SetDllDirectoryW(None)
-    if handle:
-        _kernel32.FreeLibrary(handle)
-        return f"{dll_name}: OK (로드 성공)"
+    if data.ndim == 1:
+        if w * h == len(data):
+            img_arr = data.reshape(h, w)
+        else:
+            channels = len(data) // (w * h)
+            img_arr = data.reshape(h, w, channels)
     else:
-        return f"{dll_name}: 의존성 실패 (error={err}) — 이 DLL이 필요로 하는 다른 DLL이 없음"
+        img_arr = data
+
+    if img_arr.ndim == 2:
+        return Image.fromarray(img_arr, 'L').convert('RGB')
+    elif img_arr.shape[2] == 1:
+        return Image.fromarray(img_arr[:, :, 0], 'L').convert('RGB')
+    elif img_arr.shape[2] == 3:
+        return Image.fromarray(img_arr, 'RGB')
+    else:
+        return Image.fromarray(img_arr[:, :, :3], 'RGB')
 
 
 class VisionCameraClient:
-    """MATVisionLib.dll 기반 비전 카메라 제어."""
+    """harvesters 기반 GigE Vision 카메라 제어.
+
+    백그라운드 스레드에서 지속 캡처 → 최신 프레임 즉시 반환.
+    """
 
     def __init__(self, model: str, port: dict, context=None):
         self._device = model
         self._isConnected = False
-        self._port = port.get("Port", "")
         self._macaddress = port.get("MACAddress", "")
+        self._device_id = f"DEV_{self._macaddress}"
 
-        modules_str = str(_MODULES_DIR)
+        self._harvester = None
+        self._ia = None
 
-        # PATH에 modules 추가
-        path_env = os.environ.get("PATH", "")
-        if modules_str not in path_env:
-            os.environ["PATH"] = modules_str + os.pathsep + path_env
+        # 백그라운드 프레임 캡처
+        self._frame_thread = None
+        self._frame_stop = threading.Event()
+        self._frame_lock = threading.Lock()
+        self._latest_frame: Image.Image | None = None  # 최신 PIL Image (RGB)
 
-        # DLL 복사본 생성
-        original_dll = _MODULES_DIR / "MATVisionLib.dll"
-        if not original_dll.exists():
-            original_dll = Path(__file__).parent / "MATVisionLib.dll"
-        if not original_dll.exists():
-            raise FileNotFoundError(f"MATVisionLib.dll not found in {_MODULES_DIR}")
+        self._cti_files = _find_cti_files()
+        if not self._cti_files:
+            raise FileNotFoundError(
+                "GenTL producer (.cti) 파일을 찾을 수 없습니다. "
+                "Vimba X SDK가 설치되어 있는지 확인하세요."
+            )
+        logger.info("VisionCameraClient: mac=%s, CTI files=%d",
+                     self._macaddress, len(self._cti_files))
 
-        self.myDllPath = str(_MODULES_DIR / f"MATVisionLib_{self._macaddress}.dll")
-        if not os.path.exists(self.myDllPath):
-            shutil.copyfile(str(original_dll), self.myDllPath)
+    # ------------------------------------------------------------------
+    # 백그라운드 프레임 캡처 스레드
+    # ------------------------------------------------------------------
 
-        # 의존 DLL 개별 진단 후 메인 DLL 로드
-        dep_results = []
-        for dll_name in ["LikLGATSImgLib64.dll", "MATVisionLib.dll"]:
-            result = _diagnose_dependency(dll_name, modules_str)
-            dep_results.append(result)
-            logger.info("[VisionCamera DLL 진단] %s", result)
+    def _frame_loop(self):
+        """백그라운드에서 지속적으로 프레임을 fetch하여 _latest_frame 갱신."""
+        logger.info("VisionCamera frame loop started")
+        while not self._frame_stop.is_set():
+            if not self._ia:
+                time.sleep(0.5)
+                continue
+            try:
+                with self._ia.fetch(timeout=3) as buffer:
+                    comp = buffer.payload.components[0]
+                    img = _component_to_pil(comp)
+                    with self._frame_lock:
+                        self._latest_frame = img
+            except Exception:
+                # fetch 타임아웃 또는 일시적 오류 — 재시도
+                time.sleep(0.1)
+        logger.info("VisionCamera frame loop stopped")
 
-        try:
-            self.myDll = _try_load_dll(self.myDllPath, modules_str)
-        except OSError as e:
-            # 의존성 진단 결과를 에러 메시지에 포함
-            dep_detail = "\n  ".join(dep_results)
-            raise OSError(f"{e}\n\n[의존 DLL 진단]\n  {dep_detail}") from None
-
-        self._context = context
-        logger.info("VisionCameraClient initialized: model=%s mac=%s", model, self._macaddress)
+    # ------------------------------------------------------------------
+    # Connection
+    # ------------------------------------------------------------------
 
     def md_VisionConnect(self) -> tuple[bool, str]:
-        if self._isConnected:
+        """카메라 연결 + 백그라운드 캡처 시작."""
+        if self._isConnected and self._ia:
             return True, "[VisionCamera] Already connected"
-        result = self.myDll.Vision_Connect(c_wchar_p(self._macaddress))
-        if result == 0:
+
+        try:
+            from harvesters.core import Harvester
+
+            self._harvester = Harvester()
+            for cti in self._cti_files:
+                self._harvester.add_file(cti)
+            self._harvester.update()
+
+            # MAC 주소로 카메라 찾기
+            idx = None
+            for i, info in enumerate(self._harvester.device_info_list):
+                if self._device_id in info.id_ or self._macaddress in info.id_:
+                    idx = i
+                    break
+
+            if idx is None:
+                cam_list = [info.id_ for info in self._harvester.device_info_list]
+                self._harvester.reset()
+                self._harvester = None
+                return False, (
+                    f"[VisionCamera] 카메라 {self._device_id} 를 찾을 수 없습니다. "
+                    f"검색된 카메라: {cam_list}"
+                )
+
+            self._ia = self._harvester.create(idx)
+            self._ia.start()
             self._isConnected = True
-            return True, "[VisionCamera] Connect OK"
-        else:
-            self._isConnected = False
-            return False, f"[VisionCamera] Connect fail (code={result})"
+
+            # 백그라운드 프레임 캡처 스레드 시작
+            self._frame_stop.clear()
+            self._frame_thread = threading.Thread(
+                target=self._frame_loop, name="visioncam_frame", daemon=True
+            )
+            self._frame_thread.start()
+
+            logger.info("VisionCamera connected: %s", self._device_id)
+            return True, f"[VisionCamera] Connect OK ({self._device_id})"
+
+        except Exception as e:
+            self._cleanup()
+            return False, f"[VisionCamera] Connect fail: {e}"
 
     def md_VisionDisconnect(self) -> tuple[bool, str]:
         if not self._isConnected:
             return True, "[VisionCamera] Already disconnected"
-        result = self.myDll.Vision_Disconnect()
-        if result == 0:
-            self._isConnected = False
+        try:
+            self._cleanup()
             return True, "[VisionCamera] Disconnect OK"
-        else:
-            return False, f"[VisionCamera] Disconnect fail (code={result})"
+        except Exception as e:
+            return False, f"[VisionCamera] Disconnect fail: {e}"
 
     def md_IsConnect(self) -> tuple[bool, str]:
-        if not self._isConnected:
-            return False, "[VisionCamera] Not connected"
-        result = self.myDll.isConnect()
-        if result == 0:
+        if self._isConnected and self._ia:
             return True, "[VisionCamera] Connected"
-        elif result == -2:
-            self._isConnected = False
-            return False, f"[VisionCamera] Connection lost (code={result})"
-        else:
-            self._isConnected = False
-            return False, f"[VisionCamera] Error (code={result})"
+        return False, "[VisionCamera] Not connected"
+
+    # ------------------------------------------------------------------
+    # Capture — 최신 프레임 즉시 반환 (블로킹 없음)
+    # ------------------------------------------------------------------
 
     def md_VisionCapture(self, szPath: str, left=-1, top=-1, right=-1, bottom=-1) -> tuple[bool, str]:
+        """최신 프레임을 파일로 저장."""
         if not self._isConnected:
             return False, "[VisionCamera] Not connected"
-        result = self.myDll.Vision_Capture(c_wchar_p(szPath))
-        if result == 0:
+
+        with self._frame_lock:
+            img = self._latest_frame
+
+        if img is None:
+            return False, "[VisionCamera] No frame available yet"
+
+        try:
             if left >= 0 and top >= 0 and right >= 0 and bottom >= 0:
-                img = Image.open(szPath)
-                cropped = img.crop((left, top, right, bottom))
-                cropped.save(szPath)
+                img = img.crop((left, top, right, bottom))
+            Path(szPath).parent.mkdir(parents=True, exist_ok=True)
+            img.save(szPath)
             return True, "[VisionCamera] Capture OK"
-        elif result == -2:
-            self._isConnected = False
-            return False, f"[VisionCamera] Connection lost (code={result})"
+        except Exception as e:
+            return False, f"[VisionCamera] Capture fail: {e}"
+
+    def md_CaptureBytes(self, fmt: str = "jpeg") -> bytes:
+        """최신 프레임을 바이트로 즉시 반환."""
+        if not self._isConnected:
+            raise RuntimeError("[VisionCamera] Not connected")
+
+        with self._frame_lock:
+            img = self._latest_frame
+
+        if img is None:
+            raise RuntimeError("[VisionCamera] No frame available yet")
+
+        buf = io.BytesIO()
+        if fmt.lower() in ("jpg", "jpeg"):
+            img.save(buf, format="JPEG", quality=85)
         else:
-            return False, f"[VisionCamera] Capture fail (code={result})"
+            img.save(buf, format="PNG")
+        return buf.getvalue()
+
+    # ------------------------------------------------------------------
 
     @property
     def is_connected(self) -> bool:
         return self._isConnected
 
+    def _cleanup(self):
+        """리소스 정리."""
+        self._isConnected = False
+        # 프레임 스레드 중지
+        self._frame_stop.set()
+        if self._frame_thread and self._frame_thread.is_alive():
+            self._frame_thread.join(timeout=5)
+        self._frame_thread = None
+        self._latest_frame = None
+        # harvesters 정리
+        if self._ia:
+            try:
+                self._ia.stop()
+            except Exception:
+                pass
+            try:
+                self._ia.destroy()
+            except Exception:
+                pass
+            self._ia = None
+        if self._harvester:
+            try:
+                self._harvester.reset()
+            except Exception:
+                pass
+            self._harvester = None
+
     def dispose(self):
-        try:
-            if self.myDll is not None:
-                self.md_VisionDisconnect()
-                del self.myDll
-                self.myDll = None
-                if os.path.exists(self.myDllPath):
-                    os.remove(self.myDllPath)
-        except Exception:
-            pass
+        self._cleanup()

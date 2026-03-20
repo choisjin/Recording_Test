@@ -174,12 +174,20 @@ async def websocket_screen_mirror(websocket: WebSocket):
                 elif is_vision_camera:
                     cam = device_manager.get_vision_camera(target_device_id)
                     if cam and cam.IsConnected():
-                        loop = asyncio.get_event_loop()
-                        jpeg_bytes = await loop.run_in_executor(
-                            None, cam.CaptureBytes, "jpeg"
-                        )
-                        await websocket.send_bytes(jpeg_bytes)
+                        try:
+                            loop = asyncio.get_event_loop()
+                            jpeg_bytes = await loop.run_in_executor(
+                                None, cam.CaptureBytes, "jpeg"
+                            )
+                            logger.debug("VisionCam frame: %d bytes", len(jpeg_bytes))
+                            await websocket.send_bytes(jpeg_bytes)
+                        except Exception as ve:
+                            logger.error("VisionCamera capture error: %s", ve)
+                            await asyncio.sleep(1)
+                            continue
                     else:
+                        logger.warning("VisionCam not ready: cam=%s connected=%s",
+                                       cam is not None, cam.IsConnected() if cam else "no_cam")
                         await asyncio.sleep(1)
                         continue
                 elif scrcpy_stream and scrcpy_stream.is_running:
