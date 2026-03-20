@@ -100,20 +100,33 @@ class VisionCameraClient:
 
     def _frame_loop(self):
         """백그라운드에서 지속적으로 프레임을 fetch하여 _latest_frame 갱신."""
-        logger.info("VisionCamera frame loop started")
+        logger.info("VisionCamera frame loop started, starting acquisition...")
+        try:
+            self._ia.start()
+            logger.info("VisionCamera acquisition started in frame thread")
+        except Exception as e:
+            logger.error("VisionCamera acquisition start failed: %s", e)
+            return
+
+        error_count = 0
         while not self._frame_stop.is_set():
-            if not self._ia:
-                time.sleep(0.5)
-                continue
             try:
                 with self._ia.fetch(timeout=3) as buffer:
                     comp = buffer.payload.components[0]
                     img = _component_to_pil(comp)
                     with self._frame_lock:
                         self._latest_frame = img
-            except Exception:
-                # fetch 타임아웃 또는 일시적 오류 — 재시도
+                    error_count = 0
+            except Exception as e:
+                error_count += 1
+                if error_count <= 3 or error_count % 30 == 0:
+                    logger.warning("VisionCamera fetch error (%d): %s", error_count, e)
                 time.sleep(0.1)
+
+        try:
+            self._ia.stop()
+        except Exception:
+            pass
         logger.info("VisionCamera frame loop stopped")
 
     # ------------------------------------------------------------------
@@ -150,7 +163,7 @@ class VisionCameraClient:
                 )
 
             self._ia = self._harvester.create(idx)
-            self._ia.start()
+            # ia.start()는 프레임 스레드에서 실행 (같은 스레드에서 start/fetch)
             self._isConnected = True
 
             # 백그라운드 프레임 캡처 스레드 시작
@@ -238,12 +251,8 @@ class VisionCameraClient:
             self._frame_thread.join(timeout=5)
         self._frame_thread = None
         self._latest_frame = None
-        # harvesters 정리
+        # harvesters 정리 (stop은 프레임 스레드에서 수행됨)
         if self._ia:
-            try:
-                self._ia.stop()
-            except Exception:
-                pass
             try:
                 self._ia.destroy()
             except Exception:
