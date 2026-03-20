@@ -165,6 +165,7 @@ async def connect_device(req: ConnectRequest):
     elif req.type == "vision_camera":
         ef = req.extra_fields or {}
         mac = ef.get("mac", "")
+        logger.info("[VisionCamera] connect request: mac=%s address=%s extra_fields=%s", mac, req.address, ef)
         if not mac:
             raise HTTPException(status_code=400, detail="VisionCamera requires MAC address")
         try:
@@ -182,7 +183,8 @@ async def connect_device(req: ConnectRequest):
                 "primary": [d.to_dict() for d in dm.list_primary()],
                 "auxiliary": [d.to_dict() for d in dm.list_auxiliary()],
             }
-        except RuntimeError as e:
+        except Exception as e:
+            logger.error("[VisionCamera] connect failed: %s", e, exc_info=True)
             raise HTTPException(status_code=400, detail=str(e))
     else:
         raise HTTPException(status_code=400, detail=f"Unknown type: {req.type}")
