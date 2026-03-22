@@ -354,13 +354,16 @@ def _get_instance(module_name: str, constructor_kwargs: Optional[dict] = None,
                                     result = connect_fn()
                                     logger.info("Auto-called %s.%s() → %s", module_name, method_name, result)
                                     if isinstance(result, str) and result.upper() in ("ERROR", "FAIL", "FAILED"):
-                                        logger.warning("Auto-connect %s.%s() returned %s — instance cached but may not work", module_name, method_name, result)
+                                        logger.warning("Auto-connect %s.%s() returned %s", module_name, method_name, result)
                                     else:
                                         _auto_connected.add(module_name)
                             except Exception as e:
                                 logger.warning("Auto-connect %s.%s() failed: %s", module_name, method_name, e)
                             break
                 _instances[module_name] = instance
+                # 연결 실패한 인스턴스는 다음 호출 시 재생성되도록 auto_connected에 등록
+                if module_name not in _auto_connected and _is_connected(instance):
+                    _auto_connected.add(module_name)
             else:
                 # Constructor doesn't accept the provided kwargs (e.g. BENCH)
                 # Create instance normally, then try auto-connect if host is provided

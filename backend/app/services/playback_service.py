@@ -851,7 +851,7 @@ class PlaybackService:
             elif step.type == StepType.KEY_EVENT:
                 await self.adb.key_event(params["keycode"], serial=adb_serial, display_id=adb_display_id)
             elif step.type == StepType.ADB_COMMAND:
-                await self.adb.run_shell_command(params["command"], serial=serial)
+                await self.adb.run_shell_command(params["command"], serial=adb_serial)
 
     async def _save_result(self, result: ScenarioResult) -> str:
         """Save execution result to JSON."""

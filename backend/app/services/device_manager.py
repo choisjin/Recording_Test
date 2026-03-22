@@ -773,13 +773,17 @@ class DeviceManager:
         port = dev.address
         baudrate = dev.info.get("baudrate", 115200)
         conn = pyserial.Serial(port, baudrate=baudrate, timeout=1)
-        self._serial_conns[device_id] = conn
         # Wait for Arduino bootloader + setup() to finish
         import time
         time.sleep(3)
-        # Drain all startup garbage (null bytes, boot messages, etc.)
-        conn.reset_input_buffer()
-        conn.reset_output_buffer()
+        try:
+            # Drain all startup garbage (null bytes, boot messages, etc.)
+            conn.reset_input_buffer()
+            conn.reset_output_buffer()
+        except Exception as e:
+            conn.close()
+            raise RuntimeError(f"Serial drain failed for {port}: {e}")
+        self._serial_conns[device_id] = conn
         logger.info("Serial port opened and drained: %s (%s @ %d)", device_id, port, baudrate)
         return conn
 

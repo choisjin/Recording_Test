@@ -288,6 +288,9 @@ async def websocket_playback(websocket: WebSocket):
                 device_map_override = data.get("device_map")  # optional override from frontend
                 skip_steps: set[int] = set(data.get("skip_steps", []))
                 try:
+                    if playback_service.is_running:
+                        await websocket.send_json({"type": "error", "message": "이미 재생 중입니다"})
+                        continue
                     playback_service._should_stop = False
                     playback_service._pause_event.set()
                     stop_listener_task = asyncio.create_task(_listen_for_stop())
@@ -389,6 +392,9 @@ async def websocket_playback(websocket: WebSocket):
                         entries.append(m)
 
                 try:
+                    if playback_service.is_running:
+                        await websocket.send_json({"type": "error", "message": "이미 재생 중입니다"})
+                        continue
                     playback_service._should_stop = False
                     playback_service._pause_event.set()
                     stop_listener_task = asyncio.create_task(_listen_for_stop())

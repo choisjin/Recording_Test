@@ -239,7 +239,8 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
       }
       closeWs();
     };
-  }, [screenshotDeviceId, pollInterval, screenType, pollFn, isHkmcDevice, startWsStream, closeWs]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screenshotDeviceId, screenType]);
 
   return (
     <DeviceContext.Provider value={{
