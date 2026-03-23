@@ -413,10 +413,11 @@ export default function RecordPage() {
 
   // Execute or record an action
   const executeAction = useCallback(async (action: string, params: Record<string, any>, desc: string) => {
-    // 화면 제스처(tap/swipe/long_press)는 항상 화면 디바이스로, 나머지는 스텝 디바이스로
-    const isGesture = ['tap', 'swipe', 'long_press'].includes(action);
+    // 화면 제스처/HKMC키는 항상 화면 디바이스로, 나머지는 스텝 디바이스로
+    const isScreenAction = ['tap', 'swipe', 'long_press', 'hkmc_touch', 'hkmc_swipe', 'hkmc_key'].includes(action);
+    const effectiveStepDevice = stepDeviceId && stepDeviceId !== '__common__' ? stepDeviceId : '';
     const targetDevice = recording
-      ? (isGesture ? screenshotDeviceId : (stepDeviceId || screenshotDeviceId))
+      ? (isScreenAction ? screenshotDeviceId : (effectiveStepDevice || screenshotDeviceId))
       : screenshotDeviceId;
     if (!targetDevice) return;
 
@@ -1546,6 +1547,10 @@ export default function RecordPage() {
                   ? `swipe (${s.params.x1},${s.params.y1})→(${s.params.x2},${s.params.y2})`
                   : s.type === 'hkmc_key'
                   ? <><Tag color="volcano" style={{ margin: 0 }}>KEY</Tag> {s.params.key_name || `cmd:${s.params.cmd}`}</>
+                  : s.type === 'cmd_send'
+                  ? <><Tag color="blue" style={{ margin: 0 }}>CMD</Tag> {s.params.command?.substring(0, 40)}</>
+                  : s.type === 'cmd_check'
+                  ? <><Tag color="orange" style={{ margin: 0 }}>CHECK</Tag> {s.params.command?.substring(0, 25)} → {s.params.match_mode === 'exact' ? '=' : '⊃'} {s.params.expected?.substring(0, 20)}</>
                   : JSON.stringify(s.params)}
               </span>
               {s.type !== 'wait' && (
@@ -2481,6 +2486,52 @@ export default function RecordPage() {
             );
           }
 
+          if (step.type === 'cmd_send' || step.type === 'cmd_check') {
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div>
+                  <div style={{ marginBottom: 4, fontWeight: 600 }}>{t('record.cmdPlaceholder')}</div>
+                  <TextArea
+                    rows={2}
+                    value={editStepParams.command ?? ''}
+                    onChange={(e) => setEditStepParams({ ...editStepParams, command: e.target.value })}
+                  />
+                </div>
+                {step.type === 'cmd_check' && (
+                  <>
+                    <div>
+                      <div style={{ marginBottom: 4, fontWeight: 600 }}>{t('record.cmdExpected')}</div>
+                      <Input
+                        value={editStepParams.expected ?? ''}
+                        onChange={(e) => setEditStepParams({ ...editStepParams, expected: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <div style={{ marginBottom: 4, fontWeight: 600 }}>{t('record.cmdContains')}</div>
+                      <Select
+                        value={editStepParams.match_mode ?? 'contains'}
+                        onChange={(v) => setEditStepParams({ ...editStepParams, match_mode: v })}
+                        style={{ width: '100%' }}
+                        options={[
+                          { label: t('record.cmdContains'), value: 'contains' },
+                          { label: t('record.cmdExact'), value: 'exact' },
+                        ]}
+                      />
+                    </div>
+                  </>
+                )}
+                <label style={{ fontSize: 12, color: '#888' }}>
+                  <input
+                    type="checkbox"
+                    checked={editStepParams.background ?? false}
+                    onChange={(e) => setEditStepParams({ ...editStepParams, background: e.target.checked })}
+                  />
+                  {' '}{t('record.cmdBackground')}
+                </label>
+              </div>
+            );
+          }
+
           if (step.type === 'serial_command') {
             return (
               <div>
@@ -2583,8 +2634,19 @@ export default function RecordPage() {
                 {testResult.execution_time_ms}ms
               </span>
             </div>
+            {testResult.command && (
+              <div style={{ marginBottom: 8, padding: '6px 10px', background: '#1a1a2e', borderRadius: 4, fontFamily: 'monospace', fontSize: 12 }}>
+                <span style={{ color: '#888' }}>$ </span><span style={{ color: '#e0e0e0' }}>{testResult.command}</span>
+              </div>
+            )}
             {testResult.message && (
-              <div style={{ marginBottom: 12, color: '#888', fontSize: 12 }}>{testResult.message}</div>
+              <div style={{
+                marginBottom: 12, padding: '8px 10px', borderRadius: 4, fontSize: 13, fontFamily: 'monospace',
+                background: testResult.status === 'fail' ? '#2a1215' : '#122010',
+                border: `1px solid ${testResult.status === 'fail' ? '#5c2024' : '#274916'}`,
+                color: testResult.status === 'fail' ? '#ff7875' : '#95de64',
+                whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+              }}>{testResult.message}</div>
             )}
             <Row gutter={12}>
               {testResult.expected_image && (

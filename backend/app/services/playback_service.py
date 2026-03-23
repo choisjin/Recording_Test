@@ -376,8 +376,9 @@ class PlaybackService:
                 return step_result
             t3 = time.time()
 
-            # 2) 이미지 비교 전: 스크린샷 대상 디바이스 연결 확인
-            ss_device = self._resolve_screenshot_device(step)
+            # 2) 이미지 비교 전: 기대이미지가 있을 때만 스크린샷 캡처
+            has_expected = step.expected_image or (step.compare_mode == CompareMode.MULTI_CROP and step.expected_images)
+            ss_device = self._resolve_screenshot_device(step) if has_expected else None
             if ss_device:
                 await self._ensure_device_connected(ss_device["id"])
             t4 = time.time()
@@ -424,7 +425,6 @@ class PlaybackService:
                 step_result.actual_image = actual_rel
 
                 # Verify against expected image
-                has_expected = step.expected_image or (step.compare_mode == CompareMode.MULTI_CROP and step.expected_images)
                 if verify and has_expected:
                     mode = step.compare_mode or CompareMode.FULL
                     step_result.compare_mode = mode.value if isinstance(mode, CompareMode) else mode
@@ -625,9 +625,11 @@ class PlaybackService:
                             step_result.message = f"Similarity: {judgement['score']:.4f}"
                 else:
                     dev_label = ss_device["id"] if ss_device else step.device_id or "default"
-                    step_result.message = f"Executed on {dev_label} (기대 이미지 없음)"
+                    if not step_result.message:
+                        step_result.message = f"Executed on {dev_label} (기대 이미지 없음)"
             else:
-                step_result.message = f"Executed on {step.device_id or 'default'}"
+                if not step_result.message:
+                    step_result.message = f"Executed on {step.device_id or 'default'}"
 
         except Exception as e:
             step_result.status = "error"
