@@ -115,7 +115,7 @@ async def websocket_screen_mirror(websocket: WebSocket):
     바이너리 JPEG 프레임을 연속 전송. device_id 미전송 시 기존 ADB 방식 폴백.
     """
     await websocket.accept()
-    logger.info("Screen mirror WebSocket connected")
+    logger.debug("Screen mirror WebSocket connected")
 
     # 클라이언트로부터 device_id 수신 (선택)
     target_device_id = ""
@@ -133,7 +133,7 @@ async def websocket_screen_mirror(websocket: WebSocket):
     is_vision_camera = dev and dev.type == "vision_camera"
 
     dev_type_label = "hkmc" if is_hkmc else ("vision_camera" if is_vision_camera else "adb")
-    logger.info("Screen mirror: device=%s type=%s", target_device_id, dev_type_label)
+    logger.debug("Screen mirror: device=%s type=%s", target_device_id, dev_type_label)
 
     # ADB scrcpy 스트림 참조 (정리용)
     scrcpy_stream = None
@@ -156,7 +156,7 @@ async def websocket_screen_mirror(websocket: WebSocket):
             if scrcpy_stream:
                 logger.info("scrcpy stream acquired for %s (display=%d)", scrcpy_serial, scrcpy_display)
             else:
-                logger.info("scrcpy unavailable for %s, falling back to screencap", scrcpy_serial)
+                logger.debug("scrcpy unavailable for %s, falling back to screencap", scrcpy_serial)
 
         while True:
             try:

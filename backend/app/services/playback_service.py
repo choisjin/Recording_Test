@@ -22,9 +22,17 @@ SCREENSHOTS_DIR = Path(__file__).resolve().parent.parent.parent / "screenshots"
 
 
 def _cmd_run_sync(cmd: str, timeout: int = 30) -> tuple[str, str, int]:
-    """CMD 명령어 실행 (subprocess)."""
+    """CMD 명령어 실행 (subprocess). Windows cp949 인코딩 대응."""
     try:
         proc = subprocess.run(cmd, shell=True, capture_output=True, timeout=timeout)
+        # Windows cmd는 cp949, 실패 시 utf-8 폴백
+        for enc in ("utf-8", "cp949", "euc-kr"):
+            try:
+                stdout = proc.stdout.decode(enc)
+                stderr = proc.stderr.decode(enc)
+                return (stdout, stderr, proc.returncode)
+            except (UnicodeDecodeError, LookupError):
+                continue
         return (proc.stdout.decode(errors="replace"),
                 proc.stderr.decode(errors="replace"),
                 proc.returncode)
@@ -352,7 +360,7 @@ class PlaybackService:
             # CMD 결과 반영
             if step.type == StepType.CMD_SEND and hasattr(self, '_last_cmd_result'):
                 stdout, _, _ = self._last_cmd_result
-                step_result.message = stdout[:500] if stdout else ""
+                step_result.message = stdout if stdout else ""
                 del self._last_cmd_result
             elif step.type == StepType.CMD_CHECK and hasattr(self, '_last_cmd_result'):
                 stdout, _, _ = self._last_cmd_result
@@ -364,10 +372,10 @@ class PlaybackService:
                     passed = actual == expected.strip()
                 else:
                     passed = expected.strip() in actual
-                step_result.message = f"actual: {actual[:300]}"
+                # 구조화된 메시지: 프론트에서 파싱하여 하이라이트
+                step_result.message = f"[CMD_CHECK]\nexpected({match_mode}): {expected}\n---\n{actual}"
                 if not passed:
                     step_result.status = "fail"
-                    step_result.message += f" | expected({match_mode}): {expected}"
 
             # Wait (중단 가능)
             if await self._interruptible_sleep(step.delay_after_ms / 1000.0):
@@ -622,7 +630,14 @@ class PlaybackService:
                                 except Exception as e:
                                     logger.warning("Failed to generate diff: %s", e)
 
-                            step_result.message = f"Similarity: {judgement['score']:.4f}"
+                            sim_msg = f"Similarity: {judgement['score']:.4f}"
+                            if step_result.message and step_result.message.startswith("[CMD_CHECK]"):
+                                # CMD 결과와 Similarity를 구분자로 분리
+                                step_result.message += f"\n[SIMILARITY]\n{sim_msg}"
+                            elif step_result.message:
+                                step_result.message = f"{step_result.message}\n{sim_msg}"
+                            else:
+                                step_result.message = sim_msg
                 else:
                     dev_label = ss_device["id"] if ss_device else step.device_id or "default"
                     if not step_result.message:

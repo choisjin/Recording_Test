@@ -134,8 +134,10 @@ class VisionCameraClient:
                 buffer = self._ia.try_fetch(timeout=3)
                 if buffer is None:
                     error_count += 1
-                    if error_count <= 3 or error_count % 30 == 0:
+                    if error_count <= 3:
                         logger.warning("VisionCamera fetch timeout (%d)", error_count)
+                    elif error_count % 100 == 0:
+                        logger.debug("VisionCamera fetch timeout (%d)", error_count)
                     time.sleep(0.1)
                     continue
                 with buffer:

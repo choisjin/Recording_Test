@@ -1794,19 +1794,27 @@ export default function RecordPage() {
           >
             {screenshotDeviceId && screenshot ? (
               <>
+              <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%', maxHeight: '100%' }}>
                 <canvas
                   ref={canvasRef}
-                  onMouseDown={handleMouseDown}
-                  onMouseUp={handleMouseUp}
+                  onMouseDown={testingStepIndex == null ? handleMouseDown : undefined}
+                  onMouseUp={testingStepIndex == null ? handleMouseUp : undefined}
                   style={{
                     maxWidth: '100%',
                     maxHeight: '100%',
                     border: '1px solid #333',
                     borderRadius: 4,
-                    cursor: 'crosshair',
+                    cursor: testingStepIndex != null ? 'wait' : 'crosshair',
                     userSelect: 'none',
+                    opacity: testingStepIndex != null ? 0.6 : 1,
                   }}
                 />
+                {testingStepIndex != null && (
+                  <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', borderRadius: 4, pointerEvents: 'none' }}>
+                    <Tag color="processing" style={{ fontSize: 14, padding: '4px 12px' }}>{t('record.stepTesting')}</Tag>
+                  </div>
+                )}
+                </div>
                 <div style={{ marginTop: 4, color: '#888', fontSize: 11 }}>
                   {lastGesture
                     ? `${lastGesture} → ${recording ? t('record.gestureRecord') : t('record.directExec')}`
@@ -2639,15 +2647,64 @@ export default function RecordPage() {
                 <span style={{ color: '#888' }}>$ </span><span style={{ color: '#e0e0e0' }}>{testResult.command}</span>
               </div>
             )}
-            {testResult.message && (
-              <div style={{
-                marginBottom: 12, padding: '8px 10px', borderRadius: 4, fontSize: 13, fontFamily: 'monospace',
-                background: testResult.status === 'fail' ? '#2a1215' : '#122010',
-                border: `1px solid ${testResult.status === 'fail' ? '#5c2024' : '#274916'}`,
-                color: testResult.status === 'fail' ? '#ff7875' : '#95de64',
-                whiteSpace: 'pre-wrap', wordBreak: 'break-all',
-              }}>{testResult.message}</div>
-            )}
+            {testResult.message && (() => {
+              const msg = testResult.message as string;
+              const isCmdCheck = msg.startsWith('[CMD_CHECK]');
+              if (isCmdCheck) {
+                // [SIMILARITY] 구분자로 CMD 결과와 Similarity 분리
+                const simIdx = msg.indexOf('\n[SIMILARITY]\n');
+                const cmdPart = simIdx >= 0 ? msg.substring(0, simIdx) : msg;
+                const lines = cmdPart.split('\n');
+                const expectLine = lines[1] || '';
+                const sepIdx = lines.indexOf('---');
+                const output = lines.slice(sepIdx + 1).join('\n');
+                const expectMatch = expectLine.match(/expected\((.*?)\):\s*(.*)/);
+                const matchMode = expectMatch?.[1] || 'contains';
+                const expectedVal = expectMatch?.[2] || '';
+                // 하이라이트: output 내에서 expectedVal 부분을 모두 강조
+                const highlightOutput = () => {
+                  if (!expectedVal || !output) return <>{output}</>;
+                  const parts: React.ReactNode[] = [];
+                  let remaining = output;
+                  let key = 0;
+                  while (remaining.length > 0) {
+                    const idx = remaining.indexOf(expectedVal);
+                    if (idx === -1) { parts.push(<span key={key}>{remaining}</span>); break; }
+                    if (idx > 0) parts.push(<span key={key++}>{remaining.substring(0, idx)}</span>);
+                    parts.push(<span key={key++} style={{ background: '#faad14', color: '#000', fontWeight: 'bold', padding: '0 2px', borderRadius: 2 }}>{expectedVal}</span>);
+                    remaining = remaining.substring(idx + expectedVal.length);
+                  }
+                  return <>{parts}</>;
+                };
+                // CMD_CHECK 결과에서 pass/fail 판정 (이미지 비교와 독립)
+                const cmdPassed = output.includes(expectedVal);
+                return (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ marginBottom: 4, fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Tag color={cmdPassed ? 'green' : 'red'} style={{ margin: 0 }}>CMD {cmdPassed ? 'PASS' : 'FAIL'}</Tag>
+                      <span style={{ color: '#888' }}>{matchMode === 'exact' ? 'Exact' : 'Contains'}:</span>
+                      <strong style={{ color: cmdPassed ? '#52c41a' : '#ff4d4f' }}>{expectedVal}</strong>
+                    </div>
+                    <div style={{
+                      padding: '8px 10px', borderRadius: 4, fontSize: 12, fontFamily: 'monospace',
+                      background: cmdPassed ? '#122010' : '#2a1215',
+                      border: `1px solid ${cmdPassed ? '#274916' : '#5c2024'}`,
+                      color: '#d9d9d9',
+                      whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 300, overflow: 'auto',
+                    }}>{highlightOutput()}</div>
+                  </div>
+                );
+              }
+              return (
+                <div style={{
+                  marginBottom: 12, padding: '8px 10px', borderRadius: 4, fontSize: 13, fontFamily: 'monospace',
+                  background: testResult.status === 'fail' ? '#2a1215' : '#122010',
+                  border: `1px solid ${testResult.status === 'fail' ? '#5c2024' : '#274916'}`,
+                  color: testResult.status === 'fail' ? '#ff7875' : '#95de64',
+                  whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+                }}>{msg}</div>
+              );
+            })()}
             <Row gutter={12}>
               {testResult.expected_image && (
                 <Col span={testResult.actual_image ? 12 : 24}>

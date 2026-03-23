@@ -306,7 +306,7 @@ class HKMC6thService:
         packet.append(END_BIT)
         packet.append(END_BIT)
 
-        logger.info("[HKMC PACKET] %s", ' '.join(f'{b:02X}' for b in packet))
+        logger.debug("[HKMC PACKET] %s", ' '.join(f'{b:02X}' for b in packet))
         self._send_raw(packet)
 
     # ------------------------------------------------------------------
@@ -684,8 +684,8 @@ class HKMC6thService:
             data.append(direction)
         data.append(monitor)
 
-        logger.info("[HKMC KEY] cmd=0x%02X sub=0x%02X key=0x%02X monitor=0x%02X dir=%s data=%s",
-                    cmd, sub_cmd, key_data, monitor, direction, [hex(d) for d in data])
+        logger.debug("[HKMC KEY] cmd=0x%02X sub=0x%02X key=0x%02X monitor=0x%02X dir=%s",
+                     cmd, sub_cmd, key_data, monitor, direction)
 
         with self._send_lock:
             self._make_send_packet(cmd, sub_cmd, resp, data)
