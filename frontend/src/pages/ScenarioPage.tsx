@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Button, Card, Checkbox, Col, Collapse, Descriptions, Divider, Image, Input, InputNumber, List, Modal, Radio, Row, Select, Space, Table, Tabs, Tag, Tooltip, Upload, message } from 'antd';
 import {
   PlayCircleOutlined, PauseOutlined, DeleteOutlined, EyeOutlined,
@@ -13,6 +13,42 @@ import { useSettings } from '../context/SettingsContext';
 import { useTranslation } from '../i18n';
 import { useWebcamContext } from '../context/WebcamContext';
 import { VideoCameraOutlined } from '@ant-design/icons';
+
+// 기대 이미지 썸네일 (ROI/크롭/영역제외 오버레이)
+const ExpectedThumbnail = React.memo(({ src, regions, color, height = 32 }: {
+  src: string; regions: { x: number; y: number; width: number; height: number }[]; color: string; height?: number;
+}) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const draw = useCallback((canvas: HTMLCanvasElement, img: HTMLImageElement, w: number, h: number) => {
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d')!;
+    ctx.drawImage(img, 0, 0, w, h);
+    const sx = w / img.width, sy = h / img.height;
+    regions.forEach(r => {
+      ctx.fillStyle = color === '#ff4d4f' ? 'rgba(255,77,79,0.3)' : 'rgba(82,196,26,0.3)';
+      ctx.fillRect(r.x * sx, r.y * sy, r.width * sx, r.height * sy);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = Math.max(1.5, 2 * sx);
+      ctx.strokeRect(r.x * sx, r.y * sy, r.width * sx, r.height * sy);
+    });
+  }, [regions, color]);
+  useEffect(() => {
+    const img = new window.Image();
+    img.onload = () => { const c = canvasRef.current; if (c) { const a = img.width / img.height; draw(c, img, Math.round(height * a), height); } };
+    img.src = src;
+  }, [src, regions, color, height, draw]);
+  return (
+    <>
+      <canvas ref={canvasRef} style={{ height, borderRadius: 2, cursor: 'pointer' }} onClick={() => {
+        const img = new window.Image();
+        img.onload = () => { const c = document.createElement('canvas'); draw(c, img, img.width, img.height); setPreviewUrl(c.toDataURL('image/png')); };
+        img.src = src;
+      }} />
+      {previewUrl && <Image src={previewUrl} style={{ display: 'none' }} preview={{ visible: true, onVisibleChange: v => { if (!v) setPreviewUrl(null); } }} />}
+    </>
+  );
+});
 
 interface ScenarioDetail {
   name: string;
@@ -1241,13 +1277,24 @@ export default function ScenarioPage() {
                   },
                   { title: t('scenario.compare'), key: 'img', width: 70, align: 'center' as const, render: (_: any, r: any) => {
                     if (!r.expected_image) return '-';
+                    const imgSrc = `/screenshots/${selectedName}/${r.expected_image}?v=${r.id}`;
+                    const mode = r.compare_mode;
+                    // ROI/크롭/영역제외 영역이 있으면 캔버스 오버레이
+                    const regions: { x: number; y: number; width: number; height: number }[] = [];
+                    let regionColor = '#52c41a';
+                    if (mode === 'single_crop' && r.roi) {
+                      regions.push(r.roi);
+                    } else if (mode === 'multi_crop' && r.expected_images?.length) {
+                      r.expected_images.forEach((ci: any) => { if (ci.roi) regions.push(ci.roi); });
+                    } else if (mode === 'full_exclude' && r.exclude_rois?.length) {
+                      r.exclude_rois.forEach((roi: any) => regions.push(roi));
+                      regionColor = '#ff4d4f';
+                    }
+                    if (regions.length === 0) {
+                      return <Image src={imgSrc} alt="expected" style={{ height: 32, maxWidth: 56, objectFit: 'contain', borderRadius: 2 }} preview={{ mask: false }} />;
+                    }
                     return (
-                      <Image
-                        src={`/screenshots/${selectedName}/${r.expected_image}?v=${r.id}`}
-                        alt="expected"
-                        style={{ height: 32, maxWidth: 56, objectFit: 'contain', borderRadius: 2 }}
-                        preview={{ mask: false }}
-                      />
+                      <ExpectedThumbnail src={imgSrc} regions={regions} color={regionColor} height={32} />
                     );
                   }},
                 ]}
