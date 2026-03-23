@@ -38,16 +38,45 @@ else:
 
 NPM_CMD = "npm.cmd" if sys.platform == "win32" else "npm"
 
-# ── 색상 테마 ──
-BG = "#1e1e2e"
-BG_CARD = "#2a2a3d"
-FG = "#cdd6f4"
-FG_DIM = "#6c7086"
-GREEN = "#a6e3a1"
-RED = "#f38ba8"
-YELLOW = "#f9e2af"
-BLUE = "#89b4fa"
-ACCENT = "#cba6f7"
+# ── 색상 테마 (설정 파일에서 읽기) ──
+_SETTINGS_FILE = os.path.join(PROJECT_ROOT, "backend", "settings.json")
+
+
+def _read_theme() -> str:
+    """backend/settings.json에서 theme 읽기. 기본값 dark."""
+    try:
+        import json
+        with open(_SETTINGS_FILE, encoding="utf-8") as f:
+            return json.load(f).get("theme", "dark")
+    except Exception:
+        return "dark"
+
+
+_THEME = _read_theme()
+
+# 다크 모드
+_DARK = {
+    "BG": "#1e1e2e", "BG_CARD": "#2a2a3d", "FG": "#cdd6f4", "FG_DIM": "#6c7086",
+    "GREEN": "#a6e3a1", "RED": "#f38ba8", "YELLOW": "#f9e2af", "BLUE": "#89b4fa",
+    "ACCENT": "#cba6f7", "LOG_BG": "#181825",
+}
+# 라이트 모드
+_LIGHT = {
+    "BG": "#f5f5f5", "BG_CARD": "#ffffff", "FG": "#1f1f1f", "FG_DIM": "#888888",
+    "GREEN": "#389e0d", "RED": "#cf1322", "YELLOW": "#d48806", "BLUE": "#1677ff",
+    "ACCENT": "#722ed1", "LOG_BG": "#fafafa",
+}
+_C = _DARK if _THEME == "dark" else _LIGHT
+BG = _C["BG"]
+BG_CARD = _C["BG_CARD"]
+FG = _C["FG"]
+FG_DIM = _C["FG_DIM"]
+GREEN = _C["GREEN"]
+RED = _C["RED"]
+YELLOW = _C["YELLOW"]
+BLUE = _C["BLUE"]
+ACCENT = _C["ACCENT"]
+LOG_BG = _C["LOG_BG"]
 
 # 로그에서 필터링할 패턴
 _LOG_FILTER_RE = re.compile(
@@ -209,7 +238,15 @@ class ServerManagerApp:
         cards_frame.columnconfigure(1, weight=1)
 
         self.be_card = self._build_server_card(cards_frame, "백엔드", "FastAPI · :8000", 0)
-        self.fe_card = self._build_server_card(cards_frame, "프론트엔드", "Vite · :5173", 1)
+        if self._production:
+            # 프로덕션 모드: 프론트엔드 카드 대신 안내 표시
+            fe_info = tk.Frame(cards_frame, bg=BG_CARD, relief="flat", bd=0, padx=16, pady=12)
+            fe_info.grid(row=0, column=1, sticky="nsew", padx=(4, 0), pady=4)
+            tk.Label(fe_info, text="프론트엔드", bg=BG_CARD, fg=FG, font=("Segoe UI", 13, "bold")).pack(anchor="w")
+            tk.Label(fe_info, text="빌드 모드 — 백엔드가 정적 파일 서빙", bg=BG_CARD, fg=FG_DIM, font=("Segoe UI", 9)).pack(anchor="w", pady=(2, 0))
+            self.fe_card = {"indicator": tk.Label(), "status_lbl": tk.Label(), "start_btn": tk.Button(), "stop_btn": tk.Button()}
+        else:
+            self.fe_card = self._build_server_card(cards_frame, "프론트엔드", "Vite · :5173", 1)
 
         btn_frame = tk.Frame(self.root, bg=BG)
         btn_frame.pack(fill="x", padx=20, pady=(0, 8))
@@ -228,18 +265,21 @@ class ServerManagerApp:
                         background=BG_CARD, foreground=FG_DIM,
                         font=("Segoe UI", 10, "bold"), padding=(12, 6))
         style.map("Dark.TNotebook.Tab",
-                  background=[("selected", "#363650")],
+                  background=[("selected", "#e0e0e0" if _THEME == "light" else "#363650")],
                   foreground=[("selected", FG)])
 
         self.log_notebook = ttk.Notebook(self.root, style="Dark.TNotebook")
         self.log_notebook.pack(fill="both", expand=True, padx=20, pady=(8, 12))
 
         self.log_tabs: dict[str, scrolledtext.ScrolledText] = {}
-        for tab_name, tab_color in [("전체", FG), ("백엔드", BLUE), ("프론트엔드", ACCENT)]:
-            frame = tk.Frame(self.log_notebook, bg="#181825")
+        log_tab_list = [("전체", FG), ("백엔드", BLUE)]
+        if not self._production:
+            log_tab_list.append(("프론트엔드", ACCENT))
+        for tab_name, tab_color in log_tab_list:
+            frame = tk.Frame(self.log_notebook, bg=LOG_BG)
             log_widget = scrolledtext.ScrolledText(
                 frame,
-                bg="#181825", fg=tab_color, font=("Consolas", 9),
+                bg=LOG_BG, fg=tab_color, font=("Consolas", 9),
                 insertbackground=FG, relief="flat", bd=0,
                 wrap="word", state="disabled", height=14,
             )
@@ -297,7 +337,7 @@ class ServerManagerApp:
             font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
             cursor="hand2", command=command, padx=10, pady=6,
         )
-        btn.bind("<Enter>", lambda e, b=btn, c=color: b.configure(bg="#363650"))
+        btn.bind("<Enter>", lambda e, b=btn, c=color: b.configure(bg="#e0e0e0" if _THEME == "light" else "#363650"))
         btn.bind("<Leave>", lambda e, b=btn: b.configure(bg=BG_CARD))
         return btn
 
@@ -410,7 +450,10 @@ class ServerManagerApp:
     # ── 상태 업데이트 (주기적) ──
 
     def _update_status(self):
-        for server, card in [(self.backend, self.be_card), (self.frontend, self.fe_card)]:
+        servers = [(self.backend, self.be_card)]
+        if not self._production:
+            servers.append((self.frontend, self.fe_card))
+        for server, card in servers:
             if server.running:
                 card["indicator"].configure(fg=GREEN)
                 card["status_lbl"].configure(text="실행 중", fg=GREEN)
@@ -419,10 +462,12 @@ class ServerManagerApp:
                 card["status_lbl"].configure(text="정지됨", fg=FG_DIM)
 
         be_run = self.backend.running
-        fe_run = self.frontend.running
+        fe_run = self.frontend.running if not self._production else False
         status = self.statusbar.cget("text")
         if "동기화" not in status:
-            if be_run and fe_run:
+            if self._production:
+                self.statusbar.configure(text="서버 실행 중" if be_run else ("모든 서버 정지됨" if "완료" not in status and "준비" not in status else status))
+            elif be_run and fe_run:
                 self.statusbar.configure(text="백엔드 + 프론트엔드 실행 중")
             elif be_run:
                 self.statusbar.configure(text="백엔드만 실행 중")
@@ -524,7 +569,9 @@ def _hide_console():
 
 def _kill_existing_servers():
     """기존 백엔드/프론트엔드 포트를 점유한 프로세스 종료."""
-    for port in (8000, 5173):
+    fe_dist = os.path.join(PROJECT_ROOT, "frontend", "dist", "index.html")
+    ports = [8000] if os.path.exists(fe_dist) else [8000, 5173]
+    for port in ports:
         for conn in psutil.net_connections(kind="tcp"):
             if conn.laddr.port == port and conn.status == "LISTEN" and conn.pid:
                 try:

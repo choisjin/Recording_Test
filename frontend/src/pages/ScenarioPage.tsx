@@ -1260,7 +1260,7 @@ export default function ScenarioPage() {
                   { title: '#', dataIndex: 'id', key: 'id', width: 40, align: 'center' as const },
                   { title: 'Type', dataIndex: 'type', key: 'type', width: 120, render: (v: string) => <Tag>{v}</Tag> },
                   { title: 'Device', dataIndex: 'device_id', key: 'device', width: 120, render: (v: string) => v ? <Tag color="blue">{v}</Tag> : '-' },
-                  { title: t('common.description'), dataIndex: 'description', key: 'desc', ellipsis: true },
+                  { title: t('common.description'), dataIndex: 'description', key: 'desc', width: 120, ellipsis: true },
                   {
                     title: 'Delay (ms)', dataIndex: 'delay_after_ms', key: 'delay', width: 120, align: 'center' as const,
                     render: (v: number, _r: any, idx: number) => (
