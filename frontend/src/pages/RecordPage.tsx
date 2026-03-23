@@ -1806,7 +1806,6 @@ export default function RecordPage() {
                     borderRadius: 4,
                     cursor: testingStepIndex != null ? 'wait' : 'crosshair',
                     userSelect: 'none',
-                    opacity: testingStepIndex != null ? 0.6 : 1,
                   }}
                 />
                 {testingStepIndex != null && (
@@ -1820,7 +1819,7 @@ export default function RecordPage() {
                     ? `${lastGesture} → ${recording ? t('record.gestureRecord') : t('record.directExec')}`
                     : t('record.gestureHint', { device: screenDevice?.name || screenshotDeviceId || '' })}
                 </div>
-                {isScreenHkmc && hkmcKeys.length > 0 && (() => {
+                {isScreenHkmc && hkmcKeys.length > 0 && testingStepIndex == null && (() => {
                   const HARD_KEY_GROUPS: Record<string, string[]> = {
                     MKBD: ['MKBD_NAV', 'MKBD_RADIO', 'MKBD_MEDIA', 'MKBD_CUSTOM', 'MKBD_SETUP'],
                     CCP: ['CCP_BACK', 'CCP_HOME', 'CCP_MENU', 'CCP_POWER',
@@ -1922,7 +1921,7 @@ export default function RecordPage() {
 
         </Splitter.Panel>
 
-        <Splitter.Panel style={{ display: 'flex', flexDirection: 'column', gap: 8, overflow: 'hidden' }}>
+        <Splitter.Panel style={{ display: 'flex', flexDirection: 'column', gap: 8, overflow: 'hidden', opacity: testingStepIndex != null ? 0.5 : 1, pointerEvents: testingStepIndex != null ? 'none' : 'auto' }}>
           {/* Right panel: Controls + Steps */}
           <Card size="small" title={t('record.control')}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

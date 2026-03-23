@@ -885,16 +885,16 @@ class PlaybackService:
             await self._interruptible_sleep(params.get("duration_ms", 1000) / 1000.0)
         elif step.type in (StepType.CMD_SEND, StepType.CMD_CHECK):
             cmd = params.get("command", "")
-            background = params.get("background", False)
+            background = params.get("background", False) and step.type == StepType.CMD_SEND
             if background:
-                subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                logger.info("[%s] background: %s", step.type.value, cmd)
+                proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                logger.info("[CMD_SEND] background PID=%d: %s", proc.pid, cmd)
+                self._last_cmd_result = (f"백그라운드 실행됨 (PID: {proc.pid})", "", 0)
             else:
                 timeout = params.get("timeout", 30)
                 loop = asyncio.get_event_loop()
                 stdout, stderr, rc = await loop.run_in_executor(None, _cmd_run_sync, cmd, timeout)
                 logger.info("[%s] rc=%d: %s", step.type.value, rc, cmd)
-                # CMD_CHECK 결과는 _execute_step에서 step_result에 반영
                 self._last_cmd_result = (stdout, stderr, rc)
         else:
             # ADB actions — real_id를 ADB 시리얼(dev.address)로 변환
