@@ -603,6 +603,18 @@ async def test_step(req: TestStepRequest):
     return result.model_dump()
 
 
+@router.get("/cmd-result/{task_id}")
+async def get_cmd_result(task_id: str):
+    """백그라운드 CMD 결과 폴링."""
+    from ..services.playback_service import bg_cmd_get, bg_cmd_cleanup
+    result = bg_cmd_get(task_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if result["status"] != "running":
+        bg_cmd_cleanup(task_id)
+    return result
+
+
 class PlaybackRequest(BaseModel):
     verify: bool = True
 

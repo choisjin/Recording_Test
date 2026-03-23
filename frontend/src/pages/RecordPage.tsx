@@ -553,9 +553,36 @@ export default function RecordPage() {
     try {
       const { _imageVer, ...currentStep } = steps[stepIdx];
       const res = await scenarioApi.testStep(scenarioName, stepIdx, currentStep);
-      setTestResult(res.data);
+      const result = res.data;
+      setTestResult(result);
       setTestResultModalOpen(true);
       refreshScreenshot();
+      // 백그라운드 CMD 결과 폴링
+      const bgMatch = result.message?.match?.(/\[BG_TASK:(bg_\d+)\]/);
+      if (bgMatch) {
+        const taskId = bgMatch[1];
+        result.message = `${t('record.cmdRunning')}...`;
+        setTestResult({ ...result });
+        const poll = setInterval(async () => {
+          try {
+            const r = await scenarioApi.getCmdResult(taskId);
+            if (r.data.status !== 'running') {
+              clearInterval(poll);
+              const stdout = r.data.stdout || '';
+              const step = steps[stepIdx];
+              if (step?.type === 'cmd_check') {
+                const expected = step.params?.expected || '';
+                const matchMode = step.params?.match_mode || 'contains';
+                const newMsg = `[CMD_CHECK]\nexpected(${matchMode}): ${expected}\n---\n${stdout}`;
+                const passed = matchMode === 'exact' ? stdout.trim() === expected.trim() : stdout.includes(expected);
+                setTestResult((prev: any) => ({ ...prev, message: newMsg, status: passed ? prev.status : 'fail' }));
+              } else {
+                setTestResult((prev: any) => ({ ...prev, message: stdout || `완료 (rc: ${r.data.rc})` }));
+              }
+            }
+          } catch { clearInterval(poll); }
+        }, 1000);
+      }
     } catch (e: any) {
       message.error(e.response?.data?.detail || t('record.stepTestFailed'));
     } finally {

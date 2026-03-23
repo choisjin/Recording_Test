@@ -21,6 +21,50 @@ logger = logging.getLogger(__name__)
 SCREENSHOTS_DIR = Path(__file__).resolve().parent.parent.parent / "screenshots"
 
 
+# 백그라운드 CMD 태스크 저장소
+_bg_tasks: dict[str, dict] = {}
+_bg_task_counter = 0
+
+
+def _bg_cmd_start(cmd: str) -> str:
+    """백그라운드로 CMD 실행, task_id 반환."""
+    global _bg_task_counter
+    _bg_task_counter += 1
+    task_id = f"bg_{_bg_task_counter}"
+    _bg_tasks[task_id] = {"status": "running", "stdout": "", "stderr": "", "rc": None, "cmd": cmd}
+
+    def _run():
+        try:
+            proc = subprocess.run(cmd, shell=True, capture_output=True, timeout=300)
+            for enc in ("utf-8", "cp949", "euc-kr"):
+                try:
+                    stdout = proc.stdout.decode(enc)
+                    stderr = proc.stderr.decode(enc)
+                    _bg_tasks[task_id].update({"status": "done", "stdout": stdout, "stderr": stderr, "rc": proc.returncode})
+                    return
+                except (UnicodeDecodeError, LookupError):
+                    continue
+            _bg_tasks[task_id].update({"status": "done", "stdout": proc.stdout.decode(errors="replace"), "stderr": proc.stderr.decode(errors="replace"), "rc": proc.returncode})
+        except subprocess.TimeoutExpired:
+            _bg_tasks[task_id].update({"status": "timeout", "stdout": "", "stderr": "Timeout (300s)", "rc": 1})
+        except Exception as e:
+            _bg_tasks[task_id].update({"status": "error", "stdout": "", "stderr": str(e), "rc": 1})
+
+    import threading
+    threading.Thread(target=_run, daemon=True, name=f"bg-cmd-{task_id}").start()
+    return task_id
+
+
+def bg_cmd_get(task_id: str) -> dict | None:
+    """백그라운드 CMD 결과 조회."""
+    return _bg_tasks.get(task_id)
+
+
+def bg_cmd_cleanup(task_id: str) -> None:
+    """완료된 태스크 정리."""
+    _bg_tasks.pop(task_id, None)
+
+
 def _cmd_run_sync(cmd: str, timeout: int = 30) -> tuple[str, str, int]:
     """CMD 명령어 실행 (subprocess). Windows cp949 인코딩 대응."""
     try:
@@ -885,11 +929,11 @@ class PlaybackService:
             await self._interruptible_sleep(params.get("duration_ms", 1000) / 1000.0)
         elif step.type in (StepType.CMD_SEND, StepType.CMD_CHECK):
             cmd = params.get("command", "")
-            background = params.get("background", False) and step.type == StepType.CMD_SEND
+            background = params.get("background", False)
             if background:
-                proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                logger.info("[CMD_SEND] background PID=%d: %s", proc.pid, cmd)
-                self._last_cmd_result = (f"백그라운드 실행됨 (PID: {proc.pid})", "", 0)
+                task_id = _bg_cmd_start(cmd)
+                logger.info("[%s] background task_id=%s: %s", step.type.value, task_id, cmd)
+                self._last_cmd_result = (f"[BG_TASK:{task_id}]", "", 0)
             else:
                 timeout = params.get("timeout", 30)
                 loop = asyncio.get_event_loop()

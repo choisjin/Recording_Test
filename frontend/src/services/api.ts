@@ -54,6 +54,7 @@ export const scenarioApi = {
     api.post('/scenario/record/update-step', { scenario_name: scenarioName, step_index: stepIndex, updates }),
   testStep: (scenarioName: string, stepIndex: number, stepData?: any) =>
     api.post('/scenario/test-step', { scenario_name: scenarioName, step_index: stepIndex, step_data: stepData }),
+  getCmdResult: (taskId: string) => api.get(`/scenario/cmd-result/${taskId}`),
   // Groups
   getGroups: () => api.get('/scenario/groups'),
   createGroup: (name: string) => api.post('/scenario/groups', { name }),
