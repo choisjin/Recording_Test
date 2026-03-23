@@ -1,0 +1,1156 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ReplayKit 사용자 가이드</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-alt: #f6f8fa;
+    --bg-code: #f0f2f5;
+    --text: #24292f;
+    --text-muted: #57606a;
+    --border: #d0d7de;
+    --accent: #0969da;
+    --accent-light: #ddf4ff;
+    --success: #1a7f37;
+    --success-bg: #dafbe1;
+    --warning: #9a6700;
+    --warning-bg: #fff8c5;
+    --danger: #cf222e;
+    --danger-bg: #ffebe9;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  [data-theme="dark"] {
+    --bg: #0d1117;
+    --bg-alt: #161b22;
+    --bg-code: #1c2128;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --border: #30363d;
+    --accent: #58a6ff;
+    --accent-light: #1a2332;
+    --success: #3fb950;
+    --success-bg: #0d2818;
+    --warning: #d29922;
+    --warning-bg: #2a1f00;
+    --danger: #f85149;
+    --danger-bg: #3d1014;
+    --shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Noto Sans KR', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    font-size: 15px;
+  }
+
+  /* --- Layout --- */
+  .layout { display: flex; min-height: 100vh; }
+
+  /* --- Sidebar / TOC --- */
+  .sidebar {
+    position: fixed;
+    top: 0; left: 0;
+    width: 280px;
+    height: 100vh;
+    overflow-y: auto;
+    background: var(--bg-alt);
+    border-right: 1px solid var(--border);
+    padding: 24px 16px;
+    z-index: 100;
+    transition: transform 0.3s;
+  }
+  .sidebar-logo {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 4px;
+  }
+  .sidebar-version {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 20px;
+  }
+  .sidebar nav a {
+    display: block;
+    padding: 5px 10px;
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 13.5px;
+    border-radius: 6px;
+    transition: background 0.15s, color 0.15s;
+  }
+  .sidebar nav a:hover, .sidebar nav a.active {
+    background: var(--accent-light);
+    color: var(--accent);
+  }
+  .sidebar nav .toc-h2 { font-weight: 600; margin-top: 12px; }
+  .sidebar nav .toc-h3 { padding-left: 22px; font-size: 12.5px; }
+
+  /* --- Main content --- */
+  .main {
+    margin-left: 280px;
+    max-width: 860px;
+    padding: 40px 48px 80px;
+    flex: 1;
+  }
+
+  /* --- Theme toggle --- */
+  .theme-toggle {
+    position: fixed;
+    top: 16px; right: 20px;
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 18px;
+    z-index: 200;
+    transition: background 0.2s;
+  }
+  .theme-toggle:hover { background: var(--accent-light); }
+
+  /* --- Mobile hamburger --- */
+  .hamburger {
+    display: none;
+    position: fixed;
+    top: 14px; left: 14px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    width: 40px; height: 40px;
+    font-size: 22px;
+    cursor: pointer;
+    z-index: 300;
+  }
+  .overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 90;
+  }
+
+  /* --- Typography --- */
+  h1 {
+    font-size: 32px;
+    font-weight: 800;
+    margin-bottom: 8px;
+    letter-spacing: -0.5px;
+  }
+  h1 small {
+    font-size: 14px;
+    font-weight: 400;
+    color: var(--text-muted);
+    display: block;
+    margin-top: 4px;
+  }
+  h2 {
+    font-size: 24px;
+    font-weight: 700;
+    margin-top: 56px;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--border);
+    scroll-margin-top: 24px;
+  }
+  h3 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-top: 36px;
+    margin-bottom: 10px;
+    scroll-margin-top: 24px;
+  }
+  h4 {
+    font-size: 15px;
+    font-weight: 600;
+    margin-top: 20px;
+    margin-bottom: 8px;
+  }
+  p { margin-bottom: 12px; }
+  ul, ol { margin: 8px 0 16px 24px; }
+  li { margin-bottom: 4px; }
+
+  /* --- Callout boxes --- */
+  .callout {
+    padding: 14px 18px;
+    border-radius: 8px;
+    margin: 16px 0;
+    font-size: 14px;
+    border-left: 4px solid;
+  }
+  .callout-info { background: var(--accent-light); border-color: var(--accent); }
+  .callout-success { background: var(--success-bg); border-color: var(--success); }
+  .callout-warning { background: var(--warning-bg); border-color: var(--warning); }
+  .callout-danger { background: var(--danger-bg); border-color: var(--danger); }
+  .callout strong { display: block; margin-bottom: 4px; }
+
+  /* --- Code --- */
+  code {
+    background: var(--bg-code);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+  }
+  pre {
+    background: var(--bg-code);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    overflow-x: auto;
+    margin: 12px 0 20px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  pre code { background: none; padding: 0; }
+
+  /* --- Tables --- */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0 20px;
+    font-size: 14px;
+  }
+  th, td {
+    padding: 10px 14px;
+    text-align: left;
+    border: 1px solid var(--border);
+  }
+  th {
+    background: var(--bg-alt);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  td { vertical-align: top; }
+
+  /* --- Badge / Tag --- */
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .badge-blue { background: var(--accent-light); color: var(--accent); }
+  .badge-green { background: var(--success-bg); color: var(--success); }
+  .badge-yellow { background: var(--warning-bg); color: var(--warning); }
+  .badge-red { background: var(--danger-bg); color: var(--danger); }
+
+  /* --- Step indicator --- */
+  .step-flow {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin: 20px 0;
+    flex-wrap: wrap;
+  }
+  .step-flow .step-item {
+    background: var(--accent-light);
+    color: var(--accent);
+    padding: 8px 18px;
+    font-weight: 600;
+    font-size: 14px;
+    white-space: nowrap;
+  }
+  .step-flow .step-item:first-child { border-radius: 8px 0 0 8px; }
+  .step-flow .step-item:last-child { border-radius: 0 8px 8px 0; }
+  .step-flow .step-arrow {
+    color: var(--accent);
+    font-size: 18px;
+    padding: 0 2px;
+  }
+
+  /* --- Keyboard shortcut --- */
+  kbd {
+    display: inline-block;
+    padding: 2px 7px;
+    font-size: 12px;
+    font-family: 'Cascadia Code', monospace;
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    box-shadow: 0 1px 0 var(--border);
+  }
+
+  /* --- Figure --- */
+  .figure {
+    margin: 16px 0;
+    padding: 16px;
+    background: var(--bg-alt);
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    text-align: center;
+  }
+  .figure-caption {
+    margin-top: 10px;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  .figure-diagram {
+    font-family: 'Cascadia Code', monospace;
+    font-size: 13px;
+    white-space: pre;
+    text-align: left;
+    display: inline-block;
+    line-height: 1.5;
+  }
+
+  /* --- Numbered steps --- */
+  .numbered-steps { counter-reset: steps; list-style: none; margin-left: 0; }
+  .numbered-steps li {
+    counter-increment: steps;
+    padding: 12px 16px 12px 52px;
+    position: relative;
+    margin-bottom: 10px;
+    background: var(--bg-alt);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+  }
+  .numbered-steps li::before {
+    content: counter(steps);
+    position: absolute;
+    left: 14px; top: 12px;
+    width: 26px; height: 26px;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 50%;
+    font-size: 13px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* --- Responsive --- */
+  @media (max-width: 900px) {
+    .sidebar { transform: translateX(-100%); }
+    .sidebar.open { transform: translateX(0); }
+    .main { margin-left: 0; padding: 24px 20px 60px; }
+    .hamburger { display: block; }
+    .overlay.show { display: block; }
+  }
+
+  /* --- Print --- */
+  @media print {
+    .sidebar, .hamburger, .theme-toggle, .overlay { display: none !important; }
+    .main { margin-left: 0; max-width: 100%; padding: 20px; }
+    h2 { break-before: page; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Theme toggle -->
+<button class="theme-toggle" onclick="toggleTheme()" title="테마 전환">🌓</button>
+
+<!-- Mobile hamburger -->
+<button class="hamburger" onclick="toggleSidebar()">☰</button>
+<div class="overlay" onclick="toggleSidebar()"></div>
+
+<div class="layout">
+
+<!-- Sidebar / TOC -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-logo">📋 ReplayKit</div>
+  <div class="sidebar-version">사용자 가이드 v1.0</div>
+  <nav id="toc">
+    <a href="#intro" class="toc-h2">소개</a>
+    <a href="#overview" class="toc-h3">시스템 개요</a>
+    <a href="#workflow" class="toc-h3">핵심 워크플로우</a>
+
+    <a href="#install" class="toc-h2">설치 및 실행</a>
+    <a href="#install-req" class="toc-h3">시스템 요구사항</a>
+    <a href="#install-setup" class="toc-h3">설치 방법</a>
+    <a href="#install-run" class="toc-h3">실행 방법</a>
+    <a href="#install-update" class="toc-h3">업데이트</a>
+
+    <a href="#device" class="toc-h2">디바이스 관리</a>
+    <a href="#device-primary" class="toc-h3">주 디바이스</a>
+    <a href="#device-auxiliary" class="toc-h3">보조 디바이스</a>
+    <a href="#device-actions" class="toc-h3">디바이스 작업</a>
+
+    <a href="#record" class="toc-h2">녹화</a>
+    <a href="#record-start" class="toc-h3">녹화 시작하기</a>
+    <a href="#record-gestures" class="toc-h3">제스처 녹화</a>
+    <a href="#record-steps" class="toc-h3">스텝 유형</a>
+    <a href="#record-expected" class="toc-h3">기대 이미지</a>
+    <a href="#record-compare" class="toc-h3">이미지 비교 모드</a>
+    <a href="#record-edit" class="toc-h3">스텝 편집</a>
+    <a href="#record-conditional" class="toc-h3">조건부 이동</a>
+
+    <a href="#scenario" class="toc-h2">시나리오 관리</a>
+    <a href="#scenario-list" class="toc-h3">시나리오 목록</a>
+    <a href="#scenario-play" class="toc-h3">재생(실행)</a>
+    <a href="#scenario-group" class="toc-h3">그룹 관리</a>
+    <a href="#scenario-export" class="toc-h3">내보내기/가져오기</a>
+
+    <a href="#results" class="toc-h2">테스트 결과</a>
+    <a href="#results-list" class="toc-h3">결과 목록</a>
+    <a href="#results-detail" class="toc-h3">결과 상세</a>
+    <a href="#results-export" class="toc-h3">Excel 내보내기</a>
+    <a href="#results-webcam" class="toc-h3">웹캠 녹화</a>
+
+    <a href="#settings" class="toc-h2">설정</a>
+
+    <a href="#webcam" class="toc-h2">웹캠 PiP</a>
+
+    <a href="#tips" class="toc-h2">팁 & 문제 해결</a>
+    <a href="#tips-faq" class="toc-h3">자주 묻는 질문</a>
+    <a href="#tips-shortcuts" class="toc-h3">단축키</a>
+
+    <a href="#appendix" class="toc-h2">부록</a>
+    <a href="#appendix-steps" class="toc-h3">스텝 유형 총정리</a>
+    <a href="#appendix-compare" class="toc-h3">비교 모드 총정리</a>
+    <a href="#appendix-status" class="toc-h3">결과 상태 코드</a>
+  </nav>
+</aside>
+
+<!-- Main Content -->
+<main class="main">
+
+<!-- ============================== 소개 ============================== -->
+<h1 id="intro">
+  ReplayKit 사용자 가이드
+  <small>테스트 자동화 플랫폼 — 녹화, 재생, 검증을 하나로</small>
+</h1>
+
+<h3 id="overview">시스템 개요</h3>
+<p>
+  <strong>ReplayKit</strong>은 Android 및 IVI(차량 인포테인먼트) 디바이스에서
+  사용자의 조작을 녹화하고, 이를 자동으로 재생하면서 스크린샷 기반 이미지 비교(SSIM)로
+  검증한 뒤 Excel 리포트를 생성하는 <strong>테스트 자동화 플랫폼</strong>입니다.
+</p>
+
+<table>
+  <tr><th>구성 요소</th><th>기술</th><th>역할</th></tr>
+  <tr><td>백엔드</td><td>Python (FastAPI)</td><td>디바이스 제어, 녹화/재생 엔진, 이미지 비교</td></tr>
+  <tr><td>프론트엔드</td><td>React + TypeScript + Ant Design</td><td>사용자 인터페이스 (웹 브라우저)</td></tr>
+  <tr><td>디바이스 연결</td><td>ADB / TCP 소켓 / 시리얼</td><td>Android, HKMC IVI, 시리얼 장치 등</td></tr>
+</table>
+
+<h3 id="workflow">핵심 워크플로우</h3>
+<div class="step-flow">
+  <span class="step-item">① 디바이스 연결</span>
+  <span class="step-arrow">→</span>
+  <span class="step-item">② 조작 녹화</span>
+  <span class="step-arrow">→</span>
+  <span class="step-item">③ 기대 이미지 설정</span>
+  <span class="step-arrow">→</span>
+  <span class="step-item">④ 시나리오 재생</span>
+  <span class="step-arrow">→</span>
+  <span class="step-item">⑤ 결과 확인 & 리포트</span>
+</div>
+
+<div class="figure">
+  <div class="figure-diagram">
+디바이스              ReplayKit              결과
+┌──────┐    조작 녹화    ┌──────────┐   SSIM 비교   ┌──────────┐
+│Android├───────────────►│ 시나리오  │─────────────►│ Pass/Fail│
+│ IVI   │◄───────────────┤  재생    │               │  리포트  │
+│ 시리얼│    명령 전송    └──────────┘               └──────────┘
+└──────┘                  ▲  스크린샷                    │
+                          └────── 기대이미지 비교 ────────┘
+  </div>
+  <div class="figure-caption">ReplayKit 데이터 흐름도</div>
+</div>
+
+
+<!-- ============================== 설치 ============================== -->
+<h2 id="install">설치 및 실행</h2>
+
+<h3 id="install-req">시스템 요구사항</h3>
+<table>
+  <tr><th>항목</th><th>요구사항</th></tr>
+  <tr><td>운영체제</td><td>Windows 10 이상 (64bit)</td></tr>
+  <tr><td>Python</td><td>3.10 이상 (설치 프로그램이 자동 설치)</td></tr>
+  <tr><td>Node.js</td><td>v18 이상 (설치 프로그램이 자동 설치)</td></tr>
+  <tr><td>브라우저</td><td>Chrome, Edge 등 최신 브라우저</td></tr>
+  <tr><td>디바이스</td><td>USB 디버깅이 켜진 Android 기기 또는 HKMC IVI</td></tr>
+</table>
+
+<h3 id="install-setup">설치 방법</h3>
+
+<h4>방법 1: 설치 프로그램 사용 (권장)</h4>
+<ol class="numbered-steps">
+  <li><code>ReplayKit_Setup_1.0.exe</code> 실행 → 관리자 권한 허용</li>
+  <li>설치 경로 확인 (기본: <code>C:\ReplayKit</code>)</li>
+  <li>설치가 자동으로 진행됩니다:
+    <ul>
+      <li>VC++ 런타임이 없으면 자동 설치</li>
+      <li>Python 3.10이 없으면 자동 설치</li>
+      <li>Node.js가 없으면 자동 설치</li>
+      <li>Python/Node 의존성 자동 설치</li>
+    </ul>
+  </li>
+  <li>설치 완료 후 ReplayKit이 자동으로 실행됩니다</li>
+</ol>
+
+<h4>방법 2: 수동 설치 (개발 환경)</h4>
+<pre><code># 프로젝트 폴더에서 초기 설정 (최초 1회)
+setup.bat
+
+# 이 명령이 venv 생성, Python 패키지, Node 패키지를 모두 설치합니다</code></pre>
+
+<h3 id="install-run">실행 방법</h3>
+
+<h4>방법 1: 서버 관리 GUI (권장)</h4>
+<pre><code># 프로젝트 폴더에서 실행
+python server.py</code></pre>
+<p>Tkinter 기반 GUI 창이 열리며, 백엔드와 프론트엔드를 동시에 관리할 수 있습니다.</p>
+
+<h4>방법 2: 수동 실행</h4>
+<pre><code># 터미널 1: 백엔드
+venv\Scripts\activate
+python -m uvicorn backend.app.main:app --reload --port 8000
+
+# 터미널 2: 프론트엔드
+cd frontend
+npm run dev</code></pre>
+
+<p>실행 후 브라우저에서 <code>http://localhost:5173</code>에 접속하면 ReplayKit 화면이 표시됩니다.</p>
+
+<div class="callout callout-info">
+  <strong>💡 팁</strong>
+  프론트엔드가 백엔드의 API 요청을 자동으로 프록시하므로, 별도의 CORS 설정이 필요 없습니다.
+</div>
+
+<h3 id="install-update">업데이트</h3>
+<p>ReplayKit 화면 좌측 사이드바 하단의 <strong>업데이트</strong> 버튼을 클릭하면:</p>
+<ol>
+  <li>최신 코드를 자동으로 다운로드 (git pull)</li>
+  <li>변경된 의존성 자동 설치</li>
+  <li>서버 자동 재시작</li>
+</ol>
+<p>또는 <code>sync_and_run.bat</code>를 실행하면 동일한 작업을 수행합니다.</p>
+
+
+<!-- ============================== 디바이스 ============================== -->
+<h2 id="device">디바이스 관리</h2>
+<p>
+  ReplayKit의 첫 화면인 <strong>디바이스</strong> 탭에서 테스트에 사용할 장치들을 등록하고 관리합니다.
+  디바이스는 <strong>주 디바이스</strong>와 <strong>보조 디바이스</strong>로 나뉩니다.
+</p>
+
+<h3 id="device-primary">주 디바이스</h3>
+<p>화면 조작과 스크린샷 캡처의 대상이 되는 디바이스입니다.</p>
+
+<table>
+  <tr><th>유형</th><th>연결 방식</th><th>설명</th></tr>
+  <tr>
+    <td><span class="badge badge-blue">ADB</span></td>
+    <td>USB 또는 WiFi</td>
+    <td>
+      Android 디바이스. USB로 연결하거나 IP:포트로 WiFi 연결.<br>
+      예: <code>192.168.1.100:5555</code>
+    </td>
+  </tr>
+  <tr>
+    <td><span class="badge badge-green">HKMC</span></td>
+    <td>TCP 소켓</td>
+    <td>
+      HKMC 6세대 IVI 시스템. IP와 TCP 포트(기본 5000)로 연결.<br>
+      화면 유형 선택 가능: Front Center, Rear Left, Rear Right, Cluster
+    </td>
+  </tr>
+  <tr>
+    <td><span class="badge badge-yellow">Vision Camera</span></td>
+    <td>네트워크</td>
+    <td>
+      비전 카메라. MAC 주소, 모델, IP 주소로 식별.
+    </td>
+  </tr>
+</table>
+
+<h4>디바이스 연결하기</h4>
+<ol class="numbered-steps">
+  <li><strong>스캔</strong> 버튼 클릭 — USB로 연결된 ADB 디바이스, 네트워크의 HKMC 디바이스가 자동 감지됩니다</li>
+  <li>감지된 디바이스 목록에서 원하는 기기를 선택하고 <strong>연결</strong> 클릭</li>
+  <li>감지되지 않는 경우 <strong>수동 연결</strong> 탭에서 주소를 직접 입력할 수 있습니다</li>
+</ol>
+
+<div class="callout callout-warning">
+  <strong>⚠️ ADB 디바이스 준비</strong>
+  Android 기기의 <em>설정 → 개발자 옵션 → USB 디버깅</em>이 켜져 있어야 합니다.
+  WiFi 연결 시에는 <code>adb tcpip 5555</code> 명령이 먼저 실행되어 있어야 합니다.
+</div>
+
+<h3 id="device-auxiliary">보조 디바이스</h3>
+<p>주 디바이스를 보조하는 외부 장치들입니다. 시리얼 통신, 모듈 제어 등에 사용됩니다.</p>
+
+<table>
+  <tr><th>유형</th><th>연결 방식</th><th>설명</th></tr>
+  <tr>
+    <td><span class="badge badge-blue">시리얼</span></td>
+    <td>COM 포트 / USB</td>
+    <td>시리얼 통신 장치. 보율(Baudrate) 설정 가능 (기본 115200)</td>
+  </tr>
+  <tr>
+    <td><span class="badge badge-green">모듈</span></td>
+    <td>플러그인</td>
+    <td>확장 모듈 (CAN 통신, 전원 제어 등). 동적으로 로딩되는 플러그인</td>
+  </tr>
+  <tr>
+    <td><span class="badge badge-yellow">벤치</span></td>
+    <td>UDP</td>
+    <td>벤치 장비. IP:UDP 포트로 연결</td>
+  </tr>
+</table>
+
+<h3 id="device-actions">디바이스 작업</h3>
+<ul>
+  <li><strong>이름 변경</strong> — 디바이스의 표시 이름을 편집</li>
+  <li><strong>정보 수정</strong> — 주소, 보율, 모듈 할당 등 변경</li>
+  <li><strong>연결 해제</strong> — 디바이스 등록 해제</li>
+  <li><strong>ADB 서버 재시작</strong> — 연결 문제 발생 시 ADB 서버를 재시작</li>
+  <li><strong>재연결</strong> — 연결이 끊어진 디바이스에 다시 연결 시도</li>
+</ul>
+
+
+<!-- ============================== 녹화 ============================== -->
+<h2 id="record">녹화</h2>
+<p>
+  <strong>녹화</strong> 탭에서는 디바이스의 실시간 화면을 보면서 사용자 조작을 기록하여
+  테스트 시나리오를 만듭니다. 각 조작은 하나의 <strong>스텝(Step)</strong>으로 저장됩니다.
+</p>
+
+<h3 id="record-start">녹화 시작하기</h3>
+<ol class="numbered-steps">
+  <li><strong>시나리오 이름</strong>을 입력합니다 (예: "설정_WiFi_연결_테스트")</li>
+  <li>필요시 <strong>설명</strong>을 추가합니다</li>
+  <li><strong>대상 디바이스</strong>를 선택합니다 (주 디바이스 목록에서)</li>
+  <li><strong>녹화 시작</strong> 버튼을 클릭합니다</li>
+  <li>디바이스 화면이 실시간으로 스트리밍되며, 화면을 클릭/드래그하여 조작을 기록합니다</li>
+  <li>모든 조작이 끝나면 <strong>녹화 중지</strong>를 클릭하여 시나리오를 저장합니다</li>
+</ol>
+
+<div class="callout callout-info">
+  <strong>💡 이어서 녹화</strong>
+  이미 저장된 시나리오를 불러와서 뒤에 스텝을 추가할 수 있습니다.
+  <strong>저장된 시나리오 불러오기</strong> → 시나리오 선택 → <strong>이어서 녹화</strong>
+</div>
+
+<h3 id="record-gestures">제스처 녹화</h3>
+<p>디바이스의 실시간 화면 위에서 마우스로 직접 조작하면 자동으로 제스처가 인식됩니다:</p>
+
+<table>
+  <tr><th>마우스 동작</th><th>인식되는 제스처</th><th>기록되는 정보</th></tr>
+  <tr><td>클릭</td><td><strong>탭 (Tap)</strong></td><td>클릭 좌표 (x, y)</td></tr>
+  <tr><td>길게 클릭</td><td><strong>길게 누르기 (Long Press)</strong></td><td>좌표 + 지속 시간 (ms)</td></tr>
+  <tr><td>드래그</td><td><strong>스와이프 (Swipe)</strong></td><td>시작 좌표 → 끝 좌표</td></tr>
+</table>
+
+<h3 id="record-steps">스텝 유형</h3>
+<p>제스처 외에도 다양한 스텝을 수동으로 추가할 수 있습니다:</p>
+
+<table>
+  <tr><th>스텝 유형</th><th>설명</th><th>사용 예</th></tr>
+  <tr><td><code>tap</code></td><td>화면의 특정 좌표를 터치</td><td>버튼 클릭</td></tr>
+  <tr><td><code>long_press</code></td><td>지정 시간 동안 길게 터치</td><td>롱프레스 메뉴 호출</td></tr>
+  <tr><td><code>swipe</code></td><td>시작점에서 끝점으로 드래그</td><td>화면 스크롤, 슬라이더 조작</td></tr>
+  <tr><td><code>input_text</code></td><td>텍스트 입력</td><td>검색창에 텍스트 입력</td></tr>
+  <tr><td><code>key_event</code></td><td>하드웨어 키 전송</td><td>뒤로가기 (KEYCODE_BACK)</td></tr>
+  <tr><td><code>wait</code></td><td>지정 시간(ms) 대기</td><td>화면 전환 대기</td></tr>
+  <tr><td><code>adb_command</code></td><td>ADB 셸 명령 실행</td><td>앱 강제 종료, 설정 변경</td></tr>
+  <tr><td><code>serial_command</code></td><td>시리얼 데이터 전송</td><td>하드웨어 제어 명령</td></tr>
+  <tr><td><code>module_command</code></td><td>모듈 함수 호출</td><td>CAN 메시지 전송, 전원 제어</td></tr>
+  <tr><td><code>hkmc_touch</code></td><td>HKMC IVI 터치</td><td>IVI 화면 터치</td></tr>
+  <tr><td><code>hkmc_swipe</code></td><td>HKMC IVI 스와이프</td><td>IVI 화면 스와이프</td></tr>
+  <tr><td><code>hkmc_key</code></td><td>HKMC 하드웨어 키</td><td>물리 버튼 제어</td></tr>
+  <tr><td><code>cmd_check</code></td><td>Windows 명령 실행 후 결과 검증</td><td>ping 확인, 프로세스 상태 체크</td></tr>
+</table>
+
+<h4>수동 스텝 추가</h4>
+<p>
+  녹화 중이거나 편집 모드에서 화면 하단의 <strong>스텝 추가</strong> 영역을 사용합니다.
+  스텝 유형을 선택하고 필요한 값을 입력한 뒤 추가 버튼을 클릭합니다.
+</p>
+
+<h3 id="record-expected">기대 이미지</h3>
+<p>
+  각 스텝이 올바르게 실행되었는지 확인하려면 <strong>기대 이미지</strong>를 설정합니다.
+  재생 시 실제 스크린샷과 기대 이미지를 비교하여 Pass/Fail을 판정합니다.
+</p>
+
+<ol class="numbered-steps">
+  <li>스텝 목록에서 기대 이미지를 설정할 스텝을 찾습니다</li>
+  <li>📷 버튼을 클릭하면 현재 디바이스 화면이 <strong>전체 화면 기대 이미지</strong>로 자동 캡처됩니다</li>
+  <li>캡처된 이미지가 스텝 옆에 썸네일로 표시됩니다</li>
+  <li>필요 시 이미지를 클릭하여 확대하거나, 비교 모드를 변경할 수 있습니다</li>
+</ol>
+
+<div class="callout callout-success">
+  <strong>✅ 자동 캡처 기능</strong>
+  기대 이미지가 없는 스텝을 실행하면, 실행 결과 스크린샷이 자동으로 기대 이미지로 저장됩니다.
+  처음 시나리오를 만들 때 편리하게 사용할 수 있습니다.
+</div>
+
+<h3 id="record-compare">이미지 비교 모드</h3>
+<p>기대 이미지와 실제 스크린샷을 비교하는 4가지 모드를 제공합니다:</p>
+
+<table>
+  <tr><th>모드</th><th>아이콘</th><th>설명</th><th>사용 상황</th></tr>
+  <tr>
+    <td><strong>전체화면</strong></td>
+    <td><code>FULL</code></td>
+    <td>화면 전체를 SSIM으로 비교</td>
+    <td>화면 전체가 동일해야 할 때 (기본값)</td>
+  </tr>
+  <tr>
+    <td><strong>단일크롭</strong></td>
+    <td><code>SINGLE_CROP</code></td>
+    <td>특정 영역만 잘라서 템플릿 매칭</td>
+    <td>상태바, 알림 등 특정 UI 요소만 확인할 때</td>
+  </tr>
+  <tr>
+    <td><strong>영역제외</strong></td>
+    <td><code>FULL_EXCLUDE</code></td>
+    <td>지정 영역을 제외하고 SSIM 비교</td>
+    <td>시계, 배터리 등 변하는 영역을 무시할 때</td>
+  </tr>
+  <tr>
+    <td><strong>멀티크롭</strong></td>
+    <td><code>MULTI_CROP</code></td>
+    <td>여러 영역을 각각 비교 (모두 통과해야 Pass)</td>
+    <td>여러 UI 요소를 동시에 확인할 때</td>
+  </tr>
+</table>
+
+<h4>비교 영역 편집</h4>
+<ul>
+  <li><strong>영역제외 편집</strong> (가위 아이콘) — 기대 이미지 위에서 마우스로 드래그하여 제외할 영역(빨간색)을 지정</li>
+  <li><strong>크롭 영역 편집</strong> — 비교할 영역(초록색)을 드래그하여 지정</li>
+  <li><strong>ROI 설정</strong> — 전체화면 모드에서 비교 대상 영역만 지정</li>
+  <li>각 영역은 목록에서 클릭하여 수정하거나 X 버튼으로 삭제할 수 있습니다</li>
+</ul>
+
+<div class="callout callout-info">
+  <strong>💡 유사도 임계값</strong>
+  기본 유사도 임계값은 <strong>0.95 (95%)</strong>입니다. 이 값 이상이면 Pass, 미만이면 Fail로 판정됩니다.
+  멀티크롭 모드에서는 각 크롭별로 개별 임계값을 설정할 수 있습니다.
+</div>
+
+<h3 id="record-edit">스텝 편집</h3>
+<p>녹화된 스텝은 언제든 수정할 수 있습니다. 각 스텝의 메뉴(⋯)에서:</p>
+
+<ul>
+  <li><strong>커맨드 수정</strong> — 좌표, 텍스트, 명령어 등 파라미터 변경</li>
+  <li><strong>기대이미지 재촬영</strong> — 현재 디바이스 화면으로 기대 이미지 교체</li>
+  <li><strong>이 스텝 테스트</strong> — 해당 스텝만 단독 실행 + 검증하여 결과 확인</li>
+  <li><strong>Wait 삽입</strong> — 이 스텝 뒤에 대기 시간 삽입</li>
+  <li><strong>삭제</strong> — 스텝 제거</li>
+</ul>
+
+<p>
+  좌표 수정이 필요한 스텝(tap, long_press, swipe)은 편집 모드에서 디바이스 화면을 직접 클릭/드래그하면
+  새 좌표가 자동으로 적용됩니다.
+</p>
+
+<h3 id="record-conditional">조건부 이동</h3>
+<p>
+  스텝의 검증 결과(Pass/Fail)에 따라 다음 실행할 스텝을 지정할 수 있습니다.
+  이를 통해 테스트 흐름을 분기하거나, 실패 시 건너뛰기 등의 로직을 구현합니다.
+</p>
+
+<table>
+  <tr><th>설정</th><th>설명</th></tr>
+  <tr><td>Pass 시 이동</td><td>검증 성공 시 지정한 스텝으로 점프 (기본: 다음 스텝)</td></tr>
+  <tr><td>Fail 시 이동</td><td>검증 실패 시 지정한 스텝으로 점프 또는 종료(END)</td></tr>
+</table>
+
+<div class="callout callout-warning">
+  <strong>⚠️ 무한 루프 주의</strong>
+  조건부 이동을 설정할 때, 이전 스텝으로 돌아가는 순환 참조가 발생하지 않도록 주의하세요.
+</div>
+
+
+<!-- ============================== 시나리오 ============================== -->
+<h2 id="scenario">시나리오 관리</h2>
+<p>
+  <strong>시나리오</strong> 탭에서는 녹화된 시나리오를 조회, 실행, 관리합니다.
+</p>
+
+<h3 id="scenario-list">시나리오 목록</h3>
+<p>저장된 모든 시나리오가 목록으로 표시됩니다. 각 시나리오에서 가능한 작업:</p>
+<ul>
+  <li><strong>재생</strong> — 시나리오를 디바이스에서 실행</li>
+  <li><strong>복사</strong> — 다른 이름으로 복제</li>
+  <li><strong>이름 변경</strong> — 시나리오 이름 수정</li>
+  <li><strong>병합</strong> — 여러 시나리오를 하나로 합침</li>
+  <li><strong>삭제</strong> — 시나리오 제거 (확인 필요)</li>
+</ul>
+
+<h3 id="scenario-play">재생 (실행)</h3>
+<p>시나리오를 실행하여 자동으로 디바이스를 조작하고 결과를 검증합니다.</p>
+
+<ol class="numbered-steps">
+  <li>시나리오 옆의 <strong>재생</strong> 버튼을 클릭합니다</li>
+  <li><strong>디바이스 매핑</strong> 확인 — 시나리오가 녹화된 디바이스와 현재 연결된 디바이스를 매핑합니다.
+    디바이스가 다르면 여기서 변경할 수 있습니다</li>
+  <li>필요 시 <strong>반복 횟수</strong>를 설정합니다 (기본 1회)</li>
+  <li><strong>실행</strong>을 클릭하면 재생이 시작됩니다</li>
+  <li>각 스텝이 실행될 때마다 결과가 실시간으로 표시됩니다:
+    <ul>
+      <li><span class="badge badge-green">Pass</span> — 유사도가 임계값 이상</li>
+      <li><span class="badge badge-yellow">Warning</span> — 경계값 수준</li>
+      <li><span class="badge badge-red">Fail</span> — 유사도가 임계값 미만</li>
+      <li><span class="badge badge-red">Error</span> — 실행 오류 발생</li>
+    </ul>
+  </li>
+</ol>
+
+<h4>재생 중 제어</h4>
+<table>
+  <tr><th>버튼</th><th>기능</th></tr>
+  <tr><td><strong>일시정지</strong></td><td>현재 스텝 완료 후 대기</td></tr>
+  <tr><td><strong>재개</strong></td><td>일시정지된 재생을 계속</td></tr>
+  <tr><td><strong>중지</strong></td><td>재생을 즉시 중단하고 현재까지의 결과를 저장</td></tr>
+</table>
+
+<h3 id="scenario-group">그룹 관리</h3>
+<p>
+  여러 시나리오를 <strong>그룹</strong>으로 묶어 순차적으로 실행할 수 있습니다.
+  그룹 단위로 실행하면 시나리오 간의 조건부 이동도 가능합니다.
+</p>
+
+<ol class="numbered-steps">
+  <li><strong>그룹 만들기</strong> — 그룹 이름을 입력하고 생성</li>
+  <li>그룹에 시나리오를 <strong>추가</strong> (여러 개 가능)</li>
+  <li>드래그로 시나리오 <strong>순서 변경</strong></li>
+  <li>필요 시 시나리오 간 <strong>조건부 이동</strong> 설정:
+    <ul>
+      <li>시나리오 A의 Pass → 시나리오 C로 점프</li>
+      <li>시나리오 A의 Fail → 종료(END)</li>
+    </ul>
+  </li>
+  <li>그룹 <strong>재생</strong>을 클릭하면 포함된 시나리오가 순차적으로 실행됩니다</li>
+</ol>
+
+<h3 id="scenario-export">내보내기 / 가져오기</h3>
+
+<h4>내보내기 (Export)</h4>
+<p>시나리오와 그룹을 ZIP 파일로 패키징하여 다른 PC에 배포할 수 있습니다.</p>
+<ol>
+  <li>내보낼 시나리오/그룹을 선택</li>
+  <li><strong>내보내기</strong> 클릭 → ZIP 파일이 생성됩니다</li>
+  <li>설정에서 저장 경로를 지정했다면 해당 경로에, 아니면 브라우저 다운로드로 저장됩니다</li>
+</ol>
+
+<h4>가져오기 (Import)</h4>
+<ol>
+  <li><strong>가져오기</strong> 클릭 → ZIP 파일 선택</li>
+  <li>미리보기 화면에서 포함된 시나리오 목록과 <strong>충돌 여부</strong>를 확인합니다</li>
+  <li>충돌 시 처리 방식을 선택합니다:
+    <ul>
+      <li><strong>건너뛰기</strong> — 기존 시나리오 유지</li>
+      <li><strong>덮어쓰기</strong> — 가져오는 시나리오로 교체</li>
+      <li><strong>이름 변경</strong> — 새 이름으로 추가</li>
+    </ul>
+  </li>
+  <li><strong>적용</strong>을 클릭하면 가져오기가 완료됩니다</li>
+</ol>
+
+
+<!-- ============================== 결과 ============================== -->
+<h2 id="results">테스트 결과</h2>
+<p>
+  <strong>테스트 결과</strong> 탭에서는 시나리오 재생 결과를 확인하고 리포트를 생성합니다.
+</p>
+
+<h3 id="results-list">결과 목록</h3>
+<p>모든 재생 결과가 최신순으로 나열됩니다. 각 항목에는 다음 정보가 표시됩니다:</p>
+<ul>
+  <li>시나리오 이름</li>
+  <li>실행 일시</li>
+  <li>전체 스텝 수 / Pass / Fail 수</li>
+  <li>상태 (전체 결과)</li>
+</ul>
+<p>시나리오 이름으로 <strong>필터링</strong>하거나, 선택 후 <strong>일괄 삭제</strong>도 가능합니다.</p>
+
+<h3 id="results-detail">결과 상세</h3>
+<p>결과를 클릭하면 각 스텝별 상세 정보를 볼 수 있습니다:</p>
+
+<table>
+  <tr><th>항목</th><th>내용</th></tr>
+  <tr><td>스텝 번호</td><td>실행 순서 및 반복 회차</td></tr>
+  <tr><td>실행 명령</td><td>어떤 디바이스에서 어떤 동작을 수행했는지</td></tr>
+  <tr><td>소요 시간</td><td>스텝 실행에 걸린 시간</td></tr>
+  <tr><td>상태</td><td><span class="badge badge-green">Pass</span> / <span class="badge badge-yellow">Warning</span> / <span class="badge badge-red">Fail</span> / <span class="badge badge-red">Error</span></td></tr>
+  <tr><td>유사도</td><td>SSIM 비교 점수 (0.0 ~ 1.0)</td></tr>
+  <tr><td>이미지 비교</td><td>기대 이미지 / 실제 스크린샷 / 차이점 히트맵 나란히 표시</td></tr>
+</table>
+
+<div class="callout callout-info">
+  <strong>💡 차이점 히트맵</strong>
+  Diff 이미지에서 밝은 부분은 일치하는 영역, 어두운 부분은 차이가 나는 영역입니다.
+  이를 통해 어디가 달라졌는지 한눈에 파악할 수 있습니다.
+</div>
+
+<h3 id="results-export">Excel 내보내기</h3>
+<p>결과를 Excel(.xlsx) 리포트로 내보낼 수 있습니다. 리포트에는 다음이 포함됩니다:</p>
+<ul>
+  <li>시나리오 요약 정보</li>
+  <li>스텝별 실행 결과 표</li>
+  <li>기대/실제/차이점 스크린샷 이미지 (Excel에 삽입)</li>
+  <li>상태별 색상 구분</li>
+</ul>
+<p>
+  설정에서 <strong>Excel 저장 경로</strong>를 지정하면 해당 경로에 자동 저장되며,
+  지정하지 않으면 브라우저 다운로드로 저장됩니다.
+</p>
+
+<h3 id="results-webcam">웹캠 녹화</h3>
+<p>
+  재생 중 웹캠 녹화가 활성화되어 있었다면, 결과에서 웹캠 영상을 확인할 수 있습니다.
+</p>
+<ul>
+  <li>반복 회차별로 개별 영상이 저장됩니다</li>
+  <li>영상 <strong>재생</strong>, <strong>구간 자르기(Trim)</strong>, <strong>삭제</strong> 가능</li>
+  <li>스텝 실행 시점과 영상 타임스탬프가 연동되어 빠르게 탐색할 수 있습니다</li>
+</ul>
+
+
+<!-- ============================== 설정 ============================== -->
+<h2 id="settings">설정</h2>
+<p><strong>설정</strong> 탭에서 앱의 동작 방식과 외관을 조정합니다.</p>
+
+<table>
+  <tr><th>설정 항목</th><th>설명</th></tr>
+  <tr>
+    <td><strong>UI 테마</strong></td>
+    <td>라이트 모드 / 다크 모드 전환</td>
+  </tr>
+  <tr>
+    <td><strong>언어</strong></td>
+    <td>한국어 / English 전환</td>
+  </tr>
+  <tr>
+    <td><strong>웹캠 녹화 저장 경로</strong></td>
+    <td>웹캠 영상 자동 저장 위치. 비어있으면 브라우저 다운로드 사용</td>
+  </tr>
+  <tr>
+    <td><strong>Excel 내보내기 저장 경로</strong></td>
+    <td>Excel 리포트 자동 저장 위치. 비어있으면 브라우저 다운로드 사용</td>
+  </tr>
+  <tr>
+    <td><strong>시나리오 내보내기 저장 경로</strong></td>
+    <td>시나리오/그룹 ZIP 자동 저장 위치. 비어있으면 브라우저 다운로드 사용</td>
+  </tr>
+</table>
+
+<div class="callout callout-info">
+  <strong>💡 폴더 선택</strong>
+  각 경로 옆의 <strong>찾아보기</strong> 버튼을 클릭하면 시스템 폴더 선택 대화상자가 열립니다.
+  직접 경로를 입력할 수도 있습니다.
+</div>
+
+
+<!-- ============================== 웹캠 ============================== -->
+<h2 id="webcam">웹캠 PiP (Picture-in-Picture)</h2>
+<p>
+  화면 좌측 사이드바의 웹캠 토글 버튼으로 <strong>웹캠 PiP 창</strong>을 활성화할 수 있습니다.
+  디바이스 화면 녹화와 동시에 실물 장치의 모습을 웹캠으로 녹화할 때 유용합니다.
+</p>
+
+<h4>웹캠 설정</h4>
+<table>
+  <tr><th>항목</th><th>설명</th></tr>
+  <tr><td>카메라 선택</td><td>PC에 연결된 웹캠 목록에서 선택</td></tr>
+  <tr><td>해상도</td><td>QVGA(320×240) ~ 4K(3840×2160) 선택 가능</td></tr>
+  <tr><td>밝기 / 대비 / 선명도 / 노출</td><td>웹캠 지원 시 조절 가능</td></tr>
+</table>
+
+<h4>웹캠 녹화 흐름</h4>
+<ol>
+  <li>웹캠 PiP를 활성화하고 카메라를 선택합니다</li>
+  <li>시나리오 <strong>재생</strong> 시 자동으로 웹캠 녹화가 시작됩니다</li>
+  <li>재생이 끝나면 웹캠 녹화도 자동으로 종료되고 결과에 연동됩니다</li>
+  <li>또는 수동으로 <strong>녹화</strong> / <strong>녹화 중지</strong> 버튼을 사용할 수도 있습니다</li>
+</ol>
+
+
+<!-- ============================== 팁 & 문제해결 ============================== -->
+<h2 id="tips">팁 & 문제 해결</h2>
+
+<h3 id="tips-faq">자주 묻는 질문</h3>
+
+<h4>Q: 디바이스가 스캔에 나타나지 않아요</h4>
+<div class="callout callout-warning">
+  <strong>확인 사항:</strong>
+  <ul style="margin-bottom:0">
+    <li>Android: USB 디버깅이 켜져 있는지 확인</li>
+    <li>Android: USB 케이블을 다시 연결하고 PC에서 허용 팝업이 뜨면 승인</li>
+    <li>HKMC: 동일 네트워크에 있는지, 방화벽이 차단하지 않는지 확인</li>
+    <li>시리얼: 드라이버가 설치되어 있는지, 다른 프로그램이 COM 포트를 점유하고 있지 않은지 확인</li>
+    <li><strong>ADB 서버 재시작</strong>을 시도해보세요</li>
+  </ul>
+</div>
+
+<h4>Q: 재생 시 유사도가 낮게 나와요</h4>
+<ul>
+  <li>시간에 따라 변하는 영역(시계, 배터리 등)이 있다면 <strong>영역제외</strong> 모드를 사용하세요</li>
+  <li>화면 전체가 아닌 특정 요소만 확인하고 싶다면 <strong>단일크롭</strong> 또는 <strong>멀티크롭</strong>을 사용하세요</li>
+  <li>유사도 임계값을 조정할 수 있습니다 (기본 0.95)</li>
+  <li>디바이스 해상도가 녹화 시와 다르면 차이가 발생할 수 있습니다</li>
+</ul>
+
+<h4>Q: 다른 PC에서 시나리오를 실행하고 싶어요</h4>
+<ul>
+  <li><strong>내보내기</strong>로 시나리오를 ZIP 파일로 패키징</li>
+  <li>다른 PC에서 <strong>가져오기</strong>로 ZIP 파일을 불러옵니다</li>
+  <li>재생 시 <strong>디바이스 매핑</strong> 단계에서 현재 PC의 디바이스를 선택하면 됩니다</li>
+</ul>
+
+<h4>Q: 서버 연결이 끊어졌어요</h4>
+<ul>
+  <li>화면 상단에 "서버 연결 중..." 메시지가 표시됩니다</li>
+  <li>자동 재연결이 시도되며, 서버가 다시 실행되면 자동으로 복구됩니다</li>
+  <li>해결되지 않으면 <code>server.py</code>를 다시 실행하세요</li>
+</ul>
+
+<h4>Q: 스텝 실행 중간에 대기 시간을 조절하고 싶어요</h4>
+<p>
+  각 스텝의 <strong>커맨드 수정</strong>에서 <code>delay_after_ms</code> 값을 변경합니다.
+  기본값은 1000ms (1초)이며, 화면 전환이 느린 경우 늘리면 됩니다.
+</p>
+
+<h3 id="tips-shortcuts">단축키</h3>
+<table>
+  <tr><th>단축키</th><th>위치</th><th>동작</th></tr>
+  <tr><td><kbd>Ctrl</kbd>+<kbd>Enter</kbd></td><td>시리얼 커맨드 입력</td><td>시리얼 데이터 전송</td></tr>
+  <tr><td>화면 클릭</td><td>녹화/편집 중 디바이스 화면</td><td>탭 제스처 기록</td></tr>
+  <tr><td>화면 길게 클릭</td><td>녹화/편집 중 디바이스 화면</td><td>길게 누르기 기록</td></tr>
+  <tr><td>화면 드래그</td><td>녹화/편집 중 디바이스 화면</td><td>스와이프 기록</td></tr>
+</table>
+
+
+<!-- ============================== 부록 ============================== -->
+<h2 id="appendix">부록</h2>
+
+<h3 id="appendix-steps">스텝 유형 총정리</h3>
+<table>
+  <tr><th>유형</th><th>대상 디바이스</th><th>주요 파라미터</th></tr>
+  <tr><td><code>tap</code></td><td>ADB / HKMC</td><td><code>x</code>, <code>y</code></td></tr>
+  <tr><td><code>long_press</code></td><td>ADB</td><td><code>x</code>, <code>y</code>, <code>duration</code>(ms)</td></tr>
+  <tr><td><code>swipe</code></td><td>ADB / HKMC</td><td><code>x1</code>, <code>y1</code>, <code>x2</code>, <code>y2</code>, <code>duration</code></td></tr>
+  <tr><td><code>input_text</code></td><td>ADB</td><td><code>text</code></td></tr>
+  <tr><td><code>key_event</code></td><td>ADB</td><td><code>keycode</code> (예: KEYCODE_BACK)</td></tr>
+  <tr><td><code>wait</code></td><td>-</td><td><code>duration</code>(ms)</td></tr>
+  <tr><td><code>adb_command</code></td><td>ADB</td><td><code>command</code> (셸 명령)</td></tr>
+  <tr><td><code>serial_command</code></td><td>시리얼</td><td><code>data</code> (전송 데이터)</td></tr>
+  <tr><td><code>module_command</code></td><td>모듈</td><td><code>function</code>, <code>args</code></td></tr>
+  <tr><td><code>hkmc_touch</code></td><td>HKMC</td><td><code>x</code>, <code>y</code>, <code>screen_type</code></td></tr>
+  <tr><td><code>hkmc_swipe</code></td><td>HKMC</td><td><code>x1</code>, <code>y1</code>, <code>x2</code>, <code>y2</code>, <code>screen_type</code></td></tr>
+  <tr><td><code>hkmc_key</code></td><td>HKMC</td><td><code>key_name</code>, <code>group</code></td></tr>
+  <tr><td><code>cmd_check</code></td><td>PC (Windows)</td><td><code>command</code>, <code>expected</code>, <code>match_type</code></td></tr>
+</table>
+
+<h3 id="appendix-compare">이미지 비교 모드 총정리</h3>
+<table>
+  <tr><th>모드</th><th>비교 방식</th><th>판정 기준</th></tr>
+  <tr>
+    <td><code>FULL</code></td>
+    <td>전체 화면 SSIM (Structural Similarity)</td>
+    <td>전체 유사도 ≥ 임계값 → Pass</td>
+  </tr>
+  <tr>
+    <td><code>SINGLE_CROP</code></td>
+    <td>크롭 이미지로 실제 화면에서 위치 검색 (템플릿 매칭) → 해당 영역 SSIM</td>
+    <td>매칭 유사도 ≥ 임계값 → Pass</td>
+  </tr>
+  <tr>
+    <td><code>FULL_EXCLUDE</code></td>
+    <td>전체 화면 SSIM에서 지정 영역 제외</td>
+    <td>제외 후 나머지 영역 유사도 ≥ 임계값 → Pass</td>
+  </tr>
+  <tr>
+    <td><code>MULTI_CROP</code></td>
+    <td>복수 크롭 각각 독립 비교</td>
+    <td>모든 크롭의 유사도가 각각 임계값 이상 → Pass</td>
+  </tr>
+</table>
+
+<h3 id="appendix-status">결과 상태 코드</h3>
+<table>
+  <tr><th>상태</th><th>의미</th><th>조건</th></tr>
+  <tr>
+    <td><span class="badge badge-green">Pass</span></td>
+    <td>검증 성공</td>
+    <td>유사도가 Pass 임계값 이상</td>
+  </tr>
+  <tr>
+    <td><span class="badge badge-yellow">Warning</span></td>
+    <td>경고 (주의 필요)</td>
+    <td>유사도가 Warning 임계값과 Pass 임계값 사이</td>
+  </tr>
+  <tr>
+    <td><span class="badge badge-red">Fail</span></td>
+    <td>검증 실패</td>
+    <td>유사도가 Warning 임계값 미만</td>
+  </tr>
+  <tr>
+    <td><span class="badge badge-red">Error</span></td>
+    <td>실행 오류</td>
+    <td>디바이스 연결 실패, 스크린샷 캡처 실패 등</td>
+  </tr>
+</table>
+
+<br>
+<hr style="border:none; border-top:1px solid var(--border); margin: 40px 0;">
+<p style="text-align:center; color:var(--text-muted); font-size:13px;">
+  ReplayKit 사용자 가이드 v1.0 &mdash; 문의사항이 있으면 최세진 선임연구원(VS TC설계/검증자동화팀)에게 연락해주세요.
+</p>
+
+</main>
+</div>
+
+<script>
+// Theme toggle
+function toggleTheme() {
+  const html = document.documentElement;
+  const current = html.getAttribute('data-theme');
+  html.setAttribute('data-theme', current === 'dark' ? '' : 'dark');
+  localStorage.setItem('theme', html.getAttribute('data-theme'));
+}
+// Restore saved theme
+(function() {
+  const saved = localStorage.getItem('theme');
+  if (saved) document.documentElement.setAttribute('data-theme', saved);
+})();
+
+// Mobile sidebar toggle
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.querySelector('.overlay').classList.toggle('show');
+}
+
+// Close sidebar on link click (mobile)
+document.querySelectorAll('.sidebar nav a').forEach(a => {
+  a.addEventListener('click', () => {
+    if (window.innerWidth <= 900) toggleSidebar();
+  });
+});
+
+// Active TOC highlight on scroll
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      document.querySelectorAll('.sidebar nav a').forEach(a => a.classList.remove('active'));
+      const active = document.querySelector(`.sidebar nav a[href="#${entry.target.id}"]`);
+      if (active) active.classList.add('active');
+    }
+  });
+}, { rootMargin: '-20% 0px -70% 0px' });
+
+document.querySelectorAll('h1[id], h2[id], h3[id]').forEach(el => observer.observe(el));
+</script>
+
+</body>
+</html>
