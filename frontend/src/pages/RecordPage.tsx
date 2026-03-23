@@ -179,6 +179,28 @@ export default function RecordPage() {
   const [editingExisting, setEditingExisting] = useState(false);
   const [originalScenarioName, setOriginalScenarioName] = useState('');
 
+  // 변경사항 추적 (저장된 스텝과 비교)
+  const savedStepsRef = useRef<string>('[]');
+  const saveScenarioRef = useRef<() => Promise<void>>(async () => {});
+  const isDirty = useCallback(() => {
+    if (!editingExisting || steps.length === 0) return false;
+    const current = JSON.stringify(steps.map(({ _imageVer, ...rest }) => rest));
+    return current !== savedStepsRef.current;
+  }, [steps, editingExisting]);
+  const confirmIfDirty = useCallback((): Promise<boolean> => {
+    if (!isDirty()) return Promise.resolve(true);
+    return new Promise(resolve => {
+      Modal.confirm({
+        title: t('record.unsavedTitle'),
+        content: t('record.unsavedContent'),
+        okText: t('common.save'),
+        cancelText: t('record.discardChanges'),
+        onOk: async () => { await saveScenarioRef.current(); resolve(true); },
+        onCancel: () => resolve(true),
+      });
+    });
+  }, [isDirty, t]);
+
   // Pending background step count
   const pendingStepsRef = useRef(0);
   const [hasPendingSteps, setHasPendingSteps] = useState(false);
@@ -1208,12 +1230,18 @@ export default function RecordPage() {
       message.warning(t('record.cannotLoadWhileRecording'));
       return;
     }
+    if (isDirty()) {
+      const ok = await confirmIfDirty();
+      if (!ok) return;
+    }
     try {
       const res = await scenarioApi.get(name);
       setScenarioName(res.data.name);
       setOriginalScenarioName(res.data.name);
       setDescription(res.data.description || '');
-      setSteps(res.data.steps || []);
+      const loadedSteps = res.data.steps || [];
+      setSteps(loadedSteps);
+      savedStepsRef.current = JSON.stringify(loadedSteps.map(({ _imageVer, ...rest }: any) => rest));
       setEditingExisting(true);
       message.success(t('record.scenarioLoaded', { name, count: res.data.steps?.length || 0 }));
     } catch {
@@ -1245,7 +1273,9 @@ export default function RecordPage() {
         steps: reindexed,
       });
       // _imageVer 복원 (캐시 버스팅 유지)
-      setSteps(reindexed.map((s, i) => ({ ...s, _imageVer: steps[i]?._imageVer })));
+      const savedSteps = reindexed.map((s, i) => ({ ...s, _imageVer: steps[i]?._imageVer }));
+      setSteps(savedSteps);
+      savedStepsRef.current = JSON.stringify(reindexed);
       setScenarioName(newName);
       message.success(t('common.saveComplete'));
       fetchSavedScenarios();
@@ -1253,6 +1283,7 @@ export default function RecordPage() {
       message.error(e.response?.data?.detail || t('common.saveFailed'));
     }
   };
+  saveScenarioRef.current = saveScenario;
 
   // Helper: remap goto references after step reorder/delete
   const remapGoto = (val: number | null | undefined, mapping: Map<number, number>): number | null | undefined => {
@@ -2019,8 +2050,8 @@ export default function RecordPage() {
                   </Button>
                 )}
                 {!recording && steps.length > 0 && (
-                  <Button icon={<SaveOutlined />} onClick={saveScenario}>
-                    {t('record.save')}
+                  <Button icon={<SaveOutlined />} onClick={saveScenario} type={isDirty() ? 'primary' : 'default'} danger={isDirty()}>
+                    {t('record.save')}{isDirty() ? ' *' : ''}
                   </Button>
                 )}
               </div>

@@ -1089,7 +1089,6 @@ export default function ScenarioPage() {
         {selectedName && (
           <div style={{ marginTop: 8, padding: '8px 0', borderTop: '1px solid #303030', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <strong style={{ marginRight: 4 }}>{selectedName}</strong>
-            <Button icon={<EyeOutlined />} size="small" onClick={() => viewScenario(selectedName)}>{t('scenario.view')}</Button>
             <Button icon={<EditOutlined />} size="small" disabled={playing} onClick={openRenameModal}>{t('scenario.rename')}</Button>
             <Button icon={<CopyOutlined />} size="small" disabled={playing} onClick={openCopyModal}>{t('common.copy')}</Button>
             {playing && playingName === selectedName ? (
@@ -1240,7 +1239,17 @@ export default function ScenarioPage() {
                       />
                     ),
                   },
-                  { title: t('scenario.compare'), key: 'img', width: 50, align: 'center' as const, render: (_: any, r: any) => r.expected_image ? '✓' : '-' },
+                  { title: t('scenario.compare'), key: 'img', width: 70, align: 'center' as const, render: (_: any, r: any) => {
+                    if (!r.expected_image) return '-';
+                    return (
+                      <Image
+                        src={`/screenshots/${selectedName}/${r.expected_image}?v=${r.id}`}
+                        alt="expected"
+                        style={{ height: 32, maxWidth: 56, objectFit: 'contain', borderRadius: 2 }}
+                        preview={{ mask: false }}
+                      />
+                    );
+                  }},
                 ]}
               />
               <style>{`.row-skip td { opacity: 0.35; }`}</style>
