@@ -236,9 +236,15 @@ class HKMC6thService:
         )
         self._recv_thread.start()
 
-        # Request initial info
+        # 초기화 시퀀스 (레거시와 동일: version → 대기 → screen size → 대기)
         self._req_ats_agent_version()
+        time.sleep(0.5)
         self._req_screen_size()
+        # screen size 수신 대기 (Agent가 키 명령을 받으려면 초기화 완료 필요)
+        if self.screen_height_front == 0:
+            logger.warning("Screen size not received, retrying...")
+            time.sleep(1)
+            self._req_screen_size()
 
         return True
 
@@ -300,6 +306,7 @@ class HKMC6thService:
         packet.append(END_BIT)
         packet.append(END_BIT)
 
+        logger.info("[HKMC PACKET] %s", ' '.join(f'{b:02X}' for b in packet))
         self._send_raw(packet)
 
     # ------------------------------------------------------------------
@@ -677,6 +684,9 @@ class HKMC6thService:
             data.append(direction)
         data.append(monitor)
 
+        logger.info("[HKMC KEY] cmd=0x%02X sub=0x%02X key=0x%02X monitor=0x%02X dir=%s data=%s",
+                    cmd, sub_cmd, key_data, monitor, direction, [hex(d) for d in data])
+
         with self._send_lock:
             self._make_send_packet(cmd, sub_cmd, resp, data)
 
@@ -697,10 +707,26 @@ class HKMC6thService:
         cmd = key_info["cmd"]
         key_data = key_info["key"]
 
-        if key_info.get("dial") and sub_cmd == SHORT_KEY:
-            sub_cmd = DIAL_ACTION
-
-        self.send_key(cmd, sub_cmd, key_data, monitor, direction)
+        if key_info.get("dial"):
+            # 다이얼: DIAL_ACTION 단독 전송
+            self.send_key(cmd, DIAL_ACTION, key_data, monitor, direction)
+        elif sub_cmd == SHORT_KEY:
+            # 일반 키: PRESS → SHORT → RELEASE 3단계 시퀀스
+            self.send_key(cmd, PRESS_KEY, key_data, monitor, direction)
+            time.sleep(0.1)
+            self.send_key(cmd, SHORT_KEY, key_data, monitor, direction)
+            time.sleep(0.1)
+            self.send_key(cmd, RELEASE_KEY, key_data, monitor, direction)
+        elif sub_cmd == LONG_KEY:
+            # 롱프레스: PRESS → LONG → RELEASE
+            self.send_key(cmd, PRESS_KEY, key_data, monitor, direction)
+            time.sleep(1.0)
+            self.send_key(cmd, LONG_KEY, key_data, monitor, direction)
+            time.sleep(0.1)
+            self.send_key(cmd, RELEASE_KEY, key_data, monitor, direction)
+        else:
+            # 개별 sub_cmd (PRESS_KEY, RELEASE_KEY 등) 직접 전송
+            self.send_key(cmd, sub_cmd, key_data, monitor, direction)
 
     # ------------------------------------------------------------------
     # Async wrappers (for use from FastAPI/asyncio context)

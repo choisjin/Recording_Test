@@ -1788,37 +1788,48 @@ export default function RecordPage() {
                     ? `${lastGesture} → ${recording ? t('record.gestureRecord') : t('record.directExec')}`
                     : t('record.gestureHint', { device: screenDevice?.name || screenshotDeviceId || '' })}
                 </div>
-                {false && isScreenHkmc && hkmcKeys.length > 0 && (
-                  <div style={{ marginTop: 4, width: '100%', maxHeight: 120, overflow: 'auto' }}>
-                    {['MKBD', 'CCP', 'RRC', 'SWRC', 'MIRROR'].map(group => {
-                      const groupKeys = hkmcKeys.filter(k => k.group === group);
-                      if (groupKeys.length === 0) return null;
-                      return (
-                        <div key={group} style={{ marginBottom: 2 }}>
-                          <span style={{ fontSize: 10, color: '#888', marginRight: 4 }}>{group}</span>
-                          {groupKeys.map(k => {
-                            const label = k.name.replace(`${group}_`, '');
-                            return (
-                              <Button
-                                key={k.name}
-                                size="small"
-                                style={{ fontSize: 10, padding: '0 4px', height: 22, margin: '0 1px 1px 0' }}
-                                onClick={() => {
-                                  const action = 'hkmc_key';
-                                  const params = { key_name: k.name, screen_type: screenType };
-                                  const desc = `HKMC Key: ${k.name}`;
-                                  executeAction(action, params, desc);
-                                }}
-                              >
-                                {label}
-                              </Button>
-                            );
-                          })}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                {isScreenHkmc && hkmcKeys.length > 0 && (() => {
+                  const HARD_KEY_GROUPS: Record<string, string[]> = {
+                    MKBD: ['MKBD_NAV', 'MKBD_RADIO', 'MKBD_MEDIA', 'MKBD_CUSTOM', 'MKBD_SETUP'],
+                    CCP: ['CCP_BACK', 'CCP_HOME', 'CCP_MENU', 'CCP_POWER',
+                          'CCP_VOLUME_ANTI_CLOCK', 'CCP_VOLUME_CLOCK',
+                          'CCP_TUNE_ANTI_CLOCK', 'CCP_TUNE_CLOCK',
+                          'CCP_JOGDIAL_ANTI_CLOCK', 'CCP_JOGDIAL_CLOCK',
+                          'CCP_RIGHT', 'CCP_LEFT', 'CCP_UP', 'CCP_DOWN', 'CCP_ENTER', 'CCP_TUNE_PUSH'],
+                    SWRC: ['SWRC_MUTE', 'SWRC_VOLUME_ANTI_CLOCK', 'SWRC_VOLUME_CLOCK',
+                           'SWRC_PTT', 'SWRC_CUSTOM', 'SWRC_SEND', 'SWRC_END'],
+                  };
+                  return (
+                    <div style={{ marginTop: 4, width: '100%' }}>
+                      {Object.entries(HARD_KEY_GROUPS).map(([group, keyNames]) => {
+                        const keys = hkmcKeys.filter(k => keyNames.includes(k.name));
+                        if (keys.length === 0) return null;
+                        return (
+                          <details key={group} style={{ marginBottom: 2 }}>
+                            <summary style={{ fontSize: 11, color: '#888', cursor: 'pointer', userSelect: 'none' }}>{group}</summary>
+                            <div style={{ padding: '2px 0 2px 4px' }}>
+                              {keys.map(k => {
+                                const label = k.name.replace(`${group}_`, '');
+                                return (
+                                  <Button
+                                    key={k.name}
+                                    size="small"
+                                    style={{ fontSize: 10, padding: '0 6px', height: 22, margin: '0 2px 2px 0' }}
+                                    onClick={() => {
+                                      executeAction('hkmc_key', { key_name: k.name, screen_type: screenType }, k.name);
+                                    }}
+                                  >
+                                    {label}
+                                  </Button>
+                                );
+                              })}
+                            </div>
+                          </details>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </>
             ) : (
               <div style={{ color: '#666', textAlign: 'center', padding: 24 }}>
