@@ -561,7 +561,7 @@ export default function RecordPage() {
     try {
       const { _imageVer, ...currentStep } = steps[stepIdx];
       const res = await scenarioApi.testStep(scenarioName, stepIdx, currentStep);
-      const result = res.data;
+      const result = { ...res.data, _ts: Date.now() };
       setTestResult(result);
       setTestResultModalOpen(true);
       refreshScreenshot();
@@ -2401,10 +2401,10 @@ export default function RecordPage() {
             <Space wrap>
               {steps[multiCropEditingIndex]?.expected_images?.map((ci, ci_idx) => (
                 <Tag
-                  key={ci_idx}
+                  key={`crop-${ci.image || ci_idx}`}
                   color={multiCropSelectedIdx === ci_idx ? 'blue' : 'green'}
                   closable
-                  onClose={() => removeMultiCropItem(ci_idx)}
+                  onClose={(e) => { e.preventDefault(); removeMultiCropItem(ci_idx); }}
                   style={{ cursor: 'pointer', border: multiCropSelectedIdx === ci_idx ? '2px solid #1890ff' : undefined }}
                   onClick={() => {
                     setMultiCropSelectedIdx(prev => prev === ci_idx ? null : ci_idx);
@@ -2743,10 +2743,10 @@ export default function RecordPage() {
               {testResult.expected_image && (
                 <Col span={testResult.actual_image ? 12 : 24}>
                   <div style={{ textAlign: 'center', fontSize: 12, marginBottom: 4, fontWeight: 600 }}>{t('record.expectedImageLabel')}</div>
-                  <Image
-                    src={`/screenshots/${testResult.expected_annotated_image || testResult.expected_image}?t=${Date.now()}`}
-                    style={{ width: '100%', borderRadius: 4, border: '1px solid #333' }}
-                  />
+                  {(() => {
+                    const imgSrc = `/screenshots/${testResult.expected_annotated_image || testResult.expected_image}?t=${testResult._ts || ''}`;
+                    return <Image src={imgSrc} preview={{ src: imgSrc }} style={{ width: '100%', borderRadius: 4, border: '1px solid #333' }} />;
+                  })()}
                 </Col>
               )}
               {testResult.actual_image && (
@@ -2759,10 +2759,10 @@ export default function RecordPage() {
                       </span>
                     )}
                   </div>
-                  <Image
-                    src={`/screenshots/${testResult.actual_annotated_image || testResult.actual_image}?t=${Date.now()}`}
-                    style={{ width: '100%', borderRadius: 4, border: '1px solid #333' }}
-                  />
+                  {(() => {
+                    const imgSrc = `/screenshots/${testResult.actual_annotated_image || testResult.actual_image}?t=${testResult._ts || ''}`;
+                    return <Image src={imgSrc} preview={{ src: imgSrc }} style={{ width: '100%', borderRadius: 4, border: '1px solid #333' }} />;
+                  })()}
                 </Col>
               )}
             </Row>
