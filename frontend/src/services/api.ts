@@ -112,6 +112,8 @@ export const resultsApi = {
     api.post(`/results/recordings/${filename}/trim?start=${start}&end=${end}`),
   exportBundle: (filename: string) =>
     api.post(`/results/export-bundle/${filename}`),
+  updateStepResult: (filename: string, stepIndex: number, message: string, status?: string) =>
+    api.post(`/results/update-step/${filename}`, { step_index: stepIndex, message, ...(status ? { status } : {}) }),
 };
 
 // Server management APIs

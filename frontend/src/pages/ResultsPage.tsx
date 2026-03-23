@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Button, Card, Collapse, Col, Descriptions, Image, Input, InputNumber, Modal, Row, Select, Space, Table, Tag, Tooltip, message } from 'antd';
 import { DeleteOutlined, DownloadOutlined, EyeOutlined, PlayCircleOutlined, ReloadOutlined, ScissorOutlined, SearchOutlined, VideoCameraOutlined } from '@ant-design/icons';
-import { resultsApi } from '../services/api';
+import { resultsApi, scenarioApi } from '../services/api';
 import { useSettings } from '../context/SettingsContext';
 import { useTranslation } from '../i18n';
 
@@ -146,6 +146,9 @@ export default function ResultsPage() {
   const [detailVisible, setDetailVisible] = useState(false);
   const [compareStep, setCompareStep] = useState<StepResultDetail | null>(null);
 
+  // 백그라운드 CMD 폴링
+  const bgPollTimers = useRef<ReturnType<typeof setInterval>[]>([]);
+
   // 선택 삭제 + 필터
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [scenarioFilter, setScenarioFilter] = useState('');
@@ -284,6 +287,94 @@ export default function ResultsPage() {
     window.addEventListener('tab-change', onTabChange);
     return () => window.removeEventListener('tab-change', onTabChange);
   }, []);
+
+  // 결과 상세 열릴 때 BG_TASK 마커 감지 → 폴링
+  useEffect(() => {
+    // 이전 폴링 정리
+    bgPollTimers.current.forEach(t => clearInterval(t));
+    bgPollTimers.current = [];
+
+    if (!detail || !detailFilename) return;
+
+    detail.step_results.forEach((sr, idx) => {
+      const bgMatch = sr.message?.match?.(/\[BG_TASK:(bg_\d+)\]/);
+      if (!bgMatch) return;
+
+      const taskId = bgMatch[1];
+      // 즉시 "실행 중" 표시
+      setDetail(prev => {
+        if (!prev) return prev;
+        const updated = { ...prev, step_results: [...prev.step_results] };
+        updated.step_results[idx] = { ...updated.step_results[idx], message: `⏳ ${t('record.cmdRunning')}...` };
+        return updated;
+      });
+
+      const poll = setInterval(async () => {
+        try {
+          const r = await scenarioApi.getCmdResult(taskId);
+          if (r.data.status === 'running') return;
+          clearInterval(poll);
+
+          const stdout = r.data.stdout || '';
+          setDetail(prev => {
+            if (!prev) return prev;
+            const updated = { ...prev, step_results: [...prev.step_results] };
+            const step = updated.step_results[idx];
+            const cmd = step.command || '';
+            const isCmdCheck = cmd.startsWith('cmd_check:');
+
+            if (isCmdCheck) {
+              // command에서 expected와 match_mode 추출: "cmd_check: ... (expect[mode]: ...)"
+              const expectMatch = cmd.match(/\(expect(?:\[(\w+)\])?:\s*(.*)\)$/);
+              const matchMode = expectMatch?.[1] || 'contains';
+              const expected = expectMatch?.[2] || '';
+              const passed = matchMode === 'exact'
+                ? stdout.trim() === expected.trim()
+                : stdout.includes(expected);
+              const newMsg = `[CMD_CHECK]\nexpected(${matchMode}): ${expected}\n---\n${stdout}`;
+              const newStatus = passed ? step.status : 'fail';
+              updated.step_results[idx] = { ...step, message: newMsg, status: newStatus };
+
+              // 카운트 재계산
+              if (!passed && step.status !== 'fail') {
+                updated.failed_steps += 1;
+                if (step.status === 'pass') updated.passed_steps = Math.max(0, updated.passed_steps - 1);
+                else if (step.status === 'warning') updated.warning_steps = Math.max(0, updated.warning_steps - 1);
+                if (updated.failed_steps > 0 || updated.error_steps > 0) updated.status = 'fail';
+              }
+
+              // 백엔드에 영구 저장
+              resultsApi.updateStepResult(detailFilename, idx, newMsg, newStatus).catch(() => {});
+            } else {
+              const newMsg = stdout || `완료 (rc: ${r.data.rc})`;
+              updated.step_results[idx] = { ...step, message: newMsg };
+              resultsApi.updateStepResult(detailFilename, idx, newMsg).catch(() => {});
+            }
+            return updated;
+          });
+        } catch (err: any) {
+          clearInterval(poll);
+          // 404 = 태스크가 서버 메모리에 없음 (서버 재시작 등)
+          if (err?.response?.status === 404) {
+            const lostMsg = `[BG_TASK:${taskId}] 결과 소실 (서버 재시작)`;
+            setDetail(prev => {
+              if (!prev) return prev;
+              const updated = { ...prev, step_results: [...prev.step_results] };
+              updated.step_results[idx] = { ...updated.step_results[idx], message: lostMsg };
+              return updated;
+            });
+            resultsApi.updateStepResult(detailFilename, idx, lostMsg).catch(() => {});
+          }
+        }
+      }, 1000);
+      bgPollTimers.current.push(poll);
+    });
+
+    return () => {
+      bgPollTimers.current.forEach(t => clearInterval(t));
+      bgPollTimers.current = [];
+    };
+  }, [detail?.scenario_name, detailFilename, detailVisible]);
 
   const totalTime = (stepResults: StepResultDetail[]) =>
     stepResults.reduce((sum, s) => sum + (s.execution_time_ms || 0), 0);
@@ -435,7 +526,26 @@ export default function ResultsPage() {
       dataIndex: 'command',
       key: 'command',
       ellipsis: true,
-      render: (v: string, r: StepResultDetail) => v || r.message || '-',
+      render: (v: string, r: StepResultDetail) => {
+        const isCmdStep = v?.startsWith('cmd_send:') || v?.startsWith('cmd_check:');
+        if (isCmdStep && r.message) {
+          // BG_TASK 마커가 아직 남아있으면 실행 중 표시
+          if (r.message.match(/\[BG_TASK:/)) {
+            return <span>{v} <Tag color="processing">BG</Tag></span>;
+          }
+          // 실행 중 표시
+          if (r.message.startsWith('⏳')) {
+            return <span>{v} <Tag color="processing">⏳</Tag></span>;
+          }
+          // CMD_CHECK 결과가 있으면 간략 표시
+          if (r.message.startsWith('[CMD_CHECK]')) {
+            return <Tooltip title={<pre style={{ margin: 0, fontSize: 11, whiteSpace: 'pre-wrap' }}>{r.message}</pre>}><span>{v}</span></Tooltip>;
+          }
+          // CMD_SEND 결과
+          return <Tooltip title={<pre style={{ margin: 0, fontSize: 11, whiteSpace: 'pre-wrap', maxHeight: 200, overflow: 'auto' }}>{r.message}</pre>}><span>{v}</span></Tooltip>;
+        }
+        return v || r.message || '-';
+      },
     },
     {
       title: <div>Status<br /><span style={{ fontSize: 11, color: '#888' }}>{t('results.resultCol')}</span></div>,

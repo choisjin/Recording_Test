@@ -345,6 +345,44 @@ async def trim_recording(
     return {"filename": output_name, "url": f"/recordings/{output_name}"}
 
 
+@router.post("/update-step/{filename}")
+async def update_step_result(filename: str, body: dict):
+    """백그라운드 CMD 완료 후 스텝 결과를 영구 업데이트."""
+    filepath = RESULTS_DIR / filename
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail="Result not found")
+    data = json.loads(filepath.read_text(encoding="utf-8"))
+    step_index = body.get("step_index")
+    if step_index is None or step_index < 0 or step_index >= len(data.get("step_results", [])):
+        raise HTTPException(status_code=400, detail="Invalid step_index")
+
+    sr = data["step_results"][step_index]
+    if "message" in body:
+        sr["message"] = body["message"]
+    if "status" in body:
+        old_status = sr["status"]
+        new_status = body["status"]
+        sr["status"] = new_status
+        # 카운트 재계산
+        if old_status != new_status:
+            status_map = {"pass": "passed_steps", "fail": "failed_steps",
+                          "warning": "warning_steps", "error": "error_steps"}
+            if old_status in status_map:
+                data[status_map[old_status]] = max(0, data.get(status_map[old_status], 0) - 1)
+            if new_status in status_map:
+                data[status_map[new_status]] = data.get(status_map[new_status], 0) + 1
+            # 전체 상태 재평가
+            if data.get("failed_steps", 0) > 0 or data.get("error_steps", 0) > 0:
+                data["status"] = "fail"
+            elif data.get("warning_steps", 0) > 0:
+                data["status"] = "warning"
+            else:
+                data["status"] = "pass"
+
+    filepath.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    return {"status": "ok", "result_status": data["status"]}
+
+
 @router.get("/{filename}")
 async def get_result(filename: str):
     """Get a specific test result."""

@@ -725,7 +725,8 @@ class PlaybackService:
         elif step.type == StepType.CMD_SEND:
             return f"cmd_send: {p.get('command', '')}"
         elif step.type == StepType.CMD_CHECK:
-            return f"cmd_check: {p.get('command', '')} (expect: {p.get('expected', '')})"
+            mm = p.get('match_mode', 'contains')
+            return f"cmd_check: {p.get('command', '')} (expect[{mm}]: {p.get('expected', '')})"
         elif step.type == StepType.SERIAL_COMMAND:
             return f"serial \"{p.get('data', '')}\""
         elif step.type == StepType.MODULE_COMMAND:
