@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Button, Card, Col, Image, Input, Modal, Row, Select, Space, InputNumber, message, List, Tag, Popover, Tooltip, Splitter } from 'antd';
 import { PlayCircleOutlined, PauseOutlined, PlusOutlined, SwapOutlined, FolderOpenOutlined, SaveOutlined, DeleteOutlined, ArrowUpOutlined, ArrowDownOutlined, BranchesOutlined, ScissorOutlined, CameraOutlined, ThunderboltOutlined, CheckCircleOutlined, CloseCircleOutlined, WarningOutlined, EditOutlined } from '@ant-design/icons';
-import { deviceApi, scenarioApi } from '../services/api';
+import { deviceApi, scenarioApi, customKeysApi } from '../services/api';
 import { useDevice } from '../context/DeviceContext';
 import { useSettings } from '../context/SettingsContext';
 import { useTranslation } from '../i18n';
@@ -1799,6 +1799,13 @@ export default function RecordPage() {
                     SWRC: ['SWRC_MUTE', 'SWRC_VOLUME_ANTI_CLOCK', 'SWRC_VOLUME_CLOCK',
                            'SWRC_PTT', 'SWRC_CUSTOM', 'SWRC_SEND', 'SWRC_END'],
                   };
+                  const customKeys = hkmcKeys.filter(k => !Object.values(HARD_KEY_GROUPS).flat().includes(k.name));
+                  const customGroups: Record<string, HkmcKeyInfo[]> = {};
+                  customKeys.forEach(k => {
+                    const g = k.group || 'CUSTOM';
+                    if (!customGroups[g]) customGroups[g] = [];
+                    customGroups[g].push(k);
+                  });
                   return (
                     <div style={{ marginTop: 4, width: '100%' }}>
                       {Object.entries(HARD_KEY_GROUPS).map(([group, keyNames]) => {
@@ -1808,25 +1815,66 @@ export default function RecordPage() {
                           <details key={group} style={{ marginBottom: 2 }}>
                             <summary style={{ fontSize: 11, color: '#888', cursor: 'pointer', userSelect: 'none' }}>{group}</summary>
                             <div style={{ padding: '2px 0 2px 4px' }}>
-                              {keys.map(k => {
-                                const label = k.name.replace(`${group}_`, '');
-                                return (
-                                  <Button
-                                    key={k.name}
-                                    size="small"
-                                    style={{ fontSize: 10, padding: '0 6px', height: 22, margin: '0 2px 2px 0' }}
-                                    onClick={() => {
-                                      executeAction('hkmc_key', { key_name: k.name, screen_type: screenType }, k.name);
-                                    }}
-                                  >
-                                    {label}
-                                  </Button>
-                                );
-                              })}
+                              {keys.map(k => (
+                                <Button key={k.name} size="small"
+                                  style={{ fontSize: 10, padding: '0 6px', height: 22, margin: '0 2px 2px 0' }}
+                                  onClick={() => executeAction('hkmc_key', { key_name: k.name, screen_type: screenType }, k.name)}
+                                >{k.name.replace(`${group}_`, '')}</Button>
+                              ))}
                             </div>
                           </details>
                         );
                       })}
+                      {Object.entries(customGroups).map(([group, keys]) => (
+                        <details key={group} style={{ marginBottom: 2 }}>
+                          <summary style={{ fontSize: 11, color: '#d4a017', cursor: 'pointer', userSelect: 'none' }}>{group}</summary>
+                          <div style={{ padding: '2px 0 2px 4px' }}>
+                            {keys.map(k => (
+                              <Tag key={k.name} closable
+                                onClose={async (e) => { e.preventDefault(); try { await customKeysApi.remove(k.name); const r = await deviceApi.listHkmcKeys(); setHkmcKeys(r.data.keys || []); } catch {} }}
+                                style={{ fontSize: 10, cursor: 'pointer', margin: '0 2px 2px 0' }}
+                                onClick={() => executeAction('hkmc_key', { key_name: k.name, screen_type: screenType }, k.name)}
+                              >{k.name.replace(`${group}_`, '')}</Tag>
+                            ))}
+                          </div>
+                        </details>
+                      ))}
+                      <Popover trigger="click" title={t('record.addCustomKey')} content={
+                        <div style={{ width: 240 }}>
+                          <Input size="small" placeholder={t('record.customKeyName')} id="ck-name" style={{ marginBottom: 4 }} />
+                          <Input size="small" placeholder={t('record.customKeyGroup')} id="ck-group" defaultValue="CUSTOM" style={{ marginBottom: 4 }} />
+                          <Select size="small" defaultValue={0x80} style={{ width: '100%', marginBottom: 4 }} id="ck-cmd"
+                            options={[
+                              { label: 'MKBD (0x60)', value: 0x60 }, { label: 'SWC (0x70)', value: 0x70 },
+                              { label: 'CCP (0x80)', value: 0x80 }, { label: 'RRC (0x90)', value: 0x90 },
+                            ]} onChange={(v) => { const el = document.getElementById('ck-cmd') as any; if (el) el.dataset.value = v; }}
+                          />
+                          <Input size="small" placeholder={t('record.customKeyCode')} id="ck-code" style={{ marginBottom: 4 }} />
+                          <Button size="small" type="primary" block onClick={async () => {
+                            const nameEl = document.getElementById('ck-name') as HTMLInputElement;
+                            const groupEl = document.getElementById('ck-group') as HTMLInputElement;
+                            const cmdEl = document.getElementById('ck-cmd') as any;
+                            const codeEl = document.getElementById('ck-code') as HTMLInputElement;
+                            const name = nameEl?.value?.trim();
+                            const group = groupEl?.value?.trim() || 'CUSTOM';
+                            const cmd = cmdEl?.dataset?.value ? parseInt(cmdEl.dataset.value) : 0x80;
+                            const codeStr = codeEl?.value?.trim() || '0';
+                            const keyCode = codeStr.startsWith('0x') ? parseInt(codeStr, 16) : parseInt(codeStr);
+                            if (!name) { message.warning(t('record.enterKeyName')); return; }
+                            const keyName = `${group}_${name}`;
+                            try {
+                              await customKeysApi.add({ name, group, key_name: keyName, cmd, key_code: keyCode });
+                              const r = await deviceApi.listHkmcKeys();
+                              setHkmcKeys(r.data.keys || []);
+                              message.success(t('record.customKeyAdded'));
+                              if (nameEl) nameEl.value = '';
+                              if (codeEl) codeEl.value = '';
+                            } catch (e: any) { message.error(e.response?.data?.detail || t('record.customKeyAddFailed')); }
+                          }}>{t('record.add')}</Button>
+                        </div>
+                      }>
+                        <Button size="small" icon={<PlusOutlined />} style={{ fontSize: 10, marginTop: 4 }}>{t('record.addCustomKey')}</Button>
+                      </Popover>
                     </div>
                   );
                 })()}

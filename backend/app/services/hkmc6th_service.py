@@ -707,26 +707,30 @@ class HKMC6thService:
         cmd = key_info["cmd"]
         key_data = key_info["key"]
 
-        if key_info.get("dial"):
-            # 다이얼: DIAL_ACTION 단독 전송
-            self.send_key(cmd, DIAL_ACTION, key_data, monitor, direction)
-        elif sub_cmd == SHORT_KEY:
-            # 일반 키: PRESS → SHORT → RELEASE 3단계 시퀀스
-            self.send_key(cmd, PRESS_KEY, key_data, monitor, direction)
-            time.sleep(0.1)
-            self.send_key(cmd, SHORT_KEY, key_data, monitor, direction)
-            time.sleep(0.1)
-            self.send_key(cmd, RELEASE_KEY, key_data, monitor, direction)
-        elif sub_cmd == LONG_KEY:
-            # 롱프레스: PRESS → LONG → RELEASE
-            self.send_key(cmd, PRESS_KEY, key_data, monitor, direction)
-            time.sleep(1.0)
-            self.send_key(cmd, LONG_KEY, key_data, monitor, direction)
-            time.sleep(0.1)
-            self.send_key(cmd, RELEASE_KEY, key_data, monitor, direction)
-        else:
-            # 개별 sub_cmd (PRESS_KEY, RELEASE_KEY 등) 직접 전송
-            self.send_key(cmd, sub_cmd, key_data, monitor, direction)
+        # _capture_lock: 키 시퀀스 중 스크린샷 CMD_GETIMG 차단
+        with self._capture_lock:
+            # Agent가 이전 이미지 응답 전송을 마칠 시간 확보
+            time.sleep(0.3)
+            if key_info.get("dial"):
+                self.send_key(cmd, DIAL_ACTION, key_data, monitor, direction)
+            elif sub_cmd == SHORT_KEY:
+                # 일반 키: PRESS → SHORT → RELEASE 3단계 시퀀스
+                self.send_key(cmd, PRESS_KEY, key_data, monitor, direction)
+                time.sleep(0.1)
+                self.send_key(cmd, SHORT_KEY, key_data, monitor, direction)
+                time.sleep(0.1)
+                self.send_key(cmd, RELEASE_KEY, key_data, monitor, direction)
+            elif sub_cmd == LONG_KEY:
+                # 롱프레스: PRESS → LONG → RELEASE
+                self.send_key(cmd, PRESS_KEY, key_data, monitor, direction)
+                time.sleep(1.0)
+                self.send_key(cmd, LONG_KEY, key_data, monitor, direction)
+                time.sleep(0.1)
+                self.send_key(cmd, RELEASE_KEY, key_data, monitor, direction)
+            else:
+                self.send_key(cmd, sub_cmd, key_data, monitor, direction)
+            # Agent 처리 시간 확보 (CMD_GETIMG 즉시 진입 방지)
+            time.sleep(0.05)
 
     # ------------------------------------------------------------------
     # Async wrappers (for use from FastAPI/asyncio context)
