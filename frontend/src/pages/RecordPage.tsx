@@ -190,6 +190,9 @@ export default function RecordPage() {
   const [stepType, setStepType] = useState('tap');
   const [delayMs, setDelayMs] = useState(1000);
   const [stepDesc, setStepDesc] = useState('');
+  const [cmdExpected, setCmdExpected] = useState('');
+  const [cmdMatchMode, setCmdMatchMode] = useState<'contains' | 'exact'>('contains');
+  const [cmdBackground, setCmdBackground] = useState(false);
   const [serialData, setSerialData] = useState('');
   const [serialResponse, setSerialResponse] = useState('');
   const [serialSending, setSerialSending] = useState(false);
@@ -1089,6 +1092,10 @@ export default function RecordPage() {
       params = { duration_ms: delayMs };
     } else if (stepType === 'adb_command') {
       params = { command: stepDesc };
+    } else if (stepType === 'cmd_send') {
+      params = { command: stepDesc, background: cmdBackground };
+    } else if (stepType === 'cmd_check') {
+      params = { command: stepDesc, expected: cmdExpected, match_mode: cmdMatchMode, background: cmdBackground };
     } else if (stepType === 'hkmc_key') {
       params = { key_name: stepDesc, screen_type: screenType };
     }
@@ -1419,6 +1426,8 @@ export default function RecordPage() {
       const types = [
         { value: 'serial_command', label: t('record.serialCommand') },
         { value: 'wait', label: t('record.wait') },
+        { value: 'cmd_send', label: t('record.cmdSend') },
+        { value: 'cmd_check', label: t('record.cmdCheck') },
       ];
       if (stepDeviceModule) {
         types.unshift({ value: 'module_command', label: t('record.moduleLabel', { name: stepDeviceModule }) });
@@ -1431,16 +1440,17 @@ export default function RecordPage() {
         { value: 'hkmc_swipe', label: t('record.hkmcSwipe') },
         { value: 'hkmc_key', label: t('record.hkmcKey') },
         { value: 'wait', label: t('record.wait') },
+        { value: 'cmd_send', label: t('record.cmdSend') },
+        { value: 'cmd_check', label: t('record.cmdCheck') },
       ];
     }
     return [
-      { value: 'tap', label: 'Tap' },
-      { value: 'long_press', label: t('record.longPress') },
-      { value: 'swipe', label: 'Swipe' },
       { value: 'input_text', label: t('record.inputText') },
       { value: 'key_event', label: t('record.keyEvent') },
       { value: 'wait', label: t('record.wait') },
       { value: 'adb_command', label: t('record.adbCommand') },
+      { value: 'cmd_send', label: t('record.cmdSend') },
+      { value: 'cmd_check', label: t('record.cmdCheck') },
     ];
   };
 
@@ -1514,9 +1524,9 @@ export default function RecordPage() {
                   </Tooltip>
                 </span>
               )}
-              <span style={{ minWidth: 100, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{ minWidth: 100, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                 {s.type === 'wait'
-                  ? t('record.waitDuration', { duration: s.params.duration_ms })
+                  ? <><Tag color="cyan" style={{ margin: 0 }}>WAIT</Tag><InputNumber size="small" min={100} max={60000} step={100} value={s.params.duration_ms} onChange={(v) => setSteps(prev => prev.map((st, i) => i === index ? { ...st, params: { ...st.params, duration_ms: v || 1000 } } : st))} suffix="ms" style={{ width: 110 }} /></>
                   : s.type === 'module_command'
                   ? `${s.params.module}::${s.params.function}()`
                   : s.type === 'serial_command'
@@ -1669,7 +1679,7 @@ export default function RecordPage() {
                 />
               </>
             )}
-            {scenarioName && (s.type !== 'wait' || s.expected_image) && (
+            {scenarioName && (
               <Button
                 type="text"
                 icon={<ThunderboltOutlined />}
@@ -2088,6 +2098,25 @@ export default function RecordPage() {
                       }))}
                     />
                   </>
+                ) : stepType === 'cmd_send' || stepType === 'cmd_check' ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <Input placeholder={t('record.cmdPlaceholder')} value={stepDesc} onChange={(e) => setStepDesc(e.target.value)} />
+                    {stepType === 'cmd_check' && (
+                      <>
+                        <Input placeholder={t('record.cmdExpected')} value={cmdExpected} onChange={(e) => setCmdExpected(e.target.value)} />
+                        <Select size="small" value={cmdMatchMode} onChange={setCmdMatchMode} style={{ width: '100%' }}
+                          options={[
+                            { label: t('record.cmdContains'), value: 'contains' },
+                            { label: t('record.cmdExact'), value: 'exact' },
+                          ]}
+                        />
+                      </>
+                    )}
+                    <label style={{ fontSize: 12, color: '#888' }}>
+                      <input type="checkbox" checked={cmdBackground} onChange={(e) => setCmdBackground(e.target.checked)} />
+                      {' '}{t('record.cmdBackground')}
+                    </label>
+                  </div>
                 ) : (
                   <Input
                     placeholder={
@@ -2101,7 +2130,7 @@ export default function RecordPage() {
                   />
                 )}
 
-                {['input_text', 'key_event', 'wait', 'adb_command', 'serial_command', 'module_command', 'hkmc_key'].includes(stepType) && (
+                {['input_text', 'key_event', 'wait', 'adb_command', 'serial_command', 'module_command', 'hkmc_key', 'cmd_send', 'cmd_check'].includes(stepType) && (
                   <Button
                     icon={<PlusOutlined />}
                     onClick={addManualStep}

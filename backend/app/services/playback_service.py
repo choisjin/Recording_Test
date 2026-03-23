@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,6 +19,17 @@ from .module_service import execute_module_function
 logger = logging.getLogger(__name__)
 
 SCREENSHOTS_DIR = Path(__file__).resolve().parent.parent.parent / "screenshots"
+
+
+def _cmd_run_sync(cmd: str, timeout: int = 30) -> tuple[str, str, int]:
+    """CMD 명령어 실행 (subprocess)."""
+    try:
+        proc = subprocess.run(cmd, shell=True, capture_output=True, timeout=timeout)
+        return (proc.stdout.decode(errors="replace"),
+                proc.stderr.decode(errors="replace"),
+                proc.returncode)
+    except subprocess.TimeoutExpired:
+        return ("", f"Command timed out after {timeout}s", 1)
 
 
 def _build_ctor_kwargs(dev) -> dict | None:
@@ -629,6 +641,10 @@ class PlaybackService:
             return f"wait {p.get('duration_ms', 1000)}ms"
         elif step.type == StepType.ADB_COMMAND:
             return f"adb {p.get('command', '')}"
+        elif step.type == StepType.CMD_SEND:
+            return f"cmd_send: {p.get('command', '')}"
+        elif step.type == StepType.CMD_CHECK:
+            return f"cmd_check: {p.get('command', '')} (expect: {p.get('expected', '')})"
         elif step.type == StepType.SERIAL_COMMAND:
             return f"serial \"{p.get('data', '')}\""
         elif step.type == StepType.MODULE_COMMAND:
@@ -868,6 +884,46 @@ class PlaybackService:
                 await self.adb.key_event(params["keycode"], serial=adb_serial, display_id=adb_display_id)
             elif step.type == StepType.ADB_COMMAND:
                 await self.adb.run_shell_command(params["command"], serial=adb_serial)
+
+            elif step.type == StepType.CMD_SEND:
+                cmd = params.get("command", "")
+                background = params.get("background", False)
+                if background:
+                    import subprocess as _sp
+                    _sp.Popen(cmd, shell=True, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+                    logger.info("[CMD_SEND] background: %s", cmd)
+                else:
+                    import subprocess as _sp
+                    loop = asyncio.get_event_loop()
+                    stdout, _, rc = await loop.run_in_executor(
+                        None, lambda: _cmd_run_sync(cmd, timeout=params.get("timeout", 30))
+                    )
+                    logger.info("[CMD_SEND] rc=%d: %s", rc, cmd)
+                    step_result.notes = stdout[:500] if stdout else ""
+
+            elif step.type == StepType.CMD_CHECK:
+                cmd = params.get("command", "")
+                expected = params.get("expected", "")
+                match_mode = params.get("match_mode", "contains")  # "contains" | "exact"
+                background = params.get("background", False)
+                timeout = params.get("timeout", 30)
+                loop = asyncio.get_event_loop()
+                stdout, stderr, rc = await loop.run_in_executor(
+                    None, lambda: _cmd_run_sync(cmd, timeout=timeout)
+                )
+                actual = stdout.strip()
+                if match_mode == "exact":
+                    passed = actual == expected.strip()
+                else:
+                    passed = expected.strip() in actual
+                step_result.notes = f"actual: {actual[:300]}"
+                if not passed:
+                    step_result.status = "fail"
+                    step_result.notes += f" | expected({match_mode}): {expected}"
+                    logger.warning("[CMD_CHECK] FAIL: expected(%s)='%s', actual='%s'",
+                                   match_mode, expected, actual[:200])
+                else:
+                    logger.info("[CMD_CHECK] PASS: %s", cmd)
 
     async def _save_result(self, result: ScenarioResult) -> str:
         """Save execution result to JSON."""

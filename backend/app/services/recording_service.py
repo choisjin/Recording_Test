@@ -685,6 +685,16 @@ class RecordingService:
                 await self.adb.key_event(params["keycode"], serial=serial)
             elif step_type == StepType.ADB_COMMAND:
                 await self.adb.run_shell_command(params["command"], serial=serial)
+
+            elif step_type in (StepType.CMD_SEND, StepType.CMD_CHECK):
+                cmd = params.get("command", "")
+                background = params.get("background", False)
+                if background:
+                    import subprocess as _sp
+                    _sp.Popen(cmd, shell=True, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+                else:
+                    import subprocess as _sp
+                    _sp.run(cmd, shell=True, capture_output=True, timeout=params.get("timeout", 30))
         return None
 
 
