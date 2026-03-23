@@ -1103,12 +1103,14 @@ export default function RecordPage() {
     try {
       const res = await scenarioApi.addStep({
         type: stepType,
-        device_id: stepDeviceId,
+        device_id: stepDeviceId === '__common__' ? '' : stepDeviceId,
         params,
         description: stepDesc || (
           stepType === 'module_command' ? `${stepDeviceModule}::${selectedModuleFunc}()` :
           stepType === 'serial_command' ? `Serial: ${serialData.substring(0, 30)}` :
-          stepType === 'hkmc_key' ? `HKMC Key: ${stepDesc}` : ''
+          stepType === 'hkmc_key' ? `HKMC Key: ${stepDesc}` :
+          stepType === 'cmd_send' ? `CMD: ${stepDesc.substring(0, 40)}` :
+          stepType === 'cmd_check' ? `CHECK: ${stepDesc.substring(0, 30)}` : ''
         ),
         delay_after_ms: delayMs,
         skip_execute: true,
@@ -1422,6 +1424,13 @@ export default function RecordPage() {
   }, [screenshot]);
 
   const getStepTypes = () => {
+    if (stepDeviceId === '__common__') {
+      return [
+        { value: 'wait', label: t('record.wait') },
+        { value: 'cmd_send', label: t('record.cmdSend') },
+        { value: 'cmd_check', label: t('record.cmdCheck') },
+      ];
+    }
     if (isStepAuxiliary) {
       const types = [
         { value: 'serial_command', label: t('record.serialCommand') },
@@ -1992,6 +2001,11 @@ export default function RecordPage() {
                       ))}
                     </Select.OptGroup>
                   )}
+                  <Select.OptGroup label="Common">
+                    <Option key="__common__" value="__common__">
+                      <Tag color="cyan" style={{ marginRight: 4 }}>CMD</Tag>Common
+                    </Option>
+                  </Select.OptGroup>
                 </Select>
 
                 <Space>
