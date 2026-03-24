@@ -41,14 +41,16 @@ Name: "dltsdk"; Description: "DLT Viewer SDK (DLT log monitoring)"; Types: stand
 Name: "vimbax"; Description: "Vimba X SDK (Vision Camera support)"; Types: full
 
 [Files]
-; Main project files
-Source: "{#DistDir}\*"; DestDir: "{app}"; Excludes: "node-*.msi,VimbaX_Setup*,python-3.10.4-amd64.exe"; Flags: ignoreversion recursesubdirs createallsubdirs; Components: main
-; VC++ Runtime (temp)
-Source: "{#DistDir}\vcredist_x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
-; DLT Viewer SDK (directory copy, only if component selected)
+; Main project files (인스톨러 전용 바이너리 제외)
+Source: "{#DistDir}\*"; DestDir: "{app}"; Excludes: "*.msi,VimbaX_Setup*,python-3.10.4-amd64.exe,Git-*.exe,vcredist_x64.exe,DltViewerSDK_21.1.3_ver"; Flags: ignoreversion recursesubdirs createallsubdirs; Components: main
+; VC++ Runtime (설치 후 삭제)
+Source: "{#DistDir}\vcredist_x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: not IsVCRedistInstalled
+; Git installer (설치 후 삭제)
+Source: "{#DistDir}\Git-*.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall skipifsourcedoesntexist
+; DLT Viewer SDK (컴포넌트 선택 시)
 Source: "{#DistDir}\DltViewerSDK_21.1.3_ver\*"; DestDir: "{app}\DltViewerSDK_21.1.3_ver"; Flags: ignoreversion recursesubdirs createallsubdirs; Components: dltsdk
-; Vimba X SDK installer (temp, only if component selected)
-Source: "{#DistDir}\VimbaX_Setup*.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Components: vimbax
+; Vimba X SDK installer (설치 후 삭제, 컴포넌트 선택 시)
+Source: "{#DistDir}\VimbaX_Setup*.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall skipifsourcedoesntexist; Components: vimbax
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\ReplayKit.bat"; IconFilename: "{app}\replaykit.ico"
@@ -88,6 +90,7 @@ procedure CurStepChanged(CurStep: TSetupStep);
 var
   ResultCode: Integer;
   VCRedist: String;
+  GitInstaller: String;
   VimbaInstaller: String;
 begin
   if CurStep = ssPostInstall then
@@ -104,7 +107,6 @@ begin
     if IsComponentSelected('vimbax') then
     begin
       VimbaInstaller := '';
-      // Find the VimbaX installer in {tmp}
       if FileExists(ExpandConstant('{tmp}\VimbaX_Setup-2025-3-Win64.exe')) then
         VimbaInstaller := ExpandConstant('{tmp}\VimbaX_Setup-2025-3-Win64.exe');
       if (VimbaInstaller <> '') then
@@ -114,7 +116,7 @@ begin
       end;
     end;
 
-    // Run setup.bat
+    // Run setup.bat (Python 패키지 설치, Git 설정 등)
     Exec('cmd.exe', '/c "' + ExpandConstant('{app}\setup.bat') + '"',
          ExpandConstant('{app}'), SW_SHOW, ewWaitUntilTerminated, ResultCode);
   end;
