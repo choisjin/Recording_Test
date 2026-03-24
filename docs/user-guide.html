@@ -409,6 +409,10 @@
     <a href="#tips-faq" class="toc-h3">자주 묻는 질문</a>
     <a href="#tips-shortcuts" class="toc-h3">단축키</a>
 
+    <a href="#modules" class="toc-h2">모듈 가이드</a>
+    <a href="#module-cmd" class="toc-h3">CMD (명령어 실행)</a>
+    <a href="#module-dlt" class="toc-h3">DLTViewer (DLT 로그)</a>
+
     <a href="#appendix" class="toc-h2">부록</a>
     <a href="#appendix-steps" class="toc-h3">스텝 유형 총정리</a>
     <a href="#appendix-compare" class="toc-h3">비교 모드 총정리</a>
@@ -764,6 +768,7 @@ npm run dev</code></pre>
   <tr><td><code>hkmc_touch</code></td><td>HKMC IVI 터치</td><td>IVI 화면 터치</td></tr>
   <tr><td><code>hkmc_swipe</code></td><td>HKMC IVI 스와이프</td><td>IVI 화면 스와이프</td></tr>
   <tr><td><code>hkmc_key</code></td><td>HKMC 하드웨어 키</td><td>물리 버튼 제어</td></tr>
+  <tr><td><code>cmd_send</code></td><td>Windows 명령 실행 (결과 무시)</td><td>앱 실행, 파일 복사</td></tr>
   <tr><td><code>cmd_check</code></td><td>Windows 명령 실행 후 결과 검증</td><td>ping 확인, 프로세스 상태 체크</td></tr>
 </table>
 
@@ -1131,6 +1136,278 @@ npm run dev</code></pre>
 </table>
 
 
+<!-- ============================== 모듈 가이드 ============================== -->
+<h2 id="modules">모듈 가이드</h2>
+<p>
+  모듈은 <code>module_command</code> 스텝을 통해 시나리오에서 호출할 수 있는 확장 기능입니다.
+  디바이스 페이지에서 보조 디바이스로 추가하거나, 시나리오 편집 중 스텝으로 직접 삽입할 수 있습니다.
+</p>
+
+<!-- CMD 모듈 -->
+<h3 id="module-cmd">CMD — 명령어 실행 모듈</h3>
+<p>
+  Windows 시스템 명령어를 실행하는 모듈입니다.
+  테스트 중 앱 실행, 프로세스 관리, 시스템 상태 확인 등에 활용합니다.
+</p>
+
+<h4>연결 설정</h4>
+<p>별도의 연결 설정이 필요 없습니다. 모듈 선택 시 <code>CMD</code>를 선택하면 바로 사용 가능합니다.</p>
+
+<h4>제공 함수</h4>
+<table>
+  <tr><th>함수</th><th>설명</th><th>파라미터</th><th>반환값</th></tr>
+  <tr>
+    <td><code>Run</code></td>
+    <td>명령어 실행 후 완료까지 대기 (blocking)</td>
+    <td>
+      <code>command</code> — 실행할 명령어<br>
+      <code>timeout</code> — 최대 대기 시간, 초 (기본 300)
+    </td>
+    <td>실행 출력 결과 (stdout + stderr)</td>
+  </tr>
+  <tr>
+    <td><code>RunBackground</code></td>
+    <td>백그라운드로 실행 (non-blocking)</td>
+    <td><code>command</code> — 실행할 명령어</td>
+    <td><code>PID:12345</code> 형태의 프로세스 ID</td>
+  </tr>
+  <tr>
+    <td><code>Kill</code></td>
+    <td>백그라운드 프로세스 종료</td>
+    <td><code>pid</code> — 종료할 프로세스 PID</td>
+    <td>종료 결과 메시지</td>
+  </tr>
+  <tr>
+    <td><code>ListBackground</code></td>
+    <td>실행 중인 백그라운드 프로세스 목록</td>
+    <td>(없음)</td>
+    <td>살아있는 PID 목록 (쉼표 구분)</td>
+  </tr>
+</table>
+
+<h4>시나리오에서의 사용</h4>
+<div class="callout callout-info">
+  <strong>스텝 유형별 차이:</strong>
+  <ul style="margin-bottom:0">
+    <li><code>cmd_send</code> — 명령어를 실행하고 결과를 무시합니다. 앱 실행, 파일 복사 등 실행만 필요한 경우</li>
+    <li><code>cmd_check</code> — 명령어를 실행하고 출력 결과를 기대값과 비교합니다. <code>expected</code> 값과 <code>match_type</code> (contains / exact / regex)을 설정</li>
+    <li><code>module_command</code> — CMD 모듈의 함수를 직접 호출합니다. <code>RunBackground</code>나 <code>Kill</code> 등 고급 기능 사용 시</li>
+  </ul>
+</div>
+
+<h4>사용 예시</h4>
+<table>
+  <tr><th>목적</th><th>스텝 유형</th><th>설정</th></tr>
+  <tr>
+    <td>앱 실행</td>
+    <td><code>cmd_send</code></td>
+    <td>command: <code>start notepad.exe</code></td>
+  </tr>
+  <tr>
+    <td>ping 검증</td>
+    <td><code>cmd_check</code></td>
+    <td>command: <code>ping -n 1 192.168.1.1</code><br>expected: <code>TTL=</code>, match_type: <code>contains</code></td>
+  </tr>
+  <tr>
+    <td>백그라운드 실행</td>
+    <td><code>module_command</code></td>
+    <td>module: CMD, function: <code>RunBackground</code><br>args: command=<code>python long_task.py</code></td>
+  </tr>
+  <tr>
+    <td>프로세스 종료</td>
+    <td><code>module_command</code></td>
+    <td>module: CMD, function: <code>Kill</code><br>args: pid=<code>12345</code></td>
+  </tr>
+</table>
+
+<!-- DLTViewer 모듈 -->
+<h3 id="module-dlt">DLTViewer — DLT 로그 수신/분석 모듈</h3>
+<p>
+  AUTOSAR DLT (Diagnostic Log and Trace) 프로토콜을 사용하여 ECU의 로그를 실시간으로 수신하고 분석하는 모듈입니다.
+  DltViewerSDK의 <code>dlt-viewer.exe</code>를 활용한 GUI 실행도 지원합니다.
+</p>
+
+<h4>연결 설정</h4>
+<p>디바이스 페이지에서 보조 디바이스 추가 시:</p>
+<table>
+  <tr><th>항목</th><th>설명</th><th>기본값</th></tr>
+  <tr><td>유형</td><td><code>모듈</code> 선택</td><td>-</td></tr>
+  <tr><td>모듈</td><td><code>DLTViewer</code> 선택</td><td>-</td></tr>
+  <tr><td>주소</td><td>ECU의 IP 주소</td><td>-</td></tr>
+  <tr><td>DLT Port</td><td>DLT 데몬 TCP 포트</td><td>3490</td></tr>
+  <tr><td>프로젝트 파일</td><td>.dlp 파일 경로 (선택)</td><td>-</td></tr>
+</table>
+
+<div class="callout callout-warning">
+  <strong>사전 요구사항:</strong>
+  <ul style="margin-bottom:0">
+    <li>대상 ECU에서 DLT 데몬이 실행 중이어야 합니다 (기본 포트 3490)</li>
+    <li>PC와 ECU가 동일 네트워크에 있어야 합니다</li>
+    <li>DLT Viewer GUI 사용 시 <code>DltViewerSDK_21.1.3_ver/</code> 폴더가 프로젝트 루트에 있어야 합니다</li>
+  </ul>
+</div>
+
+<h4>제공 함수</h4>
+<table>
+  <tr><th>함수</th><th>설명</th><th>파라미터</th><th>반환값</th></tr>
+  <tr>
+    <td><code>Connect</code></td>
+    <td>DLT 데몬에 TCP 연결 후 로그 수신 시작</td>
+    <td>(없음 — 디바이스 설정에서 host/port 자동 전달)</td>
+    <td>연결 결과 메시지</td>
+  </tr>
+  <tr>
+    <td><code>Disconnect</code></td>
+    <td>DLT 연결 해제 및 캡처 중지</td>
+    <td>(없음)</td>
+    <td>결과 메시지</td>
+  </tr>
+  <tr>
+    <td><code>WaitLog</code></td>
+    <td>키워드가 로그에 나타날 때까지 대기 (<strong>블로킹</strong> — 스텝 진행 멈춤)</td>
+    <td>
+      <code>keyword</code> — 검색할 키워드 (공백으로 AND 조건)<br>
+      <code>timeout</code> — 최대 대기 시간, 초 (기본 30)
+    </td>
+    <td><code>PASS: &lt;매칭 로그&gt;</code> 또는 <code>FAIL: ...</code></td>
+  </tr>
+  <tr>
+    <td><code>StartMonitor</code></td>
+    <td>백그라운드 키워드 모니터링 시작 (<strong>비블로킹</strong> — 다음 스텝 즉시 진행)</td>
+    <td>
+      <code>keyword</code> — 검색할 키워드 (공백으로 AND 조건)<br>
+      <code>timeout</code> — 최대 감시 시간, 초 (기본 60)
+    </td>
+    <td>모니터 ID (예: <code>mon_1</code>)</td>
+  </tr>
+  <tr>
+    <td><code>StopMonitor</code></td>
+    <td>백그라운드 모니터링 중지</td>
+    <td><code>monitor_id</code> — 중지할 ID (빈 값이면 전체)</td>
+    <td>결과 메시지</td>
+  </tr>
+  <tr>
+    <td><code>GetMonitorResult</code></td>
+    <td>백그라운드 모니터링 결과 확인</td>
+    <td><code>monitor_id</code> — 확인할 ID (빈 값이면 전체)</td>
+    <td><code>PASS: &lt;로그&gt;</code> / <code>FAIL: ...</code> / <code>RUNNING: ...</code></td>
+  </tr>
+  <tr>
+    <td><code>SearchLog</code></td>
+    <td>현재 버퍼에서 키워드 포함 로그 검색</td>
+    <td>
+      <code>keyword</code> — 검색 키워드<br>
+      <code>count</code> — 최대 결과 수 (기본 10)
+    </td>
+    <td>매칭된 로그 줄들</td>
+  </tr>
+  <tr>
+    <td><code>GetRecentLogs</code></td>
+    <td>최근 수신된 로그 조회</td>
+    <td><code>count</code> — 줄 수 (기본 100)</td>
+    <td>최근 로그 텍스트</td>
+  </tr>
+  <tr>
+    <td><code>ClearLogs</code></td>
+    <td>로그 버퍼 초기화</td>
+    <td>(없음)</td>
+    <td>결과 메시지</td>
+  </tr>
+  <tr>
+    <td><code>LaunchViewer</code></td>
+    <td>DLT Viewer GUI 실행</td>
+    <td>
+      <code>project_file</code> — .dlp 프로젝트 파일 (선택)<br>
+      <code>log_file</code> — .dlt 로그 파일 (선택)
+    </td>
+    <td>실행 결과 (PID 포함)</td>
+  </tr>
+  <tr>
+    <td><code>CloseViewer</code></td>
+    <td>DLT Viewer GUI 종료</td>
+    <td>(없음)</td>
+    <td>결과 메시지</td>
+  </tr>
+  <tr>
+    <td><code>CreateProject</code></td>
+    <td>DLT Viewer 프로젝트 파일 (.dlp) 생성</td>
+    <td>
+      <code>file_path</code> — 저장 경로<br>
+      <code>host</code> — ECU IP (선택, 기본: 연결 호스트)<br>
+      <code>port</code> — DLT 포트 (선택, 기본: 3490)
+    </td>
+    <td>생성된 파일 경로</td>
+  </tr>
+  <tr>
+    <td><code>GetStatus</code></td>
+    <td>현재 연결/캡처/뷰어 상태 조회</td>
+    <td>(없음)</td>
+    <td>상태 문자열</td>
+  </tr>
+</table>
+
+<h4>시나리오에서의 사용</h4>
+<p>
+  모든 함수는 <code>module_command</code> 스텝으로 호출합니다.
+  가장 일반적인 활용은 <strong>DLT 로그 키워드 검증</strong>입니다:
+</p>
+
+<h4>사용 예시</h4>
+<table>
+  <tr><th>목적</th><th>함수</th><th>설정</th></tr>
+  <tr>
+    <td>로그 키워드 대기 (블로킹)</td>
+    <td><code>WaitLog</code></td>
+    <td>keyword: <code>BOOT_COMPLETE</code>, timeout: <code>60</code><br>→ 60초 내 해당 키워드 출현 시 PASS, 스텝 진행 멈춤</td>
+  </tr>
+  <tr>
+    <td>AND 조건 검증</td>
+    <td><code>WaitLog</code></td>
+    <td>keyword: <code>APP_START navigation</code><br>→ 두 단어 모두 포함된 줄 검색</td>
+  </tr>
+  <tr>
+    <td>백그라운드 모니터링</td>
+    <td><code>StartMonitor</code></td>
+    <td>keyword: <code>ERROR</code>, timeout: <code>120</code><br>→ 다음 스텝 즉시 진행, 별도 스레드에서 120초간 감시</td>
+  </tr>
+  <tr>
+    <td>모니터링 결과 확인</td>
+    <td><code>GetMonitorResult</code></td>
+    <td>monitor_id: <code>mon_1</code><br>→ PASS/FAIL/RUNNING 반환</td>
+  </tr>
+  <tr>
+    <td>로그 초기화</td>
+    <td><code>ClearLogs</code></td>
+    <td>→ 이전 로그를 비우고 새로운 검증 시작점 설정</td>
+  </tr>
+  <tr>
+    <td>GUI로 로그 시각화</td>
+    <td><code>LaunchViewer</code></td>
+    <td>project_file: <code>CCIC_DLT_VIEWER_PRJ.dlp</code></td>
+  </tr>
+</table>
+
+<div class="callout callout-info">
+  <strong>WaitLog vs StartMonitor:</strong>
+  <ul style="margin-bottom:0">
+    <li><code>WaitLog</code> — <strong>블로킹</strong>: 키워드가 나올 때까지 스텝 진행을 멈춥니다. 확실한 검증에 사용.</li>
+    <li><code>StartMonitor</code> — <strong>비블로킹</strong>: 다음 스텝으로 즉시 진행하면서 백그라운드에서 감시합니다. 나중에 <code>GetMonitorResult</code>로 확인.</li>
+    <li>스텝 추가 UI에서 <code>WaitLog</code> 선택 후 <strong>"백그라운드 모니터링"</strong> 체크하면 자동으로 <code>StartMonitor</code>로 전환됩니다.</li>
+  </ul>
+</div>
+
+<div class="callout callout-info">
+  <strong>전형적인 DLT 검증 시나리오 흐름:</strong>
+  <ol style="margin-bottom:0">
+    <li>DLTViewer 모듈을 보조 디바이스로 추가 (ECU IP 설정)</li>
+    <li>연결 시 자동으로 로그 수신 시작</li>
+    <li><code>ClearLogs</code>로 버퍼 초기화</li>
+    <li>테스트 동작 수행 (화면 터치, 앱 실행 등)</li>
+    <li><code>WaitLog</code>로 기대하는 DLT 로그가 나타나는지 검증</li>
+  </ol>
+</div>
+
+
 <!-- ============================== 부록 ============================== -->
 <h2 id="appendix">부록</h2>
 
@@ -1149,6 +1426,7 @@ npm run dev</code></pre>
   <tr><td><code>hkmc_touch</code></td><td>HKMC</td><td><code>x</code>, <code>y</code>, <code>screen_type</code></td></tr>
   <tr><td><code>hkmc_swipe</code></td><td>HKMC</td><td><code>x1</code>, <code>y1</code>, <code>x2</code>, <code>y2</code>, <code>screen_type</code></td></tr>
   <tr><td><code>hkmc_key</code></td><td>HKMC</td><td><code>key_name</code>, <code>group</code></td></tr>
+  <tr><td><code>cmd_send</code></td><td>PC (Windows)</td><td><code>command</code></td></tr>
   <tr><td><code>cmd_check</code></td><td>PC (Windows)</td><td><code>command</code>, <code>expected</code>, <code>match_type</code></td></tr>
 </table>
 

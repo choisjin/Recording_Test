@@ -232,6 +232,7 @@ export default function RecordPage() {
   const [moduleFunctions, setModuleFunctions] = useState<{ name: string; params: { name: string; required: boolean; default?: string }[] }[]>([]);
   const [selectedModuleFunc, setSelectedModuleFunc] = useState('');
   const [moduleFuncArgs, setModuleFuncArgs] = useState<Record<string, string>>({});
+  const [dltBackground, setDltBackground] = useState(false);
 
   // HKMC hardware keys
   const [hkmcKeys, setHkmcKeys] = useState<HkmcKeyInfo[]>([]);
@@ -1151,7 +1152,12 @@ export default function RecordPage() {
         message.warning(t('record.selectFunction2'));
         return;
       }
-      params = { module: stepDeviceModule, function: selectedModuleFunc, args: { ...moduleFuncArgs } };
+      // DLTViewer: WaitLog + 백그라운드 체크 시 StartMonitor로 자동 전환
+      let funcName = selectedModuleFunc;
+      if (stepDeviceModule === 'DLTViewer' && selectedModuleFunc === 'WaitLog' && dltBackground) {
+        funcName = 'StartMonitor';
+      }
+      params = { module: stepDeviceModule, function: funcName, args: { ...moduleFuncArgs } };
     } else if (stepType === 'serial_command') {
       params = { data: serialData };
     } else if (stepType === 'input_text') {
@@ -2177,6 +2183,12 @@ export default function RecordPage() {
                         </div>
                       );
                     })()}
+                    {stepDeviceModule === 'DLTViewer' && selectedModuleFunc === 'WaitLog' && (
+                      <label style={{ fontSize: 12, color: '#888' }}>
+                        <input type="checkbox" checked={dltBackground} onChange={(e) => setDltBackground(e.target.checked)} />
+                        {' '}{t('dlt.backgroundMonitor')}
+                      </label>
+                    )}
                   </>
                 ) : stepType === 'serial_command' ? (
                   <>

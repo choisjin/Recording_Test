@@ -132,6 +132,11 @@ def list_available_modules() -> list[dict]:
          "connect_fields": []},
         {"name": "DLTLogging", "label": "DLTLogging", "connect_type": "none",
          "connect_fields": []},
+        {"name": "DLTViewer", "label": "DLTViewer", "connect_type": "socket",
+         "connect_fields": [
+             {"name": "port", "label": "DLT Port", "type": "number", "default": "3490"},
+             {"name": "project_file", "label": "프로젝트 파일 (.dlp)", "type": "text", "default": ""},
+         ]},
         {"name": "MLP", "label": "MLP", "connect_type": "none",
          "connect_fields": []},
         {"name": "PCANClient", "label": "PCANClient", "connect_type": "none",
