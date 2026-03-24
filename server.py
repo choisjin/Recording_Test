@@ -92,10 +92,12 @@ def _run_cmd(cmd, cwd=PROJECT_ROOT, timeout=120):
     """subprocess 실행 후 (returncode, stdout) 반환."""
     try:
         r = subprocess.run(
-            cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout,
+            cmd, cwd=cwd, capture_output=True, timeout=timeout,
             creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
         )
-        return r.returncode, (r.stdout.strip() + "\n" + r.stderr.strip()).strip()
+        stdout = r.stdout.decode("utf-8", errors="replace").strip() if r.stdout else ""
+        stderr = r.stderr.decode("utf-8", errors="replace").strip() if r.stderr else ""
+        return r.returncode, (stdout + "\n" + stderr).strip()
     except subprocess.TimeoutExpired:
         return -1, "Timeout"
     except FileNotFoundError:
