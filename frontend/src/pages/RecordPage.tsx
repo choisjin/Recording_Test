@@ -167,8 +167,8 @@ export default function RecordPage() {
     primaryDevices, auxiliaryDevices, fetchDevices,
     screenshotDeviceId, setScreenshotDeviceId, screenshot,
     h264Mode, h264Size, videoRef, sendControl,
-    pollInterval, setPollInterval, screenType, setScreenType, refreshScreenshot,
-    screenAlive,
+    screenType, setScreenType, refreshScreenshot,
+    screenAlive, streamFps,
   } = useDevice();
 
   const [recording, setRecording] = useState(false);
@@ -1844,7 +1844,7 @@ export default function RecordPage() {
             }
             extra={
               primaryDevices.length > 0 && (
-                <Space size={4}>
+                <Space size={4} wrap style={{ justifyContent: 'flex-end' }}>
                   <Select
                     value={screenshotDeviceId || undefined}
                     onChange={(id) => {
@@ -1853,7 +1853,7 @@ export default function RecordPage() {
                     }}
                     placeholder={t('record.primaryDevice')}
                     size="small"
-                    style={{ width: 280 }}
+                    style={{ minWidth: 140, maxWidth: 280 }}
                   >
                     {primaryDevices.map(d => (
                       <Option key={d.id} value={d.id}>{d.name || d.id}</Option>
@@ -1861,7 +1861,9 @@ export default function RecordPage() {
                   </Select>
                   {screenDevice && (
                     <Tag color={screenAlive ? 'green' : 'red'} style={{ marginLeft: 0 }}>
-                      {screenAlive ? t('record.deviceConnected') : t('record.deviceDisconnected')}
+                      {screenAlive
+                        ? `${h264Mode ? 'H.264' : 'JPEG'} ${streamFps}fps`
+                        : t('record.deviceDisconnected')}
                     </Tag>
                   )}
                   {!screenAlive && isScreenAdb && (
@@ -1883,7 +1885,7 @@ export default function RecordPage() {
                       size="small"
                       value={screenType}
                       onChange={setScreenType}
-                      style={{ width: 240 }}
+                      style={{ minWidth: 120, maxWidth: 240 }}
                     >
                       <Option value="front_center">{t('record.hkmcFront')}</Option>
                       <Option value="rear_left">{t('record.hkmcRearL')}</Option>
@@ -1896,30 +1898,21 @@ export default function RecordPage() {
                       size="small"
                       value={screenType}
                       onChange={setScreenType}
-                      style={{ width: 280 }}
+                      style={{ minWidth: 140, maxWidth: 280 }}
                     >
                       {adbDisplays.map(d => (
                         <Option key={d.id} value={String(d.id)}>{d.name}{d.width ? ` (${d.width}x${d.height})` : ` (ID:${d.id})`}</Option>
                       ))}
                     </Select>
                   )}
-                  {!isScreenHkmc && !hasMultiDisplay && (
-                    <InputNumber
-                      size="small"
-                      min={100}
-                      max={5000}
-                      step={100}
-                      value={pollInterval}
-                      onChange={(v) => setPollInterval(v || 500)}
-                      suffix="ms"
-                      style={{ width: 100 }}
-                    />
-                  )}
                 </Space>
               )
             }
             style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}
-            styles={{ body: { flex: 1, overflow: 'hidden', padding: 8, display: 'flex', flexDirection: 'column', alignItems: 'center' } }}
+            styles={{
+              header: { flexWrap: 'wrap', height: 'auto', minHeight: 40, padding: '4px 12px' },
+              body: { flex: 1, overflow: 'hidden', padding: 8, display: 'flex', flexDirection: 'column', alignItems: 'center' },
+            }}
           >
             {screenshotDeviceId && (h264Mode || screenshot) ? (
               <>
@@ -2075,18 +2068,18 @@ export default function RecordPage() {
           <Card size="small" title={t('record.control')}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {/* Row 1: 시나리오 불러오기 + 이름 */}
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <Input
                   placeholder={t('record.scenarioNamePlaceholder')}
                   value={scenarioName}
                   onChange={(e) => setScenarioName(e.target.value)}
                   disabled={recording}
-                  style={{ flex: 1 }}
+                  style={{ flex: 1, minWidth: 120 }}
                 />
                 {!recording && (
                   <Select
                     placeholder={t('record.loadScenario')}
-                    style={{ flex: 1 }}
+                    style={{ flex: 1, minWidth: 120 }}
                     onChange={loadScenario}
                     value={undefined}
                     onOpenChange={(open) => { if (open) fetchSavedScenarios(); }}
@@ -2101,13 +2094,13 @@ export default function RecordPage() {
                 )}
               </div>
               {/* Row 2: 설명 + 상태 + 녹화 버튼 */}
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <Input
                   placeholder={t('record.descriptionPlaceholder')}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   disabled={recording}
-                  style={{ flex: 1 }}
+                  style={{ flex: 1, minWidth: 120 }}
                 />
                 <Tag color={recording ? 'red' : editingExisting ? 'blue' : 'default'} style={{ margin: 0 }}>
                   {recording ? t('record.recording') : editingExisting ? t('record.editing') : t('record.waiting')}

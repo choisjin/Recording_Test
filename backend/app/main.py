@@ -252,20 +252,16 @@ async def websocket_screen_mirror(websocket: WebSocket):
                         continue
                 elif h264_mode and scrcpy_stream and scrcpy_stream.is_running:
                     # scrcpy H.264 raw NAL 전송 (브라우저 MSE 디코딩)
-                    h264_data = await scrcpy_stream.async_get_h264_frame(timeout=0.1)
+                    h264_data = await scrcpy_stream.async_get_h264_frame(timeout=0.5)
                     if h264_data:
                         await websocket.send_bytes(h264_data)
-                    else:
-                        await asyncio.sleep(0.01)
-                    continue  # h264 모드는 자체 타이밍
+                    continue  # async_get_h264_frame이 블로킹, sleep 불필요
                 elif scrcpy_stream and scrcpy_stream.is_running:
-                    # scrcpy JPEG 폴백
+                    # scrcpy JPEG 폴백 — async_wait_frame이 새 프레임까지 블로킹
                     jpeg_bytes = await scrcpy_stream.async_wait_frame(timeout=2.0)
                     if jpeg_bytes:
                         await websocket.send_bytes(jpeg_bytes)
-                    else:
-                        await asyncio.sleep(0.03)
-                        continue
+                    continue
                 else:
                     # ADB screencap 폴백 — binary JPEG로 전송
                     adb_display_id = None
@@ -305,7 +301,7 @@ async def websocket_screen_mirror(websocket: WebSocket):
                 })
                 await asyncio.sleep(1)
                 continue
-            await asyncio.sleep(0.03)  # ~30fps 프레임 간격
+            await asyncio.sleep(0)  # 이벤트 루프 양보 (각 소스가 자체 속도로 전송)
     except WebSocketDisconnect:
         logger.info("Screen mirror WebSocket disconnected")
     finally:

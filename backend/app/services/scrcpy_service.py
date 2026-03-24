@@ -90,7 +90,7 @@ class ScrcpyStream:
     """
 
     def __init__(self, serial: str, display_id: int = 0,
-                 max_fps: int = 30, bit_rate: int = 4_000_000,
+                 max_fps: int = 60, bit_rate: int = 8_000_000,
                  max_size: int = 1024):
         self.serial = serial
         self.display_id = display_id
@@ -457,7 +457,7 @@ class ScrcpyManager:
         return _find_scrcpy_server() is not None
 
     async def acquire_stream(self, serial: str, display_id: int = 0,
-                             max_fps: int = 30, max_size: int = 1024) -> Optional[ScrcpyStream]:
+                             max_fps: int = 60, max_size: int = 1024) -> Optional[ScrcpyStream]:
         """스트림 획득 (ref-count 증가). 없으면 생성."""
         if not self.is_available():
             return None

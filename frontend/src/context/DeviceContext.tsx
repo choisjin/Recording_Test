@@ -38,6 +38,8 @@ interface DeviceContextType {
   h264Size: { width: number; height: number };
   videoRef: React.RefObject<HTMLVideoElement | null>;
   sendControl: (msg: object) => void;
+  // 실시간 FPS
+  streamFps: number;
 }
 
 const DeviceContext = createContext<DeviceContextType | null>(null);
@@ -57,10 +59,28 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
   const h264ModeRef = useRef(false);
   const jmuxerRef = useRef<JMuxer | null>(null);
   const screenAliveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [streamFps, setStreamFps] = useState(0);
+  const fpsCountRef = useRef(0);
+  const fpsTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Frame arrived → mark alive, reset 3s timeout
+  // FPS 계측 시작/정지
+  const startFpsCounter = useCallback(() => {
+    fpsCountRef.current = 0;
+    if (fpsTimerRef.current) clearInterval(fpsTimerRef.current);
+    fpsTimerRef.current = setInterval(() => {
+      setStreamFps(fpsCountRef.current);
+      fpsCountRef.current = 0;
+    }, 1000);
+  }, []);
+  const stopFpsCounter = useCallback(() => {
+    if (fpsTimerRef.current) { clearInterval(fpsTimerRef.current); fpsTimerRef.current = null; }
+    setStreamFps(0);
+  }, []);
+
+  // Frame arrived → mark alive, reset 3s timeout, count fps
   const markFrameAlive = useCallback(() => {
     setScreenAlive(true);
+    fpsCountRef.current += 1;
     if (screenAliveTimerRef.current) clearTimeout(screenAliveTimerRef.current);
     screenAliveTimerRef.current = setTimeout(() => setScreenAlive(false), 3000);
   }, []);
@@ -139,6 +159,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
     }
     h264ModeRef.current = false;
     setH264Mode(false);
+    stopFpsCounter();
     if (wsRef.current) {
       // 이전 WebSocket의 이벤트 핸들러 제거 (close 완료 전 프레임 수신 방지)
       wsRef.current.onmessage = null;
@@ -151,7 +172,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
       URL.revokeObjectURL(prevBlobUrlRef.current);
       prevBlobUrlRef.current = '';
     }
-  }, []);
+  }, [stopFpsCounter]);
 
   // --- Check if device is HKMC ---
   const isHkmcDevice = useCallback((deviceId: string) => {
@@ -182,6 +203,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
 
     ws.onopen = () => {
       ws.send(JSON.stringify({ device_id: deviceId, screen_type: st }));
+      startFpsCounter();
     };
 
     ws.onmessage = (event) => {
@@ -245,7 +267,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
     ws.onclose = () => {
       wsRef.current = null;
     };
-  }, [closeWs, markFrameAlive]);
+  }, [closeWs, markFrameAlive, startFpsCounter]);
 
   // Prevent overlapping poll requests
   const pollInFlightRef = useRef(false);
@@ -328,6 +350,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
       h264Size,
       videoRef,
       sendControl,
+      streamFps,
     }}>
       {children}
     </DeviceContext.Provider>
