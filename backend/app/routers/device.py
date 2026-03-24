@@ -451,6 +451,40 @@ async def module_functions(module_name: str):
     return {"module": module_name, "functions": functions}
 
 
+class DltViewerRequest(BaseModel):
+    project_file: str = ""
+    log_file: str = ""
+
+
+# DLT Viewer GUI 전용 싱글톤 (디바이스 연결 없이 GUI만 관리)
+_dlt_viewer_instance = None
+
+def _get_dlt_viewer():
+    global _dlt_viewer_instance
+    if _dlt_viewer_instance is None:
+        from ..plugins.DLTViewer import DLTViewer
+        _dlt_viewer_instance = DLTViewer()
+    return _dlt_viewer_instance
+
+
+@router.post("/dlt-viewer/launch")
+async def launch_dlt_viewer(req: DltViewerRequest):
+    """DLT Viewer GUI 실행 (디바이스 연결 불필요)."""
+    viewer = _get_dlt_viewer()
+    result = viewer.LaunchViewer(req.project_file, req.log_file)
+    if result.startswith("ERROR"):
+        raise HTTPException(status_code=400, detail=result)
+    return {"result": result}
+
+
+@router.post("/dlt-viewer/close")
+async def close_dlt_viewer():
+    """DLT Viewer GUI 종료."""
+    viewer = _get_dlt_viewer()
+    result = viewer.CloseViewer()
+    return {"result": result}
+
+
 @router.get("/hkmc-keys")
 async def list_hkmc_keys():
     """List all available HKMC hardware key names."""

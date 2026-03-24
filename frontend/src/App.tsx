@@ -4,6 +4,7 @@ import {
   BarChartOutlined,
   CloudSyncOutlined,
   DesktopOutlined,
+  FundProjectionScreenOutlined,
   LoadingOutlined,
   PlayCircleOutlined,
   ReloadOutlined,
@@ -11,7 +12,7 @@ import {
   VideoCameraOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
-import { serverApi } from './services/api';
+import { deviceApi, serverApi } from './services/api';
 import { DeviceProvider } from './context/DeviceContext';
 import { SettingsProvider, useSettings } from './context/SettingsContext';
 import { useTranslation } from './i18n';
@@ -165,6 +166,22 @@ function AppContent() {
                 style={webcamVisible && webcam.webcamRecording ? { animation: 'blink 1s infinite' } : undefined}
               >
                 {t('webcam.title')}
+              </Button>
+            </Tooltip>
+            <Tooltip title={t('dlt.launchViewer')} placement="right">
+              <Button
+                block
+                icon={<FundProjectionScreenOutlined />}
+                onClick={async () => {
+                  try {
+                    await deviceApi.dltViewerLaunch();
+                    message.success(t('dlt.launchViewer'));
+                  } catch (e: any) {
+                    message.error(e.response?.data?.detail || 'DLT Viewer launch failed');
+                  }
+                }}
+              >
+                {t('dlt.launchViewer')}
               </Button>
             </Tooltip>
             <Tooltip title={t('server.update')} placement="right">

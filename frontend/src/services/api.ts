@@ -24,6 +24,9 @@ export const deviceApi = {
   localInterfaces: () => api.get('/device/local-interfaces'),
   visionForceIp: (mac: string, ip: string, subnet: string, gateway: string) =>
     api.post('/device/vision-force-ip', { mac, ip, subnet, gateway }),
+  dltViewerLaunch: (projectFile?: string, logFile?: string) =>
+    api.post('/device/dlt-viewer/launch', { project_file: projectFile || '', log_file: logFile || '' }),
+  dltViewerClose: () => api.post('/device/dlt-viewer/close'),
 };
 
 // Scenario APIs
