@@ -167,6 +167,7 @@ export default function RecordPage() {
     primaryDevices, auxiliaryDevices, fetchDevices,
     screenshotDeviceId, setScreenshotDeviceId, screenshot,
     pollInterval, setPollInterval, screenType, setScreenType, refreshScreenshot,
+    screenAlive,
   } = useDevice();
 
   const [recording, setRecording] = useState(false);
@@ -1826,6 +1827,25 @@ export default function RecordPage() {
                       <Option key={d.id} value={d.id}>{d.name || d.id}</Option>
                     ))}
                   </Select>
+                  {screenDevice && (
+                    <Tag color={screenAlive ? 'green' : 'red'} style={{ marginLeft: 0 }}>
+                      {screenAlive ? t('record.deviceConnected') : t('record.deviceDisconnected')}
+                    </Tag>
+                  )}
+                  {!screenAlive && isScreenAdb && (
+                    <Button
+                      size="small"
+                      danger
+                      onClick={async () => {
+                        try {
+                          await deviceApi.adbRestart();
+                          message.info(t('device.adbRestart'));
+                        } catch {
+                          message.error(t('device.adbRestartFailed'));
+                        }
+                      }}
+                    >{t('device.reconnect')}</Button>
+                  )}
                   {isScreenHkmc && (
                     <Select
                       size="small"

@@ -52,6 +52,7 @@ const translations = {
     'server.restart': '서버 재시작',
     'server.restartConfirm': '서버를 재시작하시겠습니까?',
     'server.restarting': '서버 재시작 중...',
+    'server.guide': '사용자 가이드',
 
     // === Nav ===
     'nav.device': '디바이스',
@@ -213,6 +214,8 @@ const translations = {
     'record.conditionalJumpTitle': '조건부 이동 (스텝 #{index})',
     'record.end': '종료 (END)',
     'record.deviceScreen': '디바이스 화면',
+    'record.deviceConnected': '연결됨',
+    'record.deviceDisconnected': '끊김',
     'record.gestureHint': '탭 | 길게 | 스와이프 ({device})',
     'record.gestureSwipe': '스와이프',
     'record.gestureLongPress': '길게 누르기',
@@ -555,6 +558,7 @@ const translations = {
     'server.restart': 'Restart Server',
     'server.restartConfirm': 'Restart the server?',
     'server.restarting': 'Server restarting...',
+    'server.guide': 'User Guide',
 
     // === Nav ===
     'nav.device': 'Devices',
@@ -716,6 +720,8 @@ const translations = {
     'record.conditionalJumpTitle': 'Conditional Jump (Step #{index})',
     'record.end': 'End (END)',
     'record.deviceScreen': 'Device Screen',
+    'record.deviceConnected': 'Connected',
+    'record.deviceDisconnected': 'Disconnected',
     'record.gestureHint': 'Tap | Long Press | Swipe ({device})',
     'record.gestureSwipe': 'Swipe',
     'record.gestureLongPress': 'Long Press',

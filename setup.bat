@@ -6,15 +6,6 @@ echo.
 
 cd /d "%~dp0"
 
-:: -------------------------------------------------------
-:: Refresh PATH from registry
-:: -------------------------------------------------------
-for /f "tokens=2*" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path 2^>nul') do set "SYS_PATH=%%b"
-for /f "tokens=2*" %%a in ('reg query "HKCU\Environment" /v Path 2^>nul') do set "USR_PATH=%%b"
-if defined SYS_PATH set "PATH=%SYS_PATH%"
-if defined USR_PATH set "PATH=%PATH%;%USR_PATH%"
-if exist "C:\Python310" set "PATH=C:\Python310;C:\Python310\Scripts;%PATH%"
-
 :: Detect production mode
 set "PRODUCTION=0"
 if exist "frontend\dist\index.html" (
@@ -22,24 +13,52 @@ if exist "frontend\dist\index.html" (
 )
 
 :: -------------------------------------------------------
-:: [1/5] Check Python 3.10
+:: [1/5] Python setup
 :: -------------------------------------------------------
-echo [1/5] Checking Python 3.10...
+echo [1/5] Setting up Python...
+
+:: --- Mode A: Embedded Python (zip in current dir) ---
+if exist "python\python.exe" goto :python_ready
+
+set "EMBED_ZIP="
+for %%f in (python-*-embed-amd64.zip) do set "EMBED_ZIP=%%f"
+if not defined EMBED_ZIP goto :try_system_python
+
+echo       Extracting embedded Python: %EMBED_ZIP%
+mkdir python 2>nul
+tar -xf "%EMBED_ZIP%" -C python
+:: Enable import site (required for pip)
+for %%f in (python\python*._pth) do (
+    findstr /v "^#import site" "%%f" > "%%f.tmp"
+    echo import site>> "%%f.tmp"
+    move /y "%%f.tmp" "%%f" >nul
+)
+echo       Embedded Python extracted
+goto :python_ready
+
+:: --- Mode B: System Python fallback (dev mode) ---
+:try_system_python
+:: Refresh PATH from registry
+for /f "tokens=2*" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path 2^>nul') do set "SYS_PATH=%%b"
+for /f "tokens=2*" %%a in ('reg query "HKCU\Environment" /v Path 2^>nul') do set "USR_PATH=%%b"
+if defined SYS_PATH set "PATH=%SYS_PATH%"
+if defined USR_PATH set "PATH=%PATH%;%USR_PATH%"
+if exist "C:\Python310" set "PATH=C:\Python310;C:\Python310\Scripts;%PATH%"
 
 set "PYTHON="
 py -3.10 --version >nul 2>&1
 if %ERRORLEVEL% equ 0 set "PYTHON=py -3.10"
-if defined PYTHON goto :python_ok
+if defined PYTHON goto :system_python_ok
 
 if exist "C:\Python310\python.exe" set "PYTHON=C:\Python310\python.exe"
-if defined PYTHON goto :python_ok
+if defined PYTHON goto :system_python_ok
 
 python --version >nul 2>&1
 if %ERRORLEVEL% equ 0 set "PYTHON=python"
-if defined PYTHON goto :python_ok
+if defined PYTHON goto :system_python_ok
 
-:: Python not found - launch bundled installer
-if not exist "python-3.10.4-amd64.exe" goto :python_missing
+:: No Python at all - try bundled installer
+if not exist "python-3.10.4-amd64.exe" goto :python_error
 echo.
 echo       Python 3.10 is not installed.
 echo.
@@ -55,43 +74,30 @@ echo       Installation complete. Press any key to continue...
 echo       ------------------------------------------
 pause >nul
 
-:: Refresh PATH after install
 for /f "tokens=2*" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path 2^>nul') do set "SYS_PATH=%%b"
 for /f "tokens=2*" %%a in ('reg query "HKCU\Environment" /v Path 2^>nul') do set "USR_PATH=%%b"
 if defined SYS_PATH set "PATH=%SYS_PATH%"
 if defined USR_PATH set "PATH=%PATH%;%USR_PATH%"
 if exist "C:\Python310" set "PATH=C:\Python310;C:\Python310\Scripts;%PATH%"
 
-:: Re-check after install
 set "PYTHON="
 py -3.10 --version >nul 2>&1
 if %ERRORLEVEL% equ 0 set "PYTHON=py -3.10"
-if defined PYTHON goto :python_ok
-
+if defined PYTHON goto :system_python_ok
 if exist "C:\Python310\python.exe" set "PYTHON=C:\Python310\python.exe"
-if defined PYTHON goto :python_ok
-
+if defined PYTHON goto :system_python_ok
 python --version >nul 2>&1
 if %ERRORLEVEL% equ 0 set "PYTHON=python"
-if defined PYTHON goto :python_ok
+if defined PYTHON goto :system_python_ok
 
-echo       [ERROR] Python still not detected. Please restart this script.
+:python_error
+echo       [ERROR] Python not found. Please install Python 3.10.
 pause
 exit /b 1
 
-:python_missing
-echo       [ERROR] python-3.10.4-amd64.exe not found.
-echo       Please install Python 3.10 from https://www.python.org/downloads/
-pause
-exit /b 1
-
-:python_ok
-for /f "tokens=*" %%v in ('%PYTHON% --version 2^>nul') do echo       %%v detected
-
-:: -------------------------------------------------------
-:: [2/5] Create Python venv
-:: -------------------------------------------------------
-echo [2/5] Creating Python venv...
+:system_python_ok
+for /f "tokens=*" %%v in ('%PYTHON% --version 2^>nul') do echo       System %PYTHON%: %%v
+echo [2/5] Creating venv...
 if not exist "venv" (
     %PYTHON% -m venv venv
     if not exist "venv\Scripts\python.exe" (
@@ -103,29 +109,44 @@ if not exist "venv" (
 ) else (
     echo       venv already exists - skipped
 )
+set "PY=venv\Scripts\python.exe"
+set "PIP=venv\Scripts\pip.exe"
+goto :install_packages
+
+:: --- Embedded Python ready ---
+:python_ready
+set "PY=python\python.exe"
+echo       Embedded Python ready
+
+:: Install pip if not present
+echo [2/5] Checking pip...
+%PY% -m pip --version >nul 2>&1
+if %ERRORLEVEL% equ 0 goto :pip_ok
+if not exist "get-pip.py" goto :pip_ok
+echo       Installing pip...
+%PY% get-pip.py --no-warn-script-location -q
+:pip_ok
+set "PIP=%PY% -m pip"
+echo       pip ready
 
 :: -------------------------------------------------------
-:: [3/5] Install pip packages
+:: [3/5] Install packages
 :: -------------------------------------------------------
+:install_packages
 echo [3/5] Installing Python packages...
-set "VENV_PYTHON=venv\Scripts\python.exe"
-set "VENV_PIP=venv\Scripts\pip.exe"
-
-%VENV_PYTHON% -m pip install --upgrade pip -q
-%VENV_PIP% install -r requirements.txt -q
+%PY% -m pip install --upgrade pip -q --no-warn-script-location 2>nul
+%PIP% install -r requirements.txt -q --no-warn-script-location
 if exist "lge.auto-*.whl" (
-    for %%f in (lge.auto-*.whl) do %VENV_PIP% install "%%f"
+    for %%f in (lge.auto-*.whl) do %PIP% install "%%f"
     echo       lge.auto installed
 ) else (
     echo       [Note] lge.auto .whl not found
 )
 :: vmbpy (Vimba X Python API) - install from SDK if available
 set "VMBPY_WHL="
-if exist "C:\Program Files\Allied Vision\Vimba X\api\python\vmbpy-*.whl" (
-    for %%f in ("C:\Program Files\Allied Vision\Vimba X\api\python\vmbpy-*.whl") do set "VMBPY_WHL=%%f"
-)
+for %%f in ("C:\Program Files\Allied Vision\Vimba X\api\python\vmbpy-*.whl") do set "VMBPY_WHL=%%f"
 if defined VMBPY_WHL (
-    %VENV_PIP% install "%VMBPY_WHL%" -q 2>nul
+    %PIP% install "%VMBPY_WHL%" -q 2>nul
     echo       vmbpy installed
 ) else (
     echo       [Note] Vimba X SDK not found - VisionCamera IP features unavailable
@@ -156,13 +177,10 @@ if %ERRORLEVEL% neq 0 (
         echo       Installation complete. Press any key to continue...
         echo       ------------------------------------------
         pause >nul
-
-        :: Refresh PATH
         for /f "tokens=2*" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path 2^>nul') do set "SYS_PATH=%%b"
         for /f "tokens=2*" %%a in ('reg query "HKCU\Environment" /v Path 2^>nul') do set "USR_PATH=%%b"
         if defined SYS_PATH set "PATH=%SYS_PATH%"
         if defined USR_PATH set "PATH=%PATH%;%USR_PATH%"
-
         where npm.cmd >nul 2>&1
         if %ERRORLEVEL% neq 0 (
             echo       [Warning] Node.js not detected - frontend install skipped.
@@ -175,7 +193,6 @@ if %ERRORLEVEL% neq 0 (
 )
 
 for /f "tokens=*" %%v in ('node --version 2^>nul') do echo       Node.js %%v detected
-
 if exist "frontend\package.json" (
     echo       Installing frontend packages...
     cd frontend
@@ -193,7 +210,6 @@ if exist "frontend\package.json" (
 :: -------------------------------------------------------
 if not "%PRODUCTION%"=="1" goto :git_done
 
-:: Check if git is installed
 where git.exe >nul 2>&1
 if %ERRORLEVEL% equ 0 goto :git_installed
 
@@ -211,16 +227,12 @@ echo       ------------------------------------------
 echo       Installation complete. Press any key to continue...
 echo       ------------------------------------------
 pause >nul
-
-:: Refresh PATH after git install
 for /f "tokens=2*" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path 2^>nul') do set "SYS_PATH=%%b"
 for /f "tokens=2*" %%a in ('reg query "HKCU\Environment" /v Path 2^>nul') do set "USR_PATH=%%b"
 if defined SYS_PATH set "PATH=%SYS_PATH%"
 if defined USR_PATH set "PATH=%PATH%;%USR_PATH%"
-
 where git.exe >nul 2>&1
 if %ERRORLEVEL% equ 0 goto :git_installed
-
 echo       [Warning] Git not detected - git setup skipped.
 goto :git_done
 
@@ -231,12 +243,12 @@ goto :git_done
 :git_installed
 if exist ".git" goto :git_done
 if not exist "git_remote.txt" goto :git_done
-
 echo [5/5] Setting up git repository...
 set /p GIT_REMOTE=<git_remote.txt
-git init
+git init -b main
 git remote add origin "%GIT_REMOTE%"
 git fetch --depth 1 origin main
+git branch --set-upstream-to=origin/main main
 git reset origin/main
 git checkout origin/main -- .gitignore
 echo       git repository initialized

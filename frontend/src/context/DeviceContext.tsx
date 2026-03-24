@@ -30,6 +30,8 @@ interface DeviceContextType {
   setScreenType: (st: string) => void;
   // Force immediate screenshot refresh (call after action)
   refreshScreenshot: () => void;
+  // Screen streaming alive indicator (true = frames arriving)
+  screenAlive: boolean;
 }
 
 const DeviceContext = createContext<DeviceContextType | null>(null);
@@ -42,6 +44,15 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
   const [screenshot, setScreenshot] = useState('');
   const [pollInterval, setPollInterval] = useState(500);
   const [screenType, setScreenType] = useState('front_center');
+  const [screenAlive, setScreenAlive] = useState(false);
+  const screenAliveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Frame arrived → mark alive, reset 3s timeout
+  const markFrameAlive = useCallback(() => {
+    setScreenAlive(true);
+    if (screenAliveTimerRef.current) clearTimeout(screenAliveTimerRef.current);
+    screenAliveTimerRef.current = setTimeout(() => setScreenAlive(false), 3000);
+  }, []);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const screenshotDeviceIdRef = useRef('');
   const screenTypeRef = useRef('front_center');
@@ -158,6 +169,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
         prevBlobUrlRef.current = url;
         if (screenshotDeviceIdRef.current === deviceId) {
           setScreenshot(url);
+          markFrameAlive();
         }
       } else {
         // JSON 메시지 (에러 등)
@@ -167,6 +179,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
             const mime = msg.format === 'jpeg' ? 'image/jpeg' : 'image/png';
             if (screenshotDeviceIdRef.current === deviceId) {
               setScreenshot(`data:${mime};base64,${msg.image}`);
+              markFrameAlive();
             }
           }
         } catch { /* ignore */ }
@@ -198,6 +211,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
         const fmt = res.data.format || 'jpeg';
         const mime = fmt === 'jpeg' ? 'image/jpeg' : 'image/png';
         setScreenshot(`data:${mime};base64,${res.data.image}`);
+        markFrameAlive();
       }
     } catch { /* ignore */ }
     pollInFlightRef.current = false;
@@ -258,6 +272,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
       screenType,
       setScreenType,
       refreshScreenshot,
+      screenAlive,
     }}>
       {children}
     </DeviceContext.Provider>

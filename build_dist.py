@@ -82,6 +82,118 @@ def _run(cmd, cwd=None, check=True, timeout=180, live_output=False):
     )
 
 
+EMBED_PYTHON_VERSION = "3.10.11"
+EMBED_PYTHON_URL = f"https://www.python.org/ftp/python/{EMBED_PYTHON_VERSION}/python-{EMBED_PYTHON_VERSION}-embed-amd64.zip"
+GET_PIP_URL = "https://bootstrap.pypa.io/get-pip.py"
+
+
+def _prepare_embedded_python():
+    """Embedded Python zip + get-pip.py + tkinter 를 dist에 준비."""
+    import urllib.request
+
+    embed_zip = DIST_DIR / f"python-{EMBED_PYTHON_VERSION}-embed-amd64.zip"
+    get_pip = DIST_DIR / "get-pip.py"
+
+    # Download embedded Python zip if not cached
+    cache_dir = PROJECT_ROOT / "build" / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cached_zip = cache_dir / embed_zip.name
+    cached_pip = cache_dir / "get-pip.py"
+
+    if not cached_zip.exists():
+        print(f"  Downloading {EMBED_PYTHON_URL} ...")
+        urllib.request.urlretrieve(EMBED_PYTHON_URL, str(cached_zip))
+    shutil.copy2(str(cached_zip), str(embed_zip))
+    print(f"  Embedded Python zip: {embed_zip.name}")
+
+    if not cached_pip.exists():
+        print(f"  Downloading get-pip.py ...")
+        urllib.request.urlretrieve(GET_PIP_URL, str(cached_pip))
+    shutil.copy2(str(cached_pip), str(get_pip))
+    print(f"  get-pip.py ready")
+
+    # Pre-extract + add tkinter (not included in embedded Python)
+    _prepack_embedded_with_tkinter(cached_zip)
+
+
+def _prepack_embedded_with_tkinter(embed_zip_path: Path):
+    """Embedded Python을 미리 추출하고 tkinter를 추가하여 dist에 포함."""
+    import zipfile
+
+    python_dir = DIST_DIR / "python"
+    if python_dir.exists():
+        shutil.rmtree(str(python_dir))
+
+    # Extract embedded Python
+    print("  Extracting embedded Python...")
+    with zipfile.ZipFile(str(embed_zip_path)) as zf:
+        zf.extractall(str(python_dir))
+
+    # Enable import site in ._pth (required for pip + Lib/)
+    for pth in python_dir.glob("python*._pth"):
+        lines = pth.read_text(encoding="utf-8").splitlines()
+        new_lines = []
+        for line in lines:
+            if line.strip() == "#import site":
+                new_lines.append("import site")
+            else:
+                new_lines.append(line)
+        if "Lib" not in "\n".join(new_lines):
+            new_lines.insert(1, "Lib")
+            new_lines.insert(2, "Lib\\site-packages")
+        pth.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+        print(f"  {pth.name} updated (import site + Lib)")
+
+    # Copy tkinter from build machine's Python
+    py_base = Path(sys.base_prefix)
+    _copy_tkinter(py_base, python_dir)
+
+    # Pre-install pip
+    get_pip_file = DIST_DIR / "get-pip.py"
+    if get_pip_file.exists():
+        print("  Installing pip into embedded Python...")
+        _run([str(python_dir / "python.exe"), str(get_pip_file),
+              "--no-warn-script-location", "-q"],
+             check=False, live_output=False)
+        # Verify
+        r = _run([str(python_dir / "python.exe"), "-m", "pip", "--version"],
+                 check=False, live_output=False)
+        if r.returncode == 0:
+            print(f"  pip ready: {r.stdout.strip()}")
+        else:
+            print(f"  [Warning] pip install failed: {r.stderr[:200]}")
+
+    print(f"  Embedded Python ready: {python_dir}")
+
+
+def _copy_tkinter(py_base: Path, embed_dir: Path):
+    """빌드 머신의 Python에서 tkinter 관련 파일을 embedded Python에 복사."""
+    lib_dir = embed_dir / "Lib"
+    lib_dir.mkdir(exist_ok=True)
+
+    # 1. tkinter package
+    src_tkinter = py_base / "Lib" / "tkinter"
+    if src_tkinter.is_dir():
+        shutil.copytree(str(src_tkinter), str(lib_dir / "tkinter"))
+        print(f"  tkinter package copied")
+
+    # 2. _tkinter.pyd + tcl/tk DLLs
+    dlls_src = py_base / "DLLs"
+    for name in ["_tkinter.pyd", "tcl86t.dll", "tk86t.dll"]:
+        src = dlls_src / name
+        if not src.exists():
+            src = py_base / name
+        if src.exists():
+            shutil.copy2(str(src), str(embed_dir / name))
+            print(f"  {name} copied")
+
+    # 3. tcl/ directory (Tcl/Tk scripts)
+    src_tcl = py_base / "tcl"
+    if src_tcl.is_dir():
+        shutil.copytree(str(src_tcl), str(embed_dir / "tcl"))
+        print(f"  tcl/ directory copied")
+
+
 # ── 빌드 단계 ──
 
 def step_compile_backend():
@@ -246,6 +358,18 @@ def step_package():
         if src.exists():
             shutil.copy2(str(src), str(DIST_DIR / f))
 
+    # ── docs 복사 ──
+    src_docs = PROJECT_ROOT / "docs"
+    dst_docs = DIST_DIR / "docs"
+    if src_docs.is_dir():
+        if dst_docs.exists():
+            shutil.rmtree(str(dst_docs))
+        shutil.copytree(str(src_docs), str(dst_docs))
+        print(f"  docs 복사 완료")
+
+    # ── Embedded Python ──
+    _prepare_embedded_python()
+
     # ── 빈 디렉토리 (사용자 데이터) ──
     for d in ["backend/scenarios", "backend/results", "backend/screenshots",
               "backend/app/plugins", "Results/Video"]:
@@ -254,10 +378,13 @@ def step_package():
     # ── .gitignore (배포 repo용) ──
     dist_gitignore = DIST_DIR / ".gitignore"
     dist_gitignore.write_text("""venv/
+python/
 __pycache__/
 *.pyc
 *.exe
 *.msi
+*.zip
+get-pip.py
 backend/screenshots/
 backend/results/
 backend/scenarios/

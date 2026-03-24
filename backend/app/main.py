@@ -83,6 +83,11 @@ recordings_dir = Path(__file__).resolve().parent.parent.parent / "Results" / "Vi
 recordings_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/recordings", StaticFiles(directory=str(recordings_dir)), name="recordings")
 
+# Serve docs (user guide)
+_docs_dir = Path(__file__).resolve().parent.parent.parent / "docs"
+if _docs_dir.is_dir():
+    app.mount("/docs", StaticFiles(directory=str(_docs_dir), html=True), name="docs")
+
 @app.get("/api/health")
 async def health_check():
     return {"status": "ok"}

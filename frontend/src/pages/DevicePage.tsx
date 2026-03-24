@@ -613,8 +613,32 @@ export default function DevicePage() {
                               {cam.mac && (
                                 <Button size="small" onClick={() => {
                                   setForceIpModal({ mac: cam.mac, currentIp: cam.ip || '' });
-                                  setForceIpAddr(cam.ip || '');
-                                  setForceIpSubnet(cam.subnet || '255.255.255.0');
+                                  // PC 인터페이스 서브넷에 맞는 IP 자동 추천
+                                  const iface = pcInterfaces[0];
+                                  if (iface) {
+                                    const parts = iface.ip.split('.');
+                                    const camParts = (cam.ip || '').split('.');
+                                    // 같은 서브넷인지 확인 (prefix 기준)
+                                    const prefixLen = iface.prefix || 24;
+                                    const sameSubnet = prefixLen >= 24
+                                      && parts[0] === camParts[0]
+                                      && parts[1] === camParts[1]
+                                      && parts[2] === camParts[2];
+                                    if (sameSubnet) {
+                                      // 이미 같은 서브넷 — 현재 값 유지
+                                      setForceIpAddr(cam.ip || '');
+                                      setForceIpSubnet(cam.subnet || '255.255.255.0');
+                                    } else {
+                                      // 다른 서브넷 — PC와 같은 서브넷의 IP 추천
+                                      const lastOctet = parseInt(parts[3]) < 200 ? parseInt(parts[3]) + 100 : parseInt(parts[3]) - 100;
+                                      setForceIpAddr(`${parts[0]}.${parts[1]}.${parts[2]}.${Math.min(Math.max(lastOctet, 2), 254)}`);
+                                      const masks: Record<number, string> = { 8: '255.0.0.0', 16: '255.255.0.0', 24: '255.255.255.0' };
+                                      setForceIpSubnet(masks[prefixLen] || '255.255.255.0');
+                                    }
+                                  } else {
+                                    setForceIpAddr(cam.ip || '');
+                                    setForceIpSubnet(cam.subnet || '255.255.255.0');
+                                  }
                                   setForceIpGateway(cam.gateway || '0.0.0.0');
                                 }}>{t('device.visionForceIp')}</Button>
                               )}

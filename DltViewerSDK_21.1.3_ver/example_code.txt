@@ -1,0 +1,3 @@
+subprocess.Popen("C:/DltViewerSDK_21.1.3_ver/dlt-viewer.exe -p D:/CCIC_DLT_VIEWER_PRJ.dlp -l D:/DLT/test_log_dlt_220817.dlt")
+
+subprocess.check_output("C:/DltViewerSDK_21.1.3_ver/dlt-viewer.exe -p D:/CCIC_DLT_VIEWER_PRJ.dlp -l D:/DLT/test_log_dlt_220817.dlt")

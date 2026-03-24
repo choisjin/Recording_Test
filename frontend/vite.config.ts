@@ -9,6 +9,7 @@ export default defineConfig({
       '/api': 'http://localhost:8000',
       '/screenshots': 'http://localhost:8000',
       '/recordings': 'http://localhost:8000',
+      '/docs': 'http://localhost:8000',
       '/ws': {
         target: 'ws://localhost:8000',
         ws: true,

@@ -250,22 +250,25 @@
     align-items: center;
     gap: 0;
     margin: 20px 0;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
   }
   .step-flow .step-item {
     background: var(--accent-light);
     color: var(--accent);
-    padding: 8px 18px;
+    padding: 6px 0;
     font-weight: 600;
-    font-size: 14px;
+    font-size: 12.5px;
     white-space: nowrap;
+    flex: 1;
+    text-align: center;
   }
   .step-flow .step-item:first-child { border-radius: 8px 0 0 8px; }
   .step-flow .step-item:last-child { border-radius: 0 8px 8px 0; }
   .step-flow .step-arrow {
     color: var(--accent);
-    font-size: 18px;
-    padding: 0 2px;
+    font-size: 14px;
+    padding: 0 1px;
+    flex-shrink: 0;
   }
 
   /* --- Keyboard shortcut --- */
@@ -521,9 +524,11 @@
   <tr><th>항목</th><th>요구사항</th></tr>
   <tr><td>운영체제</td><td>Windows 10 이상 (64bit)</td></tr>
   <tr><td>Python</td><td>3.10 이상 (미설치 시 설치 안내 제공)</td></tr>
+  <tr><td>Git</td><td>미설치 시 설치 안내 제공 (자동 업데이트에 필요)</td></tr>
   <tr><td>Node.js</td><td>v18 이상 (개발 모드에서만 필요, 미설치 시 안내 제공)</td></tr>
   <tr><td>브라우저</td><td>Chrome, Edge 등 최신 브라우저</td></tr>
-  <tr><td>디바이스</td><td>USB 디버깅이 켜진 Android 기기 또는 HKMC IVI</td></tr>
+  <tr><td>디바이스</td><td>USB 디버깅이 켜진 Android 기기, HKMC IVI, 또는 GigE Vision 카메라</td></tr>
+  <tr><td>Vimba X SDK</td><td>Vision Camera 사용 시 필요 (설치 프로그램에서 선택 가능)</td></tr>
 </table>
 
 <h3 id="install-setup">설치 방법</h3>
@@ -532,14 +537,26 @@
 <ol class="numbered-steps">
   <li><code>ReplayKit_Setup_1.0.exe</code> 실행 → 관리자 권한 허용</li>
   <li>설치 경로 확인 (기본: <code>C:\ReplayKit</code>)</li>
+  <li><strong>구성 요소 선택</strong>:
+    <ul>
+      <li><strong>ReplayKit Core</strong> — 기본 (필수)</li>
+      <li><strong>Vimba X SDK</strong> — Vision Camera를 사용하는 경우 체크</li>
+    </ul>
+  </li>
   <li>파일 복사가 완료되면 <strong>환경 설정 창</strong>(setup.bat)이 자동으로 열립니다</li>
   <li><strong>Python 3.10이 없는 경우</strong> — 설치 프로그램이 자동으로 실행됩니다:
     <ul>
       <li>Python 설치 화면에서 <strong>"Add Python to PATH"를 반드시 체크</strong>하세요</li>
-      <li>설치를 완료한 뒤 설정 창에서 <strong>아무 키나 눌러</strong> 계속 진행합니다</li>
+      <li>설치를 완료한 뒤 <strong>아무 키를 눌러</strong> 다음 단계로 진행합니다</li>
     </ul>
   </li>
-  <li>이후 Python 패키지가 자동으로 설치되고, 완료 메시지가 표시됩니다</li>
+  <li><strong>Git이 없는 경우</strong> — Git 설치 프로그램이 자동으로 실행됩니다:
+    <ul>
+      <li>기본 설정 그대로 Next를 클릭하여 설치하세요</li>
+      <li>설치 완료 후 <strong>아무 키를 눌러</strong> 진행합니다</li>
+    </ul>
+  </li>
+  <li>Python 패키지 자동 설치 → Git 저장소 초기화 → 완료</li>
   <li>설치 완료 후 ReplayKit을 실행합니다</li>
 </ol>
 
@@ -560,7 +577,8 @@ setup.bat
 <h4>방법 1: 서버 관리 GUI (권장)</h4>
 <pre><code># 프로젝트 폴더에서 실행
 python server.py</code></pre>
-<p>Tkinter 기반 GUI 창이 열리며, 백엔드와 프론트엔드를 동시에 관리할 수 있습니다.</p>
+<p>Tkinter 기반 GUI 창이 열리며, 백엔드와 프론트엔드를 동시에 관리할 수 있습니다.
+서버가 준비되면 <strong>브라우저가 자동으로 열립니다.</strong></p>
 
 <h4>방법 2: 수동 실행</h4>
 <pre><code># 터미널 1: 백엔드
@@ -579,13 +597,18 @@ npm run dev</code></pre>
 </div>
 
 <h3 id="install-update">업데이트</h3>
-<p>ReplayKit 화면 좌측 사이드바 하단의 <strong>업데이트</strong> 버튼을 클릭하면:</p>
+<p>ReplayKit은 Git 기반 자동 업데이트를 지원합니다. 서버 관리 GUI의 <strong>동기화+시작</strong> 버튼을 클릭하면:</p>
 <ol>
-  <li>최신 코드를 자동으로 다운로드 (git pull)</li>
-  <li>변경된 의존성 자동 설치</li>
-  <li>서버 자동 재시작</li>
+  <li>Git으로 최신 코드를 자동 다운로드 (git pull)</li>
+  <li>변경된 Python 패키지 자동 설치</li>
+  <li>서버 자동 재시작 후 브라우저 오픈</li>
 </ol>
-<p>또는 <code>sync_and_run.bat</code>를 실행하면 동일한 작업을 수행합니다.</p>
+
+<div class="callout callout-info">
+  <strong>💡 업데이트 사용자 데이터 보존</strong>
+  시나리오, 테스트 결과, 디바이스 설정, 경로 설정 등 사용자 데이터는 git 추적 대상이 아니므로
+  업데이트 시 변경되지 않습니다.
+</div>
 
 
 <!-- ============================== 디바이스 ============================== -->
@@ -618,16 +641,18 @@ npm run dev</code></pre>
   </tr>
   <tr>
     <td><span class="badge badge-yellow">Vision Camera</span></td>
-    <td>네트워크</td>
+    <td>GigE Vision (UDP)</td>
     <td>
-      비전 카메라. MAC 주소, 모델, IP 주소로 식별.
+      GigE Vision 산업용 카메라. 스캔 시 GVCP 프로토콜로 자동 감지되며,
+      MAC 주소, 현재 IP, 서브넷 정보가 표시됩니다.
+      Vimba X SDK 설치 시 추가 기능 사용 가능.
     </td>
   </tr>
 </table>
 
 <h4>디바이스 연결하기</h4>
 <ol class="numbered-steps">
-  <li><strong>스캔</strong> 버튼 클릭 — USB로 연결된 ADB 디바이스, 네트워크의 HKMC 디바이스가 자동 감지됩니다</li>
+  <li><strong>스캔</strong> 버튼 클릭 — ADB, HKMC, Vision Camera가 동시에 자동 감지됩니다</li>
   <li>감지된 디바이스 목록에서 원하는 기기를 선택하고 <strong>연결</strong> 클릭</li>
   <li>감지되지 않는 경우 <strong>수동 연결</strong> 탭에서 주소를 직접 입력할 수 있습니다</li>
 </ol>
@@ -636,6 +661,25 @@ npm run dev</code></pre>
   <strong>⚠️ ADB 디바이스 준비</strong>
   Android 기기의 <em>설정 → 개발자 옵션 → USB 디버깅</em>이 켜져 있어야 합니다.
   WiFi 연결 시에는 <code>adb tcpip 5555</code> 명령이 먼저 실행되어 있어야 합니다.
+</div>
+
+<h4>Vision Camera 연결 (GigE Vision)</h4>
+<p>스캔 시 네트워크에 연결된 GigE Vision 카메라가 자동으로 감지됩니다.
+감지 결과에 카메라의 현재 IP와 PC 네트워크 인터페이스 IP가 함께 표시됩니다.</p>
+
+<ol class="numbered-steps">
+  <li><strong>스캔</strong>에서 카메라가 감지되면 MAC, 모델, 현재 IP가 표시됩니다</li>
+  <li>카메라 IP가 PC와 <strong>다른 서브넷</strong>에 있다면 <strong>IP 변경</strong> 버튼을 클릭합니다</li>
+  <li>ForceIP 대화상자에서 PC 서브넷에 맞는 IP가 <strong>자동으로 추천</strong>됩니다</li>
+  <li>확인을 누르면 카메라 IP가 변경되고, 자동으로 다시 스캔됩니다</li>
+  <li>이제 <strong>연결</strong> 버튼을 클릭하면 수동 연결 탭에 값이 채워지며, 연결 버튼으로 완료합니다</li>
+</ol>
+
+<div class="callout callout-info">
+  <strong>💡 ForceIP란?</strong>
+  GigE Vision 표준의 IP 강제 설정 기능입니다. 카메라가 PC와 다른 서브넷에 있어 통신이 불가능할 때,
+  카메라의 IP를 PC와 같은 서브넷으로 변경하여 연결할 수 있게 합니다.
+  이 설정은 카메라 재부팅 시 초기화될 수 있습니다.
 </div>
 
 <h3 id="device-auxiliary">보조 디바이스</h3>

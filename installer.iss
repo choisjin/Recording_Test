@@ -41,7 +41,7 @@ Name: "vimbax"; Description: "Vimba X SDK (Vision Camera support)"; Types: full
 
 [Files]
 ; Main project files
-Source: "{#DistDir}\*"; DestDir: "{app}"; Excludes: "node-*.msi,VimbaX_Setup*"; Flags: ignoreversion recursesubdirs createallsubdirs; Components: main
+Source: "{#DistDir}\*"; DestDir: "{app}"; Excludes: "node-*.msi,VimbaX_Setup*,python-3.10.4-amd64.exe"; Flags: ignoreversion recursesubdirs createallsubdirs; Components: main
 ; VC++ Runtime (temp)
 Source: "{#DistDir}\vcredist_x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 ; Vimba X SDK installer (temp, only if component selected)

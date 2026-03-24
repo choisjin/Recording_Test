@@ -212,6 +212,15 @@ function AppContent() {
                 {t('server.restart')}
               </Button>
             </Tooltip>
+            <Tooltip title={t('server.guide')} placement="right">
+              <Button
+                block
+                size="small"
+                onClick={() => window.open('/docs/user-guide.html', '_blank')}
+              >
+                {t('server.guide')}
+              </Button>
+            </Tooltip>
           </div>
         </Sider>
         <Layout style={layoutBg ? { background: layoutBg } : undefined}>
