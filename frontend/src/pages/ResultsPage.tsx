@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Card, Collapse, Col, Descriptions, Image, Input, InputNumber, Modal, Row, Select, Space, Table, Tag, Tooltip, message } from 'antd';
-import { DeleteOutlined, DownloadOutlined, EyeOutlined, PlayCircleOutlined, ReloadOutlined, ScissorOutlined, SearchOutlined, VideoCameraOutlined } from '@ant-design/icons';
+import { DeleteOutlined, DownloadOutlined, ExpandOutlined, EyeOutlined, PlayCircleOutlined, ReloadOutlined, ScissorOutlined, SearchOutlined, ShrinkOutlined, VideoCameraOutlined } from '@ant-design/icons';
 import { resultsApi, scenarioApi } from '../services/api';
 import { useSettings } from '../context/SettingsContext';
 import { useTranslation } from '../i18n';
@@ -39,6 +39,7 @@ interface StepResultDetail {
   timestamp: string | null;
   device_id: string;
   command: string;
+  description: string;
   status: string;
   similarity_score: number | null;
   expected_image: string | null;
@@ -156,9 +157,11 @@ export default function ResultsPage() {
   // Webcam recordings
   const [recordings, setRecordings] = useState<{ filename: string; size: number; url: string }[]>([]);
   const [webcamPanelOpen, setWebcamPanelOpen] = useState(false);
+  const [webcamExpanded, setWebcamExpanded] = useState(false);
   const [activeRecUrl, setActiveRecUrl] = useState('');
   const [activeRecRepeat, setActiveRecRepeat] = useState(1);
   const detailVideoRef = useRef<HTMLVideoElement>(null);
+  const [currentPlayingStepId, setCurrentPlayingStepId] = useState<number | null>(null);
   const [trimFile, setTrimFile] = useState<string | null>(null);
   const [trimStart, setTrimStart] = useState(0);
   const [trimEnd, setTrimEnd] = useState(0);
@@ -220,6 +223,35 @@ export default function ResultsPage() {
       doSeek();
     }
   };
+
+  // 비디오 재생 시 현재 스텝 실시간 하이라이트
+  const handleVideoTimeUpdate = useCallback(() => {
+    const video = detailVideoRef.current;
+    if (!video || !detail) return;
+    const currentTime = video.currentTime;
+    const sameRepeatSteps = detail.step_results.filter(s => (s.repeat_index || 1) === activeRecRepeat);
+    if (sameRepeatSteps.length === 0) return;
+    const firstStep = sameRepeatSteps[0];
+    if (!firstStep?.timestamp) return;
+    const firstTime = new Date(firstStep.timestamp).getTime();
+
+    // 현재 비디오 시간에 해당하는 스텝 찾기 (역순으로 가장 가까운 것)
+    let matchedStep: StepResultDetail | null = null;
+    for (let i = sameRepeatSteps.length - 1; i >= 0; i--) {
+      const s = sameRepeatSteps[i];
+      if (!s.timestamp) continue;
+      const stepOffset = (new Date(s.timestamp).getTime() - firstTime) / 1000;
+      if (currentTime >= stepOffset - 1) {
+        matchedStep = s;
+        break;
+      }
+    }
+    setCurrentPlayingStepId(matchedStep?.step_id ?? null);
+  }, [detail, activeRecRepeat]);
+
+  const handleVideoPauseOrEnd = useCallback(() => {
+    setCurrentPlayingStepId(null);
+  }, []);
 
   const fetchResults = async () => {
     setLoading(true);
@@ -492,39 +524,44 @@ export default function ResultsPage() {
     },
   ];
 
-  const stepColumns = [
+  const stepColumns = ([
     {
       title: <div>Time Stamp<br /><span style={{ fontSize: 11, color: '#888' }}>{t('results.timestamp')}</span></div>,
       dataIndex: 'timestamp',
       key: 'timestamp',
-      width: 160,
+      width: webcamExpanded ? 130 : 160,
       render: (v: string | null) => v ? formatTime(v) : '-',
+      _hide: false,
     },
     {
       title: <div>Repeat<br /><span style={{ fontSize: 11, color: '#888' }}>{t('results.repeat')}</span></div>,
       key: 'repeat',
-      width: 80,
+      width: 65,
       render: (_: any, r: StepResultDetail) => detail ? `${r.repeat_index ?? 1}/${detail.total_repeat}` : '-',
+      _hide: false,
     },
     {
       title: <div>Step<br /><span style={{ fontSize: 11, color: '#888' }}>{t('results.step')}</span></div>,
       dataIndex: 'step_id',
       key: 'step_id',
-      width: 60,
+      width: 50,
       align: 'center' as const,
+      _hide: false,
     },
     {
       title: <div>Device<br /><span style={{ fontSize: 11, color: '#888' }}>{t('results.deviceCol')}</span></div>,
       dataIndex: 'device_id',
       key: 'device_id',
-      width: 120,
+      width: webcamExpanded ? 80 : 120,
       ellipsis: true,
       render: (v: string) => v || '-',
+      _hide: false,
     },
     {
       title: <div>Command<br /><span style={{ fontSize: 11, color: '#888' }}>action</span></div>,
       dataIndex: 'command',
       key: 'command',
+      width: webcamExpanded ? 120 : undefined,
       ellipsis: true,
       render: (v: string, r: StepResultDetail) => {
         const isCmdStep = v?.startsWith('cmd_send:') || v?.startsWith('cmd_check:');
@@ -546,14 +583,25 @@ export default function ResultsPage() {
         }
         return v || r.message || '-';
       },
+      _hide: false,
+    },
+    {
+      title: <div>Remark<br /><span style={{ fontSize: 11, color: '#888' }}>{t('results.remark')}</span></div>,
+      dataIndex: 'description',
+      key: 'description',
+      width: 150,
+      ellipsis: true,
+      render: (v: string) => v || '-',
+      _hide: webcamExpanded,
     },
     {
       title: <div>Status<br /><span style={{ fontSize: 11, color: '#888' }}>{t('results.resultCol')}</span></div>,
       dataIndex: 'status',
       key: 'status',
-      width: 90,
+      width: webcamExpanded ? 60 : 90,
       align: 'center' as const,
-      render: (s: string) => <Tag color={statusColor(s)}>{s.toUpperCase()}</Tag>,
+      render: (s: string) => <Tag color={statusColor(s)} style={webcamExpanded ? { margin: 0, fontSize: 10 } : undefined}>{s.toUpperCase()}</Tag>,
+      _hide: false,
     },
     {
       title: <div>Delay<br /><span style={{ fontSize: 11, color: '#888' }}>{t('results.delaySet')}</span></div>,
@@ -562,6 +610,7 @@ export default function ResultsPage() {
       width: 90,
       align: 'center' as const,
       render: (v: number) => v ? formatDuration(v) : '-',
+      _hide: webcamExpanded,
     },
     {
       title: <div>Duration<br /><span style={{ fontSize: 11, color: '#888' }}>{t('results.duration')}</span></div>,
@@ -570,6 +619,7 @@ export default function ResultsPage() {
       width: 100,
       align: 'center' as const,
       render: (v: number) => formatDuration(v),
+      _hide: webcamExpanded,
     },
     {
       title: t('scenario.compare'),
@@ -586,8 +636,9 @@ export default function ResultsPage() {
         }
         return '-';
       },
+      _hide: false,
     },
-  ];
+  ] as any[]).filter((c: any) => !c._hide);
 
   return (
     <div>
@@ -638,7 +689,8 @@ export default function ResultsPage() {
         }
         open={detailVisible}
         onCancel={() => setDetailVisible(false)}
-        width={1200}
+        width="90vw"
+        style={{ top: 20 }}
         footer={
           <Space>
             <Button
@@ -691,18 +743,27 @@ export default function ResultsPage() {
             <div style={{ display: 'flex', gap: 8 }}>
               {/* 좌측: 웹캠 녹화 패널 (접힘/펼침) */}
               {recordings.length > 0 && (
-                <div style={{ width: webcamPanelOpen ? 300 : 36, flexShrink: 0, transition: 'width 0.2s' }}>
+                <div style={{ width: webcamPanelOpen ? (webcamExpanded ? '60%' : 300) : 36, flexShrink: 0, transition: 'width 0.2s' }}>
                   {webcamPanelOpen ? (
                     <Card
                       size="small"
                       title={<Space size={4}><VideoCameraOutlined />{t('webcam.recordings')}</Space>}
-                      extra={<Button type="text" size="small" onClick={() => setWebcamPanelOpen(false)} style={{ fontSize: 11 }}>✕</Button>}
+                      extra={
+                        <Space size={0}>
+                          <Button type="text" size="small" icon={webcamExpanded ? <ShrinkOutlined /> : <ExpandOutlined />}
+                            onClick={() => setWebcamExpanded(!webcamExpanded)} style={{ fontSize: 11 }} />
+                          <Button type="text" size="small" onClick={() => { setWebcamPanelOpen(false); setWebcamExpanded(false); }} style={{ fontSize: 11 }}>✕</Button>
+                        </Space>
+                      }
                       bodyStyle={{ padding: 6 }}
                     >
                       <video
                         ref={detailVideoRef}
                         src={activeRecUrl}
                         controls
+                        onTimeUpdate={handleVideoTimeUpdate}
+                        onPause={handleVideoPauseOrEnd}
+                        onEnded={handleVideoPauseOrEnd}
                         style={{ width: '100%', borderRadius: 4, background: '#000', display: 'block', marginBottom: 6 }}
                       />
                       {recordings.length > 1 && (
@@ -768,11 +829,13 @@ export default function ResultsPage() {
                   rowKey="step_id"
                   size="small"
                   pagination={false}
-                  rowClassName={(r: StepResultDetail) =>
-                    r.status === 'fail' ? 'result-row-fail' :
-                    r.status === 'error' ? 'result-row-error' :
-                    r.status === 'warning' ? 'result-row-warning' : ''
-                  }
+                  rowClassName={(r: StepResultDetail) => {
+                    const statusCls = r.status === 'fail' ? 'result-row-fail' :
+                      r.status === 'error' ? 'result-row-error' :
+                      r.status === 'warning' ? 'result-row-warning' : '';
+                    const playingCls = currentPlayingStepId === r.step_id && (r.repeat_index || 1) === activeRecRepeat ? 'result-row-playing' : '';
+                    return [statusCls, playingCls].filter(Boolean).join(' ');
+                  }}
                   onRow={(r) => ({
                     onClick: () => { if (recordings.length > 0) seekToStep(r); },
                     style: recordings.length > 0 ? { cursor: 'pointer' } : undefined,
@@ -949,6 +1012,9 @@ export default function ResultsPage() {
         .result-row-fail td { background: rgba(255, 77, 79, 0.08) !important; }
         .result-row-error td { background: rgba(255, 122, 69, 0.08) !important; }
         .result-row-warning td { background: rgba(250, 173, 20, 0.08) !important; }
+        .result-row-playing td { background: rgba(22, 119, 255, 0.18) !important; box-shadow: inset 3px 0 0 #1677ff; }
+        @keyframes playingPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+        .result-row-playing td:first-child { animation: playingPulse 1.5s infinite; }
       `}</style>
     </div>
   );

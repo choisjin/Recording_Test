@@ -26,7 +26,6 @@ Results/
 
 # Large binaries (수동 복사)
 *.whl
-*.exe
 
 # OS / IDE
 .env
@@ -41,3 +40,6 @@ Desktop.ini
 .playwright-mcp/
 DLL_DEBUG/
 References/
+tools/
+installer_output/
+DltViewerSDK_21.1.3_ver/

@@ -369,6 +369,17 @@ def step_package():
     else:
         print(f"  [Note] DltViewerSDK not found - skipped")
 
+    # ── tools (ffmpeg 등) 복사 ──
+    src_tools = PROJECT_ROOT / "tools"
+    dst_tools = DIST_DIR / "tools"
+    if src_tools.is_dir():
+        if dst_tools.exists():
+            shutil.rmtree(str(dst_tools))
+        shutil.copytree(str(src_tools), str(dst_tools))
+        print(f"  tools 복사 완료")
+    else:
+        print(f"  [Note] tools/ not found - skipped")
+
     # ── docs 복사 ──
     src_docs = PROJECT_ROOT / "docs"
     dst_docs = DIST_DIR / "docs"

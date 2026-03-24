@@ -2,12 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { App as AntdApp, Button, ConfigProvider, Layout, Menu, Modal, Spin, Tooltip, message, theme } from 'antd';
 import {
   BarChartOutlined,
+  BookOutlined,
   CloudSyncOutlined,
   DesktopOutlined,
   FundProjectionScreenOutlined,
   LoadingOutlined,
   PlayCircleOutlined,
-  ReloadOutlined,
   SettingOutlined,
   VideoCameraOutlined,
 } from '@ant-design/icons';
@@ -37,6 +37,7 @@ const pageKeys = [
 
 function AppContent() {
   const [activeKey, setActiveKey] = useState('/');
+  const [siderCollapsed, setSiderCollapsed] = useState(false);
   const { settings, uploadWebcamRecording, fetchSettings } = useSettings();
   const { t } = useTranslation();
 
@@ -144,9 +145,9 @@ function AppContent() {
       } : {}),
     }}>
       <Layout style={{ minHeight: '100vh' }}>
-        <Sider collapsible style={isDark ? undefined : { background: '#f0f0f0' }}>
-          <div style={{ height: 40, margin: 16, color: isDark ? '#fff' : '#222', fontSize: 14, fontWeight: 'bold', textAlign: 'center', lineHeight: '40px' }}>
-            ReplayKit
+        <Sider collapsible collapsed={siderCollapsed} onCollapse={setSiderCollapsed} style={isDark ? undefined : { background: '#f0f0f0' }}>
+          <div style={{ height: 40, margin: siderCollapsed ? '16px 8px' : 16, color: isDark ? '#fff' : '#222', fontSize: siderCollapsed ? 11 : 14, fontWeight: 'bold', textAlign: 'center', lineHeight: '40px', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+            {siderCollapsed ? 'RK' : 'ReplayKit'}
           </div>
           <Menu
             theme={isDark ? 'dark' : 'light'}
@@ -156,7 +157,7 @@ function AppContent() {
             onClick={({ key }) => { setActiveKey(key); window.dispatchEvent(new CustomEvent('tab-change', { detail: key })); }}
             style={isDark ? undefined : { background: '#f0f0f0' }}
           />
-          <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ padding: siderCollapsed ? '12px 8px' : '12px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <Tooltip title={t('webcam.title')} placement="right">
               <Button
                 block
@@ -165,7 +166,7 @@ function AppContent() {
                 onClick={toggleWebcam}
                 style={webcamVisible && webcam.webcamRecording ? { animation: 'blink 1s infinite' } : undefined}
               >
-                {t('webcam.title')}
+                {!siderCollapsed && t('webcam.title')}
               </Button>
             </Tooltip>
             <Tooltip title={t('dlt.launchViewer')} placement="right">
@@ -181,7 +182,7 @@ function AppContent() {
                   }
                 }}
               >
-                {t('dlt.launchViewer')}
+                {!siderCollapsed && t('dlt.launchViewer')}
               </Button>
             </Tooltip>
             <Tooltip title={t('server.update')} placement="right">
@@ -206,36 +207,16 @@ function AppContent() {
                   });
                 }}
               >
-                {t('server.update')}
-              </Button>
-            </Tooltip>
-            <Tooltip title={t('server.restart')} placement="right">
-              <Button
-                block
-                icon={<ReloadOutlined />}
-                onClick={() => {
-                  Modal.confirm({
-                    title: t('server.restartConfirm'),
-                    onOk: async () => {
-                      try {
-                        await serverApi.restart();
-                        message.info(t('server.restarting'));
-                        setTimeout(() => window.location.reload(), 5000);
-                      } catch { /* server is shutting down */ }
-                    },
-                  });
-                }}
-              >
-                {t('server.restart')}
+                {!siderCollapsed && t('server.update')}
               </Button>
             </Tooltip>
             <Tooltip title={t('server.guide')} placement="right">
               <Button
                 block
-                size="small"
+                icon={<BookOutlined />}
                 onClick={() => window.open('/docs/user-guide.html', '_blank')}
               >
-                {t('server.guide')}
+                {!siderCollapsed && t('server.guide')}
               </Button>
             </Tooltip>
           </div>

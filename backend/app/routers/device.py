@@ -75,8 +75,8 @@ async def list_devices():
     import time
     global _last_full_refresh
     now = time.time()
-    # ADB refresh는 30초마다만 (adb devices -l이 느림)
-    if now - _last_full_refresh > 30:
+    # ADB refresh는 10초마다 (재연결 루프와 별도로 UI 표시용)
+    if now - _last_full_refresh > 10:
         await dm.refresh_adb()
         _last_full_refresh = now
     # auxiliary는 빠른 상태 확인만 (네트워크 I/O 없음)

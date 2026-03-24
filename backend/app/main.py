@@ -23,9 +23,9 @@ logger = logging.getLogger(__name__)
 
 
 async def _reconnect_loop():
-    """백그라운드: 끊어진 디바이스 주기적 재연결 시도 (30초 간격)."""
+    """백그라운드: 끊어진 디바이스 주기적 재연결 시도 (5초 간격)."""
     while True:
-        await asyncio.sleep(30)
+        await asyncio.sleep(5)
         try:
             await device_manager.reconnect_disconnected()
         except Exception as e:

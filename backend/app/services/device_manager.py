@@ -476,6 +476,8 @@ class DeviceManager:
         self._devices: dict[str, ManagedDevice] = {}
         self._serial_conns: dict[str, "serial.Serial"] = {}  # device_id -> open serial connection
         self._hkmc_conns: dict[str, HKMC6thService] = {}  # device_id -> HKMC6thService
+        self._hkmc_reconnect_attempts: dict[str, int] = {}  # device_id -> 연속 재연결 실패 횟수
+        self._adb_reconnect_attempts: dict[str, int] = {}  # device_id -> 연속 재연결 실패 횟수
         self._vision_cams: dict[str, object] = {}  # device_id -> VisionCamera instance
         self._load_auxiliary_devices()
 
@@ -607,6 +609,7 @@ class DeviceManager:
         )
         self._devices[final_id] = dev
         self._hkmc_conns[final_id] = svc
+        self._hkmc_reconnect_attempts.pop(final_id, None)
         self._save_auxiliary_devices()
         return dev
 
@@ -692,15 +695,87 @@ class DeviceManager:
                 continue
             # Serial/Module: 기존 상태 유지 (별도 프로브 없음)
 
+    # 최대 연속 재연결 실패 횟수 — 초과 시 "error" 상태로 전환
+    HKMC_MAX_RECONNECT_ATTEMPTS = 12  # 5초 × 12 = 60초간 실패하면 error
+    ADB_MAX_RECONNECT_ATTEMPTS = 12   # 5초 × 12 = 60초간 실패하면 error
+
     async def reconnect_disconnected(self) -> None:
-        """끊어진 디바이스 재연결 시도 (백그라운드 태스크용, 느린 I/O 포함)."""
+        """끊어진 디바이스 재연결 시도 (백그라운드 태스크용, 5초 간격 호출)."""
+        # ADB 상태 일괄 갱신 (adb devices -l 1회 호출)
+        try:
+            adb_devices = await self.adb.list_devices()
+            adb_status_map = {d.serial: d for d in adb_devices}
+        except Exception:
+            adb_status_map = {}
+
         for dev in list(self._devices.values()):
+            # ── ADB 디바이스 재연결 ──
+            if dev.type == "adb":
+                adb_serial = dev.address
+                adb_dev = adb_status_map.get(adb_serial)
+                current_adb_status = adb_dev.status if adb_dev else "offline"
+
+                if current_adb_status == "device":
+                    # 정상 연결 — 카운터 리셋
+                    self._adb_reconnect_attempts.pop(dev.id, None)
+                    dev.status = "connected" if dev.status != "device" else dev.status
+                    dev.status = "device"
+                    continue
+
+                # error 상태면 재시도 안 함
+                if dev.status == "error":
+                    continue
+
+                attempts = self._adb_reconnect_attempts.get(dev.id, 0)
+                if attempts >= self.ADB_MAX_RECONNECT_ATTEMPTS:
+                    dev.status = "error"
+                    logger.warning("ADB reconnect give up after %d attempts: %s", attempts, dev.id)
+                    continue
+
+                dev.status = "reconnecting"
+                try:
+                    if ":" in adb_serial:
+                        # WiFi ADB — adb connect 재시도
+                        await self.adb.connect_device(adb_serial)
+                    else:
+                        # USB ADB — adb reconnect (USB 재인식 유도)
+                        await self.adb._run(f"reconnect {adb_serial}")
+
+                    # 재연결 후 상태 확인
+                    check = await self.adb.list_devices()
+                    found = next((d for d in check if d.serial == adb_serial), None)
+                    if found and found.status == "device":
+                        self._adb_reconnect_attempts.pop(dev.id, None)
+                        dev.status = "device"
+                        logger.info("ADB auto-reconnect success: %s (after %d attempts)", dev.id, attempts)
+                    else:
+                        self._adb_reconnect_attempts[dev.id] = attempts + 1
+                        dev.status = current_adb_status  # connecting/offline 등 원래 상태 유지
+                except Exception as e:
+                    self._adb_reconnect_attempts[dev.id] = attempts + 1
+                    dev.status = "offline"
+                    logger.debug("ADB auto-reconnect failed (%d/%d): %s: %s",
+                                 attempts + 1, self.ADB_MAX_RECONNECT_ATTEMPTS, dev.id, e)
+                continue
+
             if dev.type == "hkmc6th":
                 hkmc = self._hkmc_conns.get(dev.id)
                 if hkmc and hkmc.is_connected:
+                    # 연결 정상 — 실패 카운터 리셋
+                    self._hkmc_reconnect_attempts.pop(dev.id, None)
+                    if dev.status != "connected":
+                        dev.status = "connected"
                     continue
                 port = dev.info.get("port", 0)
                 if not port:
+                    continue
+                # error 상태면 재시도 안 함 (사용자가 수동으로 재연결해야)
+                if dev.status == "error":
+                    continue
+                attempts = self._hkmc_reconnect_attempts.get(dev.id, 0)
+                if attempts >= self.HKMC_MAX_RECONNECT_ATTEMPTS:
+                    dev.status = "error"
+                    logger.warning("HKMC reconnect give up after %d attempts: %s", attempts, dev.id)
                     continue
                 dev.status = "reconnecting"
                 try:
@@ -710,15 +785,27 @@ class DeviceManager:
                     ok = await svc.async_connect()
                     if ok:
                         self._hkmc_conns[dev.id] = svc
+                        self._hkmc_reconnect_attempts.pop(dev.id, None)
                         dev.status = "connected"
                         dev.info["agent_version"] = svc.agent_version
                         dev.info["screens"] = svc.get_info()["screens"]
-                        logger.info("HKMC auto-reconnect success: %s", dev.id)
+                        logger.info("HKMC auto-reconnect success: %s (after %d attempts)", dev.id, attempts)
                     else:
+                        self._hkmc_reconnect_attempts[dev.id] = attempts + 1
                         dev.status = "disconnected"
                 except Exception as e:
+                    self._hkmc_reconnect_attempts[dev.id] = attempts + 1
                     dev.status = "disconnected"
-                    logger.debug("HKMC auto-reconnect failed: %s: %s", dev.id, e)
+                    logger.debug("HKMC auto-reconnect failed (%d/%d): %s: %s",
+                                 attempts + 1, self.HKMC_MAX_RECONNECT_ATTEMPTS, dev.id, e)
+
+    def reset_reconnect_attempts(self, device_id: str) -> None:
+        """수동 재연결 시 실패 카운터 리셋 (error 상태에서 복구 가능하게)."""
+        self._hkmc_reconnect_attempts.pop(device_id, None)
+        self._adb_reconnect_attempts.pop(device_id, None)
+        dev = self._devices.get(device_id)
+        if dev and dev.status == "error":
+            dev.status = "disconnected"
 
     async def scan_serial(self) -> list[dict]:
         """Scan available serial ports."""

@@ -774,6 +774,7 @@ class PlaybackService:
                     ok = await svc.async_connect()
                     if ok:
                         self.dm._hkmc_conns[dev.id] = svc
+                        self.dm._hkmc_reconnect_attempts.pop(dev.id, None)
                         dev.status = "connected"
                         dev.info["agent_version"] = svc.agent_version
                         dev.info["screens"] = svc.get_info()["screens"]
@@ -906,26 +907,36 @@ class PlaybackService:
         elif step.type in (StepType.HKMC_TOUCH, StepType.HKMC_SWIPE, StepType.HKMC_KEY):
             if not real_id:
                 raise ValueError("HKMC step requires device_id")
-            hkmc = self.dm.get_hkmc_service(real_id)
-            if not hkmc:
-                raise ValueError(f"HKMC device {real_id} not connected")
-            screen_type = step.screen_type or params.get("screen_type", "front_center")
-            if step.type == StepType.HKMC_TOUCH:
-                await hkmc.async_tap(params["x"], params["y"], screen_type)
-            elif step.type == StepType.HKMC_SWIPE:
-                await hkmc.async_swipe(params["x1"], params["y1"], params["x2"], params["y2"], screen_type)
-            elif step.type == StepType.HKMC_KEY:
-                key_name = params.get("key_name")
-                if key_name:
-                    sub_cmd = params.get("sub_cmd", 0x43)
-                    monitor = params.get("monitor", 0x00)
-                    direction = params.get("direction")
-                    await hkmc.async_send_key_by_name(key_name, sub_cmd, monitor, direction)
-                else:
-                    await hkmc.async_send_key(
-                        params["cmd"], params["sub_cmd"], params["key_data"],
-                        params.get("monitor", 0x00), params.get("direction"),
-                    )
+            # 액션 실행 중 연결 끊김 시 재연결 후 재시도 (최대 2회)
+            for _hkmc_attempt in range(2):
+                hkmc = self.dm.get_hkmc_service(real_id)
+                if not hkmc or not hkmc.is_connected:
+                    raise ValueError(f"HKMC device {real_id} not connected")
+                try:
+                    screen_type = step.screen_type or params.get("screen_type", "front_center")
+                    if step.type == StepType.HKMC_TOUCH:
+                        await hkmc.async_tap(params["x"], params["y"], screen_type)
+                    elif step.type == StepType.HKMC_SWIPE:
+                        await hkmc.async_swipe(params["x1"], params["y1"], params["x2"], params["y2"], screen_type)
+                    elif step.type == StepType.HKMC_KEY:
+                        key_name = params.get("key_name")
+                        if key_name:
+                            sub_cmd = params.get("sub_cmd", 0x43)
+                            monitor = params.get("monitor", 0x00)
+                            direction = params.get("direction")
+                            await hkmc.async_send_key_by_name(key_name, sub_cmd, monitor, direction)
+                        else:
+                            await hkmc.async_send_key(
+                                params["cmd"], params["sub_cmd"], params["key_data"],
+                                params.get("monitor", 0x00), params.get("direction"),
+                            )
+                    break  # 성공 시 루프 탈출
+                except (ConnectionError, OSError) as ce:
+                    if _hkmc_attempt == 0:
+                        logger.warning("HKMC action failed (connection lost), reconnecting: %s", ce)
+                        await self._ensure_device_connected(real_id, max_retries=2, retry_interval=2.0)
+                    else:
+                        raise  # 재시도 후에도 실패 → 상위 except에서 "error" 처리
         elif step.type == StepType.WAIT:
             await self._interruptible_sleep(params.get("duration_ms", 1000) / 1000.0)
         elif step.type in (StepType.CMD_SEND, StepType.CMD_CHECK):

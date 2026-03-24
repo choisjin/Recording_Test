@@ -157,6 +157,17 @@ if exist "DltViewerSDK_21.1.3_ver\dlt-viewer.exe" (
 ) else (
     echo       [Note] DLT Viewer SDK not found - DLT Viewer GUI unavailable
 )
+:: ffmpeg
+if exist "tools\ffmpeg.exe" (
+    echo       ffmpeg found
+) else (
+    where ffmpeg.exe >nul 2>&1
+    if %ERRORLEVEL% equ 0 (
+        echo       ffmpeg found ^(system^)
+    ) else (
+        echo       [Note] ffmpeg not found - webcam trim unavailable
+    )
+)
 
 :: -------------------------------------------------------
 :: [4/5] Node.js (dev mode only)

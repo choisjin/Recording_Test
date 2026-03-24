@@ -17,6 +17,24 @@ RESULTS_DIR = Path(__file__).resolve().parent.parent.parent / "results"
 SCREENSHOTS_DIR = Path(__file__).resolve().parent.parent.parent / "screenshots"
 RECORDINGS_DIR = _PROJECT_ROOT / "Results" / "Video"
 EXPORT_ROOT = _PROJECT_ROOT / "Results"
+_TOOLS_DIR = _PROJECT_ROOT / "tools"
+
+
+def _find_ffmpeg() -> str | None:
+    """ffmpeg 실행 파일 경로를 반환. 시스템 PATH → tools/ 폴더 순으로 탐색."""
+    # 시스템 PATH
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    # 프로젝트 tools/ 폴더
+    local = _TOOLS_DIR / "ffmpeg.exe"
+    if local.is_file():
+        return str(local)
+    # tools/ffmpeg/bin/ 구조 (일반적인 ffmpeg 배포 패키지)
+    local_bin = _TOOLS_DIR / "ffmpeg" / "bin" / "ffmpeg.exe"
+    if local_bin.is_file():
+        return str(local_bin)
+    return None
 
 
 @router.get("/list")
@@ -330,18 +348,22 @@ async def trim_recording(
     filepath = RECORDINGS_DIR / filename
     if not filepath.exists():
         raise HTTPException(status_code=404, detail="Recording not found")
-    if shutil.which("ffmpeg") is None:
-        raise HTTPException(status_code=500, detail="ffmpeg not installed")
+    ffmpeg_path = _find_ffmpeg()
+    if ffmpeg_path is None:
+        raise HTTPException(
+            status_code=400,
+            detail="ffmpeg가 설치되어 있지 않습니다. tools/ 폴더에 ffmpeg.exe를 넣거나 시스템에 설치하세요."
+        )
     output_name = f"trim_{start:.1f}_{end:.1f}_{filename}"
     output_path = RECORDINGS_DIR / output_name
     try:
         subprocess.run(
-            ["ffmpeg", "-i", str(filepath), "-ss", str(start), "-to", str(end),
+            [ffmpeg_path, "-i", str(filepath), "-ss", str(start), "-to", str(end),
              "-c", "copy", str(output_path), "-y"],
             check=True, capture_output=True,
         )
     except subprocess.CalledProcessError as e:
-        raise HTTPException(status_code=500, detail=f"ffmpeg error: {e.stderr.decode()[:200]}")
+        raise HTTPException(status_code=500, detail=f"ffmpeg error: {e.stderr.decode(errors='replace')[:300]}")
     return {"filename": output_name, "url": f"/recordings/{output_name}"}
 
 
