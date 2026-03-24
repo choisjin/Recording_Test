@@ -30,11 +30,22 @@ ShowLanguageDialog=auto
 Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
+[Types]
+Name: "standard"; Description: "Standard"
+Name: "full"; Description: "Full (+ Vision Camera)"
+Name: "custom"; Description: "Custom"; Flags: iscustom
+
+[Components]
+Name: "main"; Description: "ReplayKit Core"; Types: standard full custom; Flags: fixed
+Name: "vimbax"; Description: "Vimba X SDK (Vision Camera support)"; Types: full
+
 [Files]
-; Main project files (entire dist/ReplayKit, exclude Node.js MSI - not needed in production)
-Source: "{#DistDir}\*"; DestDir: "{app}"; Excludes: "node-*.msi"; Flags: ignoreversion recursesubdirs createallsubdirs
-; VC++ Runtime (temp, silent install by Inno Setup)
+; Main project files
+Source: "{#DistDir}\*"; DestDir: "{app}"; Excludes: "node-*.msi,VimbaX_Setup*"; Flags: ignoreversion recursesubdirs createallsubdirs; Components: main
+; VC++ Runtime (temp)
 Source: "{#DistDir}\vcredist_x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
+; Vimba X SDK installer (temp, only if component selected)
+Source: "{#DistDir}\VimbaX_Setup*.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Components: vimbax
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\ReplayKit.bat"; IconFilename: "{app}\replaykit.ico"
@@ -56,10 +67,7 @@ var
   ResultCode: Integer;
 begin
   if CurUninstallStep = usUninstall then
-  begin
-    // Kill adb.exe before removing files
     Exec('cmd.exe', '/c taskkill /f /im adb.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  end;
 
   if CurUninstallStep = usPostUninstall then
   begin
@@ -77,6 +85,7 @@ procedure CurStepChanged(CurStep: TSetupStep);
 var
   ResultCode: Integer;
   VCRedist: String;
+  VimbaInstaller: String;
 begin
   if CurStep = ssPostInstall then
   begin
@@ -86,6 +95,20 @@ begin
       VCRedist := ExpandConstant('{tmp}\vcredist_x64.exe');
       if FileExists(VCRedist) then
         Exec(VCRedist, '/install /quiet /norestart', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    end;
+
+    // Vimba X SDK (user-driven install, only if component selected)
+    if IsComponentSelected('vimbax') then
+    begin
+      VimbaInstaller := '';
+      // Find the VimbaX installer in {tmp}
+      if FileExists(ExpandConstant('{tmp}\VimbaX_Setup-2025-3-Win64.exe')) then
+        VimbaInstaller := ExpandConstant('{tmp}\VimbaX_Setup-2025-3-Win64.exe');
+      if (VimbaInstaller <> '') then
+      begin
+        Log('Launching Vimba X installer...');
+        Exec(VimbaInstaller, '', '', SW_SHOW, ewWaitUntilTerminated, ResultCode);
+      end;
     end;
 
     // Run setup.bat

@@ -100,6 +100,15 @@ const translations = {
     'device.detectedBench': '감지된 벤치 디바이스',
     'device.detectedVision': '감지된 Vision 카메라',
     'device.visionNoSdk': 'Vimba X SDK 미설치 — 수동 연결을 사용하세요',
+    'device.visionForceIp': 'IP 변경',
+    'device.visionForceIpTitle': 'Vision 카메라 IP 설정 (ForceIP)',
+    'device.visionForceIpSuccess': 'ForceIP 완료 — 재스캔하세요',
+    'device.visionForceIpFailed': 'ForceIP 실패',
+    'device.visionCurrentIp': '현재 IP',
+    'device.visionNewIp': '새 IP',
+    'device.visionSubnet': '서브넷',
+    'device.visionGateway': '게이트웨이',
+    'device.pcInterfaces': 'PC 네트워크',
 
     // === Settings Page ===
     'settings.theme': 'UI 테마',
@@ -594,6 +603,15 @@ const translations = {
     'device.detectedBench': 'Detected Bench Devices',
     'device.detectedVision': 'Detected Vision Cameras',
     'device.visionNoSdk': 'Vimba X SDK not installed — use manual connection',
+    'device.visionForceIp': 'Change IP',
+    'device.visionForceIpTitle': 'Vision Camera IP Config (ForceIP)',
+    'device.visionForceIpSuccess': 'ForceIP done — please rescan',
+    'device.visionForceIpFailed': 'ForceIP failed',
+    'device.visionCurrentIp': 'Current IP',
+    'device.visionNewIp': 'New IP',
+    'device.visionSubnet': 'Subnet',
+    'device.visionGateway': 'Gateway',
+    'device.pcInterfaces': 'PC Network',
 
     // === Settings Page ===
     'settings.theme': 'UI Theme',

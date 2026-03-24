@@ -58,12 +58,19 @@ export default function DevicePage() {
   const [scannedSerial, setScannedSerial] = useState<SerialPort[]>([]);
   const [scannedHkmc, setScannedHkmc] = useState<{ ip: string; port: number; raw: string }[]>([]);
   const [scannedBench, setScannedBench] = useState<{ ip: string; port: number; verified?: boolean }[]>([]);
-  const [scannedVision, setScannedVision] = useState<{ id: string; mac: string; model: string; serial: string; vendor: string; tl_type: string; ip: string }[]>([]);
+  const [scannedVision, setScannedVision] = useState<{ id: string; mac: string; model: string; serial: string; vendor: string; tl_type: string; ip: string; subnet?: string; gateway?: string }[]>([]);
+  const [pcInterfaces, setPcInterfaces] = useState<{ name: string; ip: string; prefix: number }[]>([]);
+  const [forceIpModal, setForceIpModal] = useState<{ mac: string; currentIp: string } | null>(null);
+  const [forceIpAddr, setForceIpAddr] = useState('');
+  const [forceIpSubnet, setForceIpSubnet] = useState('255.255.255.0');
+  const [forceIpGateway, setForceIpGateway] = useState('0.0.0.0');
+  const [forceIpLoading, setForceIpLoading] = useState(false);
   const [connectType, setConnectType] = useState<'adb' | 'serial' | 'module' | 'hkmc6th' | 'vision_camera'>('adb');
   const [connectAddress, setConnectAddress] = useState('');
   const [baudrate, setBaudrate] = useState(115200);
   const [connecting, setConnecting] = useState(false);
   const [hkmcPort, setHkmcPort] = useState(5000);
+  const [modalTabKey, setModalTabKey] = useState('scan');
 
   // VisionCamera
   const [vcMac, setVcMac] = useState('');
@@ -115,6 +122,7 @@ export default function DevicePage() {
     setSelectedModule(undefined);
     setScanSelectedModule(undefined);
     setExtraFieldValues({});
+    setModalTabKey('scan');
     setModalOpen(true);
     handleScan();
     if (category === 'auxiliary') {
@@ -125,12 +133,13 @@ export default function DevicePage() {
   const handleScan = async () => {
     setScanning(true);
     try {
-      const res = await deviceApi.scan();
+      const [res, ifRes] = await Promise.all([deviceApi.scan(), deviceApi.localInterfaces()]);
       setScannedAdb(res.data.adb_devices || []);
       setScannedSerial(res.data.serial_ports || []);
       setScannedHkmc(res.data.hkmc_devices || []);
       setScannedBench(res.data.bench_devices || []);
       setScannedVision(res.data.vision_cameras || []);
+      setPcInterfaces(ifRes.data.interfaces || []);
     } catch {
       message.error(t('device.scanFailed'));
     }
@@ -466,6 +475,8 @@ export default function DevicePage() {
         footer={null}
       >
         <Tabs
+          activeKey={modalTabKey}
+          onChange={setModalTabKey}
           items={[
             {
               key: 'scan',
@@ -588,29 +599,44 @@ export default function DevicePage() {
                   {modalCategory === 'primary' && scannedVision.length > 0 && (
                     <>
                       <div style={{ fontWeight: 'bold', marginBottom: 8, marginTop: 8 }}>{t('device.detectedVision')}</div>
+                      {pcInterfaces.length > 0 && (
+                        <div style={{ marginBottom: 8, fontSize: 12, color: '#888' }}>
+                          {t('device.pcInterfaces')}: {pcInterfaces.map(i => `${i.ip}/${i.prefix} (${i.name})`).join(' | ')}
+                        </div>
+                      )}
                       <List
                         size="small"
                         dataSource={scannedVision}
                         renderItem={(cam) => (
                           <List.Item actions={[
-                            <Button size="small" type="primary" loading={connecting} onClick={() => {
-                              // 스캔 탭에서 수동 연결 탭으로 전환하며 값 채우기
-                              setConnectType('vision_camera');
-                              setVcMac(cam.mac);
-                              setVcModel(cam.model || '');
-                              setVcSerial(cam.serial || '');
-                              setConnectAddress(cam.ip || '');
-                              // 수동 연결 탭으로 전환 (두 번째 탭)
-                              const tabs = document.querySelectorAll('.ant-tabs-tab');
-                              if (tabs.length >= 2) (tabs[1] as HTMLElement).click();
-                            }}>{t('common.connect')}</Button>
+                            <Space size={4}>
+                              {cam.mac && (
+                                <Button size="small" onClick={() => {
+                                  setForceIpModal({ mac: cam.mac, currentIp: cam.ip || '' });
+                                  setForceIpAddr(cam.ip || '');
+                                  setForceIpSubnet(cam.subnet || '255.255.255.0');
+                                  setForceIpGateway(cam.gateway || '0.0.0.0');
+                                }}>{t('device.visionForceIp')}</Button>
+                              )}
+                              <Button size="small" type="primary" loading={connecting} onClick={() => {
+                                setConnectType('vision_camera');
+                                setVcMac(cam.mac);
+                                setVcModel(cam.model || '');
+                                setVcSerial(cam.serial || '');
+                                setConnectAddress(cam.ip || '');
+                                setModalTabKey('manual');
+                              }}>{t('common.connect')}</Button>
+                            </Space>
                           ]}>
-                            <Tag color="magenta">VisionCam</Tag>
-                            {cam.mac && <Tag color="blue">{cam.mac}</Tag>}
-                            {cam.model && <span style={{ marginRight: 8 }}>{cam.model}</span>}
-                            {cam.vendor && <span style={{ color: '#888', marginRight: 8 }}>{cam.vendor}</span>}
-                            {cam.ip && <Tag color="cyan">{cam.ip}</Tag>}
-                            {cam.tl_type && <Tag>{cam.tl_type}</Tag>}
+                            <div>
+                              <Tag color="magenta">VisionCam</Tag>
+                              {cam.model && <span style={{ marginRight: 8, fontWeight: 500 }}>{cam.model}</span>}
+                              {cam.vendor && <span style={{ color: '#888', marginRight: 8 }}>{cam.vendor}</span>}
+                              <br />
+                              {cam.mac && <Tag color="blue">MAC: {cam.mac}</Tag>}
+                              {cam.ip ? <Tag color="cyan">IP: {cam.ip}</Tag> : <Tag color="orange">IP: unknown</Tag>}
+                              {cam.subnet && <Tag>/{cam.subnet}</Tag>}
+                            </div>
                           </List.Item>
                         )}
                       />
@@ -862,6 +888,43 @@ export default function DevicePage() {
               }
               return null;
             })()}
+          </Space>
+        )}
+      </Modal>
+
+      {/* ForceIP Modal */}
+      <Modal
+        title={t('device.visionForceIpTitle')}
+        open={!!forceIpModal}
+        onCancel={() => setForceIpModal(null)}
+        onOk={async () => {
+          if (!forceIpModal) return;
+          setForceIpLoading(true);
+          try {
+            await deviceApi.visionForceIp(forceIpModal.mac, forceIpAddr, forceIpSubnet, forceIpGateway);
+            message.success(t('device.visionForceIpSuccess'));
+            setForceIpModal(null);
+            handleScan();
+          } catch (e: any) {
+            message.error(`${t('device.visionForceIpFailed')}: ${e.response?.data?.detail || e.message}`);
+          }
+          setForceIpLoading(false);
+        }}
+        confirmLoading={forceIpLoading}
+        width={480}
+      >
+        {forceIpModal && (
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <div><strong>MAC:</strong> {forceIpModal.mac}</div>
+            {forceIpModal.currentIp && <div><strong>{t('device.visionCurrentIp')}:</strong> {forceIpModal.currentIp}</div>}
+            {pcInterfaces.length > 0 && (
+              <div style={{ fontSize: 12, color: '#888' }}>
+                {t('device.pcInterfaces')}: {pcInterfaces.map(i => `${i.ip}/${i.prefix}`).join(', ')}
+              </div>
+            )}
+            <Input addonBefore={t('device.visionNewIp')} value={forceIpAddr} onChange={e => setForceIpAddr(e.target.value)} placeholder="192.168.20.10" />
+            <Input addonBefore={t('device.visionSubnet')} value={forceIpSubnet} onChange={e => setForceIpSubnet(e.target.value)} />
+            <Input addonBefore={t('device.visionGateway')} value={forceIpGateway} onChange={e => setForceIpGateway(e.target.value)} />
           </Space>
         )}
       </Modal>

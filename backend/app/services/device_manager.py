@@ -636,6 +636,15 @@ class DeviceManager:
             logger.debug("VisionCamera scan failed: %s", e)
             return []
 
+    async def force_ip_camera(self, mac: str, ip: str, subnet: str, gateway: str) -> str:
+        """GigE Vision 카메라 ForceIP (vmbpy 기반)."""
+        loop = asyncio.get_event_loop()
+        try:
+            from ..plugins.VisionCameraClient import force_ip_camera
+            return await loop.run_in_executor(None, force_ip_camera, mac, ip, subnet, gateway)
+        except Exception as e:
+            return f"ForceIP error: {e}"
+
     async def add_serial_device(self, port: str, baudrate: int = 115200, name: str = "", category: str = "auxiliary", device_id: str = "") -> ManagedDevice:
         """Add a serial device and open a persistent connection."""
         final_id = device_id or self._generate_device_id("serial")

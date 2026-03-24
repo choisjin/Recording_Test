@@ -108,6 +108,46 @@ async def scan_ports():
     }
 
 
+@router.get("/local-interfaces")
+async def get_local_interfaces():
+    """PC의 네트워크 인터페이스 목록 반환."""
+    interfaces = []
+    try:
+        import ifaddr
+        for adapter in ifaddr.get_adapters():
+            for ip in adapter.ips:
+                if ip.is_IPv4 and not str(ip.ip).startswith("127."):
+                    interfaces.append({
+                        "name": adapter.nice_name,
+                        "ip": str(ip.ip),
+                        "prefix": ip.network_prefix,
+                    })
+    except ImportError:
+        import socket
+        hostname = socket.gethostname()
+        for info in socket.getaddrinfo(hostname, None, socket.AF_INET):
+            addr = info[4][0]
+            if not addr.startswith("127."):
+                interfaces.append({"name": "", "ip": addr, "prefix": 24})
+    return {"interfaces": interfaces}
+
+
+class ForceIPRequest(BaseModel):
+    mac: str
+    ip: str
+    subnet: str = "255.255.255.0"
+    gateway: str = "0.0.0.0"
+
+
+@router.post("/vision-force-ip")
+async def vision_force_ip(req: ForceIPRequest):
+    """VisionCamera ForceIP — 카메라 IP를 강제 변경."""
+    result = await dm.force_ip_camera(req.mac, req.ip, req.subnet, req.gateway)
+    if "OK" in result:
+        return {"result": result}
+    raise HTTPException(status_code=400, detail=result)
+
+
 @router.post("/connect")
 async def connect_device(req: ConnectRequest):
     """Connect to a device."""

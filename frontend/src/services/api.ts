@@ -21,6 +21,9 @@ export const deviceApi = {
     api.post('/device/input', { device_id: deviceId, action, params }),
   listModules: () => api.get('/device/modules'),
   getModuleFunctions: (moduleName: string) => api.get(`/device/modules/${moduleName}/functions`),
+  localInterfaces: () => api.get('/device/local-interfaces'),
+  visionForceIp: (mac: string, ip: string, subnet: string, gateway: string) =>
+    api.post('/device/vision-force-ip', { mac, ip, subnet, gateway }),
 };
 
 // Scenario APIs

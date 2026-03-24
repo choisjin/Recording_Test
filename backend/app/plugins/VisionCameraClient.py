@@ -83,70 +83,118 @@ def _component_to_pil(comp, pixel_format: str = "") -> Image.Image:
 
 
 def scan_vision_cameras() -> list[dict]:
-    """네트워크에서 GigE Vision 카메라를 검색하여 목록을 반환.
+    """GVCP UDP broadcast (port 3956)로 GigE Vision 카메라를 스캔.
 
-    Harvester를 사용하여 카메라를 열거하고, 연결하지 않고 정보만 반환한다.
-    Returns:
-        [{"mac": "...", "model": "...", "serial": "...", "ip": "...", "id": "..."}]
+    SDK 없이 순수 Python socket으로 동작. IP/서브넷/게이트웨이 포함.
     """
-    cti_files = _find_cti_files()
-    if not cti_files:
-        logger.debug("scan_vision_cameras: CTI files not found (Vimba X SDK not installed)")
-        return []
+    import socket, struct, time
+
+    GVCP_PORT = 3956
+    DISCOVERY_CMD = b'\x42\x11\x00\x02\x00\x00\x00\x01'
 
     cameras = []
-    harvester = None
     try:
-        from harvesters.core import Harvester
-        harvester = Harvester()
-        for cti in cti_files:
-            harvester.add_file(cti)
-        harvester.update()
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        sock.settimeout(2.0)
+        sock.bind(('', 0))
+        sock.sendto(DISCOVERY_CMD, ('255.255.255.255', GVCP_PORT))
 
-        for info in harvester.device_info_list:
-            cam_info = {
-                "id": getattr(info, "id_", ""),
-                "model": getattr(info, "model", ""),
-                "serial": getattr(info, "serial_number", ""),
-                "vendor": getattr(info, "vendor", ""),
-                "tl_type": getattr(info, "tl_type", ""),  # e.g. "GEV" (GigE Vision)
-            }
-            # MAC 주소 추출 (ID에서 DEV_XXXXXXXXXXXX 형태)
-            raw_id = cam_info["id"]
-            mac = ""
-            if "DEV_" in raw_id:
-                parts = raw_id.split("DEV_")
-                if len(parts) > 1:
-                    mac_part = parts[1].split("_")[0].split("#")[0]
-                    if len(mac_part) == 12 and all(c in "0123456789ABCDEFabcdef" for c in mac_part):
-                        mac = mac_part.upper()
-            cam_info["mac"] = mac
-
-            # IP 추출 시도 — GigE Vision 디바이스는 access_status에 IP 정보가 있을 수 있음
-            ip = ""
+        deadline = time.time() + 2.0
+        while time.time() < deadline:
             try:
-                if hasattr(info, "access_status") and info.access_status is not None:
-                    ip = str(getattr(info, "host", ""))
-            except Exception:
-                pass
-            cam_info["ip"] = ip
-
-            cameras.append(cam_info)
-            logger.info("scan_vision_cameras: found %s (mac=%s, model=%s)",
-                        raw_id, mac, cam_info["model"])
-
-    except ImportError:
-        logger.debug("scan_vision_cameras: harvesters not installed")
+                data, addr = sock.recvfrom(4096)
+                cam = _parse_gvcp_discovery(data)
+                if cam:
+                    cameras.append(cam)
+                    logger.info("scan(GVCP): %s ip=%s model=%s mac=%s",
+                                addr[0], cam["ip"], cam["model"], cam["mac"])
+            except socket.timeout:
+                break
+        sock.close()
     except Exception as e:
-        logger.warning("scan_vision_cameras error: %s", e)
-    finally:
-        if harvester:
-            try:
-                harvester.reset()
-            except Exception:
-                pass
+        logger.warning("GVCP scan error: %s", e)
 
     return cameras
+
+
+def _parse_gvcp_discovery(data: bytes) -> dict | None:
+    """GVCP Discovery ACK 패킷 파싱."""
+    import socket, struct
+    if len(data) < 256:
+        return None
+    payload = data[8:]  # 8-byte header skip
+
+    mac_high = struct.unpack(">H", payload[10:12])[0]
+    mac_low = struct.unpack(">I", payload[12:16])[0]
+    mac_str = "{:012X}".format((mac_high << 32) | mac_low)
+
+    return {
+        "id": "DEV_" + mac_str,
+        "mac": mac_str,
+        "ip": socket.inet_ntoa(payload[36:40]),
+        "subnet": socket.inet_ntoa(payload[52:56]),
+        "gateway": socket.inet_ntoa(payload[68:72]),
+        "vendor": payload[72:104].split(b'\x00')[0].decode('utf-8', errors='replace'),
+        "model": payload[104:136].split(b'\x00')[0].decode('utf-8', errors='replace'),
+        "serial": payload[216:232].split(b'\x00')[0].decode('utf-8', errors='replace'),
+        "display_name": payload[232:248].split(b'\x00')[0].decode('utf-8', errors='replace'),
+        "tl_type": "GEV",
+    }
+
+
+def force_ip_camera(mac: str, ip: str, subnet: str = "255.255.255.0", gateway: str = "0.0.0.0") -> str:
+    """GVCP ForceIP - UDP broadcast로 카메라 IP를 강제 설정.
+
+    SDK 없이 순수 Python socket으로 동작.
+    """
+    import socket, struct
+
+    GVCP_PORT = 3956
+    mac_clean = mac.upper().replace(":", "").replace("-", "")
+    if len(mac_clean) != 12:
+        return f"Invalid MAC: {mac}"
+
+    mac_int = int(mac_clean, 16)
+    mac_high = (mac_int >> 32) & 0xFFFF
+    mac_low = mac_int & 0xFFFFFFFF
+
+    # ForceIP payload (56 bytes)
+    payload = bytearray(56)
+    struct.pack_into(">H", payload, 2, mac_high)
+    struct.pack_into(">I", payload, 4, mac_low)
+    struct.pack_into(">I", payload, 20, struct.unpack(">I", socket.inet_aton(ip))[0])
+    struct.pack_into(">I", payload, 36, struct.unpack(">I", socket.inet_aton(subnet))[0])
+    struct.pack_into(">I", payload, 52, struct.unpack(">I", socket.inet_aton(gateway))[0])
+
+    # GVCP header (8 bytes): key=0x42, flag=0x01, cmd=0x0004, len=56, req_id=2
+    header = struct.pack(">BBHHH", 0x42, 0x01, 0x0004, len(payload), 0x0002)
+
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        sock.settimeout(3.0)
+        sock.sendto(header + bytes(payload), ('255.255.255.255', GVCP_PORT))
+
+        # ForceIP ACK 대기
+        try:
+            data, addr = sock.recvfrom(4096)
+            status = struct.unpack(">H", data[0:2])[0]
+            if status == 0:
+                logger.info("ForceIP OK: %s -> %s/%s", mac, ip, subnet)
+                sock.close()
+                return f"ForceIP OK: {mac} -> {ip}/{subnet}"
+            else:
+                sock.close()
+                return f"ForceIP failed: status={status}"
+        except socket.timeout:
+            sock.close()
+            # ACK 없어도 성공할 수 있음 (일부 카메라는 ACK 안 보냄)
+            logger.info("ForceIP sent (no ACK): %s -> %s/%s", mac, ip, subnet)
+            return f"ForceIP sent: {mac} -> {ip}/{subnet} (no ACK, please rescan)"
+    except Exception as e:
+        logger.error("ForceIP error: %s", e)
+        return f"ForceIP failed: {e}"
 
 
 class VisionCameraClient:
