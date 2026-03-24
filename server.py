@@ -401,7 +401,7 @@ class ServerManagerApp:
             log_callback("[동기화] 원격 최신 상태 가져오는 중...")
             _run_cmd(git + ["fetch", "origin", "main"], timeout=60)
             code, out = _run_cmd(git + ["reset", "--hard", "origin/main"], timeout=30)
-            _run_cmd(git + ["clean", "-fd"], timeout=15)
+            _run_cmd(git + ["clean", "-fd", "-e", "python/", "-e", "node_modules/"], timeout=15)
             if out:
                 log_callback(f"[동기화] {out}")
             if code != 0:
