@@ -449,17 +449,67 @@
   <span class="step-item">⑤ 결과 확인 & 리포트</span>
 </div>
 
-<div class="figure">
-  <div class="figure-diagram">
-디바이스              ReplayKit              결과
-┌──────┐    조작 녹화    ┌──────────┐   SSIM 비교   ┌──────────┐
-│Android├───────────────►│ 시나리오  │─────────────►│ Pass/Fail│
-│ IVI   │◄───────────────┤  재생    │               │  리포트  │
-│ 시리얼│    명령 전송    └──────────┘               └──────────┘
-└──────┘                  ▲  스크린샷                    │
-                          └────── 기대이미지 비교 ────────┘
-  </div>
-  <div class="figure-caption">ReplayKit 데이터 흐름도</div>
+<div class="figure" style="padding:24px 16px;">
+  <svg viewBox="0 0 820 340" xmlns="http://www.w3.org/2000/svg" style="max-width:780px;width:100%;">
+    <defs>
+      <marker id="ah" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="var(--accent)"/></marker>
+      <marker id="ah-m" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="var(--text-muted)"/></marker>
+      <filter id="ds"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.10"/></filter>
+    </defs>
+    <style>
+      .bx{rx:12;ry:12;stroke-width:2;filter:url(#ds)}
+      .bx-dev{fill:var(--accent-light);stroke:var(--accent)}
+      .bx-eng{fill:var(--success-bg);stroke:var(--success)}
+      .bx-res{fill:var(--warning-bg);stroke:var(--warning)}
+      .bx-cmp{fill:var(--bg-alt);stroke:var(--border)}
+      .t1{font-family:'Segoe UI',sans-serif;font-weight:700;font-size:15px;fill:var(--text)}
+      .t2{font-family:'Segoe UI',sans-serif;font-size:12px;fill:var(--text-muted)}
+      .lb{font-family:'Segoe UI',sans-serif;font-size:11.5px;fill:var(--text-muted);font-weight:600}
+      .ic{font-size:26px}
+    </style>
+    <!-- Device -->
+    <rect class="bx bx-dev" x="20" y="30" width="170" height="150"/>
+    <text class="ic" x="105" y="72" text-anchor="middle">&#x1F4F1;</text>
+    <text class="t1" x="105" y="100" text-anchor="middle">&#xB514;&#xBC14;&#xC774;&#xC2A4;</text>
+    <text class="t2" x="105" y="120" text-anchor="middle">Android / IVI</text>
+    <text class="t2" x="105" y="137" text-anchor="middle">&#xC2DC;&#xB9AC;&#xC5BC; / &#xBAA8;&#xB4C8;</text>
+    <!-- Engine -->
+    <rect class="bx bx-eng" x="305" y="30" width="210" height="150"/>
+    <text class="ic" x="410" y="72" text-anchor="middle">&#x2699;&#xFE0F;</text>
+    <text class="t1" x="410" y="100" text-anchor="middle">ReplayKit &#xC5D4;&#xC9C4;</text>
+    <text class="t2" x="410" y="120" text-anchor="middle">&#xC2DC;&#xB098;&#xB9AC;&#xC624; &#xB179;&#xD654; &amp; &#xC7AC;&#xC0DD;</text>
+    <text class="t2" x="410" y="137" text-anchor="middle">&#xC2A4;&#xD06C;&#xB9B0;&#xC0F7; &#xCEA1;&#xCC98;</text>
+    <!-- Result -->
+    <rect class="bx bx-res" x="630" y="30" width="170" height="150"/>
+    <text class="ic" x="715" y="72" text-anchor="middle">&#x1F4CA;</text>
+    <text class="t1" x="715" y="100" text-anchor="middle">&#xD14C;&#xC2A4;&#xD2B8; &#xACB0;&#xACFC;</text>
+    <text class="t2" x="715" y="120" text-anchor="middle">Pass / Fail &#xD310;&#xC815;</text>
+    <text class="t2" x="715" y="137" text-anchor="middle">Excel &#xB9AC;&#xD3EC;&#xD2B8;</text>
+    <!-- Compare -->
+    <rect class="bx bx-cmp" x="305" y="230" width="210" height="80"/>
+    <text class="ic" x="365" y="268" text-anchor="middle">&#x1F50D;</text>
+    <text class="t1" x="415" y="265" text-anchor="start" style="font-size:14px">SSIM &#xBE44;&#xAD50;</text>
+    <text class="t2" x="410" y="285" text-anchor="middle">&#xAE30;&#xB300; &#xC774;&#xBBF8;&#xC9C0; vs &#xC2E4;&#xC81C; &#xC2A4;&#xD06C;&#xB9B0;&#xC0F7;</text>
+    <!-- Arrow: Device -> Engine top -->
+    <line x1="190" y1="75" x2="303" y2="75" stroke="var(--accent)" stroke-width="2.5" marker-end="url(#ah)"/>
+    <text class="lb" x="247" y="67" text-anchor="middle">&#xC870;&#xC791; &#xB179;&#xD654;</text>
+    <!-- Arrow: Engine -> Device bottom -->
+    <line x1="305" y1="135" x2="192" y2="135" stroke="var(--accent)" stroke-width="2.5" marker-end="url(#ah)"/>
+    <text class="lb" x="247" y="155" text-anchor="middle">&#xBA85;&#xB839; &#xC804;&#xC1A1;</text>
+    <!-- Arrow: Engine -> Result -->
+    <line x1="515" y1="105" x2="628" y2="105" stroke="var(--accent)" stroke-width="2.5" marker-end="url(#ah)"/>
+    <text class="lb" x="572" y="97" text-anchor="middle">&#xAC80;&#xC99D; &#xACB0;&#xACFC;</text>
+    <!-- Arrow: Engine down to Compare -->
+    <line x1="380" y1="180" x2="380" y2="228" stroke="var(--text-muted)" stroke-width="2" marker-end="url(#ah-m)"/>
+    <text class="lb" x="393" y="210" text-anchor="start">&#xC2A4;&#xD06C;&#xB9B0;&#xC0F7;</text>
+    <!-- Arrow: Compare up to Engine -->
+    <line x1="440" y1="230" x2="440" y2="182" stroke="var(--text-muted)" stroke-width="2" marker-end="url(#ah-m)"/>
+    <text class="lb" x="453" y="210" text-anchor="start">&#xC720;&#xC0AC;&#xB3C4; &#xC810;&#xC218;</text>
+    <!-- Arrow: Result down-left to Compare (dashed) -->
+    <path d="M715,180 L715,270 L517,270" fill="none" stroke="var(--text-muted)" stroke-width="2" marker-end="url(#ah-m)" stroke-dasharray="6,4"/>
+    <text class="lb" x="620" y="262" text-anchor="middle">Diff &#xD788;&#xD2B8;&#xB9F5;</text>
+  </svg>
+  <div class="figure-caption">ReplayKit &#xB370;&#xC774;&#xD130; &#xD750;&#xB984;&#xB3C4;</div>
 </div>
 
 
@@ -470,8 +520,8 @@
 <table>
   <tr><th>항목</th><th>요구사항</th></tr>
   <tr><td>운영체제</td><td>Windows 10 이상 (64bit)</td></tr>
-  <tr><td>Python</td><td>3.10 이상 (설치 프로그램이 자동 설치)</td></tr>
-  <tr><td>Node.js</td><td>v18 이상 (설치 프로그램이 자동 설치)</td></tr>
+  <tr><td>Python</td><td>3.10 이상 (미설치 시 설치 안내 제공)</td></tr>
+  <tr><td>Node.js</td><td>v18 이상 (개발 모드에서만 필요, 미설치 시 안내 제공)</td></tr>
   <tr><td>브라우저</td><td>Chrome, Edge 등 최신 브라우저</td></tr>
   <tr><td>디바이스</td><td>USB 디버깅이 켜진 Android 기기 또는 HKMC IVI</td></tr>
 </table>
@@ -482,16 +532,22 @@
 <ol class="numbered-steps">
   <li><code>ReplayKit_Setup_1.0.exe</code> 실행 → 관리자 권한 허용</li>
   <li>설치 경로 확인 (기본: <code>C:\ReplayKit</code>)</li>
-  <li>설치가 자동으로 진행됩니다:
+  <li>파일 복사가 완료되면 <strong>환경 설정 창</strong>(setup.bat)이 자동으로 열립니다</li>
+  <li><strong>Python 3.10이 없는 경우</strong> — 설치 프로그램이 자동으로 실행됩니다:
     <ul>
-      <li>VC++ 런타임이 없으면 자동 설치</li>
-      <li>Python 3.10이 없으면 자동 설치</li>
-      <li>Node.js가 없으면 자동 설치</li>
-      <li>Python/Node 의존성 자동 설치</li>
+      <li>Python 설치 화면에서 <strong>"Add Python to PATH"를 반드시 체크</strong>하세요</li>
+      <li>설치를 완료한 뒤 설정 창에서 <strong>아무 키나 눌러</strong> 계속 진행합니다</li>
     </ul>
   </li>
-  <li>설치 완료 후 ReplayKit이 자동으로 실행됩니다</li>
+  <li>이후 Python 패키지가 자동으로 설치되고, 완료 메시지가 표시됩니다</li>
+  <li>설치 완료 후 ReplayKit을 실행합니다</li>
 </ol>
+
+<div class="callout callout-warning">
+  <strong>⚠️ "Add Python to PATH" 필수</strong>
+  Python 설치 시 하단의 <strong>"Add Python 3.10 to PATH"</strong> 체크박스를 반드시 선택하세요.
+  이 옵션이 빠지면 ReplayKit이 Python을 찾지 못합니다.
+</div>
 
 <h4>방법 2: 수동 설치 (개발 환경)</h4>
 <pre><code># 프로젝트 폴더에서 초기 설정 (최초 1회)

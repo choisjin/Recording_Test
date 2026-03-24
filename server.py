@@ -387,17 +387,21 @@ class ServerManagerApp:
         """git pull + pip install + npm install. 메인 스레드가 아닌 곳에서 호출."""
         self._set_status("동기화 중...")
 
-        # 1) 로컬 변경 초기화 + git pull
-        log_callback("[동기화] git reset + pull ...")
-        _run_cmd(["git", "checkout", "--", "."], timeout=30)
-        _run_cmd(["git", "clean", "-fd", "--exclude=ReplayKit.exe"], timeout=30)
-        code, out = _run_cmd(["git", "pull", "origin", "main"], timeout=60)
-        if out:
-            log_callback(f"[동기화] {out}")
-        if code != 0:
-            log_callback("[동기화] git pull 실패 — 충돌을 확인하세요")
-            self._set_status("동기화 실패")
-            return False
+        # 1) 로컬 변경 초기화 + git pull (git 저장소인 경우만)
+        git_dir = os.path.join(PROJECT_ROOT, ".git")
+        if os.path.isdir(git_dir):
+            log_callback("[동기화] git reset + pull ...")
+            _run_cmd(["git", "checkout", "--", "."], timeout=30)
+            _run_cmd(["git", "clean", "-fd"], timeout=30)
+            code, out = _run_cmd(["git", "pull", "origin", "main"], timeout=60)
+            if out:
+                log_callback(f"[동기화] {out}")
+            if code != 0:
+                log_callback("[동기화] git pull 실패 — 충돌을 확인하세요")
+                self._set_status("동기화 실패")
+                return False
+        else:
+            log_callback("[동기화] git 저장소 없음 — git pull 건너뜀")
 
         # 2) pip install
         log_callback("[동기화] Python 의존성 확인 중...")
@@ -498,13 +502,15 @@ class ServerManagerApp:
             srv.start(self._log)
         threading.Thread(target=_do, daemon=True).start()
 
-    def _start_all_sync(self):
+    def _start_all_sync(self, auto_open_web=False):
         """서버 시작 (현재 스레드에서 실행, 다른 스레드에서 호출할 때 사용)."""
         self.backend.start(self._log)
         if not self._production:
             self.frontend.start(self._log)
         else:
             self._log("[시스템] 프로덕션 모드 — 프론트엔드는 백엔드가 서빙합니다")
+        if auto_open_web:
+            self._wait_and_open_web()
 
     def _start_all(self):
         threading.Thread(target=self._start_all_sync, daemon=True).start()
@@ -512,6 +518,24 @@ class ServerManagerApp:
     def _open_web(self):
         url = self.backend.url if self._production else self.frontend.url
         webbrowser.open(url)
+
+    def _wait_and_open_web(self):
+        """백엔드 HTTP 응답이 올 때까지 대기 후 브라우저 자동 오픈."""
+        import urllib.request
+        url = self.backend.url if self._production else self.frontend.url
+        check_url = self.backend.url + "/api/device/list"
+        for _ in range(30):  # 최대 30초 대기
+            time.sleep(1)
+            if not self.backend.running:
+                return
+            try:
+                urllib.request.urlopen(check_url, timeout=2)
+                self._log(f"[시스템] 백엔드 준비 완료 — 브라우저를 엽니다")
+                webbrowser.open(url)
+                return
+            except Exception:
+                pass
+        self._log("[시스템] 백엔드 응답 대기 시간 초과 — 수동으로 웹을 열어주세요")
 
     def _stop_all(self):
         def _do():
@@ -549,7 +573,19 @@ class ServerManagerApp:
             self.backend.stop(self._log)
             if not self._production:
                 self.frontend.stop(self._log)
+        # adb.exe 프로세스 종료
+        self._kill_adb()
         self.root.destroy()
+
+    @staticmethod
+    def _kill_adb():
+        """시스템에서 실행 중인 adb.exe 프로세스를 모두 종료."""
+        for proc in psutil.process_iter(["name"]):
+            try:
+                if proc.info["name"] and proc.info["name"].lower() == "adb.exe":
+                    proc.kill()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
 
     def run(self):
         self.root.mainloop()
@@ -597,15 +633,17 @@ if __name__ == "__main__":
     app = ServerManagerApp()
 
     if do_sync:
-        # 일반 시작: 동기화 후 자동 시작
+        # 일반 시작: 동기화 후 자동 시작 + 웹 오픈
         def _auto_sync_and_start():
             if app._sync(app._log):
-                app._start_all_sync()
+                app._start_all_sync(auto_open_web=True)
             else:
                 app._log("[시스템] 동기화 실패 — 수동으로 시작하세요")
         threading.Thread(target=_auto_sync_and_start, daemon=True).start()
     elif is_restart:
-        # 재시작: 동기화 없이 바로 시작
-        app.root.after(500, app._start_all)
+        # 재시작: 동기화 없이 바로 시작 + 웹 오픈
+        def _restart_and_open():
+            app._start_all_sync(auto_open_web=True)
+        threading.Thread(target=_restart_and_open, daemon=True).start()
 
     app.run()

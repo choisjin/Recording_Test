@@ -45,6 +45,11 @@ async def lifespan(app: FastAPI):
     scrcpy_manager.stop_all()
     logger.info("Closing all serial connections...")
     device_manager.close_all_serial_connections()
+    logger.info("Killing ADB server...")
+    try:
+        await adb_service._run("kill-server")
+    except Exception as e:
+        logger.debug("ADB kill-server: %s", e)
 
 
 app = FastAPI(

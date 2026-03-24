@@ -43,7 +43,9 @@ SKIP_COMPILE = {"__init__.py", "dependencies.py",
 INCLUDE_ROOT_FILES = [
     "requirements.txt",
     "setup.bat",
+    "ReplayKit.bat",
     "server.py",
+    "replaykit.ico",
 ]
 
 # 배포에 포함할 추가 파일/폴더 (모듈 DLL 등)
@@ -152,33 +154,19 @@ def step_build_frontend():
 
 
 def step_build_exe():
-    """server.py → ReplayKit.exe."""
-    print("\n=== [3/4] server.py → exe 컴파일 ===")
-    exe_dest = DIST_DIR / "ReplayKit.exe"
-    result = _run([
-        sys.executable, "-m", "PyInstaller",
-        "--onefile", "--noconsole",
-        "--name", "ReplayKit",
-        "--distpath", str(DIST_DIR),
-        "--workpath", str(BUILD_DIR / "pyinstaller"),
-        "--specpath", str(BUILD_DIR),
-        str(PROJECT_ROOT / "server.py"),
-    ], check=False, live_output=True)
-    if result.returncode != 0:
-        print(f"  PyInstaller 에러:\n{result.stderr[:500]}")
-        return False
-    if exe_dest.exists():
-        print(f"  exe 빌드 완료: {exe_dest}")
+    """(Deprecated) PyInstaller exe 빌드는 더 이상 사용하지 않음.
+    ReplayKit.bat 런처가 venv/pythonw.exe를 직접 실행합니다."""
+    print("\n=== [3/3] exe build skipped (using ReplayKit.bat launcher) ===")
     return True
 
 
 def step_package():
     """배포 패키지 조립 (dist/ReplayKit/)."""
-    print("\n=== [4/4] 배포 패키지 생성 ===")
+    print("\n=== [3/3] 배포 패키지 생성 ===")
 
-    # 기존 내용 정리 (.git, exe, whl, msi 등 보존)
+    # 기존 내용 정리 (.git, whl, msi 등 보존)
     DIST_DIR.mkdir(parents=True, exist_ok=True)
-    _preserve_names = {".git", ".gitignore", ".gitattributes", "ReplayKit.exe"}
+    _preserve_names = {".git", ".gitignore", ".gitattributes"}
     _preserve_exts = {".whl", ".msi", ".exe"}
     for item in list(DIST_DIR.iterdir()):
         if item.name in _preserve_names or item.suffix in _preserve_exts:
@@ -193,6 +181,9 @@ def step_package():
     src_backend = PROJECT_ROOT / "backend"
     dst_backend = DIST_DIR / "backend"
 
+    # 배포에서 제외할 런타임 데이터 파일
+    _skip_files = {"auxiliary_devices.json", "settings.json"}
+
     for root, dirs, files in os.walk(src_backend):
         dirs[:] = [d for d in dirs if d not in ("__pycache__", "scenarios", "results", "screenshots")]
         rel_root = Path(root).relative_to(src_backend)
@@ -200,6 +191,8 @@ def step_package():
         dst_root.mkdir(parents=True, exist_ok=True)
 
         for f in files:
+            if f in _skip_files:
+                continue
             src_file = Path(root) / f
             dst_file = dst_root / f
 
@@ -264,6 +257,7 @@ def step_package():
 __pycache__/
 *.pyc
 *.exe
+*.msi
 backend/screenshots/
 backend/results/
 backend/scenarios/
@@ -273,6 +267,15 @@ Results/
 DLL_DEBUG/
 .env
 """, encoding="utf-8")
+
+    # ── 배포 repo URL 기록 (설치 후 git init용) ──
+    remote_url = _get_deploy_remote()
+    git_remote_file = DIST_DIR / "git_remote.txt"
+    if remote_url:
+        git_remote_file.write_text(remote_url, encoding="utf-8")
+        print(f"  git_remote.txt: {remote_url}")
+    elif git_remote_file.exists():
+        git_remote_file.unlink()
 
     # 통계
     total = sum(1 for _ in DIST_DIR.rglob("*") if _.is_file())
@@ -284,6 +287,15 @@ DLL_DEBUG/
 
 
 # ── 배포 repo 관리 ──
+
+def _get_deploy_remote() -> str:
+    """dist/.git/config에서 origin URL을 읽어온다."""
+    try:
+        r = _run(["git", "remote", "get-url", "origin"], cwd=DIST_DIR, check=False)
+        return r.stdout.strip() if r.returncode == 0 else ""
+    except Exception:
+        return ""
+
 
 def init_deploy():
     """배포 repo 최초 설정."""
@@ -383,10 +395,6 @@ def main():
         clean()
         return
 
-    if "--exe" in args:
-        step_build_exe()
-        return
-
     # 전체 빌드
     print("=" * 50)
     print("  ReplayKit — 배포 빌드")
@@ -402,7 +410,6 @@ def main():
         print("\n빌드 중단: frontend 빌드 실패")
         return
 
-    # exe는 사용자 PC에서 setup.bat이 빌드 (배포에서는 server.py 포함)
     step_package()
     clean()
 
