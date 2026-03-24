@@ -215,18 +215,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
             h264ModeRef.current = true;
             setH264Mode(true);
             setH264Size({ width: msg.width || 1080, height: msg.height || 1920 });
-            // JMuxer 초기화 (video 엘리먼트 바인딩)
-            setTimeout(() => {
-              if (videoRef.current && !jmuxerRef.current) {
-                jmuxerRef.current = new JMuxer({
-                  node: videoRef.current,
-                  mode: 'video',
-                  flushingTime: 0,
-                  fps: 30,
-                  debug: false,
-                });
-              }
-            }, 100);
+            // JMuxer는 useEffect에서 video 엘리먼트 준비 후 초기화
           } else if (msg.mode === 'jpeg') {
             h264ModeRef.current = false;
             setH264Mode(false);
@@ -239,9 +228,12 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
           }
         } catch { /* ignore */ }
       } else if (event.data instanceof ArrayBuffer) {
-        if (h264ModeRef.current && jmuxerRef.current) {
-          // H.264 NAL 데이터 → JMuxer → <video>
-          jmuxerRef.current.feed({ video: new Uint8Array(event.data) });
+        if (h264ModeRef.current) {
+          // H.264 NAL 데이터
+          if (jmuxerRef.current) {
+            jmuxerRef.current.feed({ video: new Uint8Array(event.data) });
+          }
+          // JMuxer 미초기화 시 데이터 드롭 (useEffect에서 곧 초기화됨)
           markFrameAlive();
         } else {
           // JPEG 바이너리 → Blob URL → <img>/<canvas>
@@ -301,6 +293,32 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
       intervalRef.current = setInterval(pollFn, pollInterval);
     }
   }, [pollInterval, pollFn]);
+
+  // H.264 모드 시 JMuxer 초기화 (video 엘리먼트가 DOM에 렌더된 후 실행)
+  useEffect(() => {
+    if (!h264Mode) return;
+    // video 엘리먼트가 렌더될 때까지 대기
+    const initJMuxer = () => {
+      if (videoRef.current && !jmuxerRef.current) {
+        jmuxerRef.current = new JMuxer({
+          node: videoRef.current,
+          mode: 'video',
+          flushingTime: 1,
+          fps: 60,
+          debug: false,
+        });
+      }
+    };
+    // 즉시 시도 + 폴백 (React 렌더 지연 대비)
+    initJMuxer();
+    if (!jmuxerRef.current) {
+      const timer = setInterval(() => {
+        initJMuxer();
+        if (jmuxerRef.current) clearInterval(timer);
+      }, 50);
+      return () => clearInterval(timer);
+    }
+  }, [h264Mode]);
 
   // Screenshot source management: WebSocket for HKMC, polling for ADB
   useEffect(() => {
