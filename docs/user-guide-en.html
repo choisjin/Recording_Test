@@ -1,0 +1,1536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ReplayKit User Guide</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-alt: #f6f8fa;
+    --bg-code: #f0f2f5;
+    --text: #24292f;
+    --text-muted: #57606a;
+    --border: #d0d7de;
+    --accent: #0969da;
+    --accent-light: #ddf4ff;
+    --success: #1a7f37;
+    --success-bg: #dafbe1;
+    --warning: #9a6700;
+    --warning-bg: #fff8c5;
+    --danger: #cf222e;
+    --danger-bg: #ffebe9;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  [data-theme="dark"] {
+    --bg: #0d1117;
+    --bg-alt: #161b22;
+    --bg-code: #1c2128;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --border: #30363d;
+    --accent: #58a6ff;
+    --accent-light: #1a2332;
+    --success: #3fb950;
+    --success-bg: #0d2818;
+    --warning: #d29922;
+    --warning-bg: #2a1f00;
+    --danger: #f85149;
+    --danger-bg: #3d1014;
+    --shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Noto Sans KR', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    font-size: 15px;
+  }
+
+  /* --- Layout --- */
+  .layout { display: flex; min-height: 100vh; }
+
+  /* --- Sidebar / TOC --- */
+  .sidebar {
+    position: fixed;
+    top: 0; left: 0;
+    width: 280px;
+    height: 100vh;
+    overflow-y: auto;
+    background: var(--bg-alt);
+    border-right: 1px solid var(--border);
+    padding: 24px 16px;
+    z-index: 100;
+    transition: transform 0.3s;
+  }
+  .sidebar-logo {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 4px;
+  }
+  .sidebar-version {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 20px;
+  }
+  .sidebar nav a {
+    display: block;
+    padding: 5px 10px;
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 13.5px;
+    border-radius: 6px;
+    transition: background 0.15s, color 0.15s;
+  }
+  .sidebar nav a:hover, .sidebar nav a.active {
+    background: var(--accent-light);
+    color: var(--accent);
+  }
+  .sidebar nav .toc-h2 { font-weight: 600; margin-top: 12px; }
+  .sidebar nav .toc-h3 { padding-left: 22px; font-size: 12.5px; }
+
+  /* --- Main content --- */
+  .main {
+    margin-left: 280px;
+    max-width: 860px;
+    padding: 40px 48px 80px;
+    flex: 1;
+  }
+
+  /* --- Theme toggle --- */
+  .theme-toggle {
+    position: fixed;
+    top: 16px; right: 20px;
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 18px;
+    z-index: 200;
+    transition: background 0.2s;
+  }
+  .theme-toggle:hover { background: var(--accent-light); }
+
+  /* --- Mobile hamburger --- */
+  .hamburger {
+    display: none;
+    position: fixed;
+    top: 14px; left: 14px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    width: 40px; height: 40px;
+    font-size: 22px;
+    cursor: pointer;
+    z-index: 300;
+  }
+  .overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 90;
+  }
+
+  /* --- Typography --- */
+  h1 {
+    font-size: 32px;
+    font-weight: 800;
+    margin-bottom: 8px;
+    letter-spacing: -0.5px;
+  }
+  h1 small {
+    font-size: 14px;
+    font-weight: 400;
+    color: var(--text-muted);
+    display: block;
+    margin-top: 4px;
+  }
+  h2 {
+    font-size: 24px;
+    font-weight: 700;
+    margin-top: 56px;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--border);
+    scroll-margin-top: 24px;
+  }
+  h3 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-top: 36px;
+    margin-bottom: 10px;
+    scroll-margin-top: 24px;
+  }
+  h4 {
+    font-size: 15px;
+    font-weight: 600;
+    margin-top: 20px;
+    margin-bottom: 8px;
+  }
+  p { margin-bottom: 12px; }
+  ul, ol { margin: 8px 0 16px 24px; }
+  li { margin-bottom: 4px; }
+
+  /* --- Callout boxes --- */
+  .callout {
+    padding: 14px 18px;
+    border-radius: 8px;
+    margin: 16px 0;
+    font-size: 14px;
+    border-left: 4px solid;
+  }
+  .callout-info { background: var(--accent-light); border-color: var(--accent); }
+  .callout-success { background: var(--success-bg); border-color: var(--success); }
+  .callout-warning { background: var(--warning-bg); border-color: var(--warning); }
+  .callout-danger { background: var(--danger-bg); border-color: var(--danger); }
+  .callout strong { display: block; margin-bottom: 4px; }
+
+  /* --- Code --- */
+  code {
+    background: var(--bg-code);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+  }
+  pre {
+    background: var(--bg-code);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    overflow-x: auto;
+    margin: 12px 0 20px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  pre code { background: none; padding: 0; }
+
+  /* --- Tables --- */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0 20px;
+    font-size: 14px;
+  }
+  th, td {
+    padding: 10px 14px;
+    text-align: left;
+    border: 1px solid var(--border);
+  }
+  th {
+    background: var(--bg-alt);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  td { vertical-align: top; }
+
+  /* --- Badge / Tag --- */
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .badge-blue { background: var(--accent-light); color: var(--accent); }
+  .badge-green { background: var(--success-bg); color: var(--success); }
+  .badge-yellow { background: var(--warning-bg); color: var(--warning); }
+  .badge-red { background: var(--danger-bg); color: var(--danger); }
+
+  /* --- Step indicator --- */
+  .step-flow {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin: 20px 0;
+    flex-wrap: nowrap;
+  }
+  .step-flow .step-item {
+    background: var(--accent-light);
+    color: var(--accent);
+    padding: 6px 0;
+    font-weight: 600;
+    font-size: 12.5px;
+    white-space: nowrap;
+    flex: 1;
+    text-align: center;
+  }
+  .step-flow .step-item:first-child { border-radius: 8px 0 0 8px; }
+  .step-flow .step-item:last-child { border-radius: 0 8px 8px 0; }
+  .step-flow .step-arrow {
+    color: var(--accent);
+    font-size: 14px;
+    padding: 0 1px;
+    flex-shrink: 0;
+  }
+
+  /* --- Keyboard shortcut --- */
+  kbd {
+    display: inline-block;
+    padding: 2px 7px;
+    font-size: 12px;
+    font-family: 'Cascadia Code', monospace;
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    box-shadow: 0 1px 0 var(--border);
+  }
+
+  /* --- Figure --- */
+  .figure {
+    margin: 16px 0;
+    padding: 16px;
+    background: var(--bg-alt);
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    text-align: center;
+  }
+  .figure-caption {
+    margin-top: 10px;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  .figure-diagram {
+    font-family: 'Cascadia Code', monospace;
+    font-size: 13px;
+    white-space: pre;
+    text-align: left;
+    display: inline-block;
+    line-height: 1.5;
+  }
+
+  /* --- Numbered steps --- */
+  .numbered-steps { counter-reset: steps; list-style: none; margin-left: 0; }
+  .numbered-steps li {
+    counter-increment: steps;
+    padding: 12px 16px 12px 52px;
+    position: relative;
+    margin-bottom: 10px;
+    background: var(--bg-alt);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+  }
+  .numbered-steps li::before {
+    content: counter(steps);
+    position: absolute;
+    left: 14px; top: 12px;
+    width: 26px; height: 26px;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 50%;
+    font-size: 13px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* --- Responsive --- */
+  @media (max-width: 900px) {
+    .sidebar { transform: translateX(-100%); }
+    .sidebar.open { transform: translateX(0); }
+    .main { margin-left: 0; padding: 24px 20px 60px; }
+    .hamburger { display: block; }
+    .overlay.show { display: block; }
+  }
+
+  /* --- Print --- */
+  @media print {
+    .sidebar, .hamburger, .theme-toggle, .overlay { display: none !important; }
+    .main { margin-left: 0; max-width: 100%; padding: 20px; }
+    h2 { break-before: page; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Theme toggle -->
+<button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">🌓</button>
+
+<!-- Mobile hamburger -->
+<button class="hamburger" onclick="toggleSidebar()">☰</button>
+<div class="overlay" onclick="toggleSidebar()"></div>
+
+<div class="layout">
+
+<!-- Sidebar / TOC -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-logo">📋 ReplayKit</div>
+  <div class="sidebar-version">User Guide v1.0</div>
+  <nav id="toc">
+    <a href="#intro" class="toc-h2">Introduction</a>
+    <a href="#overview" class="toc-h3">System Overview</a>
+    <a href="#workflow" class="toc-h3">Core Workflow</a>
+
+    <a href="#install" class="toc-h2">Installation & Launch</a>
+    <a href="#install-req" class="toc-h3">System Requirements</a>
+    <a href="#install-setup" class="toc-h3">Installation</a>
+    <a href="#install-run" class="toc-h3">Running the App</a>
+    <a href="#install-update" class="toc-h3">Updates</a>
+
+    <a href="#device" class="toc-h2">Device Management</a>
+    <a href="#device-primary" class="toc-h3">Primary Device</a>
+    <a href="#device-auxiliary" class="toc-h3">Auxiliary Devices</a>
+    <a href="#device-actions" class="toc-h3">Device Actions</a>
+
+    <a href="#record" class="toc-h2">Recording</a>
+    <a href="#record-start" class="toc-h3">Start Recording</a>
+    <a href="#record-gestures" class="toc-h3">Gesture Recording</a>
+    <a href="#record-steps" class="toc-h3">Step Types</a>
+    <a href="#record-expected" class="toc-h3">Expected Images</a>
+    <a href="#record-compare" class="toc-h3">Image Comparison Modes</a>
+    <a href="#record-edit" class="toc-h3">Step Editing</a>
+    <a href="#record-conditional" class="toc-h3">Conditional Jump</a>
+
+    <a href="#scenario" class="toc-h2">Scenario Management</a>
+    <a href="#scenario-list" class="toc-h3">Scenario List</a>
+    <a href="#scenario-play" class="toc-h3">Playback (Execution)</a>
+    <a href="#scenario-group" class="toc-h3">Group Management</a>
+    <a href="#scenario-export" class="toc-h3">Export / Import</a>
+
+    <a href="#results" class="toc-h2">Test Results</a>
+    <a href="#results-list" class="toc-h3">Result List</a>
+    <a href="#results-detail" class="toc-h3">Result Details</a>
+    <a href="#results-export" class="toc-h3">Excel Export</a>
+    <a href="#results-webcam" class="toc-h3">Webcam Recording</a>
+
+    <a href="#settings" class="toc-h2">Settings</a>
+
+    <a href="#webcam" class="toc-h2">Webcam PiP</a>
+
+    <a href="#tips" class="toc-h2">Tips & Troubleshooting</a>
+    <a href="#tips-faq" class="toc-h3">FAQ</a>
+    <a href="#tips-shortcuts" class="toc-h3">Shortcuts</a>
+
+    <a href="#modules" class="toc-h2">Module Guide</a>
+    <a href="#module-cmd" class="toc-h3">CMD (Command Execution)</a>
+    <a href="#module-dlt" class="toc-h3">DLTViewer (DLT Log)</a>
+
+    <a href="#appendix" class="toc-h2">Appendix</a>
+    <a href="#appendix-steps" class="toc-h3">Step Type Reference</a>
+    <a href="#appendix-compare" class="toc-h3">Comparison Mode Reference</a>
+    <a href="#appendix-status" class="toc-h3">Result Status Codes</a>
+  </nav>
+</aside>
+
+<!-- Main Content -->
+<main class="main">
+
+<!-- ============================== Introduction ============================== -->
+<h1 id="intro">
+  ReplayKit User Guide
+  <small>Test Automation Platform — Record, Replay, and Verify in One</small>
+</h1>
+
+<h3 id="overview">System Overview</h3>
+<p>
+  <strong>ReplayKit</strong> is a <strong>test automation platform</strong> that records user interactions
+  on Android and IVI (In-Vehicle Infotainment) devices, automatically replays them while verifying
+  results through screenshot-based image comparison (SSIM), and generates Excel reports.
+</p>
+
+<table>
+  <tr><th>Component</th><th>Technology</th><th>Role</th></tr>
+  <tr><td>Backend</td><td>Python (FastAPI)</td><td>Device control, record/playback engine, image comparison</td></tr>
+  <tr><td>Frontend</td><td>React + TypeScript + Ant Design</td><td>User interface (web browser)</td></tr>
+  <tr><td>Device Connection</td><td>ADB / TCP Socket / Serial</td><td>Android, HKMC IVI, serial devices, etc.</td></tr>
+</table>
+
+<h3 id="workflow">Core Workflow</h3>
+<div class="step-flow">
+  <span class="step-item">① Connect Device</span>
+  <span class="step-arrow">→</span>
+  <span class="step-item">② Record Actions</span>
+  <span class="step-arrow">→</span>
+  <span class="step-item">③ Set Expected Images</span>
+  <span class="step-arrow">→</span>
+  <span class="step-item">④ Play Scenario</span>
+  <span class="step-arrow">→</span>
+  <span class="step-item">⑤ Review Results & Report</span>
+</div>
+
+<div class="figure" style="padding:24px 16px;">
+  <svg viewBox="0 0 820 340" xmlns="http://www.w3.org/2000/svg" style="max-width:780px;width:100%;">
+    <defs>
+      <marker id="ah" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="var(--accent)"/></marker>
+      <marker id="ah-m" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="var(--text-muted)"/></marker>
+      <filter id="ds"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.10"/></filter>
+    </defs>
+    <style>
+      .bx{rx:12;ry:12;stroke-width:2;filter:url(#ds)}
+      .bx-dev{fill:var(--accent-light);stroke:var(--accent)}
+      .bx-eng{fill:var(--success-bg);stroke:var(--success)}
+      .bx-res{fill:var(--warning-bg);stroke:var(--warning)}
+      .bx-cmp{fill:var(--bg-alt);stroke:var(--border)}
+      .t1{font-family:'Segoe UI',sans-serif;font-weight:700;font-size:15px;fill:var(--text)}
+      .t2{font-family:'Segoe UI',sans-serif;font-size:12px;fill:var(--text-muted)}
+      .lb{font-family:'Segoe UI',sans-serif;font-size:11.5px;fill:var(--text-muted);font-weight:600}
+      .ic{font-size:26px}
+    </style>
+    <!-- Device -->
+    <rect class="bx bx-dev" x="20" y="30" width="170" height="150"/>
+    <text class="ic" x="105" y="72" text-anchor="middle">&#x1F4F1;</text>
+    <text class="t1" x="105" y="100" text-anchor="middle">Device</text>
+    <text class="t2" x="105" y="120" text-anchor="middle">Android / IVI</text>
+    <text class="t2" x="105" y="137" text-anchor="middle">Serial / Module</text>
+    <!-- Engine -->
+    <rect class="bx bx-eng" x="305" y="30" width="210" height="150"/>
+    <text class="ic" x="410" y="72" text-anchor="middle">&#x2699;&#xFE0F;</text>
+    <text class="t1" x="410" y="100" text-anchor="middle">ReplayKit Engine</text>
+    <text class="t2" x="410" y="120" text-anchor="middle">Scenario Record &amp; Play</text>
+    <text class="t2" x="410" y="137" text-anchor="middle">Screenshot Capture</text>
+    <!-- Result -->
+    <rect class="bx bx-res" x="630" y="30" width="170" height="150"/>
+    <text class="ic" x="715" y="72" text-anchor="middle">&#x1F4CA;</text>
+    <text class="t1" x="715" y="100" text-anchor="middle">Test Results</text>
+    <text class="t2" x="715" y="120" text-anchor="middle">Pass / Fail Verdict</text>
+    <text class="t2" x="715" y="137" text-anchor="middle">Excel Report</text>
+    <!-- Compare -->
+    <rect class="bx bx-cmp" x="305" y="230" width="210" height="80"/>
+    <text class="ic" x="365" y="268" text-anchor="middle">&#x1F50D;</text>
+    <text class="t1" x="415" y="265" text-anchor="start" style="font-size:14px">SSIM Compare</text>
+    <text class="t2" x="410" y="285" text-anchor="middle">Expected Image vs Actual Screenshot</text>
+    <!-- Arrow: Device -> Engine top -->
+    <line x1="190" y1="75" x2="303" y2="75" stroke="var(--accent)" stroke-width="2.5" marker-end="url(#ah)"/>
+    <text class="lb" x="247" y="67" text-anchor="middle">Record Actions</text>
+    <!-- Arrow: Engine -> Device bottom -->
+    <line x1="305" y1="135" x2="192" y2="135" stroke="var(--accent)" stroke-width="2.5" marker-end="url(#ah)"/>
+    <text class="lb" x="247" y="155" text-anchor="middle">Send Commands</text>
+    <!-- Arrow: Engine -> Result -->
+    <line x1="515" y1="105" x2="628" y2="105" stroke="var(--accent)" stroke-width="2.5" marker-end="url(#ah)"/>
+    <text class="lb" x="572" y="97" text-anchor="middle">Verification Results</text>
+    <!-- Arrow: Engine down to Compare -->
+    <line x1="380" y1="180" x2="380" y2="228" stroke="var(--text-muted)" stroke-width="2" marker-end="url(#ah-m)"/>
+    <text class="lb" x="393" y="210" text-anchor="start">Screenshot</text>
+    <!-- Arrow: Compare up to Engine -->
+    <line x1="440" y1="230" x2="440" y2="182" stroke="var(--text-muted)" stroke-width="2" marker-end="url(#ah-m)"/>
+    <text class="lb" x="453" y="210" text-anchor="start">Similarity Score</text>
+    <!-- Arrow: Result down-left to Compare (dashed) -->
+    <path d="M715,180 L715,270 L517,270" fill="none" stroke="var(--text-muted)" stroke-width="2" marker-end="url(#ah-m)" stroke-dasharray="6,4"/>
+    <text class="lb" x="620" y="262" text-anchor="middle">Diff Heatmap</text>
+  </svg>
+  <div class="figure-caption">ReplayKit Data Flow Diagram</div>
+</div>
+
+
+<!-- ============================== Installation ============================== -->
+<h2 id="install">Installation & Launch</h2>
+
+<h3 id="install-req">System Requirements</h3>
+<table>
+  <tr><th>Item</th><th>Requirement</th></tr>
+  <tr><td>OS</td><td>Windows 10 or later (64-bit)</td></tr>
+  <tr><td>Python</td><td>Embedded Python included (no separate installation required)</td></tr>
+  <tr><td>Git</td><td>Installation prompt provided if not found (required for auto-update)</td></tr>
+  <tr><td>Node.js</td><td>Only needed for development mode (not required for distribution)</td></tr>
+  <tr><td>Browser</td><td>Chrome, Edge, or other modern browsers</td></tr>
+  <tr><td>Device</td><td>Android device with USB debugging enabled, HKMC IVI, GigE Vision camera, or DLT-capable ECU</td></tr>
+  <tr><td>Vimba X SDK</td><td>Required for Vision Camera usage (selectable during installation)</td></tr>
+  <tr><td>DLT Viewer SDK</td><td>Required for DLT log GUI viewer (selectable during installation)</td></tr>
+</table>
+
+<h3 id="install-setup">Installation</h3>
+
+<h4>Method 1: Using the Installer (Recommended)</h4>
+<ol class="numbered-steps">
+  <li>Run <code>ReplayKit_Setup_1.0.exe</code> → Allow administrator privileges</li>
+  <li>Confirm the installation path (default: <code>C:\ReplayKit</code>)</li>
+  <li><strong>Select components</strong>:
+    <ul>
+      <li><strong>ReplayKit Core</strong> — Base (required, includes embedded Python)</li>
+      <li><strong>DLT Viewer SDK</strong> — Check if you use the DLT log viewer GUI (included in Standard by default)</li>
+      <li><strong>Vimba X SDK</strong> — Check if you use a Vision Camera (included in Full selection)</li>
+    </ul>
+  </li>
+  <li>After file copying completes, the <strong>setup window</strong> (setup.bat) opens automatically</li>
+  <li>Python is included in embedded form, so <strong>no separate installation is needed</strong></li>
+  <li><strong>If Git is not installed</strong> — The Git installer launches automatically:
+    <ul>
+      <li>Click Next with the default settings to install</li>
+      <li>After installation, <strong>press any key</strong> to continue</li>
+    </ul>
+  </li>
+  <li>Python packages are installed automatically → Git repository initialized → Done</li>
+  <li>Launch ReplayKit after installation completes</li>
+</ol>
+
+<div class="callout callout-info">
+  <strong>💡 Embedded Python</strong>
+  The distribution includes Python 3.10 Embedded, so there is no need to install Python separately on your system.
+  When setup.bat runs, it automatically installs pip and required packages into the embedded Python.
+  In a development environment, you can also use system Python 3.10 + venv.
+</div>
+
+<h4>Method 2: Manual Installation (Development Environment)</h4>
+<pre><code># Initial setup in the project folder (one-time only)
+setup.bat
+
+# If embedded Python is not present, it automatically creates system Python 3.10 + venv
+# Installs venv, Python packages, and Node packages all at once</code></pre>
+
+<h3 id="install-run">Running the App</h3>
+
+<h4>Running the Distribution</h4>
+<p>Double-click <code>ReplayKit.bat</code> to launch the server management GUI.</p>
+
+<h4>Development: Server Management GUI</h4>
+<pre><code>python server.py</code></pre>
+<p>A Tkinter-based GUI window opens, allowing you to manage the backend and frontend simultaneously.
+Once the server is ready, <strong>the browser opens automatically.</strong></p>
+
+<h4>Development: Manual Launch</h4>
+<pre><code># Terminal 1: Backend
+venv\Scripts\activate
+python -m uvicorn backend.app.main:app --reload --port 8000
+
+# Terminal 2: Frontend
+cd frontend
+npm run dev</code></pre>
+
+<p>After launching, navigate to <code>http://localhost:5173</code> in your browser to see the ReplayKit interface.</p>
+
+<div class="callout callout-info">
+  <strong>💡 Tip</strong>
+  The frontend automatically proxies API requests to the backend, so no separate CORS configuration is needed.
+</div>
+
+<h3 id="install-update">Updates</h3>
+<p>ReplayKit supports Git-based automatic updates. Click the <strong>Sync + Start</strong> button in the server management GUI to:</p>
+<ol>
+  <li>Automatically reset local changes (to prevent build file conflicts)</li>
+  <li>Download the latest code via Git (git pull)</li>
+  <li>Automatically install updated Python packages</li>
+  <li>Automatically restart the server and open the browser</li>
+</ol>
+
+<div class="callout callout-info">
+  <strong>💡 User Data Preserved During Updates</strong>
+  Scenarios, test results, device settings, path configurations, and other user data are not tracked by Git,
+  so they remain unchanged during updates.
+</div>
+
+
+<!-- ============================== Device ============================== -->
+<h2 id="device">Device Management</h2>
+<p>
+  On the <strong>Device</strong> tab — ReplayKit's first screen — you register and manage the devices used for testing.
+  Devices are divided into <strong>primary devices</strong> and <strong>auxiliary devices</strong>.
+</p>
+
+<h3 id="device-primary">Primary Device</h3>
+<p>The primary device is the target for screen interactions and screenshot capture.</p>
+
+<table>
+  <tr><th>Type</th><th>Connection</th><th>Description</th></tr>
+  <tr>
+    <td><span class="badge badge-blue">ADB</span></td>
+    <td>USB or WiFi</td>
+    <td>
+      Android device. Connect via USB or WiFi using IP:port.<br>
+      Example: <code>192.168.1.100:5555</code>
+    </td>
+  </tr>
+  <tr>
+    <td><span class="badge badge-green">HKMC</span></td>
+    <td>TCP Socket</td>
+    <td>
+      HKMC 6th generation IVI system. Connect via IP and TCP port (default 5000).<br>
+      Screen type selectable: Front Center, Rear Left, Rear Right, Cluster
+    </td>
+  </tr>
+  <tr>
+    <td><span class="badge badge-yellow">Vision Camera</span></td>
+    <td>GigE Vision (UDP)</td>
+    <td>
+      GigE Vision industrial camera. Automatically detected via GVCP protocol during scanning,
+      displaying MAC address, current IP, and subnet information.
+      Additional features available when Vimba X SDK is installed.
+    </td>
+  </tr>
+</table>
+
+<h4>Connecting a Device</h4>
+<ol class="numbered-steps">
+  <li>Click the <strong>Scan</strong> button — ADB, HKMC, and Vision Camera devices are detected simultaneously</li>
+  <li>Select the desired device from the detected list and click <strong>Connect</strong></li>
+  <li>If a device is not detected, you can manually enter the address in the <strong>Manual Connect</strong> tab</li>
+</ol>
+
+<div class="callout callout-warning">
+  <strong>⚠️ ADB Device Preparation</strong>
+  <em>Settings → Developer Options → USB Debugging</em> must be enabled on the Android device.
+  For WiFi connection, the <code>adb tcpip 5555</code> command must be executed first.
+</div>
+
+<h4>Vision Camera Connection (GigE Vision)</h4>
+<p>GigE Vision cameras connected to the network are automatically detected during scanning.
+The detection results show both the camera's current IP and the PC's network interface IP.</p>
+
+<ol class="numbered-steps">
+  <li>When a camera is detected during <strong>Scan</strong>, its MAC, model, and current IP are displayed</li>
+  <li>If the camera IP is on a <strong>different subnet</strong> than the PC, click the <strong>Change IP</strong> button</li>
+  <li>In the ForceIP dialog, an IP matching the PC's subnet is <strong>automatically suggested</strong></li>
+  <li>After confirming, the camera IP is changed and a rescan is performed automatically</li>
+  <li>Now click the <strong>Connect</strong> button — the values are populated in the Manual Connect tab, and click Connect to finish</li>
+</ol>
+
+<div class="callout callout-info">
+  <strong>💡 What is ForceIP?</strong>
+  ForceIP is a forced IP assignment feature defined in the GigE Vision standard. When a camera is on a different
+  subnet from the PC and cannot communicate, it changes the camera's IP to the same subnet as the PC to enable connection.
+  This setting may be reset when the camera reboots.
+</div>
+
+<h3 id="device-auxiliary">Auxiliary Devices</h3>
+<p>Auxiliary devices support the primary device. They are used for serial communication, module control, and more.</p>
+
+<table>
+  <tr><th>Type</th><th>Connection</th><th>Description</th></tr>
+  <tr>
+    <td><span class="badge badge-blue">Serial</span></td>
+    <td>COM Port / USB</td>
+    <td>Serial communication device. Baudrate configurable (default 115200)</td>
+  </tr>
+  <tr>
+    <td><span class="badge badge-green">Module</span></td>
+    <td>Plugin</td>
+    <td>Extension modules (CAN communication, power control, etc.). Dynamically loaded plugins</td>
+  </tr>
+  <tr>
+    <td><span class="badge badge-yellow">Bench</span></td>
+    <td>UDP</td>
+    <td>Bench equipment. Connect via IP:UDP port</td>
+  </tr>
+</table>
+
+<h3 id="device-actions">Device Actions</h3>
+<ul>
+  <li><strong>Rename</strong> — Edit the display name of a device</li>
+  <li><strong>Edit Info</strong> — Change address, baudrate, module assignment, etc.</li>
+  <li><strong>Disconnect</strong> — Unregister a device</li>
+  <li><strong>Restart ADB Server</strong> — Restart the ADB server when connection issues occur</li>
+  <li><strong>Reconnect</strong> — Attempt to reconnect a disconnected device</li>
+</ul>
+
+
+<!-- ============================== Recording ============================== -->
+<h2 id="record">Recording</h2>
+<p>
+  In the <strong>Recording</strong> tab, you watch the device's live screen and record user interactions
+  to create test scenarios. Each interaction is saved as a <strong>step</strong>.
+</p>
+
+<h3 id="record-start">Start Recording</h3>
+<ol class="numbered-steps">
+  <li>Enter a <strong>scenario name</strong> (e.g., "Settings_WiFi_Connection_Test")</li>
+  <li>Optionally add a <strong>description</strong></li>
+  <li>Select a <strong>target device</strong> (from the primary device list)</li>
+  <li>Click the <strong>Start Recording</strong> button</li>
+  <li>The device screen streams in real time — click/drag on the screen to record interactions</li>
+  <li>When all interactions are done, click <strong>Stop Recording</strong> to save the scenario</li>
+</ol>
+
+<div class="callout callout-info">
+  <strong>💡 Continue Recording</strong>
+  You can load an already-saved scenario and add steps at the end.
+  <strong>Load Saved Scenario</strong> → Select scenario → <strong>Continue Recording</strong>
+</div>
+
+<h3 id="record-gestures">Gesture Recording</h3>
+<p>Gestures are automatically recognized when you interact with the mouse on the device's live screen:</p>
+
+<table>
+  <tr><th>Mouse Action</th><th>Recognized Gesture</th><th>Recorded Data</th></tr>
+  <tr><td>Click</td><td><strong>Tap</strong></td><td>Click coordinates (x, y)</td></tr>
+  <tr><td>Long click</td><td><strong>Long Press</strong></td><td>Coordinates + duration (ms)</td></tr>
+  <tr><td>Drag</td><td><strong>Swipe</strong></td><td>Start coordinates → End coordinates</td></tr>
+</table>
+
+<h3 id="record-steps">Step Types</h3>
+<p>In addition to gestures, various steps can be added manually:</p>
+
+<table>
+  <tr><th>Step Type</th><th>Description</th><th>Usage Example</th></tr>
+  <tr><td><code>tap</code></td><td>Touch a specific coordinate on screen</td><td>Button click</td></tr>
+  <tr><td><code>long_press</code></td><td>Long touch for a specified duration</td><td>Invoke long-press menu</td></tr>
+  <tr><td><code>swipe</code></td><td>Drag from start point to end point</td><td>Screen scroll, slider control</td></tr>
+  <tr><td><code>input_text</code></td><td>Text input</td><td>Enter text in a search field</td></tr>
+  <tr><td><code>key_event</code></td><td>Send hardware key</td><td>Back key (KEYCODE_BACK)</td></tr>
+  <tr><td><code>wait</code></td><td>Wait for specified duration (ms)</td><td>Wait for screen transition</td></tr>
+  <tr><td><code>adb_command</code></td><td>Execute ADB shell command</td><td>Force stop app, change settings</td></tr>
+  <tr><td><code>serial_command</code></td><td>Send serial data</td><td>Hardware control commands</td></tr>
+  <tr><td><code>module_command</code></td><td>Call module function</td><td>Send CAN message, power control</td></tr>
+  <tr><td><code>hkmc_touch</code></td><td>HKMC IVI touch</td><td>Touch IVI screen</td></tr>
+  <tr><td><code>hkmc_swipe</code></td><td>HKMC IVI swipe</td><td>Swipe IVI screen</td></tr>
+  <tr><td><code>hkmc_key</code></td><td>HKMC hardware key</td><td>Physical button control</td></tr>
+  <tr><td><code>cmd_send</code></td><td>Execute Windows command (ignore result)</td><td>Launch app, copy file</td></tr>
+  <tr><td><code>cmd_check</code></td><td>Execute Windows command and verify result</td><td>Ping check, process status check</td></tr>
+</table>
+
+<h4>Adding Steps Manually</h4>
+<p>
+  Use the <strong>Add Step</strong> area at the bottom of the screen during recording or in edit mode.
+  Select the step type, enter the required values, and click the Add button.
+</p>
+
+<h3 id="record-expected">Expected Images</h3>
+<p>
+  To verify that each step executed correctly, set an <strong>expected image</strong>.
+  During playback, the actual screenshot is compared with the expected image to determine Pass/Fail.
+</p>
+
+<ol class="numbered-steps">
+  <li>Find the step you want to set an expected image for in the step list</li>
+  <li>Click the 📷 button to automatically capture the current device screen as the <strong>full-screen expected image</strong></li>
+  <li>The captured image appears as a thumbnail next to the step</li>
+  <li>If needed, click the image to enlarge it or change the comparison mode</li>
+</ol>
+
+<div class="callout callout-success">
+  <strong>✅ Auto-Capture Feature</strong>
+  When a step without an expected image is executed, the resulting screenshot is automatically saved as the expected image.
+  This is convenient when creating a scenario for the first time.
+</div>
+
+<h3 id="record-compare">Image Comparison Modes</h3>
+<p>Four modes are available for comparing expected images with actual screenshots:</p>
+
+<table>
+  <tr><th>Mode</th><th>Icon</th><th>Description</th><th>Use Case</th></tr>
+  <tr>
+    <td><strong>Full Screen</strong></td>
+    <td><code>FULL</code></td>
+    <td>Compare the entire screen using SSIM</td>
+    <td>When the entire screen must match (default)</td>
+  </tr>
+  <tr>
+    <td><strong>Single Crop</strong></td>
+    <td><code>SINGLE_CROP</code></td>
+    <td>Crop a specific area and use template matching</td>
+    <td>When checking only specific UI elements like status bar or notifications</td>
+  </tr>
+  <tr>
+    <td><strong>Exclude Region</strong></td>
+    <td><code>FULL_EXCLUDE</code></td>
+    <td>SSIM comparison excluding specified regions</td>
+    <td>When ignoring changing areas like clock or battery</td>
+  </tr>
+  <tr>
+    <td><strong>Multi Crop</strong></td>
+    <td><code>MULTI_CROP</code></td>
+    <td>Compare multiple regions individually (all must pass)</td>
+    <td>When checking multiple UI elements simultaneously</td>
+  </tr>
+</table>
+
+<h4>Editing Comparison Regions</h4>
+<ul>
+  <li><strong>Edit Exclude Regions</strong> (scissors icon) — Drag on the expected image to designate regions to exclude (shown in red)</li>
+  <li><strong>Edit Crop Regions</strong> — Drag to designate comparison regions (shown in green)</li>
+  <li><strong>ROI Settings</strong> — Designate only the target area for comparison in Full Screen mode</li>
+  <li>Each region can be modified by clicking it in the list or deleted with the X button</li>
+</ul>
+
+<div class="callout callout-info">
+  <strong>💡 Similarity Threshold</strong>
+  The default similarity threshold is <strong>0.95 (95%)</strong>. Scores at or above this value result in Pass; below it results in Fail.
+  In Multi Crop mode, individual thresholds can be set for each crop.
+</div>
+
+<h3 id="record-edit">Step Editing</h3>
+<p>Recorded steps can be modified at any time. From each step's menu (⋯):</p>
+
+<ul>
+  <li><strong>Edit Command</strong> — Change parameters such as coordinates, text, or commands</li>
+  <li><strong>Retake Expected Image</strong> — Replace the expected image with the current device screen</li>
+  <li><strong>Test This Step</strong> — Execute and verify only this step to check the result</li>
+  <li><strong>Insert Wait</strong> — Insert a wait time after this step</li>
+  <li><strong>Delete</strong> — Remove the step</li>
+</ul>
+
+<p>
+  For steps that require coordinate changes (tap, long_press, swipe), clicking/dragging on the device screen
+  in edit mode automatically applies the new coordinates.
+</p>
+
+<h3 id="record-conditional">Conditional Jump</h3>
+<p>
+  You can specify the next step to execute based on the verification result (Pass/Fail) of a step.
+  This allows you to branch the test flow or implement logic such as skipping on failure.
+</p>
+
+<table>
+  <tr><th>Setting</th><th>Description</th></tr>
+  <tr><td>Jump on Pass</td><td>Jump to the specified step on verification success (default: next step)</td></tr>
+  <tr><td>Jump on Fail</td><td>Jump to the specified step on verification failure, or terminate (END)</td></tr>
+</table>
+
+<div class="callout callout-warning">
+  <strong>⚠️ Infinite Loop Warning</strong>
+  When setting conditional jumps, be careful to avoid circular references that loop back to a previous step.
+</div>
+
+
+<!-- ============================== Scenario ============================== -->
+<h2 id="scenario">Scenario Management</h2>
+<p>
+  In the <strong>Scenario</strong> tab, you can view, execute, and manage recorded scenarios.
+</p>
+
+<h3 id="scenario-list">Scenario List</h3>
+<p>All saved scenarios are displayed in a list. Available actions for each scenario:</p>
+<ul>
+  <li><strong>Play</strong> — Execute the scenario on a device</li>
+  <li><strong>Copy</strong> — Duplicate with a different name</li>
+  <li><strong>Rename</strong> — Edit the scenario name</li>
+  <li><strong>Merge</strong> — Combine multiple scenarios into one</li>
+  <li><strong>Delete</strong> — Remove the scenario (confirmation required)</li>
+</ul>
+
+<h3 id="scenario-play">Playback (Execution)</h3>
+<p>Execute a scenario to automatically control the device and verify results.</p>
+
+<ol class="numbered-steps">
+  <li>Click the <strong>Play</strong> button next to the scenario</li>
+  <li>Confirm <strong>device mapping</strong> — Map the device the scenario was recorded on to the currently connected device.
+    You can change the mapping here if the devices differ</li>
+  <li>Set the <strong>repeat count</strong> if needed (default: 1)</li>
+  <li>Click <strong>Execute</strong> to start playback</li>
+  <li>Results are displayed in real time as each step executes:
+    <ul>
+      <li><span class="badge badge-green">Pass</span> — Similarity at or above threshold</li>
+      <li><span class="badge badge-yellow">Warning</span> — Borderline level</li>
+      <li><span class="badge badge-red">Fail</span> — Similarity below threshold</li>
+      <li><span class="badge badge-red">Error</span> — Execution error occurred</li>
+    </ul>
+  </li>
+</ol>
+
+<h4>Playback Controls</h4>
+<table>
+  <tr><th>Button</th><th>Function</th></tr>
+  <tr><td><strong>Pause</strong></td><td>Wait after the current step completes</td></tr>
+  <tr><td><strong>Resume</strong></td><td>Continue paused playback</td></tr>
+  <tr><td><strong>Stop</strong></td><td>Immediately stop playback and save results up to the current point</td></tr>
+</table>
+
+<h3 id="scenario-group">Group Management</h3>
+<p>
+  Multiple scenarios can be grouped together for sequential execution.
+  When executing as a group, conditional jumps between scenarios are also possible.
+</p>
+
+<ol class="numbered-steps">
+  <li><strong>Create Group</strong> — Enter a group name and create it</li>
+  <li><strong>Add</strong> scenarios to the group (multiple allowed)</li>
+  <li><strong>Reorder</strong> scenarios by dragging</li>
+  <li>Set <strong>conditional jumps</strong> between scenarios if needed:
+    <ul>
+      <li>Scenario A Pass → Jump to Scenario C</li>
+      <li>Scenario A Fail → Terminate (END)</li>
+    </ul>
+  </li>
+  <li>Click Group <strong>Play</strong> to execute the included scenarios sequentially</li>
+</ol>
+
+<h3 id="scenario-export">Export / Import</h3>
+
+<h4>Export</h4>
+<p>Package scenarios and groups as ZIP files for distribution to other PCs.</p>
+<ol>
+  <li>Select the scenarios/groups to export</li>
+  <li>Click <strong>Export</strong> → A ZIP file is generated</li>
+  <li>If a save path is configured in settings, the file is saved there; otherwise it downloads via the browser</li>
+</ol>
+
+<h4>Import</h4>
+<ol>
+  <li>Click <strong>Import</strong> → Select a ZIP file</li>
+  <li>In the preview screen, review the included scenario list and check for <strong>conflicts</strong></li>
+  <li>Choose how to handle conflicts:
+    <ul>
+      <li><strong>Skip</strong> — Keep the existing scenario</li>
+      <li><strong>Overwrite</strong> — Replace with the imported scenario</li>
+      <li><strong>Rename</strong> — Add with a new name</li>
+    </ul>
+  </li>
+  <li>Click <strong>Apply</strong> to complete the import</li>
+</ol>
+
+
+<!-- ============================== Results ============================== -->
+<h2 id="results">Test Results</h2>
+<p>
+  In the <strong>Test Results</strong> tab, you can review scenario playback results and generate reports.
+</p>
+
+<h3 id="results-list">Result List</h3>
+<p>All playback results are listed in reverse chronological order. Each entry shows:</p>
+<ul>
+  <li>Scenario name</li>
+  <li>Execution date and time</li>
+  <li>Total steps / Pass / Fail count</li>
+  <li>Status (overall result)</li>
+</ul>
+<p>You can <strong>filter</strong> by scenario name or <strong>bulk delete</strong> selected entries.</p>
+
+<h3 id="results-detail">Result Details</h3>
+<p>Click a result to view detailed information for each step:</p>
+
+<table>
+  <tr><th>Item</th><th>Content</th></tr>
+  <tr><td>Step Number</td><td>Execution order and repeat iteration</td></tr>
+  <tr><td>Executed Command</td><td>Which device performed which action</td></tr>
+  <tr><td>Elapsed Time</td><td>Time taken to execute the step</td></tr>
+  <tr><td>Status</td><td><span class="badge badge-green">Pass</span> / <span class="badge badge-yellow">Warning</span> / <span class="badge badge-red">Fail</span> / <span class="badge badge-red">Error</span></td></tr>
+  <tr><td>Similarity</td><td>SSIM comparison score (0.0 ~ 1.0)</td></tr>
+  <tr><td>Image Comparison</td><td>Expected image / actual screenshot / difference heatmap displayed side by side</td></tr>
+</table>
+
+<div class="callout callout-info">
+  <strong>💡 Difference Heatmap</strong>
+  In the diff image, bright areas represent matching regions, while dark areas represent differences.
+  This allows you to quickly identify what has changed at a glance.
+</div>
+
+<h3 id="results-export">Excel Export</h3>
+<p>Results can be exported as an Excel (.xlsx) report. The report includes:</p>
+<ul>
+  <li>Scenario summary information</li>
+  <li>Step-by-step execution result table</li>
+  <li>Expected/actual/diff screenshot images (embedded in Excel)</li>
+  <li>Color-coded status indicators</li>
+</ul>
+<p>
+  If an <strong>Excel save path</strong> is specified in settings, the file is automatically saved there;
+  otherwise it downloads via the browser.
+</p>
+
+<h3 id="results-webcam">Webcam Recording</h3>
+<p>
+  If webcam recording was active during playback, you can review the webcam footage from the results.
+</p>
+<ul>
+  <li>Individual videos are saved for each repeat iteration</li>
+  <li>Video <strong>playback</strong>, <strong>trimming</strong>, and <strong>deletion</strong> are available</li>
+  <li>Step execution timestamps are linked with video timestamps for quick navigation</li>
+</ul>
+
+
+<!-- ============================== Settings ============================== -->
+<h2 id="settings">Settings</h2>
+<p>Adjust the app's behavior and appearance in the <strong>Settings</strong> tab.</p>
+
+<table>
+  <tr><th>Setting</th><th>Description</th></tr>
+  <tr>
+    <td><strong>UI Theme</strong></td>
+    <td>Switch between light mode and dark mode</td>
+  </tr>
+  <tr>
+    <td><strong>Language</strong></td>
+    <td>Switch between Korean and English</td>
+  </tr>
+  <tr>
+    <td><strong>Webcam Recording Save Path</strong></td>
+    <td>Auto-save location for webcam videos. Uses browser download if empty</td>
+  </tr>
+  <tr>
+    <td><strong>Excel Export Save Path</strong></td>
+    <td>Auto-save location for Excel reports. Uses browser download if empty</td>
+  </tr>
+  <tr>
+    <td><strong>Scenario Export Save Path</strong></td>
+    <td>Auto-save location for scenario/group ZIP files. Uses browser download if empty</td>
+  </tr>
+</table>
+
+<div class="callout callout-info">
+  <strong>💡 Folder Selection</strong>
+  Click the <strong>Browse</strong> button next to each path to open the system folder selection dialog.
+  You can also type the path directly.
+</div>
+
+
+<!-- ============================== Webcam ============================== -->
+<h2 id="webcam">Webcam PiP (Picture-in-Picture)</h2>
+<p>
+  Activate the <strong>Webcam PiP window</strong> using the webcam toggle button in the left sidebar.
+  This is useful when you want to record the physical device appearance via webcam while simultaneously recording the device screen.
+</p>
+
+<h4>Webcam Settings</h4>
+<table>
+  <tr><th>Item</th><th>Description</th></tr>
+  <tr><td>Camera Selection</td><td>Select from webcams connected to the PC</td></tr>
+  <tr><td>Resolution</td><td>Selectable from QVGA (320×240) to 4K (3840×2160)</td></tr>
+  <tr><td>Brightness / Contrast / Sharpness / Exposure</td><td>Adjustable if supported by the webcam</td></tr>
+</table>
+
+<h4>Webcam Recording Flow</h4>
+<ol>
+  <li>Activate Webcam PiP and select a camera</li>
+  <li>Webcam recording starts automatically when scenario <strong>playback</strong> begins</li>
+  <li>Webcam recording stops automatically when playback ends and is linked to the results</li>
+  <li>Alternatively, you can use the manual <strong>Record</strong> / <strong>Stop Recording</strong> buttons</li>
+</ol>
+
+
+<!-- ============================== Tips & Troubleshooting ============================== -->
+<h2 id="tips">Tips & Troubleshooting</h2>
+
+<h3 id="tips-faq">FAQ</h3>
+
+<h4>Q: My device doesn't appear in the scan</h4>
+<div class="callout callout-warning">
+  <strong>Check the following:</strong>
+  <ul style="margin-bottom:0">
+    <li>Android: Verify that USB debugging is enabled</li>
+    <li>Android: Reconnect the USB cable and approve the authorization popup on the PC</li>
+    <li>HKMC: Verify they are on the same network and that the firewall is not blocking</li>
+    <li>Serial: Verify the driver is installed and no other program is occupying the COM port</li>
+    <li>Try <strong>Restart ADB Server</strong></li>
+  </ul>
+</div>
+
+<h4>Q: Similarity scores are low during playback</h4>
+<ul>
+  <li>If there are time-varying areas (clock, battery, etc.), use <strong>Exclude Region</strong> mode</li>
+  <li>If you only want to check specific elements rather than the full screen, use <strong>Single Crop</strong> or <strong>Multi Crop</strong></li>
+  <li>You can adjust the similarity threshold (default 0.95)</li>
+  <li>Differences may occur if the device resolution differs from when the scenario was recorded</li>
+</ul>
+
+<h4>Q: I want to run a scenario on a different PC</h4>
+<ul>
+  <li><strong>Export</strong> the scenario as a ZIP file</li>
+  <li><strong>Import</strong> the ZIP file on the other PC</li>
+  <li>During playback, select the current PC's device in the <strong>device mapping</strong> step</li>
+</ul>
+
+<h4>Q: The server connection was lost</h4>
+<ul>
+  <li>A "Connecting to server..." message appears at the top of the screen</li>
+  <li>Auto-reconnect is attempted, and the connection recovers automatically once the server is running again</li>
+  <li>If unresolved, restart <code>server.py</code></li>
+</ul>
+
+<h4>Q: I want to adjust the wait time between steps</h4>
+<p>
+  Change the <code>delay_after_ms</code> value in each step's <strong>Edit Command</strong>.
+  The default is 1000ms (1 second); increase it if screen transitions are slow.
+</p>
+
+<h3 id="tips-shortcuts">Shortcuts</h3>
+<table>
+  <tr><th>Shortcut</th><th>Location</th><th>Action</th></tr>
+  <tr><td><kbd>Ctrl</kbd>+<kbd>Enter</kbd></td><td>Serial command input</td><td>Send serial data</td></tr>
+  <tr><td>Screen click</td><td>Device screen during recording/editing</td><td>Record tap gesture</td></tr>
+  <tr><td>Screen long click</td><td>Device screen during recording/editing</td><td>Record long press</td></tr>
+  <tr><td>Screen drag</td><td>Device screen during recording/editing</td><td>Record swipe</td></tr>
+</table>
+
+
+<!-- ============================== Module Guide ============================== -->
+<h2 id="modules">Module Guide</h2>
+<p>
+  Modules are extensions that can be invoked from scenarios via <code>module_command</code> steps.
+  They can be added as auxiliary devices on the Device page, or inserted directly as steps during scenario editing.
+</p>
+
+<!-- CMD Module -->
+<h3 id="module-cmd">CMD — Command Execution Module</h3>
+<p>
+  A module that executes Windows system commands.
+  Used for launching apps, managing processes, and checking system status during tests.
+</p>
+
+<h4>Connection Settings</h4>
+<p>No separate connection setup is needed. Simply select <code>CMD</code> when choosing a module and it's ready to use.</p>
+
+<h4>Available Functions</h4>
+<table>
+  <tr><th>Function</th><th>Description</th><th>Parameters</th><th>Return Value</th></tr>
+  <tr>
+    <td><code>Run</code></td>
+    <td>Execute a command and wait for completion (blocking)</td>
+    <td>
+      <code>command</code> — Command to execute<br>
+      <code>timeout</code> — Max wait time in seconds (default 300)
+    </td>
+    <td>Execution output (stdout + stderr)</td>
+  </tr>
+  <tr>
+    <td><code>RunBackground</code></td>
+    <td>Execute in the background (non-blocking)</td>
+    <td><code>command</code> — Command to execute</td>
+    <td>Process ID in the form <code>PID:12345</code></td>
+  </tr>
+  <tr>
+    <td><code>Kill</code></td>
+    <td>Terminate a background process</td>
+    <td><code>pid</code> — PID of the process to terminate</td>
+    <td>Termination result message</td>
+  </tr>
+  <tr>
+    <td><code>ListBackground</code></td>
+    <td>List running background processes</td>
+    <td>(none)</td>
+    <td>List of alive PIDs (comma-separated)</td>
+  </tr>
+</table>
+
+<h4>Usage in Scenarios</h4>
+<div class="callout callout-info">
+  <strong>Difference by step type:</strong>
+  <ul style="margin-bottom:0">
+    <li><code>cmd_send</code> — Executes the command and ignores the result. Use for cases where only execution is needed, such as launching apps or copying files</li>
+    <li><code>cmd_check</code> — Executes the command and compares the output against an expected value. Set <code>expected</code> value and <code>match_type</code> (contains / exact / regex)</li>
+    <li><code>module_command</code> — Directly calls CMD module functions. Use for advanced features like <code>RunBackground</code> or <code>Kill</code></li>
+  </ul>
+</div>
+
+<h4>Usage Examples</h4>
+<table>
+  <tr><th>Purpose</th><th>Step Type</th><th>Configuration</th></tr>
+  <tr>
+    <td>Launch app</td>
+    <td><code>cmd_send</code></td>
+    <td>command: <code>start notepad.exe</code></td>
+  </tr>
+  <tr>
+    <td>Ping verification</td>
+    <td><code>cmd_check</code></td>
+    <td>command: <code>ping -n 1 192.168.1.1</code><br>expected: <code>TTL=</code>, match_type: <code>contains</code></td>
+  </tr>
+  <tr>
+    <td>Background execution</td>
+    <td><code>module_command</code></td>
+    <td>module: CMD, function: <code>RunBackground</code><br>args: command=<code>python long_task.py</code></td>
+  </tr>
+  <tr>
+    <td>Terminate process</td>
+    <td><code>module_command</code></td>
+    <td>module: CMD, function: <code>Kill</code><br>args: pid=<code>12345</code></td>
+  </tr>
+</table>
+
+<!-- DLTViewer Module -->
+<h3 id="module-dlt">DLTViewer — DLT Log Receiving/Analysis Module</h3>
+<p>
+  A module that receives and analyzes ECU logs in real time using the AUTOSAR DLT (Diagnostic Log and Trace) protocol.
+  It also supports launching a GUI via the DltViewerSDK's <code>dlt-viewer.exe</code>.
+</p>
+
+<h4>Connection Settings</h4>
+<p>When adding an auxiliary device on the Device page:</p>
+<table>
+  <tr><th>Item</th><th>Description</th><th>Default</th></tr>
+  <tr><td>Type</td><td>Select <code>Module</code></td><td>-</td></tr>
+  <tr><td>Module</td><td>Select <code>DLTViewer</code></td><td>-</td></tr>
+  <tr><td>Address</td><td>ECU IP address</td><td>-</td></tr>
+  <tr><td>DLT Port</td><td>DLT daemon TCP port</td><td>3490</td></tr>
+  <tr><td>Project File</td><td>.dlp file path (optional)</td><td>-</td></tr>
+</table>
+
+<div class="callout callout-warning">
+  <strong>Prerequisites:</strong>
+  <ul style="margin-bottom:0">
+    <li>The DLT daemon must be running on the target ECU (default port 3490)</li>
+    <li>The PC and ECU must be on the same network</li>
+    <li>To use the DLT Viewer GUI, the <code>DltViewerSDK_21.1.3_ver/</code> folder must be in the project root</li>
+  </ul>
+</div>
+
+<h4>Available Functions</h4>
+<table>
+  <tr><th>Function</th><th>Description</th><th>Parameters</th><th>Return Value</th></tr>
+  <tr>
+    <td><code>Connect</code></td>
+    <td>Connect to DLT daemon via TCP and start receiving logs</td>
+    <td>(none — host/port automatically passed from device settings)</td>
+    <td>Connection result message</td>
+  </tr>
+  <tr>
+    <td><code>Disconnect</code></td>
+    <td>Disconnect DLT connection and stop capture</td>
+    <td>(none)</td>
+    <td>Result message</td>
+  </tr>
+  <tr>
+    <td><code>WaitLog</code></td>
+    <td>Wait until a keyword appears in logs (<strong>blocking</strong> — pauses step execution)</td>
+    <td>
+      <code>keyword</code> — Keyword to search (space-separated for AND condition)<br>
+      <code>timeout</code> — Max wait time in seconds (default 30)
+    </td>
+    <td><code>PASS: &lt;matching log&gt;</code> or <code>FAIL: ...</code></td>
+  </tr>
+  <tr>
+    <td><code>StartMonitor</code></td>
+    <td>Start background keyword monitoring (<strong>non-blocking</strong> — next step proceeds immediately)</td>
+    <td>
+      <code>keyword</code> — Keyword to search (space-separated for AND condition)<br>
+      <code>timeout</code> — Max monitoring time in seconds (default 60)
+    </td>
+    <td>Monitor ID (e.g., <code>mon_1</code>)</td>
+  </tr>
+  <tr>
+    <td><code>StopMonitor</code></td>
+    <td>Stop background monitoring</td>
+    <td><code>monitor_id</code> — ID to stop (empty for all)</td>
+    <td>Result message</td>
+  </tr>
+  <tr>
+    <td><code>GetMonitorResult</code></td>
+    <td>Check background monitoring result</td>
+    <td><code>monitor_id</code> — ID to check (empty for all)</td>
+    <td><code>PASS: &lt;log&gt;</code> / <code>FAIL: ...</code> / <code>RUNNING: ...</code></td>
+  </tr>
+  <tr>
+    <td><code>SearchLog</code></td>
+    <td>Search current buffer for logs containing keyword</td>
+    <td>
+      <code>keyword</code> — Search keyword<br>
+      <code>count</code> — Max result count (default 10)
+    </td>
+    <td>Matching log lines</td>
+  </tr>
+  <tr>
+    <td><code>GetRecentLogs</code></td>
+    <td>Retrieve recently received logs</td>
+    <td><code>count</code> — Number of lines (default 100)</td>
+    <td>Recent log text</td>
+  </tr>
+  <tr>
+    <td><code>ClearLogs</code></td>
+    <td>Clear log buffer</td>
+    <td>(none)</td>
+    <td>Result message</td>
+  </tr>
+  <tr>
+    <td><code>LaunchViewer</code></td>
+    <td>Launch DLT Viewer GUI</td>
+    <td>
+      <code>project_file</code> — .dlp project file (optional)<br>
+      <code>log_file</code> — .dlt log file (optional)
+    </td>
+    <td>Launch result (including PID)</td>
+  </tr>
+  <tr>
+    <td><code>CloseViewer</code></td>
+    <td>Close DLT Viewer GUI</td>
+    <td>(none)</td>
+    <td>Result message</td>
+  </tr>
+  <tr>
+    <td><code>CreateProject</code></td>
+    <td>Create a DLT Viewer project file (.dlp)</td>
+    <td>
+      <code>file_path</code> — Save path<br>
+      <code>host</code> — ECU IP (optional, default: connected host)<br>
+      <code>port</code> — DLT port (optional, default: 3490)
+    </td>
+    <td>Created file path</td>
+  </tr>
+  <tr>
+    <td><code>GetStatus</code></td>
+    <td>Query current connection/capture/viewer status</td>
+    <td>(none)</td>
+    <td>Status string</td>
+  </tr>
+</table>
+
+<h4>Usage in Scenarios</h4>
+<p>
+  All functions are called via <code>module_command</code> steps.
+  The most common use case is <strong>DLT log keyword verification</strong>:
+</p>
+
+<h4>Usage Examples</h4>
+<table>
+  <tr><th>Purpose</th><th>Function</th><th>Configuration</th></tr>
+  <tr>
+    <td>Wait for log keyword (blocking)</td>
+    <td><code>WaitLog</code></td>
+    <td>keyword: <code>BOOT_COMPLETE</code>, timeout: <code>60</code><br>→ PASS if keyword appears within 60 seconds; pauses step execution</td>
+  </tr>
+  <tr>
+    <td>AND condition verification</td>
+    <td><code>WaitLog</code></td>
+    <td>keyword: <code>APP_START navigation</code><br>→ Searches for a line containing both words</td>
+  </tr>
+  <tr>
+    <td>Background monitoring</td>
+    <td><code>StartMonitor</code></td>
+    <td>keyword: <code>ERROR</code>, timeout: <code>120</code><br>→ Next step proceeds immediately; monitors in a separate thread for 120 seconds</td>
+  </tr>
+  <tr>
+    <td>Check monitoring result</td>
+    <td><code>GetMonitorResult</code></td>
+    <td>monitor_id: <code>mon_1</code><br>→ Returns PASS/FAIL/RUNNING</td>
+  </tr>
+  <tr>
+    <td>Clear logs</td>
+    <td><code>ClearLogs</code></td>
+    <td>→ Clears previous logs to set a new verification starting point</td>
+  </tr>
+  <tr>
+    <td>Visualize logs with GUI</td>
+    <td><code>LaunchViewer</code></td>
+    <td>project_file: <code>CCIC_DLT_VIEWER_PRJ.dlp</code></td>
+  </tr>
+</table>
+
+<div class="callout callout-info">
+  <strong>WaitLog vs StartMonitor:</strong>
+  <ul style="margin-bottom:0">
+    <li><code>WaitLog</code> — <strong>Blocking</strong>: Pauses step execution until the keyword appears. Use for definitive verification.</li>
+    <li><code>StartMonitor</code> — <strong>Non-blocking</strong>: Proceeds to the next step immediately while monitoring in the background. Check later with <code>GetMonitorResult</code>.</li>
+    <li>In the step add UI, select <code>WaitLog</code> and check <strong>"Background monitoring"</strong> to automatically switch to <code>StartMonitor</code>.</li>
+  </ul>
+</div>
+
+<div class="callout callout-info">
+  <strong>Typical DLT Verification Scenario Flow:</strong>
+  <ol style="margin-bottom:0">
+    <li>Add DLTViewer module as an auxiliary device (set ECU IP)</li>
+    <li>Log receiving starts automatically on connection</li>
+    <li>Clear buffer with <code>ClearLogs</code></li>
+    <li>Perform test actions (screen touch, app launch, etc.)</li>
+    <li>Verify with <code>WaitLog</code> that the expected DLT log appears</li>
+  </ol>
+</div>
+
+
+<!-- ============================== Appendix ============================== -->
+<h2 id="appendix">Appendix</h2>
+
+<h3 id="appendix-steps">Step Type Reference</h3>
+<table>
+  <tr><th>Type</th><th>Target Device</th><th>Key Parameters</th></tr>
+  <tr><td><code>tap</code></td><td>ADB / HKMC</td><td><code>x</code>, <code>y</code></td></tr>
+  <tr><td><code>long_press</code></td><td>ADB</td><td><code>x</code>, <code>y</code>, <code>duration</code>(ms)</td></tr>
+  <tr><td><code>swipe</code></td><td>ADB / HKMC</td><td><code>x1</code>, <code>y1</code>, <code>x2</code>, <code>y2</code>, <code>duration</code></td></tr>
+  <tr><td><code>input_text</code></td><td>ADB</td><td><code>text</code></td></tr>
+  <tr><td><code>key_event</code></td><td>ADB</td><td><code>keycode</code> (e.g., KEYCODE_BACK)</td></tr>
+  <tr><td><code>wait</code></td><td>-</td><td><code>duration</code>(ms)</td></tr>
+  <tr><td><code>adb_command</code></td><td>ADB</td><td><code>command</code> (shell command)</td></tr>
+  <tr><td><code>serial_command</code></td><td>Serial</td><td><code>data</code> (data to send)</td></tr>
+  <tr><td><code>module_command</code></td><td>Module</td><td><code>function</code>, <code>args</code></td></tr>
+  <tr><td><code>hkmc_touch</code></td><td>HKMC</td><td><code>x</code>, <code>y</code>, <code>screen_type</code></td></tr>
+  <tr><td><code>hkmc_swipe</code></td><td>HKMC</td><td><code>x1</code>, <code>y1</code>, <code>x2</code>, <code>y2</code>, <code>screen_type</code></td></tr>
+  <tr><td><code>hkmc_key</code></td><td>HKMC</td><td><code>key_name</code>, <code>group</code></td></tr>
+  <tr><td><code>cmd_send</code></td><td>PC (Windows)</td><td><code>command</code></td></tr>
+  <tr><td><code>cmd_check</code></td><td>PC (Windows)</td><td><code>command</code>, <code>expected</code>, <code>match_type</code></td></tr>
+</table>
+
+<h3 id="appendix-compare">Image Comparison Mode Reference</h3>
+<table>
+  <tr><th>Mode</th><th>Comparison Method</th><th>Pass Criteria</th></tr>
+  <tr>
+    <td><code>FULL</code></td>
+    <td>Full screen SSIM (Structural Similarity)</td>
+    <td>Overall similarity ≥ threshold → Pass</td>
+  </tr>
+  <tr>
+    <td><code>SINGLE_CROP</code></td>
+    <td>Search for cropped image in actual screen (template matching) → SSIM on matched area</td>
+    <td>Matching similarity ≥ threshold → Pass</td>
+  </tr>
+  <tr>
+    <td><code>FULL_EXCLUDE</code></td>
+    <td>Full screen SSIM excluding specified regions</td>
+    <td>Remaining area similarity after exclusion ≥ threshold → Pass</td>
+  </tr>
+  <tr>
+    <td><code>MULTI_CROP</code></td>
+    <td>Independent comparison of multiple crops</td>
+    <td>All crops' similarity ≥ their respective thresholds → Pass</td>
+  </tr>
+</table>
+
+<h3 id="appendix-status">Result Status Codes</h3>
+<table>
+  <tr><th>Status</th><th>Meaning</th><th>Condition</th></tr>
+  <tr>
+    <td><span class="badge badge-green">Pass</span></td>
+    <td>Verification succeeded</td>
+    <td>Similarity at or above the Pass threshold</td>
+  </tr>
+  <tr>
+    <td><span class="badge badge-yellow">Warning</span></td>
+    <td>Warning (attention needed)</td>
+    <td>Similarity between the Warning threshold and Pass threshold</td>
+  </tr>
+  <tr>
+    <td><span class="badge badge-red">Fail</span></td>
+    <td>Verification failed</td>
+    <td>Similarity below the Warning threshold</td>
+  </tr>
+  <tr>
+    <td><span class="badge badge-red">Error</span></td>
+    <td>Execution error</td>
+    <td>Device connection failure, screenshot capture failure, etc.</td>
+  </tr>
+</table>
+
+<br>
+<hr style="border:none; border-top:1px solid var(--border); margin: 40px 0;">
+<p style="text-align:center; color:var(--text-muted); font-size:13px;">
+  ReplayKit User Guide v1.0 &mdash; For inquiries, please contact Sejin Choi, Senior Researcher (VS TC Design / Verification Automation Team).
+</p>
+
+</main>
+</div>
+
+<script>
+// Theme toggle
+function toggleTheme() {
+  const html = document.documentElement;
+  const current = html.getAttribute('data-theme');
+  html.setAttribute('data-theme', current === 'dark' ? '' : 'dark');
+  localStorage.setItem('theme', html.getAttribute('data-theme'));
+}
+// Restore saved theme
+(function() {
+  const saved = localStorage.getItem('theme');
+  if (saved) document.documentElement.setAttribute('data-theme', saved);
+})();
+
+// Mobile sidebar toggle
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.querySelector('.overlay').classList.toggle('show');
+}
+
+// Close sidebar on link click (mobile)
+document.querySelectorAll('.sidebar nav a').forEach(a => {
+  a.addEventListener('click', () => {
+    if (window.innerWidth <= 900) toggleSidebar();
+  });
+});
+
+// Active TOC highlight on scroll
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      document.querySelectorAll('.sidebar nav a').forEach(a => a.classList.remove('active'));
+      const active = document.querySelector(`.sidebar nav a[href="#${entry.target.id}"]`);
+      if (active) active.classList.add('active');
+    }
+  });
+}, { rootMargin: '-20% 0px -70% 0px' });
+
+document.querySelectorAll('h1[id], h2[id], h3[id]').forEach(el => observer.observe(el));
+</script>
+
+</body>
+</html>

@@ -214,7 +214,7 @@ function AppContent() {
               <Button
                 block
                 icon={<BookOutlined />}
-                onClick={() => window.open('/docs/user-guide.html', '_blank')}
+                onClick={() => window.open(settings.language === 'en' ? '/docs/user-guide-en.html' : '/docs/user-guide.html', '_blank')}
               >
                 {!siderCollapsed && t('server.guide')}
               </Button>
