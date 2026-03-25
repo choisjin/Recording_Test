@@ -191,8 +191,8 @@ async def websocket_screen_mirror(websocket: WebSocket):
             else:
                 logger.debug("scrcpy unavailable for %s, falling back to screencap", scrcpy_serial)
 
-        # 모드 협상: scrcpy H.264 사용 가능하면 h264, 아니면 jpeg
-        if scrcpy_stream and scrcpy_stream.is_running:
+        # 모드 협상: force_h264일 때만 H.264 raw, 기본은 JPEG
+        if force_h264 and scrcpy_stream and scrcpy_stream.is_running:
             h264_mode = True
             await websocket.send_json({
                 "mode": "h264",
