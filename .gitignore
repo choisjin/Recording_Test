@@ -31,6 +31,9 @@ tools/
 installer_output/
 DltViewerSDK_21.1.3_ver/
 
+# Monitor (별도 repo: ReplayKit_Server)
+monitor/
+
 # 임시 파일
 HANDOFF.md
 
