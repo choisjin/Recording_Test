@@ -3,5 +3,8 @@
 *.exe binary
 *.dll binary
 
+# Windows 배치 파일 — 항상 CRLF
+*.bat text eol=crlf
+
 # 프론트엔드 빌드 결과물
 frontend/dist/** binary
