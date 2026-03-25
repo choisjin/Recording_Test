@@ -407,12 +407,11 @@ export default function RecordPage() {
   }, []);
 
   // Helper: convert element coords to device coords (canvas 또는 video)
+  // 항상 실제 디바이스 해상도 기준으로 매핑 (scrcpy 다운스케일과 무관)
   const toDeviceCoords = (el: HTMLCanvasElement | HTMLVideoElement, clientX: number, clientY: number) => {
     const rect = el.getBoundingClientRect();
-    const naturalW = el instanceof HTMLVideoElement ? (el.videoWidth || h264Size.width) : el.width;
-    const naturalH = el instanceof HTMLVideoElement ? (el.videoHeight || h264Size.height) : el.height;
-    const scaleX = naturalW / rect.width;
-    const scaleY = naturalH / rect.height;
+    const scaleX = deviceRes.width / rect.width;
+    const scaleY = deviceRes.height / rect.height;
     return {
       x: Math.round((clientX - rect.left) * scaleX),
       y: Math.round((clientY - rect.top) * scaleY),
