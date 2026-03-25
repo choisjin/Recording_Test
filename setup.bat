@@ -134,8 +134,14 @@ echo       pip ready
 :: -------------------------------------------------------
 :install_packages
 echo [3/5] Installing Python packages...
-%PY% -m pip install --upgrade pip -q --no-warn-script-location 2>nul
-%PIP% install -r requirements.txt -q --no-warn-script-location
+:: Embedded Python(python/ 폴더)은 패키지가 이미 포함 — pip install 건너뜀
+if exist "python\python.exe" (
+    echo       Embedded Python — pip install 건너뜀 (패키지 내장)
+) else (
+    %PY% -m pip install --upgrade pip -q --no-warn-script-location 2>nul
+    %PIP% install -r requirements.txt -q --no-warn-script-location
+)
+:: lge.auto는 로컬 .whl — 오프라인 설치 가능
 if exist "lge.auto-*.whl" (
     for %%f in (lge.auto-*.whl) do %PIP% install "%%f"
     echo       lge.auto installed
