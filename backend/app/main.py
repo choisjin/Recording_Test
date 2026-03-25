@@ -653,6 +653,10 @@ async def websocket_playback(websocket: WebSocket):
                 finally:
                     if stop_listener_task and not stop_listener_task.done():
                         stop_listener_task.cancel()
+                        try:
+                            await stop_listener_task
+                        except (asyncio.CancelledError, Exception):
+                            pass
                         stop_listener_task = None
 
             elif action == "play_group":
@@ -815,6 +819,10 @@ async def websocket_playback(websocket: WebSocket):
                 finally:
                     if stop_listener_task and not stop_listener_task.done():
                         stop_listener_task.cancel()
+                        try:
+                            await stop_listener_task
+                        except (asyncio.CancelledError, Exception):
+                            pass
                         stop_listener_task = None
 
             elif action == "stop":
