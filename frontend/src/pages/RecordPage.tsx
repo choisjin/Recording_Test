@@ -239,6 +239,9 @@ export default function RecordPage() {
   const [hkmcKeys, setHkmcKeys] = useState<HkmcKeyInfo[]>([]);
   const [hkmcSubCommands, setHkmcSubCommands] = useState<Record<string, number>>({});
 
+  // HKMC 디스플레이 모드: standard(기본형) / integrated(일체형 — 클러스터+AVN)
+  const [hkmcDisplayMode, setHkmcDisplayMode] = useState<'standard' | 'integrated'>('standard');
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const allDevices = [...primaryDevices, ...auxiliaryDevices];
 
@@ -407,15 +410,23 @@ export default function RecordPage() {
   }, []);
 
   // Helper: convert element coords to device coords (canvas 또는 video)
-  // 항상 실제 디바이스 해상도 기준으로 매핑 (scrcpy 다운스케일과 무관)
+  // JPEG 캔버스: canvas.width/height = 이미지 원본 크기 (HKMC 등)
+  // H.264 비디오: deviceRes 사용 (scrcpy 다운스케일과 무관)
   const toDeviceCoords = (el: HTMLCanvasElement | HTMLVideoElement, clientX: number, clientY: number) => {
     const rect = el.getBoundingClientRect();
-    const scaleX = deviceRes.width / rect.width;
-    const scaleY = deviceRes.height / rect.height;
-    return {
-      x: Math.round((clientX - rect.left) * scaleX),
-      y: Math.round((clientY - rect.top) * scaleY),
-    };
+    // 캔버스는 내부 크기(= 이미지 원본), 비디오는 디바이스 해상도 사용
+    const isCanvas = el instanceof HTMLCanvasElement;
+    const natW = isCanvas ? el.width : deviceRes.width;
+    const natH = isCanvas ? el.height : deviceRes.height;
+    const scaleX = natW / rect.width;
+    const scaleY = natH / rect.height;
+    let x = Math.round((clientX - rect.left) * scaleX);
+    const y = Math.round((clientY - rect.top) * scaleY);
+    // HKMC 일체형: 클러스터(0~1920) + AVN(1920~3840), AVN 터치 시 x+1920 오프셋
+    if (isScreenHkmc && hkmcDisplayMode === 'integrated') {
+      x += 1920;
+    }
+    return { x, y };
   };
 
   // Map generic gesture actions to HKMC equivalents when target is HKMC device
@@ -1880,6 +1891,7 @@ export default function RecordPage() {
                     >{t('device.reconnect')}</Button>
                   )}
                   {isScreenHkmc && (
+                    <>
                     <Select
                       size="small"
                       value={screenType}
@@ -1891,6 +1903,16 @@ export default function RecordPage() {
                       <Option value="rear_right">{t('record.hkmcRearR')}</Option>
                       <Option value="cluster">{t('record.hkmcCluster')}</Option>
                     </Select>
+                    <Select
+                      size="small"
+                      value={hkmcDisplayMode}
+                      onChange={setHkmcDisplayMode}
+                      style={{ minWidth: 90 }}
+                    >
+                      <Option value="standard">{t('record.hkmcStandard')}</Option>
+                      <Option value="integrated">{t('record.hkmcIntegrated')}</Option>
+                    </Select>
+                    </>
                   )}
                   {hasMultiDisplay && (
                     <Select
