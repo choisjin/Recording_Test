@@ -16,7 +16,6 @@ _cython_setup.py
 
 # Node
 frontend/node_modules/
-frontend/dist/
 
 # Runtime data (사용자 데이터)
 backend/screenshots/
