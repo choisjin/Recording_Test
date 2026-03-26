@@ -1272,17 +1272,27 @@ export default function ScenarioPage() {
                   { title: t('common.description'), dataIndex: 'description', key: 'desc', width: 120, ellipsis: true },
                   {
                     title: 'Delay (ms)', dataIndex: 'delay_after_ms', key: 'delay', width: 120, align: 'center' as const,
-                    render: (v: number, _r: any, idx: number) => (
-                      <InputNumber
-                        size="small" min={0} max={Infinity} step={100} value={v} style={{ width: 100 }}
-                        onChange={(val) => {
-                          const updated = [...previewSteps];
-                          updated[idx] = { ...updated[idx], delay_after_ms: val ?? 0 };
-                          setPreviewSteps(updated);
-                          scenarioApi.updateStep(selectedName!, idx, { delay_after_ms: val ?? 0 }).catch(() => {});
-                        }}
-                      />
-                    ),
+                    render: (v: number, _r: any, idx: number) => {
+                      const isWait = _r.type === 'wait';
+                      const displayVal = isWait ? (_r.params?.duration_ms ?? v) : v;
+                      return (
+                        <InputNumber
+                          size="small" min={0} step={100} value={displayVal} style={{ width: 100 }}
+                          onChange={(val) => {
+                            const updated = [...previewSteps];
+                            if (isWait) {
+                              updated[idx] = { ...updated[idx], params: { ..._r.params, duration_ms: val ?? 0 } };
+                              setPreviewSteps(updated);
+                              scenarioApi.updateStep(selectedName!, idx, { params: { ..._r.params, duration_ms: val ?? 0 } }).catch(() => {});
+                            } else {
+                              updated[idx] = { ...updated[idx], delay_after_ms: val ?? 0 };
+                              setPreviewSteps(updated);
+                              scenarioApi.updateStep(selectedName!, idx, { delay_after_ms: val ?? 0 }).catch(() => {});
+                            }
+                          }}
+                        />
+                      );
+                    },
                   },
                   { title: t('scenario.compare'), key: 'img', width: 70, align: 'center' as const, render: (_: any, r: any) => {
                     if (!r.expected_image) return '-';
