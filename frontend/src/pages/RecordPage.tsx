@@ -227,6 +227,9 @@ export default function RecordPage() {
 
   // Settings
   const { settings } = useSettings();
+  const isDark = settings.theme === 'dark';
+  const subTextColor = isDark ? '#aaa' : '#888';
+  const mutedTextColor = isDark ? '#999' : '#666';
 
   // Wait step insertion
   const [waitDurationMs, setWaitDurationMs] = useState(1000);
@@ -1894,7 +1897,7 @@ export default function RecordPage() {
             </div>
           </div>
           {/* 우측: 2행 아이콘 영역 */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0, borderLeft: '1px solid #333', paddingLeft: 8, alignSelf: 'stretch', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0, borderLeft: isDark ? '1px solid #333' : '1px solid #d9d9d9', paddingLeft: 8, alignSelf: 'stretch', justifyContent: 'center' }}>
             {/* 1행: 순서변경 + 테스트 + 삭제 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'flex-end' }}>
               <Button size="small" type="text" icon={<ArrowUpOutlined />} disabled={index === 0} onClick={() => moveStep(index, -1)} style={{ width: 28 }} />
@@ -2061,7 +2064,7 @@ export default function RecordPage() {
                     style={{
                       maxWidth: '100%',
                       maxHeight: '100%',
-                      border: '1px solid #333',
+                      border: isDark ? '1px solid #333' : '1px solid #d9d9d9',
                       borderRadius: 4,
                       cursor: testingStepIndex != null ? 'wait' : 'crosshair',
                       userSelect: 'none',
@@ -2075,7 +2078,7 @@ export default function RecordPage() {
                     style={{
                       maxWidth: '100%',
                       maxHeight: '100%',
-                      border: '1px solid #333',
+                      border: isDark ? '1px solid #333' : '1px solid #d9d9d9',
                       borderRadius: 4,
                       cursor: testingStepIndex != null ? 'wait' : 'crosshair',
                       userSelect: 'none',
@@ -2088,7 +2091,7 @@ export default function RecordPage() {
                   </div>
                 )}
                 </div>
-                <div style={{ marginTop: 4, color: '#888', fontSize: 11 }}>
+                <div style={{ marginTop: 4, color: subTextColor, fontSize: 11 }}>
                   {lastGesture
                     ? `${lastGesture} → ${recording ? t('record.gestureRecord') : t('record.directExec')}`
                     : t('record.gestureHint', { device: screenDevice?.name || screenshotDeviceId || '' })}
@@ -2118,7 +2121,7 @@ export default function RecordPage() {
                         if (keys.length === 0) return null;
                         return (
                           <details key={group} style={{ marginBottom: 2 }}>
-                            <summary style={{ fontSize: 11, color: '#888', cursor: 'pointer', userSelect: 'none' }}>{group}</summary>
+                            <summary style={{ fontSize: 11, color: subTextColor, cursor: 'pointer', userSelect: 'none' }}>{group}</summary>
                             <div style={{ padding: '2px 0 2px 4px' }}>
                               {keys.map(k => (
                                 <Button key={k.name} size="small"
@@ -2185,7 +2188,7 @@ export default function RecordPage() {
                 })()}
               </>
             ) : (
-              <div style={{ color: '#666', textAlign: 'center', padding: 24 }}>
+              <div style={{ color: mutedTextColor, textAlign: 'center', padding: 24 }}>
                 {primaryDevices.length === 0
                   ? t('record.addPrimaryDevice')
                   : t('record.selectPrimaryDevice')}
@@ -2309,7 +2312,7 @@ export default function RecordPage() {
                       );
                     })()}
                     {stepDeviceModule === 'DLTViewer' && selectedModuleFunc === 'WaitLog' && (
-                      <label style={{ fontSize: 12, color: '#888' }}>
+                      <label style={{ fontSize: 12, color: subTextColor }}>
                         <input type="checkbox" checked={dltBackground} onChange={(e) => setDltBackground(e.target.checked)} />
                         {' '}{t('dlt.backgroundMonitor')}
                       </label>
@@ -2336,7 +2339,7 @@ export default function RecordPage() {
                     </Button>
                     {serialResponse && (
                       <div style={{
-                        background: '#1a1a1a', border: '1px solid #333', borderRadius: 4,
+                        background: isDark ? '#1a1a1a' : '#f5f5f5', border: isDark ? '1px solid #333' : '1px solid #d9d9d9', borderRadius: 4,
                         padding: '4px 8px', fontSize: 12, fontFamily: 'monospace',
                         maxHeight: 100, overflow: 'auto', whiteSpace: 'pre-wrap', color: '#52c41a',
                       }}>
@@ -2372,7 +2375,7 @@ export default function RecordPage() {
                         />
                       </>
                     )}
-                    <label style={{ fontSize: 12, color: '#888' }}>
+                    <label style={{ fontSize: 12, color: subTextColor }}>
                       <input type="checkbox" checked={cmdBackground} onChange={(e) => setCmdBackground(e.target.checked)} />
                       {' '}{t('record.cmdBackground')}
                     </label>
@@ -2532,7 +2535,7 @@ export default function RecordPage() {
             style={{ cursor: 'crosshair', maxWidth: '100%' }}
           />
         </div>
-        <div style={{ marginTop: 8, color: '#888', fontSize: 12, textAlign: 'center' }}>
+        <div style={{ marginTop: 8, color: subTextColor, fontSize: 12, textAlign: 'center' }}>
           {t('record.cropModalHint')}
         </div>
       </Modal>
@@ -2571,7 +2574,7 @@ export default function RecordPage() {
             style={{ cursor: 'crosshair', maxWidth: '100%' }}
           />
         </div>
-        <div style={{ marginTop: 8, color: '#888', fontSize: 12, textAlign: 'center' }}>
+        <div style={{ marginTop: 8, color: subTextColor, fontSize: 12, textAlign: 'center' }}>
           {roiEditingIndex != null && steps[roiEditingIndex]?.roi
             ? t('record.roiCurrent', { size: `${steps[roiEditingIndex].roi!.width}×${steps[roiEditingIndex].roi!.height}`, pos: `${steps[roiEditingIndex].roi!.x}, ${steps[roiEditingIndex].roi!.y}` })
             : t('record.dragArea')}
@@ -2612,7 +2615,7 @@ export default function RecordPage() {
         </div>
         {excludeRoiEditingIndex != null && (steps[excludeRoiEditingIndex]?.exclude_rois?.length || 0) > 0 && (
           <div style={{ marginTop: 8 }}>
-            <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>{t('record.excludeList')}</div>
+            <div style={{ fontSize: 12, color: subTextColor, marginBottom: 4 }}>{t('record.excludeList')}</div>
             <Space wrap>
               {steps[excludeRoiEditingIndex]?.exclude_rois?.map((r, ri) => (
                 <Tag
@@ -2674,7 +2677,7 @@ export default function RecordPage() {
         </div>
         {multiCropEditingIndex != null && (steps[multiCropEditingIndex]?.expected_images?.length || 0) > 0 && (
           <div style={{ marginTop: 8 }}>
-            <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>{t('record.cropList')}</div>
+            <div style={{ fontSize: 12, color: subTextColor, marginBottom: 4 }}>{t('record.cropList')}</div>
             <Space wrap>
               {steps[multiCropEditingIndex]?.expected_images?.map((ci, ci_idx) => (
                 <Tag
@@ -2726,7 +2729,7 @@ export default function RecordPage() {
           if (['tap', 'long_press', 'swipe', 'hkmc_touch', 'hkmc_swipe'].includes(step.type)) {
             return (
               <div>
-                <div style={{ marginBottom: 8, color: '#888', fontSize: 12 }}>
+                <div style={{ marginBottom: 8, color: subTextColor, fontSize: 12 }}>
                   {(step.type === 'tap' || step.type === 'hkmc_touch') && t('record.tapHint')}
                   {step.type === 'long_press' && t('record.longPressHint')}
                   {(step.type === 'swipe' || step.type === 'hkmc_swipe') && t('record.swipeHint')}
@@ -2784,7 +2787,7 @@ export default function RecordPage() {
                     onChange={(v) => setEditStepParams({ ...editStepParams, duration_ms: v ?? 1000 })}
                     style={{ width: 150 }}
                   />
-                  <span style={{ color: '#888' }}>ms</span>
+                  <span style={{ color: subTextColor }}>ms</span>
                 </Space>
               </div>
             );
@@ -2838,7 +2841,7 @@ export default function RecordPage() {
                     </div>
                   </>
                 )}
-                <label style={{ fontSize: 12, color: '#888' }}>
+                <label style={{ fontSize: 12, color: subTextColor }}>
                   <input
                     type="checkbox"
                     checked={editStepParams.background ?? false}
@@ -2869,7 +2872,7 @@ export default function RecordPage() {
                     onChange={(v) => setEditStepParams({ ...editStepParams, read_timeout: v ?? 1.0 })}
                     style={{ width: 120 }}
                   />
-                  <span style={{ color: '#888', marginLeft: 4 }}>s</span>
+                  <span style={{ color: subTextColor, marginLeft: 4 }}>s</span>
                 </div>
               </div>
             );
@@ -2895,7 +2898,7 @@ export default function RecordPage() {
                     ))}
                   </div>
                 ) : (
-                  <div style={{ color: '#888' }}>{t('record.noParams')}</div>
+                  <div style={{ color: subTextColor }}>{t('record.noParams')}</div>
                 )}
               </div>
             );
@@ -2919,7 +2922,7 @@ export default function RecordPage() {
             );
           }
 
-          return <div style={{ color: '#888' }}>{t('record.editNotSupported')}</div>;
+          return <div style={{ color: subTextColor }}>{t('record.editNotSupported')}</div>;
         })()}
       </Modal>
 
@@ -2948,13 +2951,13 @@ export default function RecordPage() {
               {testResult.similarity_score != null && (
                 <span>{t('record.similarityLabel')}: <strong>{(testResult.similarity_score * 100).toFixed(1)}%</strong></span>
               )}
-              <span style={{ color: '#888', marginLeft: 'auto' }}>
+              <span style={{ color: subTextColor, marginLeft: 'auto' }}>
                 {testResult.execution_time_ms}ms
               </span>
             </div>
             {testResult.command && (
               <div style={{ marginBottom: 8, padding: '6px 10px', background: '#1a1a2e', borderRadius: 4, fontFamily: 'monospace', fontSize: 12 }}>
-                <span style={{ color: '#888' }}>$ </span><span style={{ color: '#e0e0e0' }}>{testResult.command}</span>
+                <span style={{ color: subTextColor }}>$ </span><span style={{ color: '#e0e0e0' }}>{testResult.command}</span>
               </div>
             )}
             {testResult.message && (() => {
@@ -2992,7 +2995,7 @@ export default function RecordPage() {
                   <div style={{ marginBottom: 12 }}>
                     <div style={{ marginBottom: 4, fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
                       <Tag color={cmdPassed ? 'green' : 'red'} style={{ margin: 0 }}>CMD {cmdPassed ? 'PASS' : 'FAIL'}</Tag>
-                      <span style={{ color: '#888' }}>{matchMode === 'exact' ? 'Exact' : 'Contains'}:</span>
+                      <span style={{ color: subTextColor }}>{matchMode === 'exact' ? 'Exact' : 'Contains'}:</span>
                       <strong style={{ color: cmdPassed ? '#52c41a' : '#ff4d4f' }}>{expectedVal}</strong>
                     </div>
                     <div style={{
@@ -3021,7 +3024,7 @@ export default function RecordPage() {
                   <div style={{ textAlign: 'center', fontSize: 12, marginBottom: 4, fontWeight: 600 }}>{t('record.expectedImageLabel')}</div>
                   {(() => {
                     const imgSrc = `/screenshots/${testResult.expected_annotated_image || testResult.expected_image}?t=${testResult._ts || ''}`;
-                    return <Image src={imgSrc} preview={{ src: imgSrc }} style={{ width: '100%', borderRadius: 4, border: '1px solid #333' }} />;
+                    return <Image src={imgSrc} preview={{ src: imgSrc }} style={{ width: '100%', borderRadius: 4, border: isDark ? '1px solid #333' : '1px solid #d9d9d9' }} />;
                   })()}
                 </Col>
               )}
@@ -3037,7 +3040,7 @@ export default function RecordPage() {
                   </div>
                   {(() => {
                     const imgSrc = `/screenshots/${testResult.actual_annotated_image || testResult.actual_image}?t=${testResult._ts || ''}`;
-                    return <Image src={imgSrc} preview={{ src: imgSrc }} style={{ width: '100%', borderRadius: 4, border: '1px solid #333' }} />;
+                    return <Image src={imgSrc} preview={{ src: imgSrc }} style={{ width: '100%', borderRadius: 4, border: isDark ? '1px solid #333' : '1px solid #d9d9d9' }} />;
                   })()}
                 </Col>
               )}
@@ -3075,7 +3078,7 @@ export default function RecordPage() {
               </div>
             )}
             {!testResult.expected_image && !testResult.actual_image && (
-              <div style={{ color: '#888', textAlign: 'center', padding: 24 }}>
+              <div style={{ color: subTextColor, textAlign: 'center', padding: 24 }}>
                 {t('record.noExpectedImage')}
               </div>
             )}
