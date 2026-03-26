@@ -126,6 +126,8 @@ export const resultsApi = {
 export const serverApi = {
   restart: () => api.post('/settings/server-restart'),
   updateAndRestart: () => api.post('/settings/update-and-restart'),
+  diskUsage: () => api.get('/settings/disk-usage'),
+  openResultsFolder: () => api.post('/settings/open-results-folder'),
 };
 
 // Custom HKMC keys APIs

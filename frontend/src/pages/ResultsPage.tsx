@@ -190,21 +190,28 @@ export default function ResultsPage() {
     const rec = recordings.find(r => r.filename.includes(`_webcam_r${targetRepeat}.webm`));
     if (!rec) return;
 
-    // 같은 회차의 첫 스텝 타임스탬프 기준으로 오프셋 계산
+    // 같은 회차의 첫/마지막 스텝 타임스탬프 기준으로 오프셋 계산
     const sameRepeatSteps = detail.step_results.filter(s => (s.repeat_index || 1) === targetRepeat);
     const firstStep = sameRepeatSteps[0];
+    const lastStep = sameRepeatSteps[sameRepeatSteps.length - 1];
     if (!firstStep?.timestamp || !step.timestamp) return;
     const firstTime = new Date(firstStep.timestamp).getTime();
     const stepTime = new Date(step.timestamp).getTime();
-    const offsetSec = Math.max(0, (stepTime - firstTime) / 1000 - 2);
+    const rawOffsetSec = (stepTime - firstTime) / 1000;
 
     const doSeek = () => {
       const video = detailVideoRef.current;
       if (!video) return;
       const applySeek = () => {
-        video.currentTime = offsetSec;
+        // 비디오 duration과 스텝 시간 범위의 비율로 보정
+        const videoDuration = video.duration || 0;
+        const lastTime = lastStep?.timestamp ? new Date(lastStep.timestamp).getTime() : stepTime;
+        const lastExec = lastStep?.execution_time_ms || 0;
+        const totalStepSpanSec = (lastTime - firstTime) / 1000 + lastExec / 1000;
+        const scale = (videoDuration > 0 && totalStepSpanSec > 0) ? videoDuration / totalStepSpanSec : 1;
+        const correctedOffset = Math.max(0, rawOffsetSec * scale - 1);
+        video.currentTime = Math.min(correctedOffset, videoDuration);
       };
-      // 비디오가 로드되어 있으면 즉시, 아니면 로드 후 seek
       if (video.readyState >= 2) {
         applySeek();
       } else {
@@ -217,7 +224,6 @@ export default function ResultsPage() {
     setActiveRecRepeat(targetRepeat);
 
     if (urlChanged) {
-      // 소스 변경 → React 렌더링 후 seek (requestAnimationFrame으로 DOM 업데이트 대기)
       requestAnimationFrame(() => requestAnimationFrame(doSeek));
     } else {
       doSeek();
@@ -232,16 +238,25 @@ export default function ResultsPage() {
     const sameRepeatSteps = detail.step_results.filter(s => (s.repeat_index || 1) === activeRecRepeat);
     if (sameRepeatSteps.length === 0) return;
     const firstStep = sameRepeatSteps[0];
+    const lastStep = sameRepeatSteps[sameRepeatSteps.length - 1];
     if (!firstStep?.timestamp) return;
     const firstTime = new Date(firstStep.timestamp).getTime();
 
-    // 현재 비디오 시간에 해당하는 스텝 찾기 (역순으로 가장 가까운 것)
+    // 비디오 duration ↔ 스텝 시간 범위 비율로 역보정
+    const videoDuration = video.duration || 0;
+    const lastTime = lastStep?.timestamp ? new Date(lastStep.timestamp).getTime() : firstTime;
+    const lastExec = lastStep?.execution_time_ms || 0;
+    const totalStepSpanSec = (lastTime - firstTime) / 1000 + lastExec / 1000;
+    const scale = (videoDuration > 0 && totalStepSpanSec > 0) ? totalStepSpanSec / videoDuration : 1;
+    // 비디오 시간 → 스텝 시간으로 변환
+    const mappedTime = currentTime * scale;
+
     let matchedStep: StepResultDetail | null = null;
     for (let i = sameRepeatSteps.length - 1; i >= 0; i--) {
       const s = sameRepeatSteps[i];
       if (!s.timestamp) continue;
       const stepOffset = (new Date(s.timestamp).getTime() - firstTime) / 1000;
-      if (currentTime >= stepOffset - 1) {
+      if (mappedTime >= stepOffset - 1) {
         matchedStep = s;
         break;
       }

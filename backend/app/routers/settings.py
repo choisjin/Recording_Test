@@ -354,3 +354,29 @@ async def update_and_restart():
     logger.info("Update complete — requesting restart via flag")
     _RESTART_FLAG.write_text("restart", encoding="utf-8")
     return {"status": "restarting", "results": results}
+
+
+@router.get("/disk-usage")
+async def disk_usage():
+    """현재 드라이브의 디스크 사용량 조회."""
+    drive = Path(_PROJECT_ROOT).anchor or "C:\\"
+    total, used, free = shutil.disk_usage(drive)
+    return {
+        "drive": drive.rstrip("\\"),
+        "total_gb": round(total / (1024 ** 3), 1),
+        "used_gb": round(used / (1024 ** 3), 1),
+        "free_gb": round(free / (1024 ** 3), 1),
+        "used_percent": round(used / total * 100, 1),
+    }
+
+
+@router.post("/open-results-folder")
+async def open_results_folder():
+    """Results 폴더를 파일 탐색기로 열기."""
+    results_dir = _PROJECT_ROOT / "Results"
+    results_dir.mkdir(parents=True, exist_ok=True)
+    if sys.platform == "win32":
+        os.startfile(str(results_dir))
+    else:
+        subprocess.Popen(["xdg-open", str(results_dir)])
+    return {"status": "ok", "path": str(results_dir)}
