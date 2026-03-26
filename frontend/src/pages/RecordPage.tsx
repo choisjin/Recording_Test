@@ -1885,8 +1885,8 @@ export default function RecordPage() {
   return (
     <div style={{ height: 'calc(100vh - 80px)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       <style>{`@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }`}</style>
-      <Splitter style={{ flex: 1, minHeight: 0 }}>
-        <Splitter.Panel defaultSize="40%" min="20%" max="70%" style={{ display: 'flex', flexDirection: 'column', gap: 8, overflow: 'hidden' }}>
+      <Splitter layout={isPortrait ? "horizontal" : "vertical"} style={{ flex: 1, minHeight: 0 }}>
+        <Splitter.Panel defaultSize={isPortrait ? "40%" : "45%"} min="20%" max="70%" style={{ display: 'flex', flexDirection: 'column', gap: 8, overflow: 'hidden' }}>
           {/* Left panel: Device screen + Webcam */}
           <Card
             size="small"
@@ -1976,7 +1976,7 @@ export default function RecordPage() {
             style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}
             styles={{
               header: { flexWrap: 'wrap', height: 'auto', minHeight: 40, padding: '4px 12px' },
-              body: { flex: 1, overflow: 'hidden', padding: 8, display: 'flex', flexDirection: 'column', alignItems: 'center' },
+              body: { flex: 1, overflow: 'hidden', padding: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: isPortrait ? undefined : 'center' },
             }}
           >
             {screenshotDeviceId && (h264Mode || screenshot) ? (
