@@ -1650,26 +1650,31 @@ export default function RecordPage() {
                 onChange={(e) => updateStepDescription(index, e.target.value)}
                 style={{ flex: 1, minWidth: 60, maxWidth: 180 }}
               />
-              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4, flex: 1 }}>
-                {s.type === 'wait'
-                  ? <><Tag color="cyan" style={{ margin: 0 }}>WAIT</Tag><InputNumber size="small" min={100} step={100} value={s.params.duration_ms} onChange={(v) => setSteps(prev => prev.map((st, i) => i === index ? { ...st, params: { ...st.params, duration_ms: v || 1000 } } : st))} suffix="ms" style={{ width: 110 }} /></>
-                  : s.type === 'module_command'
-                  ? `${s.params.function}(${s.params.args ? Object.entries(s.params.args).map(([, v]) => `"${v}"`).join(', ') : ''})`
-                  : s.type === 'serial_command'
-                  ? <><Tag color="purple" style={{ margin: 0 }}>Serial</Tag> {s.params.data}</>
-                  : s.type === 'hkmc_touch'
-                  ? `touch (${s.params.x},${s.params.y})`
-                  : s.type === 'hkmc_swipe'
-                  ? `swipe (${s.params.x1},${s.params.y1})→(${s.params.x2},${s.params.y2})`
-                  : s.type === 'hkmc_key'
-                  ? <><Tag color="volcano" style={{ margin: 0 }}>KEY</Tag> {s.params.key_name || `cmd:${s.params.cmd}`}</>
-                  : s.type === 'cmd_send'
-                  ? <><Tag color="blue" style={{ margin: 0 }}>CMD</Tag> {s.params.command?.substring(0, 40)}</>
-                  : s.type === 'cmd_check'
-                  ? <><Tag color="orange" style={{ margin: 0 }}>CHECK</Tag> {s.params.command?.substring(0, 25)} → {s.params.match_mode === 'exact' ? '=' : '⊃'} {s.params.expected?.substring(0, 20)}</>
-                  : JSON.stringify(s.params)}
-              </span>
               {s.type !== 'wait' && (
+                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4, flex: 1 }}>
+                  {s.type === 'module_command'
+                    ? `${s.params.function}(${s.params.args ? Object.entries(s.params.args).map(([, v]) => `"${v}"`).join(', ') : ''})`
+                    : s.type === 'serial_command'
+                    ? <><Tag color="purple" style={{ margin: 0 }}>Serial</Tag> {s.params.data}</>
+                    : s.type === 'hkmc_touch'
+                    ? `touch (${s.params.x},${s.params.y})`
+                    : s.type === 'hkmc_swipe'
+                    ? `swipe (${s.params.x1},${s.params.y1})→(${s.params.x2},${s.params.y2})`
+                    : s.type === 'hkmc_key'
+                    ? <><Tag color="volcano" style={{ margin: 0 }}>KEY</Tag> {s.params.key_name || `cmd:${s.params.cmd}`}</>
+                    : s.type === 'cmd_send'
+                    ? <><Tag color="blue" style={{ margin: 0 }}>CMD</Tag> {s.params.command?.substring(0, 40)}</>
+                    : s.type === 'cmd_check'
+                    ? <><Tag color="orange" style={{ margin: 0 }}>CHECK</Tag> {s.params.command?.substring(0, 25)} → {s.params.match_mode === 'exact' ? '=' : '⊃'} {s.params.expected?.substring(0, 20)}</>
+                    : JSON.stringify(s.params)}
+                </span>
+              )}
+              {s.type === 'wait' ? (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 'auto', flexShrink: 0 }}>
+                  <Tag color="cyan" style={{ margin: 0 }}>WAIT</Tag>
+                  <InputNumber size="small" min={100} step={100} value={s.params.duration_ms} onChange={(v) => setSteps(prev => prev.map((st, i) => i === index ? { ...st, params: { ...st.params, duration_ms: v || 1000 } } : st))} suffix="ms" style={{ width: 110 }} />
+                </span>
+              ) : (
                 <InputNumber
                   size="small"
                   min={0}
@@ -1682,8 +1687,8 @@ export default function RecordPage() {
                 />
               )}
             </div>
-            {/* 2행: 디바이스, 타입, 이미지, ROI, 점프, 도구 버튼 */}
-            <div style={{ display: 'flex', gap: 2, alignItems: 'center', marginTop: 2, paddingLeft: 36, flexWrap: 'wrap' }}>
+            {/* 2행: 디바이스/타입/이미지/태그 (좌측 정렬) */}
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 2, paddingLeft: 36, flexWrap: 'wrap' }}>
               {getDeviceTag(s.device_id)}
               <Tag color={s.type === 'wait' ? 'cyan' : s.type === 'module_command' ? 'geekblue' : s.type.startsWith('hkmc_') ? 'volcano' : undefined}>{s.type === 'module_command' ? (s.params.module || 'module_command') : s.type}</Tag>
               {s.screen_type && <Tag color="geekblue" style={{ margin: 0 }}>{s.screen_type}</Tag>}
@@ -1740,127 +1745,131 @@ export default function RecordPage() {
               {s.on_fail_goto != null && (
                 <Tag color="red">F→{s.on_fail_goto === -1 ? 'END' : `#${s.on_fail_goto}`}</Tag>
               )}
-              <span style={{ borderLeft: '1px solid #333', paddingLeft: 4, marginLeft: 4, display: 'inline-flex', gap: 2, alignItems: 'center' }}>
-                <Button
-                  size="small" type="text"
-                  icon={<EditOutlined />}
-                  title={t('record.editCommand')}
-                  onClick={() => openEditStepModal(index)}
-                  style={{ color: '#1890ff' }}
-                />
-                <Popover
-                  content={<JumpEditorInner step={s} index={index} steps={steps} onUpdate={updateStepJump} t={t} />}
-                  trigger="click"
-                  placement="left"
-                >
-                  <Button
-                    size="small" type="text"
-                    icon={<BranchesOutlined />}
-                    title={t('record.conditionalJump')}
-                    style={s.on_pass_goto != null || s.on_fail_goto != null ? { color: '#722ed1' } : undefined}
-                  />
-                </Popover>
-                {!recording && (
-                  <Button
-                    size="small" type="text"
-                    title={t('record.insertWait')}
-                    onClick={() => addWaitStep(index)}
-                  >W</Button>
-                )}
-                {screenshotDeviceId && scenarioName && (
-                  <>
-                    <Select
-                      size="small"
-                      value={s.compare_mode || 'full'}
-                      onChange={(v) => updateCompareMode(index, v)}
-                      style={{ width: 105, fontSize: 11 }}
-                      options={[
-                        { value: 'full', label: t('record.fullScreen') },
-                        { value: 'single_crop', label: t('record.singleCrop') },
-                        { value: 'full_exclude', label: t('record.excludeArea') },
-                        { value: 'multi_crop', label: t('record.multiCrop') },
-                      ]}
-                    />
-                    {s.compare_mode === 'single_crop' && (
-                      <Button
-                        size="small" type="text"
-                        icon={<ScissorOutlined />}
-                        title={s.expected_image ? t('record.expectedRecaptureCrop') : t('record.expectedCaptureCrop')}
-                        style={s.expected_image ? { color: '#52c41a' } : undefined}
-                        onClick={() => openCaptureModal(index)}
-                      />
-                    )}
-                    {s.compare_mode === 'full_exclude' && (
-                      <Button
-                        size="small" type="text"
-                        icon={<ScissorOutlined />}
-                        title={t('record.excludeAreaEdit')}
-                        style={(s.exclude_rois?.length || 0) > 0 ? { color: '#ff4d4f' } : undefined}
-                        onClick={() => openExcludeRoiModal(index)}
-                      />
-                    )}
-                    {s.compare_mode === 'multi_crop' && (
-                      <Button
-                        size="small" type="text"
-                        icon={<ScissorOutlined />}
-                        title={t('record.cropAreaEdit')}
-                        style={(s.expected_images?.length || 0) > 0 ? { color: '#52c41a' } : undefined}
-                        onClick={() => openMultiCropModal(index)}
-                      />
-                    )}
-                  </>
-                )}
-              </span>
             </div>
           </div>
-          {/* 우측: 카메라 + 순서변경 + 테스트 + 삭제 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, borderLeft: '1px solid #333', paddingLeft: 8, alignSelf: 'stretch' }}>
-            {screenshotDeviceId && scenarioName && (!s.compare_mode || s.compare_mode === 'full') && (
+          {/* 우측: 2행 아이콘 영역 */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0, borderLeft: '1px solid #333', paddingLeft: 8, alignSelf: 'stretch', justifyContent: 'center' }}>
+            {/* 1행: 순서변경 + 테스트 + 삭제 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              {!recording && (
+                <>
+                  <Button
+                    type="text" icon={<ArrowUpOutlined />}
+                    disabled={index === 0}
+                    onClick={() => moveStep(index, -1)}
+                    style={{ fontSize: 16, width: 28 }}
+                  />
+                  <Button
+                    type="text" icon={<ArrowDownOutlined />}
+                    disabled={index === steps.length - 1}
+                    onClick={() => moveStep(index, 1)}
+                    style={{ fontSize: 16, width: 28 }}
+                  />
+                </>
+              )}
+              {scenarioName && (
+                <Button
+                  type="text"
+                  icon={<ThunderboltOutlined />}
+                  title={t('record.testStep')}
+                  loading={testingStepIndex === index}
+                  onClick={() => testStep(index)}
+                  style={{ color: '#faad14', fontSize: 16, width: 28 }}
+                />
+              )}
+              <Button
+                type="text" danger icon={<DeleteOutlined />}
+                onClick={() => Modal.confirm({
+                  title: t('record.confirmDeleteStep', { index: index + 1 }),
+                  okText: t('common.delete'),
+                  okType: 'danger',
+                  cancelText: t('common.cancel'),
+                  onOk: () => deleteStep(index),
+                })}
+                style={{ fontSize: 16, width: 28 }}
+              />
+            </div>
+            {/* 2행: 편집 + 조건부이동 + W + 비교모드 + 카메라/가위 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
               <Button
                 size="small" type="text"
-                icon={<CameraOutlined />}
-                title={s.expected_image ? t('record.expectedRecapture') : t('record.expectedCapture')}
-                style={s.expected_image ? { color: '#52c41a' } : { }}
-                onClick={() => saveExpectedFull(index)}
+                icon={<EditOutlined />}
+                title={t('record.editCommand')}
+                onClick={() => openEditStepModal(index)}
+                style={{ color: '#1890ff' }}
               />
-            )}
-            {!recording && (
-              <>
+              <Popover
+                content={<JumpEditorInner step={s} index={index} steps={steps} onUpdate={updateStepJump} t={t} />}
+                trigger="click"
+                placement="left"
+              >
                 <Button
-                  type="text" icon={<ArrowUpOutlined />}
-                  disabled={index === 0}
-                  onClick={() => moveStep(index, -1)}
-                  style={{ fontSize: 16, width: 32, height: '100%' }}
+                  size="small" type="text"
+                  icon={<BranchesOutlined />}
+                  title={t('record.conditionalJump')}
+                  style={s.on_pass_goto != null || s.on_fail_goto != null ? { color: '#722ed1' } : undefined}
                 />
+              </Popover>
+              {!recording && (
                 <Button
-                  type="text" icon={<ArrowDownOutlined />}
-                  disabled={index === steps.length - 1}
-                  onClick={() => moveStep(index, 1)}
-                  style={{ fontSize: 16, width: 32, height: '100%' }}
-                />
-              </>
-            )}
-            {scenarioName && (
-              <Button
-                type="text"
-                icon={<ThunderboltOutlined />}
-                title={t('record.testStep')}
-                loading={testingStepIndex === index}
-                onClick={() => testStep(index)}
-                style={{ color: '#faad14', fontSize: 16, width: 32, height: '100%' }}
-              />
-            )}
-            <Button
-              type="text" danger icon={<DeleteOutlined />}
-              onClick={() => Modal.confirm({
-                title: t('record.confirmDeleteStep', { index: index + 1 }),
-                okText: t('common.delete'),
-                okType: 'danger',
-                cancelText: t('common.cancel'),
-                onOk: () => deleteStep(index),
-              })}
-              style={{ fontSize: 16, width: 32, height: '100%' }}
-            />
+                  size="small" type="text"
+                  title={t('record.insertWait')}
+                  onClick={() => addWaitStep(index)}
+                >W</Button>
+              )}
+              {screenshotDeviceId && scenarioName && (
+                <>
+                  <Select
+                    size="small"
+                    value={s.compare_mode || 'full'}
+                    onChange={(v) => updateCompareMode(index, v)}
+                    style={{ width: 105, fontSize: 11 }}
+                    options={[
+                      { value: 'full', label: t('record.fullScreen') },
+                      { value: 'single_crop', label: t('record.singleCrop') },
+                      { value: 'full_exclude', label: t('record.excludeArea') },
+                      { value: 'multi_crop', label: t('record.multiCrop') },
+                    ]}
+                  />
+                  {(!s.compare_mode || s.compare_mode === 'full') && (
+                    <Button
+                      size="small" type="text"
+                      icon={<CameraOutlined />}
+                      title={s.expected_image ? t('record.expectedRecapture') : t('record.expectedCapture')}
+                      style={s.expected_image ? { color: '#52c41a' } : undefined}
+                      onClick={() => saveExpectedFull(index)}
+                    />
+                  )}
+                  {s.compare_mode === 'single_crop' && (
+                    <Button
+                      size="small" type="text"
+                      icon={<ScissorOutlined />}
+                      title={s.expected_image ? t('record.expectedRecaptureCrop') : t('record.expectedCaptureCrop')}
+                      style={s.expected_image ? { color: '#52c41a' } : undefined}
+                      onClick={() => openCaptureModal(index)}
+                    />
+                  )}
+                  {s.compare_mode === 'full_exclude' && (
+                    <Button
+                      size="small" type="text"
+                      icon={<ScissorOutlined />}
+                      title={t('record.excludeAreaEdit')}
+                      style={(s.exclude_rois?.length || 0) > 0 ? { color: '#ff4d4f' } : undefined}
+                      onClick={() => openExcludeRoiModal(index)}
+                    />
+                  )}
+                  {s.compare_mode === 'multi_crop' && (
+                    <Button
+                      size="small" type="text"
+                      icon={<ScissorOutlined />}
+                      title={t('record.cropAreaEdit')}
+                      style={(s.expected_images?.length || 0) > 0 ? { color: '#52c41a' } : undefined}
+                      onClick={() => openMultiCropModal(index)}
+                    />
+                  )}
+                </>
+              )}
+            </div>
           </div>
         </List.Item>
       )}
