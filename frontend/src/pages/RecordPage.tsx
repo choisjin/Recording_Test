@@ -1087,18 +1087,19 @@ export default function RecordPage() {
     const { x, y } = toDeviceCoords(el, e.clientX, e.clientY);
     gestureRef.current = { startX: x, startY: y, startTime: Date.now(), active: true };
     // H.264 모드: scrcpy 터치 즉시 주입 (DOWN)
+    // toDeviceCoords가 deviceRes 기준 좌표를 반환하므로 w/h도 deviceRes 사용
     if (h264Mode) {
-      sendControl({ type: 'touch', action: 0, x, y, w: h264Size.width, h: h264Size.height });
+      sendControl({ type: 'touch', action: 0, x, y, w: deviceRes.width, h: deviceRes.height });
     }
-  }, [screenshotDeviceId, deviceRes, h264Mode, h264Size, sendControl]);
+  }, [screenshotDeviceId, deviceRes, h264Mode, sendControl]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement | HTMLVideoElement>) => {
     if (!h264Mode || !gestureRef.current.active) return;
     const el = videoRef.current;
     if (!el) return;
     const { x, y } = toDeviceCoords(el, e.clientX, e.clientY);
-    sendControl({ type: 'touch', action: 2, x, y, w: h264Size.width, h: h264Size.height });
-  }, [h264Mode, h264Size, sendControl]);
+    sendControl({ type: 'touch', action: 2, x, y, w: deviceRes.width, h: deviceRes.height });
+  }, [h264Mode, deviceRes, sendControl]);
 
   const handleMouseUp = useCallback((e: React.MouseEvent<HTMLCanvasElement | HTMLVideoElement>) => {
     if (!screenshotDeviceId || !gestureRef.current.active) return;
@@ -1113,7 +1114,7 @@ export default function RecordPage() {
 
     // H.264 모드: scrcpy 터치 즉시 주입 (UP) — 디바이스에 이미 반영됨
     if (h264Mode) {
-      sendControl({ type: 'touch', action: 1, x: endX, y: endY, w: h264Size.width, h: h264Size.height });
+      sendControl({ type: 'touch', action: 1, x: endX, y: endY, w: deviceRes.width, h: deviceRes.height });
     }
 
     if (dist > SWIPE_DISTANCE_THRESHOLD) {
@@ -1130,7 +1131,7 @@ export default function RecordPage() {
       executeAction('tap', params, `tap (${startX},${startY})`);
       setLastGesture(`${t('record.gestureTap')} (${startX},${startY})`);
     }
-  }, [screenshotDeviceId, executeAction, deviceRes, h264Mode, h264Size, sendControl]);
+  }, [screenshotDeviceId, executeAction, deviceRes, h264Mode, sendControl]);
 
   const startRecording = async () => {
     if (!scenarioName.trim()) {
