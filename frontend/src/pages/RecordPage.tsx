@@ -433,16 +433,12 @@ export default function RecordPage() {
   }, []);
 
   // Helper: convert element coords to device coords (canvas 또는 video)
-  // JPEG 캔버스: canvas.width/height = 이미지 원본 크기 (HKMC 등)
-  // H.264 비디오: deviceRes 사용 (scrcpy 다운스케일과 무관)
+  // 항상 deviceRes(디바이스 실제 해상도) 기준으로 변환
+  // → 스크린샷 해상도가 디바이스 해상도와 다르더라도 터치 좌표가 정확
   const toDeviceCoords = (el: HTMLCanvasElement | HTMLVideoElement, clientX: number, clientY: number) => {
     const rect = el.getBoundingClientRect();
-    // 캔버스는 내부 크기(= 이미지 원본), 비디오는 디바이스 해상도 사용
-    const isCanvas = el instanceof HTMLCanvasElement;
-    const natW = isCanvas ? el.width : deviceRes.width;
-    const natH = isCanvas ? el.height : deviceRes.height;
-    const scaleX = natW / rect.width;
-    const scaleY = natH / rect.height;
+    const scaleX = deviceRes.width / rect.width;
+    const scaleY = deviceRes.height / rect.height;
     let x = Math.round((clientX - rect.left) * scaleX);
     const y = Math.round((clientY - rect.top) * scaleY);
     // HKMC 일체형: 클러스터(0~1920) + AVN(1920~3840), AVN 터치 시 x+1920 오프셋
