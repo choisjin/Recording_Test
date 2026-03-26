@@ -250,7 +250,7 @@ function AppContent() {
               <Tooltip key={di.drive} title={`${di.drive} — ${di.free_gb} GB 사용가능 / ${di.total_gb} GB`} placement="right">
                 <div style={{ fontSize: 11, color: '#888', marginBottom: diskInfoList.length > 1 ? 6 : 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    {!siderCollapsed && <span style={{ whiteSpace: 'nowrap', minWidth: 24 }}>{di.drive}</span>}
+                    {!siderCollapsed && <span style={{ whiteSpace: 'nowrap', minWidth: 24 }}><DatabaseOutlined /> {di.drive.replace(':', '')}</span>}
                     <div style={{ flex: 1, background: '#333', borderRadius: 4, height: 6, overflow: 'hidden' }}>
                       <div style={{ background: di.used_percent > 90 ? '#ff4d4f' : di.used_percent > 70 ? '#faad14' : '#52c41a', width: `${di.used_percent}%`, height: '100%' }} />
                     </div>
