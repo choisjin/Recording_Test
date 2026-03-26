@@ -295,6 +295,11 @@ async def delete_result(filename: str):
     return {"status": "deleted", "deleted_recordings": deleted_recordings}
 
 
+def _safe_filename(name: str) -> str:
+    """Path traversal 방어: 파일명에서 디렉토리 부분 제거."""
+    return Path(name).name
+
+
 # --- Webcam recording endpoints ---
 
 @router.post("/webcam-upload")
@@ -331,11 +336,12 @@ async def list_recordings_for_result(result_filename: str):
 @router.delete("/recordings/{filename}")
 async def delete_recording(filename: str):
     """Delete a webcam recording."""
-    filepath = RECORDINGS_DIR / filename
+    safe_name = _safe_filename(filename)
+    filepath = RECORDINGS_DIR / safe_name
     if not filepath.exists():
         raise HTTPException(status_code=404, detail="Recording not found")
     filepath.unlink()
-    return {"deleted": filename}
+    return {"deleted": safe_name}
 
 
 @router.post("/recordings/{filename}/trim")
@@ -345,16 +351,19 @@ async def trim_recording(
     end: float = Query(...),
 ):
     """Trim a webcam recording (requires ffmpeg)."""
-    filepath = RECORDINGS_DIR / filename
+    safe_name = _safe_filename(filename)
+    filepath = RECORDINGS_DIR / safe_name
     if not filepath.exists():
         raise HTTPException(status_code=404, detail="Recording not found")
+    if start >= end:
+        raise HTTPException(status_code=400, detail="start must be less than end")
     ffmpeg_path = _find_ffmpeg()
     if ffmpeg_path is None:
         raise HTTPException(
             status_code=400,
             detail="ffmpeg가 설치되어 있지 않습니다. tools/ 폴더에 ffmpeg.exe를 넣거나 시스템에 설치하세요."
         )
-    output_name = f"trim_{start:.1f}_{end:.1f}_{filename}"
+    output_name = f"trim_{start:.1f}_{end:.1f}_{safe_name}"
     output_path = RECORDINGS_DIR / output_name
     try:
         subprocess.run(

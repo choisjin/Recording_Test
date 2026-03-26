@@ -217,8 +217,8 @@ export default function ResultsPage() {
     setActiveRecRepeat(targetRepeat);
 
     if (urlChanged) {
-      // 소스 변경 → React 렌더링 후 seek
-      setTimeout(doSeek, 100);
+      // 소스 변경 → React 렌더링 후 seek (requestAnimationFrame으로 DOM 업데이트 대기)
+      requestAnimationFrame(() => requestAnimationFrame(doSeek));
     } else {
       doSeek();
     }
@@ -688,7 +688,7 @@ export default function ResultsPage() {
           </Space>
         }
         open={detailVisible}
-        onCancel={() => setDetailVisible(false)}
+        onCancel={() => { setDetailVisible(false); setWebcamPanelOpen(false); setWebcamExpanded(false); setCurrentPlayingStepId(null); }}
         width="90vw"
         style={{ top: 20 }}
         footer={
@@ -792,13 +792,27 @@ export default function ResultsPage() {
                               <span style={{ flex: 1, color: '#888' }}>{(rec.size / 1024 / 1024).toFixed(1)}MB</span>
                               <Tooltip title={t('webcam.trimSave')}>
                                 <Button size="small" type="text" icon={<ScissorOutlined />} style={{ padding: '0 4px', height: 20 }}
-                                  onClick={() => { setTrimFile(rec.filename); setTrimStart(0); setTrimEnd(0); }} />
+                                  onClick={() => {
+                                    setTrimFile(rec.filename);
+                                    setTrimStart(0);
+                                    // 비디오 길이를 임시 video 요소로 가져와 trimEnd 초기화
+                                    const tmpVideo = document.createElement('video');
+                                    tmpVideo.src = `/recordings/${rec.filename}`;
+                                    tmpVideo.onloadedmetadata = () => { setTrimEnd(Math.round(tmpVideo.duration * 10) / 10); tmpVideo.src = ''; };
+                                    tmpVideo.onerror = () => setTrimEnd(0);
+                                  }} />
                               </Tooltip>
                               <Tooltip title={t('common.delete')}>
                                 <Button size="small" type="text" danger icon={<DeleteOutlined />} style={{ padding: '0 4px', height: 20 }}
                                   onClick={() => Modal.confirm({
                                     title: t('webcam.deleteConfirm'), okType: 'danger',
-                                    onOk: async () => { await resultsApi.deleteRecording(rec.filename); message.success(t('webcam.deleteSuccess')); fetchRecordings(detailFilename); },
+                                    onOk: async () => {
+                                      await resultsApi.deleteRecording(rec.filename);
+                                      message.success(t('webcam.deleteSuccess'));
+                                      // 삭제된 녹화가 현재 재생 중이면 URL 초기화
+                                      if (rec.url === activeRecUrl) setActiveRecUrl('');
+                                      fetchRecordings(detailFilename);
+                                    },
                                   })} />
                               </Tooltip>
                             </div>
@@ -826,7 +840,7 @@ export default function ResultsPage() {
                 <Table
                   columns={stepColumns}
                   dataSource={detail.step_results}
-                  rowKey="step_id"
+                  rowKey={(r: StepResultDetail) => `${r.step_id}_${r.repeat_index}`}
                   size="small"
                   pagination={false}
                   rowClassName={(r: StepResultDetail) => {
