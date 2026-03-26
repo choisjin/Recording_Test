@@ -203,15 +203,15 @@ export default function ResultsPage() {
       const video = detailVideoRef.current;
       if (!video) return;
       const applySeek = () => {
-        // 비디오 duration과 스텝 시간 범위의 비율로 보정
+        // 비디오 duration과 스텝 시간 범위의 비율로 보정 (Infinity면 스케일링 생략)
         const videoDuration = video.duration;
-        if (!Number.isFinite(videoDuration) || videoDuration <= 0) return;
+        const hasDuration = Number.isFinite(videoDuration) && videoDuration > 0;
         const lastTime = lastStep?.timestamp ? new Date(lastStep.timestamp).getTime() : stepTime;
         const lastExec = lastStep?.execution_time_ms || 0;
         const totalStepSpanSec = (lastTime - firstTime) / 1000 + lastExec / 1000;
-        const scale = totalStepSpanSec > 0 ? videoDuration / totalStepSpanSec : 1;
+        const scale = (hasDuration && totalStepSpanSec > 0) ? videoDuration / totalStepSpanSec : 1;
         const correctedOffset = Math.max(0, rawOffsetSec * scale - 1);
-        const seekTime = Math.min(correctedOffset, videoDuration);
+        const seekTime = hasDuration ? Math.min(correctedOffset, videoDuration) : correctedOffset;
         if (Number.isFinite(seekTime)) video.currentTime = seekTime;
       };
       if (video.readyState >= 2) {
@@ -244,13 +244,13 @@ export default function ResultsPage() {
     if (!firstStep?.timestamp) return;
     const firstTime = new Date(firstStep.timestamp).getTime();
 
-    // 비디오 duration ↔ 스텝 시간 범위 비율로 역보정
+    // 비디오 duration ↔ 스텝 시간 범위 비율로 역보정 (Infinity면 스케일링 생략)
     const videoDuration = video.duration;
-    if (!Number.isFinite(videoDuration) || videoDuration <= 0) return;
+    const hasDuration = Number.isFinite(videoDuration) && videoDuration > 0;
     const lastTime = lastStep?.timestamp ? new Date(lastStep.timestamp).getTime() : firstTime;
     const lastExec = lastStep?.execution_time_ms || 0;
     const totalStepSpanSec = (lastTime - firstTime) / 1000 + lastExec / 1000;
-    const scale = totalStepSpanSec > 0 ? totalStepSpanSec / videoDuration : 1;
+    const scale = (hasDuration && totalStepSpanSec > 0) ? totalStepSpanSec / videoDuration : 1;
     // 비디오 시간 → 스텝 시간으로 변환
     const mappedTime = currentTime * scale;
 
