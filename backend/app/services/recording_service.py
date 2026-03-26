@@ -190,9 +190,10 @@ class RecordingService:
             # Remove from any groups
             groups = self._load_groups()
             changed = False
-            for members in groups.values():
-                if name in members:
-                    members.remove(name)
+            for gname in list(groups.keys()):
+                before = len(groups[gname])
+                groups[gname] = [m for m in groups[gname] if m["name"] != name]
+                if len(groups[gname]) < before:
                     changed = True
             if changed:
                 self._save_groups(groups)
@@ -221,10 +222,10 @@ class RecordingService:
         groups = self._load_groups()
         changed = False
         for members in groups.values():
-            if old_name in members:
-                idx = members.index(old_name)
-                members[idx] = new_name
-                changed = True
+            for m in members:
+                if m["name"] == old_name:
+                    m["name"] = new_name
+                    changed = True
         if changed:
             self._save_groups(groups)
         return True
@@ -308,17 +309,77 @@ class RecordingService:
     def remove_from_group(self, group_name: str, scenario_name: str) -> dict[str, list[dict]]:
         groups = self._load_groups()
         if group_name in groups:
-            groups[group_name] = [m for m in groups[group_name] if m["name"] != scenario_name]
+            old_members = groups[group_name]
+            removed_idx = next((i for i, m in enumerate(old_members) if m["name"] == scenario_name), None)
+            groups[group_name] = [m for m in old_members if m["name"] != scenario_name]
+            # 제거된 멤버 이후의 goto 참조 재매핑
+            if removed_idx is not None:
+                self._remap_group_jumps_after_remove(groups[group_name], removed_idx)
         self._save_groups(groups)
         return groups
+
+    @staticmethod
+    def _remap_jump_idx(jump, removed_idx: int):
+        """제거된 인덱스 이후의 jump 참조를 -1 시프트. 제거 대상을 가리키면 None 반환."""
+        if jump is None:
+            return jump
+        if isinstance(jump, dict):
+            sc = jump.get("scenario", -1)
+            if sc == -1:
+                return jump
+            if sc == removed_idx:
+                return None
+            if sc > removed_idx:
+                return {**jump, "scenario": sc - 1}
+            return jump
+        return jump
+
+    def _remap_group_jumps_after_remove(self, members: list[dict], removed_idx: int):
+        """그룹 멤버 제거 후 모든 jump 참조를 재매핑."""
+        for m in members:
+            m["on_pass_goto"] = self._remap_jump_idx(m.get("on_pass_goto"), removed_idx)
+            m["on_fail_goto"] = self._remap_jump_idx(m.get("on_fail_goto"), removed_idx)
+            for sj in (m.get("step_jumps") or {}).values():
+                sj["on_pass_goto"] = self._remap_jump_idx(sj.get("on_pass_goto"), removed_idx)
+                sj["on_fail_goto"] = self._remap_jump_idx(sj.get("on_fail_goto"), removed_idx)
 
     def reorder_group(self, group_name: str, ordered: list[str]) -> dict[str, list[dict]]:
         groups = self._load_groups()
         if group_name in groups:
-            old_map = {m["name"]: m for m in groups[group_name]}
-            groups[group_name] = [old_map.get(n, {"name": n, "on_pass_goto": None, "on_fail_goto": None}) for n in ordered]
+            old_members = groups[group_name]
+            old_map = {m["name"]: m for m in old_members}
+            # 이전 이름 → 이전 인덱스 매핑
+            old_idx_map = {m["name"]: i for i, m in enumerate(old_members)}
+            # 이전 인덱스 → 새 인덱스 매핑
+            idx_remap = {}
+            for new_i, name in enumerate(ordered):
+                old_i = old_idx_map.get(name)
+                if old_i is not None:
+                    idx_remap[old_i] = new_i
+            new_members = [old_map.get(n, {"name": n, "on_pass_goto": None, "on_fail_goto": None}) for n in ordered]
+            # jump 참조의 scenario 인덱스를 새 인덱스로 재매핑
+            for m in new_members:
+                m["on_pass_goto"] = self._remap_jump_reorder(m.get("on_pass_goto"), idx_remap)
+                m["on_fail_goto"] = self._remap_jump_reorder(m.get("on_fail_goto"), idx_remap)
+                for sj in (m.get("step_jumps") or {}).values():
+                    sj["on_pass_goto"] = self._remap_jump_reorder(sj.get("on_pass_goto"), idx_remap)
+                    sj["on_fail_goto"] = self._remap_jump_reorder(sj.get("on_fail_goto"), idx_remap)
+            groups[group_name] = new_members
         self._save_groups(groups)
         return groups
+
+    @staticmethod
+    def _remap_jump_reorder(jump, idx_remap: dict):
+        """순서 변경 시 jump의 scenario 인덱스를 새 인덱스로 매핑."""
+        if jump is None:
+            return jump
+        if isinstance(jump, dict):
+            sc = jump.get("scenario", -1)
+            if sc == -1:
+                return jump
+            new_sc = idx_remap.get(sc, sc)
+            return {**jump, "scenario": new_sc}
+        return jump
 
     def update_group_jumps(self, group_name: str, index: int, on_pass_goto, on_fail_goto) -> dict[str, list[dict]]:
         """Update conditional jump settings for a scenario in a group."""
@@ -371,6 +432,15 @@ class RecordingService:
                 if old_file.exists():
                     shutil.copy2(str(old_file), str(new_file))
                 step.expected_image = new_filename
+            # multi_crop 이미지도 복사
+            for ci in step.expected_images:
+                if ci.image:
+                    old_ci = src_ss_dir / ci.image
+                    new_ci_name = ci.image.replace(source_name, target_name, 1)
+                    new_ci = tgt_ss_dir / new_ci_name
+                    if old_ci.exists():
+                        shutil.copy2(str(old_ci), str(new_ci))
+                    ci.image = new_ci_name
 
         await self.save_scenario(source)
         return source
@@ -396,6 +466,15 @@ class RecordingService:
                     if old_file.exists():
                         shutil.copy2(str(old_file), str(new_file))
                     step.expected_image = new_filename
+                # multi_crop 이미지도 복사
+                for ci_idx, ci in enumerate(step.expected_images):
+                    if ci.image:
+                        old_ci = src_ss_dir / ci.image
+                        new_ci_name = f"{target_name}_step_{step_id:03d}_crop_{ci_idx}.png"
+                        new_ci = tgt_ss_dir / new_ci_name
+                        if old_ci.exists():
+                            shutil.copy2(str(old_ci), str(new_ci))
+                        ci.image = new_ci_name
                 merged_steps.append(step)
 
         merged = Scenario(

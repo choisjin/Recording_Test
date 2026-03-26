@@ -539,13 +539,21 @@ export default function ScenarioPage() {
     } catch { message.error(t('scenario.groupCreateFailed')); }
   };
 
-  const deleteGroup = async (gName: string) => {
-    try {
-      const res = await scenarioApi.deleteGroup(gName);
-      setGroups(res.data.groups);
-      if (selectedGroup === gName) setSelectedGroup(null);
-      message.success(t('scenario.groupDeleteSuccess'));
-    } catch { message.error(t('scenario.groupDeleteFailed')); }
+  const deleteGroup = (gName: string) => {
+    Modal.confirm({
+      title: t('scenario.groupDeleteConfirm', { name: gName }),
+      okText: t('common.delete'),
+      okType: 'danger',
+      cancelText: t('common.cancel'),
+      onOk: async () => {
+        try {
+          const res = await scenarioApi.deleteGroup(gName);
+          setGroups(res.data.groups);
+          if (selectedGroup === gName) setSelectedGroup(null);
+          message.success(t('scenario.groupDeleteSuccess'));
+        } catch { message.error(t('scenario.groupDeleteFailed')); }
+      },
+    });
   };
 
   const addToGroup = async (gName: string, sName: string) => {
