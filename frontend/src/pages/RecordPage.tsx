@@ -243,6 +243,8 @@ export default function RecordPage() {
   const [hkmcDisplayMode, setHkmcDisplayMode] = useState<'standard' | 'integrated'>('standard');
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [annotatedPreviewSrc, setAnnotatedPreviewSrc] = useState('');
+  const [annotatedPreviewVisible, setAnnotatedPreviewVisible] = useState(false);
   const allDevices = [...primaryDevices, ...auxiliaryDevices];
 
   // Expected image manual capture
@@ -598,7 +600,7 @@ export default function RecordPage() {
     if (!scenarioName || !screenshotDeviceId) return;
     try {
       const res = await scenarioApi.captureExpectedImage(scenarioName, stepIdx, screenshotDeviceId, undefined, undefined, undefined, (isScreenHkmc || hasMultiDisplay) ? screenType : undefined);
-      setSteps(prev => prev.map((s, i) => i === stepIdx ? { ...s, expected_image: res.data.filename, screenshot_device_id: screenshotDeviceId, _imageVer: Date.now() } : s));
+      setSteps(prev => prev.map((s, i) => i === stepIdx ? { ...s, expected_image: res.data.filename, screenshot_device_id: screenshotDeviceId, _imageVer: Date.now(), roi: null, exclude_rois: [], expected_images: [] } : s));
       message.success(t('record.expectedSaved', { index: stepIdx + 1 }));
     } catch (e: any) {
       message.error(e.response?.data?.detail || t('record.expectedImageSaveFailed'));
@@ -730,7 +732,7 @@ export default function RecordPage() {
         const res = await scenarioApi.captureExpectedImage(
           scenarioName, captureStepIndex, screenshotDeviceId, crop, undefined, undefined, (isScreenHkmc || hasMultiDisplay) ? screenType : undefined,
         );
-        setSteps(prev => prev.map((s, i) => i === captureStepIndex ? { ...s, expected_image: res.data.filename, roi: crop, screenshot_device_id: screenshotDeviceId, _imageVer: Date.now() } : s));
+        setSteps(prev => prev.map((s, i) => i === captureStepIndex ? { ...s, expected_image: res.data.filename, roi: crop, screenshot_device_id: screenshotDeviceId, _imageVer: Date.now(), exclude_rois: [], expected_images: [] } : s));
         message.success(t('record.cropExpectedSaved', { index: captureStepIndex + 1, size: `${rw}×${rh}` }));
         setCaptureModalOpen(false);
         setCaptureStepIndex(null);
@@ -906,7 +908,7 @@ export default function RecordPage() {
       if (!step?.expected_image && scenarioName && screenshotDeviceId) {
         try {
           const capRes = await scenarioApi.captureExpectedImage(scenarioName, excludeRoiEditingIndex, screenshotDeviceId, undefined, undefined, undefined, (isScreenHkmc || hasMultiDisplay) ? screenType : undefined);
-          setSteps(prev => prev.map((s, i) => i === excludeRoiEditingIndex ? { ...s, expected_image: capRes.data.filename, screenshot_device_id: screenshotDeviceId, _imageVer: Date.now() } : s));
+          setSteps(prev => prev.map((s, i) => i === excludeRoiEditingIndex ? { ...s, expected_image: capRes.data.filename, screenshot_device_id: screenshotDeviceId, _imageVer: Date.now(), roi: null, expected_images: [] } : s));
         } catch (e: any) {
           message.error(e.response?.data?.detail || t('record.cropSaveFailed'));
           return;
@@ -1048,7 +1050,7 @@ export default function RecordPage() {
       try {
         // 현재 화면으로 기대이미지 갱신 (모달 스냅샷과 좌표 일치 보장)
         const capRes = await scenarioApi.captureExpectedImage(scenarioName, multiCropEditingIndex, screenshotDeviceId, undefined, undefined, undefined, (isScreenHkmc || hasMultiDisplay) ? screenType : undefined);
-        setSteps(prev => prev.map((s, i) => i === multiCropEditingIndex ? { ...s, expected_image: capRes.data.filename, screenshot_device_id: screenshotDeviceId, _imageVer: Date.now() } : s));
+        setSteps(prev => prev.map((s, i) => i === multiCropEditingIndex ? { ...s, expected_image: capRes.data.filename, screenshot_device_id: screenshotDeviceId, _imageVer: Date.now(), roi: null, exclude_rois: [] } : s));
         const replaceIdx = multiCropSelectedIdx ?? undefined;
         const res = await scenarioApi.cropFromExpected(scenarioName, multiCropEditingIndex, crop, '', replaceIdx);
         const roi: ROI = res.data.roi;
@@ -1569,6 +1571,65 @@ export default function RecordPage() {
     setEditingExisting(false);
   };
 
+  // 기대이미지 미리보기: 어노테이션(exclude/crop ROI) 포함
+  const showAnnotatedPreview = useCallback((step: Step) => {
+    if (!step.expected_image || !scenarioName) return;
+    const imgUrl = `/screenshots/${scenarioName}/${step.expected_image}?v=${step._imageVer || ''}`;
+    const hasAnnotations = (step.exclude_rois?.length || 0) > 0 || (step.expected_images?.length || 0) > 0 || !!step.roi;
+    if (!hasAnnotations) {
+      setAnnotatedPreviewSrc(imgUrl);
+      setAnnotatedPreviewVisible(true);
+      return;
+    }
+    const img = new window.Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0);
+      if (step.roi) {
+        const r = step.roi;
+        ctx.strokeStyle = '#52c41a';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(r.x, r.y, r.width, r.height);
+        ctx.fillStyle = 'rgba(82,196,26,0.15)';
+        ctx.fillRect(r.x, r.y, r.width, r.height);
+        ctx.fillStyle = '#52c41a';
+        ctx.font = '24px sans-serif';
+        ctx.fillText('CROP', r.x + 4, r.y + 26);
+      }
+      if (step.exclude_rois?.length) {
+        step.exclude_rois.forEach((r, i) => {
+          ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
+          ctx.fillRect(r.x, r.y, r.width, r.height);
+          ctx.strokeStyle = '#ff4d4f';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(r.x, r.y, r.width, r.height);
+          ctx.fillStyle = '#fff';
+          ctx.font = '20px sans-serif';
+          ctx.fillText(`#${i + 1}`, r.x + 4, r.y + 22);
+        });
+      }
+      if (step.expected_images?.length) {
+        step.expected_images.forEach((ci, i) => {
+          if (!ci.roi) return;
+          ctx.strokeStyle = '#52c41a';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(ci.roi.x, ci.roi.y, ci.roi.width, ci.roi.height);
+          ctx.fillStyle = 'rgba(82,196,26,0.15)';
+          ctx.fillRect(ci.roi.x, ci.roi.y, ci.roi.width, ci.roi.height);
+          ctx.fillStyle = '#52c41a';
+          ctx.font = '24px sans-serif';
+          ctx.fillText(ci.label || `#${i + 1}`, ci.roi.x + 4, ci.roi.y + 24);
+        });
+      }
+      setAnnotatedPreviewSrc(canvas.toDataURL('image/png'));
+      setAnnotatedPreviewVisible(true);
+    };
+    img.src = imgUrl;
+  }, [scenarioName]);
+
   // Draw screenshot on canvas
   useEffect(() => {
     if (!screenshot || !canvasRef.current) return;
@@ -1637,7 +1698,7 @@ export default function RecordPage() {
       size="small"
       dataSource={steps}
       renderItem={(s, index) => (
-        <List.Item style={{ display: 'flex', padding: '4px 8px', gap: 8 }}>
+        <List.Item style={{ display: 'flex', padding: '4px 8px', gap: 8, background: index % 2 === 0 ? undefined : 'rgba(255,255,255,0.04)' }}>
           {/* 좌측: 스텝 정보 (1행: 설명+함수+delay) + (2행: 나머지) */}
           <div style={{ flex: 1, minWidth: 0 }}>
             {/* 1행: 설명, 함수(인자), delay(우측정렬) */}
@@ -1700,21 +1761,16 @@ export default function RecordPage() {
               )}
               {s.expected_image && scenarioName && (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, marginLeft: 'auto', flexShrink: 0 }}>
-                  <Image
-                    src={`/screenshots/${scenarioName}/${s.expected_image}?v=${s._imageVer || ''}`}
-                    alt="expected"
-                    style={{ display: 'none' }}
-                    preview={{ mask: false }}
-                  />
                   <Tag
                     color="green"
                     style={{ margin: 0, cursor: 'pointer' }}
-                    onClick={(e) => {
-                      const img = e.currentTarget.parentElement?.querySelector('.ant-image img') as HTMLElement;
-                      img?.click();
-                    }}
+                    onClick={() => showAnnotatedPreview(s)}
                   >
-                    <CameraOutlined style={{ marginRight: 4 }} />IMG
+                    <CameraOutlined style={{ marginRight: 4 }} />
+                    {(s.expected_images?.length || 0) > 0 ? 'MULTI'
+                      : (s.exclude_rois?.length || 0) > 0 ? 'EXCLUDE'
+                      : s.roi ? 'CROP'
+                      : 'FULL'}
                   </Tag>
                   <CloseCircleOutlined
                     onClick={() => setSteps((prev) => prev.map((st, i) => i === index ? { ...st, expected_image: null, roi: null, exclude_rois: [], expected_images: [] } : st))}
@@ -1727,124 +1783,54 @@ export default function RecordPage() {
           {/* 우측: 2행 아이콘 영역 */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0, borderLeft: '1px solid #333', paddingLeft: 8, alignSelf: 'stretch', justifyContent: 'center' }}>
             {/* 1행: 순서변경 + 테스트 + 삭제 */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'flex-end' }}>
               {!recording && (
                 <>
-                  <Button
-                    type="text" icon={<ArrowUpOutlined />}
-                    disabled={index === 0}
-                    onClick={() => moveStep(index, -1)}
-                    style={{ fontSize: 16, width: 28 }}
-                  />
-                  <Button
-                    type="text" icon={<ArrowDownOutlined />}
-                    disabled={index === steps.length - 1}
-                    onClick={() => moveStep(index, 1)}
-                    style={{ fontSize: 16, width: 28 }}
-                  />
+                  <Button size="small" type="text" icon={<ArrowUpOutlined />} disabled={index === 0} onClick={() => moveStep(index, -1)} style={{ width: 28 }} />
+                  <Button size="small" type="text" icon={<ArrowDownOutlined />} disabled={index === steps.length - 1} onClick={() => moveStep(index, 1)} style={{ width: 28 }} />
                 </>
               )}
               {scenarioName && (
-                <Button
-                  type="text"
-                  icon={<ThunderboltOutlined />}
-                  title={t('record.testStep')}
-                  loading={testingStepIndex === index}
-                  onClick={() => testStep(index)}
-                  style={{ color: '#faad14', fontSize: 16, width: 28 }}
-                />
+                <Button size="small" type="text" icon={<ThunderboltOutlined />} title={t('record.testStep')} loading={testingStepIndex === index} onClick={() => testStep(index)} style={{ color: '#faad14', width: 28 }} />
               )}
-              <Button
-                type="text" danger icon={<DeleteOutlined />}
-                onClick={() => Modal.confirm({
-                  title: t('record.confirmDeleteStep', { index: index + 1 }),
-                  okText: t('common.delete'),
-                  okType: 'danger',
-                  cancelText: t('common.cancel'),
-                  onOk: () => deleteStep(index),
-                })}
-                style={{ fontSize: 16, width: 28 }}
-              />
+              <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={() => Modal.confirm({ title: t('record.confirmDeleteStep', { index: index + 1 }), okText: t('common.delete'), okType: 'danger', cancelText: t('common.cancel'), onOk: () => deleteStep(index) })} style={{ width: 28 }} />
             </div>
-            {/* 2행: 편집 + 조건부이동 + W + 비교모드 + 카메라/가위 */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Button
-                size="small" type="text"
-                icon={<EditOutlined />}
-                title={t('record.editCommand')}
-                onClick={() => openEditStepModal(index)}
-                style={{ color: '#1890ff' }}
-              />
+            {/* 2행: 편집 + 조건부이동 + W + 카메라 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'flex-end' }}>
+              <Button size="small" type="text" icon={<EditOutlined />} title={t('record.editCommand')} onClick={() => openEditStepModal(index)} style={{ color: '#1890ff', width: 28 }} />
               <Popover
                 content={<JumpEditorInner step={s} index={index} steps={steps} onUpdate={updateStepJump} t={t} />}
                 trigger="click"
                 placement="left"
               >
-                <Button
-                  size="small" type="text"
-                  icon={<BranchesOutlined />}
-                  title={t('record.conditionalJump')}
-                  style={s.on_pass_goto != null || s.on_fail_goto != null ? { color: '#722ed1' } : undefined}
-                />
+                <Button size="small" type="text" icon={<BranchesOutlined />} title={t('record.conditionalJump')} style={{ width: 28, ...(s.on_pass_goto != null || s.on_fail_goto != null ? { color: '#722ed1' } : {}) }} />
               </Popover>
               {!recording && (
-                <Button
-                  size="small" type="text"
-                  title={t('record.insertWait')}
-                  onClick={() => addWaitStep(index)}
-                >W</Button>
+                <Button size="small" type="text" title={t('record.insertWait')} onClick={() => addWaitStep(index)} style={{ width: 28 }}>W</Button>
               )}
               {screenshotDeviceId && scenarioName && (
-                <>
-                  <Select
-                    size="small"
-                    value={s.compare_mode || 'full'}
-                    onChange={(v) => updateCompareMode(index, v)}
-                    style={{ width: 105, fontSize: 11 }}
-                    options={[
-                      { value: 'full', label: t('record.fullScreen') },
-                      { value: 'single_crop', label: t('record.singleCrop') },
-                      { value: 'full_exclude', label: t('record.excludeArea') },
-                      { value: 'multi_crop', label: t('record.multiCrop') },
-                    ]}
-                  />
-                  {(!s.compare_mode || s.compare_mode === 'full') && (
-                    <Button
-                      size="small" type="text"
-                      icon={<CameraOutlined />}
-                      title={s.expected_image ? t('record.expectedRecapture') : t('record.expectedCapture')}
-                      style={s.expected_image ? { color: '#52c41a' } : undefined}
-                      onClick={() => saveExpectedFull(index)}
-                    />
-                  )}
-                  {s.compare_mode === 'single_crop' && (
-                    <Button
-                      size="small" type="text"
-                      icon={<ScissorOutlined />}
-                      title={s.expected_image ? t('record.expectedRecaptureCrop') : t('record.expectedCaptureCrop')}
-                      style={s.expected_image ? { color: '#52c41a' } : undefined}
-                      onClick={() => openCaptureModal(index)}
-                    />
-                  )}
-                  {s.compare_mode === 'full_exclude' && (
-                    <Button
-                      size="small" type="text"
-                      icon={<ScissorOutlined />}
-                      title={t('record.excludeAreaEdit')}
-                      style={(s.exclude_rois?.length || 0) > 0 ? { color: '#ff4d4f' } : undefined}
-                      onClick={() => openExcludeRoiModal(index)}
-                    />
-                  )}
-                  {s.compare_mode === 'multi_crop' && (
-                    <Button
-                      size="small" type="text"
-                      icon={<ScissorOutlined />}
-                      title={t('record.cropAreaEdit')}
-                      style={(s.expected_images?.length || 0) > 0 ? { color: '#52c41a' } : undefined}
-                      onClick={() => openMultiCropModal(index)}
-                    />
-                  )}
-                </>
+                <Popover
+                  trigger="click"
+                  placement="bottomRight"
+                  content={
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 130 }}>
+                      <Button size="small" block onClick={() => { updateCompareMode(index, 'full'); saveExpectedFull(index); }}>
+                        <CameraOutlined /> {t('record.fullScreen')}
+                      </Button>
+                      <Button size="small" block onClick={() => { updateCompareMode(index, 'single_crop'); openCaptureModal(index); }}>
+                        <ScissorOutlined /> {t('record.singleCrop')}
+                      </Button>
+                      <Button size="small" block onClick={() => { updateCompareMode(index, 'full_exclude'); openExcludeRoiModal(index); }}>
+                        <ScissorOutlined /> {t('record.excludeArea')}
+                      </Button>
+                      <Button size="small" block onClick={() => { updateCompareMode(index, 'multi_crop'); openMultiCropModal(index); }}>
+                        <ScissorOutlined /> {t('record.multiCrop')}
+                      </Button>
+                    </div>
+                  }
+                >
+                  <Button size="small" type="text" icon={<CameraOutlined />} style={{ width: 28, ...(s.expected_image ? { color: '#52c41a' } : {}) }} />
+                </Popover>
               )}
             </div>
           </div>
@@ -1852,7 +1838,7 @@ export default function RecordPage() {
       )}
       locale={{ emptyText: t('record.noSteps') }}
     />
-  ), [steps, recording, updateStepJump, updateStepDescription, openEditStepModal, openRoiModal, screenshotDeviceId, scenarioName, saveExpectedFull, openCaptureModal, testStep, testingStepIndex, updateCompareMode, openExcludeRoiModal, openMultiCropModal, t]);
+  ), [steps, recording, updateStepJump, updateStepDescription, openEditStepModal, openRoiModal, screenshotDeviceId, scenarioName, saveExpectedFull, openCaptureModal, testStep, testingStepIndex, updateCompareMode, openExcludeRoiModal, openMultiCropModal, showAnnotatedPreview, t]);
 
   return (
     <div style={{ height: 'calc(100vh - 80px)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
@@ -2956,6 +2942,14 @@ export default function RecordPage() {
           </div>
         )}
       </Modal>
+      <Image
+        src={annotatedPreviewSrc}
+        style={{ display: 'none' }}
+        preview={{
+          visible: annotatedPreviewVisible,
+          onVisibleChange: (v) => setAnnotatedPreviewVisible(v),
+        }}
+      />
     </div>
   );
 }
