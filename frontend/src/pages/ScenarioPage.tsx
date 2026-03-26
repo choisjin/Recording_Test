@@ -284,8 +284,9 @@ export default function ScenarioPage() {
   const wsRef = useRef<WebSocket | null>(null);
 
   // --- Filtered scenarios by group ---
+  // 그룹 선택 시 그룹 멤버 순서 유지 (scenarios는 알파벳순이므로 filter 대신 map 사용)
   const filteredScenarios = selectedGroup
-    ? scenarios.filter((n) => (groups[selectedGroup] || []).some((m) => m.name === n))
+    ? (groups[selectedGroup] || []).map((m) => m.name).filter((n) => scenarios.includes(n))
     : scenarios;
 
   // --- Fetches ---
