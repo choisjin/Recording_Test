@@ -302,33 +302,31 @@ export default function RecordPage() {
   }>({ startX: 0, startY: 0, startTime: 0, active: false });
 
   // blob URL → data URL 변환 (HKMC WebSocket blob URL은 다음 프레임에 revoke 됨)
-  const snapshotScreenshot = useCallback((): Promise<string> => {
-    // H.264 모드: video 요소에서 직접 프레임 캡처
-    if (h264Mode && videoRef.current) {
-      const video = videoRef.current;
-      if (video.videoWidth > 0 && video.videoHeight > 0) {
-        const cvs = document.createElement('canvas');
-        cvs.width = video.videoWidth;
-        cvs.height = video.videoHeight;
-        const ctx = cvs.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(video, 0, 0);
-          return Promise.resolve(cvs.toDataURL('image/png'));
+  const snapshotScreenshot = useCallback(async (): Promise<string> => {
+    // 백엔드에서 원본 해상도 스크린샷 직접 가져오기 (모달용)
+    if (screenshotDeviceId) {
+      try {
+        const dev = primaryDevices.find(d => d.id === screenshotDeviceId);
+        const needsScreenType = dev?.type === 'hkmc6th' || (dev?.type === 'adb' && (dev.info?.displays?.length ?? 0) > 1);
+        const res = await deviceApi.screenshot(screenshotDeviceId, needsScreenType ? screenType : undefined);
+        if (res.data.image) {
+          const fmt = res.data.format || 'jpeg';
+          return `data:image/${fmt};base64,${res.data.image}`;
         }
-      }
+      } catch { /* 실패 시 아래 폴백 */ }
     }
 
-    // JPEG 모드: 메인 캔버스에서 직접 프레임 캡처 (blob URL 해제 레이스 방지)
+    // 폴백: 메인 캔버스에서 캡처 (저해상도일 수 있음)
     const mainCanvas = canvasRef.current;
     if (mainCanvas && mainCanvas.width > 0 && mainCanvas.height > 0) {
       try {
-        return Promise.resolve(mainCanvas.toDataURL('image/png'));
+        return mainCanvas.toDataURL('image/png');
       } catch { /* CORS 등 실패 시 아래 폴백 */ }
     }
 
     const src = screenshot || '';
-    if (!src) return Promise.resolve('');
-    if (!src.startsWith('blob:')) return Promise.resolve(src);
+    if (!src) return '';
+    if (!src.startsWith('blob:')) return src;
 
     return new Promise<string>((resolve) => {
       const img = new window.Image();
@@ -347,7 +345,7 @@ export default function RecordPage() {
       img.onerror = () => resolve('');
       img.src = src;
     });
-  }, [screenshot, h264Mode, videoRef]);
+  }, [screenshotDeviceId, primaryDevices, screenType, screenshot]);
 
   // Fetch devices on mount & sync recording state with backend
   useEffect(() => {
