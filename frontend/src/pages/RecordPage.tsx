@@ -1694,7 +1694,7 @@ export default function RecordPage() {
               )}
               <span style={{ minWidth: 100, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                 {s.type === 'wait'
-                  ? <><Tag color="cyan" style={{ margin: 0 }}>WAIT</Tag><InputNumber size="small" min={100} max={60000} step={100} value={s.params.duration_ms} onChange={(v) => setSteps(prev => prev.map((st, i) => i === index ? { ...st, params: { ...st.params, duration_ms: v || 1000 } } : st))} suffix="ms" style={{ width: 110 }} /></>
+                  ? <><Tag color="cyan" style={{ margin: 0 }}>WAIT</Tag><InputNumber size="small" min={100} step={100} value={s.params.duration_ms} onChange={(v) => setSteps(prev => prev.map((st, i) => i === index ? { ...st, params: { ...st.params, duration_ms: v || 1000 } } : st))} suffix="ms" style={{ width: 110 }} /></>
                   : s.type === 'module_command'
                   ? `${s.params.function}(${s.params.args ? Object.entries(s.params.args).map(([, v]) => `"${v}"`).join(', ') : ''})`
                   : s.type === 'serial_command'
@@ -2680,7 +2680,6 @@ export default function RecordPage() {
                 <Space>
                   <InputNumber
                     min={100}
-                    max={60000}
                     step={100}
                     value={editStepParams.duration_ms ?? 1000}
                     onChange={(v) => setEditStepParams({ ...editStepParams, duration_ms: v ?? 1000 })}
