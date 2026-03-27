@@ -2018,7 +2018,7 @@ export default function RecordPage() {
               >
                 <Button size="small" type="text" title={t('record.insertWait')} style={{ width: 28 }}>W</Button>
               </Popover>
-              {screenshotDeviceId && scenarioName && (
+              {scenarioName && (
                 <Popover
                   open={compareModePopoverIndex === index}
                   onOpenChange={(v) => setCompareModePopoverIndex(v ? index : null)}
