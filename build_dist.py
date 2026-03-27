@@ -363,15 +363,15 @@ def step_package():
     # ── server.py → .pyd + 얇은 런처 ──
     server_pyd = list(PROJECT_ROOT.glob("server.cp*.pyd"))
     if server_pyd:
-        # .pyd를 _server_core.*.pyd로 복사
-        pyd_name = server_pyd[0].name.replace("server.", "_server_core.")
-        shutil.copy2(str(server_pyd[0]), str(DIST_DIR / pyd_name))
-        # 얇은 런처 생성
-        (DIST_DIR / "server.py").write_text(
-            "import _server_core\n_server_core.main()\n",
+        # .pyd를 원래 이름 그대로 복사 (PyInit_server 유지)
+        shutil.copy2(str(server_pyd[0]), str(DIST_DIR / server_pyd[0].name))
+        # 런처: server.py 제거, _launcher.py 생성 (.pyd와 이름 충돌 방지)
+        (DIST_DIR / "server.py").unlink(missing_ok=True)
+        (DIST_DIR / "_launcher.py").write_text(
+            "import os, sys\nsys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))\nimport server\nserver.main()\n",
             encoding="utf-8",
         )
-        print(f"  server.pyd → {pyd_name} + server.py (launcher)")
+        print(f"  {server_pyd[0].name} + _launcher.py")
     else:
         # .pyd 없으면 원본 복사 (컴파일 실패 시 폴백)
         src = PROJECT_ROOT / "server.py"

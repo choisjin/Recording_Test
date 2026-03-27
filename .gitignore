@@ -12,6 +12,7 @@ dist/
 *.c
 *.pyd
 _cython_setup.py
+_launcher.py
 *.spec
 
 # Node
