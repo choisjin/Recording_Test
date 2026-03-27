@@ -1958,7 +1958,11 @@ export default function RecordPage() {
       <style>{`
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
         .record-page .ant-tag { line-height: 22px; }
-        .record-page .ant-input-sm, .record-page .ant-input-number-sm, .record-page .ant-select-sm { height: 24px; }
+        .record-page .ant-input-sm,
+        .record-page .ant-input-number-sm,
+        .record-page .ant-input-number-sm .ant-input-number-input,
+        .record-page .ant-select-sm,
+        .record-page .ant-select-sm .ant-select-selector { height: 24px !important; min-height: 24px !important; }
         .record-page .ant-btn-sm { height: 24px; }
       `}</style>
       <Splitter style={{ flex: 1, minHeight: 0 }}>
