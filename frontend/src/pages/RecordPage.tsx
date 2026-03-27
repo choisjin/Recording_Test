@@ -2204,8 +2204,8 @@ export default function RecordPage() {
           {recording && (
             /* 녹화 중: 1행 시나리오+설명+녹화상태 */
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0, flexWrap: 'wrap' }}>
-              <Input size="small" value={scenarioName} disabled style={{ width: 120 }} />
-              <Input size="small" placeholder={t('record.descriptionPlaceholder')} value={description} onChange={(e) => setDescription(e.target.value)} style={{ width: 140 }} />
+              <Input size="small" value={scenarioName} disabled style={{ flex: 1, minWidth: 100 }} />
+              <Input size="small" placeholder={t('record.descriptionPlaceholder')} value={description} onChange={(e) => setDescription(e.target.value)} style={{ flex: 2, minWidth: 120 }} />
               <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
                 <Tag color="red" style={{ margin: 0 }}>{t('record.recording')}</Tag>
                 <Button size="small" danger icon={<PauseOutlined />} onClick={stopRecording} disabled={hasPendingSteps}>
