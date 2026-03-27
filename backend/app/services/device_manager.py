@@ -542,6 +542,9 @@ class DeviceManager:
         for k, v in self._devices.items():
             if v.type != "adb":
                 continue
+            # 사용자가 연결 끊기한 디바이스는 자동 상태 갱신 안 함
+            if v.id not in self._ever_connected:
+                continue
             # Check by address (actual ADB serial) instead of device id (may be alias)
             adb_serial = v.address
             if adb_serial in adb_status_map:
@@ -657,6 +660,9 @@ class DeviceManager:
     async def refresh_auxiliary(self) -> None:
         """빠른 상태 확인만 수행 (네트워크 I/O 없음). 재연결은 백그라운드에서."""
         for dev in self._devices.values():
+            # 사용자가 연결 끊기한 디바이스는 자동 상태 갱신 안 함
+            if dev.id not in self._ever_connected:
+                continue
             if dev.type == "hkmc6th":
                 hkmc = self._hkmc_conns.get(dev.id)
                 if hkmc and hkmc.is_connected:

@@ -93,9 +93,10 @@ export default function DevicePage() {
     try {
       const res = await deviceApi.connectRegistered([deviceId]);
       updateDeviceLists(res.data);
-      message.success(t('device.connectOneSuccess'));
-    } catch {
-      message.error(t('device.connectFailed'));
+      const result = res.data.results?.find((r: any) => r.device_id === deviceId);
+      message.success(result?.message || t('device.connectOneSuccess'));
+    } catch (e: any) {
+      message.error(e.response?.data?.detail || t('device.connectFailed'));
     }
     setConnectingIds(prev => {
       const next = new Set(prev);
@@ -430,9 +431,9 @@ export default function DevicePage() {
     try {
       const res = await deviceApi.disconnectOne(deviceId);
       updateDeviceLists(res.data);
-      message.info(t('device.disconnectOneSuccess'));
-    } catch {
-      message.error(t('device.disconnectFailed'));
+      message.info(res.data.result || t('device.disconnectOneSuccess'));
+    } catch (e: any) {
+      message.error(e.response?.data?.detail || t('device.disconnectFailed'));
     }
     setDisconnectingIds(prev => { const next = new Set(prev); next.delete(deviceId); return next; });
   };
