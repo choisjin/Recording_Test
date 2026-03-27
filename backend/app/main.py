@@ -210,7 +210,6 @@ async def _remote_play(scenario_name: str, repeat: int, verify: bool):
             playback_service._monitor_state["status"] = "idle"
 
 
-@asynccontextmanager
 async def _auto_connect_all():
     """서버 시작 후 등록된 모든 디바이스를 백그라운드에서 자동 연결."""
     await asyncio.sleep(2)  # 서버 안정화 대기
@@ -226,6 +225,7 @@ async def _auto_connect_all():
             logger.debug("자동 연결 실패 %s: %s", dev.id, e)
 
 
+@asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle."""
     # --- Startup ---
