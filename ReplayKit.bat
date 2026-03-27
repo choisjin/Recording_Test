@@ -1,7 +1,7 @@
 @echo off
 cd /d "%~dp0"
 
-:: Git이 있고 .git 저장소면 시작 전 최신화
+:: Auto-update from git if available
 if exist ".git" (
     where git.exe >nul 2>&1
     if %ERRORLEVEL% equ 0 (
@@ -15,7 +15,7 @@ if exist ".git" (
     )
 )
 
-:: 배포 환경: _launcher.py, 개발 환경: server.py
+:: Detect entry point
 set "ENTRY=server.py"
 if exist "_launcher.py" set "ENTRY=_launcher.py"
 
