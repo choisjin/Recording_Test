@@ -1799,13 +1799,22 @@ export default function RecordPage() {
   const selectCompareMode = useCallback((index: number, mode: string) => {
     setCompareModePopoverIndex(null);
     updateCompareMode(index, mode);
+    // 비교모드별 기본 임계값 적용
+    const thresholdMap: Record<string, number> = {
+      full: settings.threshold_full,
+      single_crop: settings.threshold_single_crop,
+      full_exclude: settings.threshold_full_exclude,
+      multi_crop: settings.threshold_multi_crop,
+    };
+    const defaultThreshold = thresholdMap[mode] ?? 0.95;
+    setSteps(prev => prev.map((s, i) => i === index ? { ...s, similarity_threshold: defaultThreshold } : s));
     setTimeout(() => {
       if (mode === 'full') saveExpectedFull(index);
       else if (mode === 'single_crop') openCaptureModal(index);
       else if (mode === 'full_exclude') openExcludeRoiModal(index);
       else if (mode === 'multi_crop') openMultiCropModal(index);
     }, 100);
-  }, [updateCompareMode, saveExpectedFull, openCaptureModal, openExcludeRoiModal, openMultiCropModal]);
+  }, [updateCompareMode, saveExpectedFull, openCaptureModal, openExcludeRoiModal, openMultiCropModal, settings]);
 
   // Draw screenshot on canvas
   useEffect(() => {
@@ -1937,25 +1946,42 @@ export default function RecordPage() {
               {s.on_fail_goto != null && (
                 <Tag color="red">F→{s.on_fail_goto === -1 ? 'END' : `#${s.on_fail_goto}`}</Tag>
               )}
-              {s.expected_image && scenarioName && (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, marginLeft: 'auto', flexShrink: 0 }}>
-                  <Tag
-                    color="green"
-                    style={{ margin: 0, cursor: 'pointer' }}
-                    onClick={() => showAnnotatedPreview(s)}
-                  >
-                    <CameraOutlined style={{ marginRight: 4 }} />
-                    {(s.expected_images?.length || 0) > 0 ? 'MULTI'
-                      : (s.exclude_rois?.length || 0) > 0 ? 'EXCLUDE'
-                      : s.roi ? 'CROP'
-                      : 'FULL'}
-                  </Tag>
-                  <CloseCircleOutlined
-                    onClick={() => setSteps((prev) => prev.map((st, i) => i === index ? { ...st, expected_image: null, roi: null, exclude_rois: [], expected_images: [] } : st))}
-                    style={{ fontSize: 14, color: '#ff4d4f', cursor: 'pointer' }}
-                  />
-                </span>
-              )}
+              {s.expected_image && scenarioName && (() => {
+                const modeLabel = (s.expected_images?.length || 0) > 0 ? 'MULTI'
+                  : (s.exclude_rois?.length || 0) > 0 ? 'EXCLUDE'
+                  : s.roi ? 'CROP' : 'FULL';
+                const threshPct = Math.round((s.similarity_threshold ?? 0.95) * 100);
+                return (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, marginLeft: 'auto', flexShrink: 0 }}>
+                    <Tag
+                      color="green"
+                      style={{ margin: 0, cursor: 'pointer' }}
+                      onClick={() => showAnnotatedPreview(s)}
+                    >
+                      <CameraOutlined style={{ marginRight: 4 }} />{modeLabel}
+                    </Tag>
+                    <Popover
+                      trigger="click"
+                      placement="bottom"
+                      content={
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <InputNumber size="small" min={0} max={100} step={1}
+                            value={threshPct}
+                            onChange={(v) => setSteps(prev => prev.map((st, i) => i === index ? { ...st, similarity_threshold: (v ?? 95) / 100 } : st))}
+                            suffix="%" style={{ width: 75 }}
+                          />
+                        </div>
+                      }
+                    >
+                      <Tag style={{ margin: 0, cursor: 'pointer', fontSize: 11 }}>{threshPct}%</Tag>
+                    </Popover>
+                    <CloseCircleOutlined
+                      onClick={() => setSteps((prev) => prev.map((st, i) => i === index ? { ...st, expected_image: null, roi: null, exclude_rois: [], expected_images: [] } : st))}
+                      style={{ fontSize: 14, color: '#ff4d4f', cursor: 'pointer' }}
+                    />
+                  </span>
+                );
+              })()}
             </div>
           </div>
           {/* 우측: 2행 아이콘 영역 */}

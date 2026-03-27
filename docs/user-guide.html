@@ -387,10 +387,12 @@
     <a href="#record-expected" class="toc-h3">기대 이미지</a>
     <a href="#record-compare" class="toc-h3">이미지 비교 모드</a>
     <a href="#record-edit" class="toc-h3">스텝 편집</a>
+    <a href="#record-wait" class="toc-h3">Wait 스텝 (대기)</a>
     <a href="#record-conditional" class="toc-h3">조건부 이동</a>
 
     <a href="#scenario" class="toc-h2">시나리오 관리</a>
     <a href="#scenario-list" class="toc-h3">시나리오 목록</a>
+    <a href="#scenario-detail" class="toc-h3">시나리오 상세</a>
     <a href="#scenario-play" class="toc-h3">재생(실행)</a>
     <a href="#scenario-group" class="toc-h3">그룹 관리</a>
     <a href="#scenario-export" class="toc-h3">내보내기/가져오기</a>
@@ -711,13 +713,42 @@ npm run dev</code></pre>
 </table>
 
 <h3 id="device-actions">디바이스 작업</h3>
+
+<h4>연결 상태 표시</h4>
+<p>각 디바이스는 현재 연결 상태를 실시간으로 표시합니다:</p>
+<table>
+  <tr><th>상태</th><th>색상</th><th>설명</th></tr>
+  <tr><td><span class="badge badge-green">연결됨</span></td><td>초록</td><td>디바이스가 정상적으로 연결되어 사용 가능</td></tr>
+  <tr><td><span class="badge badge-blue">연결 중</span></td><td>파랑(깜빡임)</td><td>연결을 시도하고 있는 상태</td></tr>
+  <tr><td><span class="badge">연결 끊김</span></td><td>회색</td><td>등록은 되어 있지만 연결되지 않은 상태</td></tr>
+  <tr><td><span class="badge badge-red">오프라인</span></td><td>빨강</td><td>디바이스를 찾을 수 없음</td></tr>
+  <tr><td><span class="badge badge-red">오류</span></td><td>빨강</td><td>연결 시도 중 오류 발생</td></tr>
+</table>
+
+<h4>개별 디바이스 버튼</h4>
+<p>각 디바이스 항목 우측에 상태에 따라 버튼이 표시됩니다:</p>
 <ul>
-  <li><strong>이름 변경</strong> — 디바이스의 표시 이름을 편집</li>
-  <li><strong>정보 수정</strong> — 주소, 보율, 모듈 할당 등 변경</li>
-  <li><strong>연결 해제</strong> — 디바이스 등록 해제</li>
-  <li><strong>ADB 서버 재시작</strong> — 연결 문제 발생 시 ADB 서버를 재시작</li>
-  <li><strong>재연결</strong> — 연결이 끊어진 디바이스에 다시 연결 시도</li>
+  <li><strong>연결</strong> — 연결 끊김 상태의 디바이스에 표시. 클릭하면 연결을 시도합니다</li>
+  <li><strong>연결 끊기</strong> — 연결된 디바이스에 표시. 클릭하면 연결만 끊고 등록은 유지합니다</li>
+  <li><strong>편집</strong> — 디바이스의 이름, 주소, 설정 등을 수정합니다</li>
+  <li><strong>삭제</strong> — 디바이스 등록을 완전히 해제합니다 (연결도 끊김)</li>
 </ul>
+
+<h4>일괄 작업 버튼</h4>
+<p>디바이스 목록 상단에 일괄 작업 버튼이 있습니다:</p>
+<ul>
+  <li><strong>전체 연결</strong> — 등록된 모든 디바이스에 연결을 시도합니다</li>
+  <li><strong>선택 연결 (N)</strong> — 체크박스로 선택한 디바이스만 연결합니다</li>
+  <li><strong>전체 연결 끊기</strong> — 모든 디바이스의 연결을 끊습니다</li>
+  <li><strong>선택 연결 끊기 (N)</strong> — 선택한 디바이스만 연결을 끊습니다</li>
+</ul>
+
+<div class="callout callout-info">
+  <strong>💡 서버 시작 시 기본 상태</strong>
+  서버가 시작되면 모든 디바이스는 <strong>연결 끊김</strong> 상태입니다.
+  사용자가 디바이스 탭에서 <strong>전체 연결</strong> 또는 개별 <strong>연결</strong> 버튼을 클릭하여 수동으로 연결해야 합니다.
+  연결을 끊으면 자동 재연결이 비활성화됩니다. 다시 <strong>연결</strong> 버튼을 누르면 자동 재연결이 복구됩니다.
+</div>
 
 
 <!-- ============================== 녹화 ============================== -->
@@ -728,19 +759,42 @@ npm run dev</code></pre>
 </p>
 
 <h3 id="record-start">녹화 시작하기</h3>
+
+<h4>비녹화 상태 (녹화 제어 카드)</h4>
 <ol class="numbered-steps">
-  <li><strong>시나리오 이름</strong>을 입력합니다 (예: "설정_WiFi_연결_테스트")</li>
-  <li>필요시 <strong>설명</strong>을 추가합니다</li>
-  <li><strong>대상 디바이스</strong>를 선택합니다 (주 디바이스 목록에서)</li>
+  <li>녹화 제어 카드의 <strong>시나리오 콤보</strong>에서 기존 시나리오를 선택하거나, <strong>새로 만들기</strong> 버튼으로 새 시나리오를 생성합니다</li>
+  <li>새로 만들기 클릭 시 모달에서 시나리오 이름을 입력합니다. 중복 이름일 경우 덮어쓰기 또는 이름 변경을 선택할 수 있습니다</li>
+  <li>필요시 <strong>설명</strong>을 입력합니다</li>
   <li><strong>녹화 시작</strong> 버튼을 클릭합니다</li>
-  <li>디바이스 화면이 실시간으로 스트리밍되며, 화면을 클릭/드래그하여 조작을 기록합니다</li>
-  <li>모든 조작이 끝나면 <strong>녹화 중지</strong>를 클릭하여 시나리오를 저장합니다</li>
 </ol>
+
+<h4>시나리오 관리 버튼</h4>
+<p>시나리오 콤보 옆에 관리 버튼이 있습니다 (시나리오가 선택된 상태에서):</p>
+<ul>
+  <li><strong>복사</strong> — 현재 시나리오를 새 이름으로 복사합니다</li>
+  <li><strong>이름 변경</strong> — 시나리오 이름을 변경합니다</li>
+  <li><strong>삭제</strong> — 시나리오를 삭제합니다 (확인 필요)</li>
+</ul>
+
+<h4>녹화 중 상태</h4>
+<p>녹화가 시작되면 화면 레이아웃이 변경됩니다:</p>
+<ul>
+  <li><strong>상단 바</strong>: 시나리오 이름(읽기 전용) + 설명 입력 + 우측에 <span class="badge badge-red">● 녹화 중</span> 태그와 <strong>녹화 중지</strong> 버튼</li>
+  <li><strong>스텝 수동 추가 카드</strong>: 1행에 대상 디바이스 + 스텝 타입, 2행에 파라미터 입력 + delay. 우측 상단에 <strong>+ 스텝 추가</strong> 버튼</li>
+  <li><strong>기록된 스텝 목록</strong>: 녹화된 스텝이 실시간으로 추가됩니다</li>
+</ul>
+<p>디바이스 화면을 클릭/드래그하면 자동으로 스텝이 기록됩니다. 녹화 중에도 스텝 순서 변경, Wait 삽입, 기대 이미지 캡처 등 모든 편집 기능을 사용할 수 있습니다.</p>
+
+<div class="callout callout-warning">
+  <strong>⚠️ 저장 확인</strong>
+  녹화 중지 후 다른 페이지로 이동하거나 브라우저를 닫으면 <strong>저장 여부를 확인</strong>하는 대화상자가 나타납니다.
+  스텝이 변경된 상태에서 저장하지 않고 이동하면 변경 사항이 사라집니다.
+</div>
 
 <div class="callout callout-info">
   <strong>💡 이어서 녹화</strong>
-  이미 저장된 시나리오를 불러와서 뒤에 스텝을 추가할 수 있습니다.
-  <strong>저장된 시나리오 불러오기</strong> → 시나리오 선택 → <strong>이어서 녹화</strong>
+  이미 저장된 시나리오를 콤보에서 선택하면 해당 시나리오의 스텝이 로드됩니다.
+  <strong>이어서 녹화</strong> 버튼으로 기존 스텝 뒤에 새 스텝을 추가할 수 있습니다.
 </div>
 
 <h3 id="record-gestures">제스처 녹화</h3>
@@ -786,17 +840,26 @@ npm run dev</code></pre>
   재생 시 실제 스크린샷과 기대 이미지를 비교하여 Pass/Fail을 판정합니다.
 </p>
 
+<h4>기대 이미지 캡처하기</h4>
 <ol class="numbered-steps">
-  <li>스텝 목록에서 기대 이미지를 설정할 스텝을 찾습니다</li>
-  <li>📷 버튼을 클릭하면 현재 디바이스 화면이 <strong>전체 화면 기대 이미지</strong>로 자동 캡처됩니다</li>
-  <li>캡처된 이미지가 스텝 옆에 썸네일로 표시됩니다</li>
-  <li>필요 시 이미지를 클릭하여 확대하거나, 비교 모드를 변경할 수 있습니다</li>
+  <li>스텝 목록 우측의 📷 <strong>카메라 아이콘</strong>을 클릭합니다</li>
+  <li>비교 모드 선택 팝업이 나타납니다:
+    <ul>
+      <li><strong>전체화면</strong> — 현재 화면을 즉시 캡처</li>
+      <li><strong>단일크롭</strong> — 크롭 편집 모달이 열림</li>
+      <li><strong>영역제외</strong> — 제외 영역 편집 모달이 열림</li>
+      <li><strong>멀티크롭</strong> — 복수 크롭 편집 모달이 열림</li>
+    </ul>
+  </li>
+  <li>캡처 완료 후 스텝 2행 우측에 <span class="badge badge-green">📷 FULL</span>, <span class="badge badge-green">📷 CROP</span> 등의 태그가 표시됩니다</li>
+  <li>태그를 클릭하면 기대 이미지를 미리볼 수 있습니다 (영역제외/멀티크롭 시 박스 오버레이 포함)</li>
+  <li>태그 옆의 ✕ 버튼으로 기대 이미지를 초기화할 수 있습니다</li>
 </ol>
 
-<div class="callout callout-success">
-  <strong>✅ 자동 캡처 기능</strong>
-  기대 이미지가 없는 스텝을 실행하면, 실행 결과 스크린샷이 자동으로 기대 이미지로 저장됩니다.
-  처음 시나리오를 만들 때 편리하게 사용할 수 있습니다.
+<div class="callout callout-info">
+  <strong>💡 비교 모드 변경 시 주의</strong>
+  카메라 아이콘으로 새 비교 모드를 선택하면 이전 모드의 데이터(크롭 영역, 제외 영역 등)가 자동으로 초기화됩니다.
+  예: CROP → FULL로 변경하면 기존 ROI 정보가 삭제됩니다.
 </div>
 
 <h3 id="record-compare">이미지 비교 모드</h3>
@@ -845,20 +908,82 @@ npm run dev</code></pre>
 </div>
 
 <h3 id="record-edit">스텝 편집</h3>
-<p>녹화된 스텝은 언제든 수정할 수 있습니다. 각 스텝의 메뉴(⋯)에서:</p>
+<p>기록된 스텝은 언제든 수정할 수 있습니다. 각 스텝에는 두 줄의 정보가 표시됩니다:</p>
 
+<h4>1행: 핵심 정보</h4>
 <ul>
-  <li><strong>커맨드 수정</strong> — 좌표, 텍스트, 명령어 등 파라미터 변경</li>
-  <li><strong>기대이미지 재촬영</strong> — 현재 디바이스 화면으로 기대 이미지 교체</li>
-  <li><strong>이 스텝 테스트</strong> — 해당 스텝만 단독 실행 + 검증하여 결과 확인</li>
-  <li><strong>Wait 삽입</strong> — 이 스텝 뒤에 대기 시간 삽입</li>
-  <li><strong>삭제</strong> — 스텝 제거</li>
+  <li><strong>인덱스 번호</strong> — 스텝 순서 (1부터 시작)</li>
+  <li><strong>설명 (Remark)</strong> — 스텝에 대한 설명. 직접 입력 가능</li>
+  <li><strong>함수/파라미터</strong> — 스텝의 실행 내용 (예: tap (70,69), {"x":65,"y":169})</li>
+  <li><strong>Delay (ms)</strong> — 스텝 실행 후 대기 시간 (우측 정렬). 직접 수정 가능</li>
 </ul>
 
+<h4>2행: 부가 정보</h4>
+<ul>
+  <li><strong>디바이스 태그</strong> — 이 스텝이 실행될 디바이스</li>
+  <li><strong>타입 태그</strong> — tap, wait, module_command 등</li>
+  <li><strong>점프 태그</strong> — 조건부 이동이 설정된 경우 P→#N, F→END 등으로 표시</li>
+  <li><strong>기대 이미지 태그</strong> — 📷 FULL / CROP / EXCLUDE / MULTI (우측 정렬). 클릭 시 미리보기</li>
+</ul>
+
+<h4>우측 아이콘 영역 (2행)</h4>
+<table>
+  <tr><th>1행</th><th>기능</th></tr>
+  <tr><td>↑ ↓</td><td>스텝 순서 변경 (위/아래 이동)</td></tr>
+  <tr><td>⚡</td><td>이 스텝만 단독 실행 + 검증 (디바이스 미연결 시 비활성화)</td></tr>
+  <tr><td>🗑</td><td>스텝 삭제 (확인 필요)</td></tr>
+</table>
+<table>
+  <tr><th>2행</th><th>기능</th></tr>
+  <tr><td>✏️</td><td>커맨드 수정 — 좌표, 텍스트, 명령어 등 파라미터 변경</td></tr>
+  <tr><td>🔀</td><td>조건부 이동 설정 — Pass/Fail 시 점프할 스텝 지정</td></tr>
+  <tr><td>W</td><td>Wait 삽입 — 이 스텝 뒤에 대기 스텝 추가 (모드 선택 팝업)</td></tr>
+  <tr><td>📷</td><td>기대 이미지 캡처 — 비교 모드 선택 팝업</td></tr>
+</table>
+
+<div class="callout callout-info">
+  <strong>💡 줄무늬 배경</strong>
+  스텝 목록은 홀짝 줄에 번갈아 배경색이 적용되어 스텝 간 구분이 쉽습니다.
+</div>
+
+<h3 id="record-wait">Wait 스텝 (대기)</h3>
 <p>
-  좌표 수정이 필요한 스텝(tap, long_press, swipe)은 편집 모드에서 디바이스 화면을 직접 클릭/드래그하면
-  새 좌표가 자동으로 적용됩니다.
+  Wait 스텝은 다음 스텝 실행 전에 지정된 시간만큼 대기합니다.
+  W 버튼 또는 Wait 추가 버튼을 클릭하면 3가지 모드를 선택할 수 있습니다:
 </p>
+
+<table>
+  <tr><th>모드</th><th>설명</th><th>파라미터</th><th>사용 예</th></tr>
+  <tr>
+    <td><strong>기본</strong></td>
+    <td>지정된 시간(ms)만큼 고정 대기</td>
+    <td>대기 시간 (ms)</td>
+    <td>화면 전환 후 1초 대기: <code>1000ms</code></td>
+  </tr>
+  <tr>
+    <td><strong>사이클</strong></td>
+    <td>반복 재생 시 회차마다 대기 시간이 증가</td>
+    <td>시작(ms) + 간격(ms)</td>
+    <td>
+      시작 3000ms, 간격 3000ms, 3회 반복 시:<br>
+      1회차: 3000ms, 2회차: 6000ms, 3회차: 9000ms
+    </td>
+  </tr>
+  <tr>
+    <td><strong>랜덤</strong></td>
+    <td>지정 구간 내에서 랜덤 시간 대기</td>
+    <td>최소(ms) ~ 최대(ms)</td>
+    <td>
+      0~10000ms 범위: 매번 실행할 때마다 다른 시간 대기
+    </td>
+  </tr>
+</table>
+
+<div class="callout callout-info">
+  <strong>💡 사이클 모드 활용</strong>
+  반복 테스트에서 점진적으로 대기 시간을 늘려야 할 때 유용합니다.
+  예: 서버 부하 테스트에서 요청 간격을 점점 늘리는 경우.
+</div>
 
 <h3 id="record-conditional">조건부 이동</h3>
 <p>
@@ -881,28 +1006,61 @@ npm run dev</code></pre>
 <!-- ============================== 시나리오 ============================== -->
 <h2 id="scenario">시나리오 관리</h2>
 <p>
-  <strong>시나리오</strong> 탭에서는 녹화된 시나리오를 조회, 실행, 관리합니다.
+  <strong>시나리오</strong> 탭은 좌우 2패널 구조입니다. 좌측에 시나리오 목록, 우측에 시나리오 상세/재생 결과가 표시됩니다.
+  패널 크기는 가운데 구분선을 드래그하여 조절할 수 있습니다.
 </p>
 
-<h3 id="scenario-list">시나리오 목록</h3>
-<p>저장된 모든 시나리오가 목록으로 표시됩니다. 각 시나리오에서 가능한 작업:</p>
+<h4>상단 도구 버튼 (우측 정렬)</h4>
 <ul>
-  <li><strong>재생</strong> — 시나리오를 디바이스에서 실행</li>
-  <li><strong>복사</strong> — 다른 이름으로 복제</li>
-  <li><strong>이름 변경</strong> — 시나리오 이름 수정</li>
-  <li><strong>병합</strong> — 여러 시나리오를 하나로 합침</li>
-  <li><strong>삭제</strong> — 시나리오 제거 (확인 필요)</li>
+  <li><strong>그룹 관리</strong> — 시나리오 그룹 생성/편집</li>
+  <li><strong>시나리오 합치기</strong> — 여러 시나리오를 하나로 병합</li>
+  <li><strong>시나리오 내보내기</strong> — ZIP 파일로 패키징</li>
+  <li><strong>시나리오 가져오기</strong> — ZIP 파일에서 불러오기</li>
+  <li><strong>새로고침</strong> — 목록 갱신</li>
 </ul>
+
+<h3 id="scenario-list">시나리오 목록 (좌측 패널)</h3>
+<p>저장된 모든 시나리오가 목록으로 표시됩니다. 그룹별 탭과 전체 탭으로 구분하여 볼 수 있습니다.</p>
+<p>시나리오를 클릭하면 우측 패널에 스텝 상세가 표시됩니다.</p>
+
+<h3 id="scenario-detail">시나리오 상세 (우측 패널)</h3>
+<p>선택한 시나리오의 스텝 목록이 테이블로 표시됩니다. 타이틀 영역에 관리 및 재생 버튼이 있습니다:</p>
+<ul>
+  <li><strong>이름 변경</strong> — 시나리오 이름 수정</li>
+  <li><strong>복사</strong> — 새 이름으로 복사</li>
+  <li><strong>반복 횟수</strong> — 재생 반복 횟수 설정 (기본 1회)</li>
+  <li><strong>재생</strong> — 시나리오 실행 (디바이스 미연결 시 오류 메시지 표시)</li>
+  <li><strong>웹캠 녹화</strong> — 재생 중 웹캠으로 화면 녹화</li>
+  <li><strong>삭제</strong> — 시나리오 제거</li>
+  <li><strong>그룹 추가</strong> — 시나리오를 특정 그룹에 배정</li>
+</ul>
+
+<h4>스텝 테이블 컬럼</h4>
+<table>
+  <tr><th>컬럼</th><th>설명</th></tr>
+  <tr><td>체크박스</td><td>재생 시 건너뛸 스텝을 선택/해제 (체크 해제 = 건너뜀)</td></tr>
+  <tr><td>#</td><td>스텝 인덱스 (1부터)</td></tr>
+  <tr><td>Type</td><td>스텝 유형 (tap, wait, module_command 등)</td></tr>
+  <tr><td>Device</td><td>대상 디바이스</td></tr>
+  <tr><td>설명</td><td>스텝 설명</td></tr>
+  <tr><td>Delay</td><td>대기 시간 (ms). 직접 수정 가능</td></tr>
+  <tr><td>비교</td><td>기대 이미지 미리보기 (설정된 경우)</td></tr>
+</table>
 
 <h3 id="scenario-play">재생 (실행)</h3>
 <p>시나리오를 실행하여 자동으로 디바이스를 조작하고 결과를 검증합니다.</p>
 
+<div class="callout callout-warning">
+  <strong>⚠️ 디바이스 연결 필수</strong>
+  재생 전에 시나리오에서 사용하는 모든 디바이스가 <strong>연결됨</strong> 상태여야 합니다.
+  연결되지 않은 디바이스가 있으면 오류 메시지가 표시되고 재생이 시작되지 않습니다.
+  디바이스 탭에서 먼저 연결하세요.
+</div>
+
 <ol class="numbered-steps">
-  <li>시나리오 옆의 <strong>재생</strong> 버튼을 클릭합니다</li>
-  <li><strong>디바이스 매핑</strong> 확인 — 시나리오가 녹화된 디바이스와 현재 연결된 디바이스를 매핑합니다.
-    디바이스가 다르면 여기서 변경할 수 있습니다</li>
+  <li>시나리오 상세 타이틀의 <strong>재생</strong> 버튼을 클릭합니다</li>
+  <li>디바이스 연결 상태가 자동으로 확인됩니다</li>
   <li>필요 시 <strong>반복 횟수</strong>를 설정합니다 (기본 1회)</li>
-  <li><strong>실행</strong>을 클릭하면 재생이 시작됩니다</li>
   <li>각 스텝이 실행될 때마다 결과가 실시간으로 표시됩니다:
     <ul>
       <li><span class="badge badge-green">Pass</span> — 유사도가 임계값 이상</li>
@@ -924,7 +1082,7 @@ npm run dev</code></pre>
 <h3 id="scenario-group">그룹 관리</h3>
 <p>
   여러 시나리오를 <strong>그룹</strong>으로 묶어 순차적으로 실행할 수 있습니다.
-  그룹 단위로 실행하면 시나리오 간의 조건부 이동도 가능합니다.
+  상단의 <strong>그룹 관리</strong> 버튼으로 그룹을 생성하고 관리합니다.
 </p>
 
 <ol class="numbered-steps">
@@ -945,14 +1103,14 @@ npm run dev</code></pre>
 <h4>내보내기 (Export)</h4>
 <p>시나리오와 그룹을 ZIP 파일로 패키징하여 다른 PC에 배포할 수 있습니다.</p>
 <ol>
+  <li>상단 <strong>시나리오 내보내기</strong> 버튼 클릭</li>
   <li>내보낼 시나리오/그룹을 선택</li>
   <li><strong>내보내기</strong> 클릭 → ZIP 파일이 생성됩니다</li>
-  <li>설정에서 저장 경로를 지정했다면 해당 경로에, 아니면 브라우저 다운로드로 저장됩니다</li>
 </ol>
 
 <h4>가져오기 (Import)</h4>
 <ol>
-  <li><strong>가져오기</strong> 클릭 → ZIP 파일 선택</li>
+  <li>상단 <strong>시나리오 가져오기</strong> 버튼 클릭 → ZIP 파일 선택</li>
   <li>미리보기 화면에서 포함된 시나리오 목록과 <strong>충돌 여부</strong>를 확인합니다</li>
   <li>충돌 시 처리 방식을 선택합니다:
     <ul>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Badge, Button, Card, Input, Select, Space, Switch, message, Typography } from 'antd';
+import { Badge, Button, Card, Input, InputNumber, Select, Space, Switch, message, Typography } from 'antd';
 import { ApiOutlined, FolderOpenOutlined } from '@ant-design/icons';
 import { useSettings } from '../context/SettingsContext';
 import { useTranslation } from '../i18n';
@@ -175,6 +175,32 @@ export default function SettingsPage() {
           <Text type="secondary" style={{ fontSize: 12, marginTop: 4, display: 'block' }}>
             {t('settings.monitorServerDesc')}
           </Text>
+        </Card>
+
+        <Card title={t('settings.thresholdTitle')} size="small">
+          <Text type="secondary" style={{ fontSize: 12, marginBottom: 12, display: 'block' }}>
+            {t('settings.thresholdDesc')}
+          </Text>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {([
+              { key: 'threshold_full', label: t('settings.thresholdFull') },
+              { key: 'threshold_single_crop', label: t('settings.thresholdCrop') },
+              { key: 'threshold_full_exclude', label: t('settings.thresholdExclude') },
+              { key: 'threshold_multi_crop', label: t('settings.thresholdMulti') },
+            ] as const).map(({ key, label }) => (
+              <Space key={key}>
+                <span style={{ minWidth: 100, display: 'inline-block' }}>{label}</span>
+                <InputNumber
+                  size="small"
+                  min={0} max={1} step={0.01}
+                  value={settings[key]}
+                  onChange={(v) => updateSettings({ [key]: v ?? 0.95 })}
+                  style={{ width: 80 }}
+                />
+                <span style={{ color: '#888', fontSize: 12 }}>{Math.round((settings[key] ?? 0.95) * 100)}%</span>
+              </Space>
+            ))}
+          </div>
         </Card>
       </Space>
     </div>

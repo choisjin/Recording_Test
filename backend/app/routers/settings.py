@@ -27,6 +27,10 @@ _DEFAULTS = {
     "scenario_export_dir": "",
     "language": "ko",
     "monitor_server_url": "",
+    "threshold_full": 0.95,
+    "threshold_single_crop": 0.90,
+    "threshold_full_exclude": 0.93,
+    "threshold_multi_crop": 0.85,
 }
 
 
@@ -56,6 +60,10 @@ class UpdateSettingsRequest(BaseModel):
     scenario_export_dir: Optional[str] = None
     language: Optional[str] = None
     monitor_server_url: Optional[str] = None
+    threshold_full: Optional[float] = None
+    threshold_single_crop: Optional[float] = None
+    threshold_full_exclude: Optional[float] = None
+    threshold_multi_crop: Optional[float] = None
 
 
 @router.post("")
@@ -73,6 +81,14 @@ async def update_settings(req: UpdateSettingsRequest):
         current["language"] = req.language
     if req.monitor_server_url is not None:
         current["monitor_server_url"] = req.monitor_server_url
+    if req.threshold_full is not None:
+        current["threshold_full"] = req.threshold_full
+    if req.threshold_single_crop is not None:
+        current["threshold_single_crop"] = req.threshold_single_crop
+    if req.threshold_full_exclude is not None:
+        current["threshold_full_exclude"] = req.threshold_full_exclude
+    if req.threshold_multi_crop is not None:
+        current["threshold_multi_crop"] = req.threshold_multi_crop
     _save(current)
 
     # 관제 서버 URL 변경 시 monitor_client 재연결
