@@ -425,22 +425,51 @@ class ServerManagerApp:
         else:
             log_callback("[동기화] git 저장소 없음 — git pull 건너뜀")
 
-        # 2) pip install
-        log_callback("[동기화] Python 의존성 확인 중...")
-        code, out = _run_cmd([VENV_PYTHON, "-m", "pip", "install", "-r", "requirements.txt", "-q"], timeout=120)
-        if out and code == 0:
-            log_callback(f"[동기화] pip: {out[:200]}")
-        elif code != 0:
-            log_callback(f"[동기화] pip install 실패: {out[:200]}")
-
-        # 3) npm install (개발 모드에서만)
-        if not self._production:
-            log_callback("[동기화] Node 의존성 확인 중...")
-            code, out = _run_cmd([NPM_CMD, "install", "--silent"], cwd=FRONTEND_DIR, timeout=120)
+        # 2) pip install (requirements.txt 변경 시에만)
+        req_file = os.path.join(BASE_DIR, "requirements.txt")
+        req_hash_file = os.path.join(BASE_DIR, ".req_hash")
+        import hashlib
+        req_hash = ""
+        if os.path.exists(req_file):
+            req_hash = hashlib.md5(open(req_file, "rb").read()).hexdigest()
+        old_hash = open(req_hash_file).read().strip() if os.path.exists(req_hash_file) else ""
+        if req_hash != old_hash:
+            log_callback("[동기화] Python 의존성 설치 중...")
+            code, out = _run_cmd([VENV_PYTHON, "-m", "pip", "install", "-r", "requirements.txt", "-q"], timeout=120)
             if out and code == 0:
-                log_callback(f"[동기화] npm: {out[:200]}")
+                log_callback(f"[동기화] pip: {out[:200]}")
             elif code != 0:
-                log_callback(f"[동기화] npm install 실패: {out[:200]}")
+                log_callback(f"[동기화] pip install 실패: {out[:200]}")
+            try:
+                with open(req_hash_file, "w") as f:
+                    f.write(req_hash)
+            except Exception:
+                pass
+        else:
+            log_callback("[동기화] Python 의존성 변경 없음 — 건너뜀")
+
+        # 3) npm install (개발 모드 + package.json 변경 시에만)
+        if not self._production:
+            pkg_file = os.path.join(FRONTEND_DIR, "package.json")
+            pkg_hash_file = os.path.join(FRONTEND_DIR, ".pkg_hash")
+            pkg_hash = ""
+            if os.path.exists(pkg_file):
+                pkg_hash = hashlib.md5(open(pkg_file, "rb").read()).hexdigest()
+            old_pkg_hash = open(pkg_hash_file).read().strip() if os.path.exists(pkg_hash_file) else ""
+            if pkg_hash != old_pkg_hash:
+                log_callback("[동기화] Node 의존성 설치 중...")
+                code, out = _run_cmd([NPM_CMD, "install", "--silent"], cwd=FRONTEND_DIR, timeout=120)
+                if out and code == 0:
+                    log_callback(f"[동기화] npm: {out[:200]}")
+                elif code != 0:
+                    log_callback(f"[동기화] npm install 실패: {out[:200]}")
+                try:
+                    with open(pkg_hash_file, "w") as f:
+                        f.write(pkg_hash)
+                except Exception:
+                    pass
+            else:
+                log_callback("[동기화] Node 의존성 변경 없음 — 건너뜀")
 
         log_callback("[동기화] 완료")
         self._set_status("동기화 완료")

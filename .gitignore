@@ -36,6 +36,8 @@ monitor/
 
 # 임시 파일
 HANDOFF.md
+.req_hash
+frontend/.pkg_hash
 
 # OS / IDE
 .env
