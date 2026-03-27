@@ -2270,7 +2270,7 @@ export default function RecordPage() {
                       </Option>
                     </Select.OptGroup>
                   </Select>
-                  <Select value={stepType} onChange={setStepType} size="small" style={{ width: 150 }}>
+                  <Select value={stepType} onChange={setStepType} size="small" style={{ width: 120 }}>
                     {getStepTypes().map(t => (
                       <Option key={t.value} value={t.value}>{t.label}</Option>
                     ))}
