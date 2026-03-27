@@ -1027,25 +1027,24 @@ export default function ScenarioPage() {
 
   return (
     <div style={{ height: 'calc(100vh - 80px)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      {/* 최상단: 도구 버튼 우측 정렬 */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, padding: '4px 0', flexShrink: 0 }}>
+        <Button icon={<FolderOutlined />} size="small" onClick={() => {
+          setGroupModalVisible(true);
+          const allNames = Object.values(groups).flatMap((ms) => ms.map((m) => m.name));
+          if (allNames.length > 0) fetchScenarioStepsCache(allNames);
+        }}>{t('scenario.groupManage')}</Button>
+        <Button icon={<MergeCellsOutlined />} size="small" onClick={openMergeModal}>{t('scenario.mergeTitle')}</Button>
+        <Button icon={<ExportOutlined />} size="small" onClick={() => { setExportSelectedScenarios([]); setExportSelectedGroups([]); setExportAll(false); setExportModalVisible(true); }}>{t('scenario.exportTitle')}</Button>
+        <Button icon={<ImportOutlined />} size="small" onClick={() => { setImportFile(null); setImportPreviewData(null); setImportModalVisible(true); }}>{t('scenario.importTitle')}</Button>
+        <Button onClick={() => { fetchScenarios(); fetchGroups(); }} size="small">{t('common.refresh')}</Button>
+      </div>
       <Splitter style={{ flex: 1, minHeight: 0 }}>
       <Splitter.Panel defaultSize="40%" min="20%" max="60%" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <Card
         style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
         styles={{ body: { flex: 1, overflow: 'auto', padding: '8px 12px' } }}
         title={t('scenario.title')}
-        extra={
-          <Space>
-            <Button icon={<FolderOutlined />} size="small" onClick={() => {
-              setGroupModalVisible(true);
-              const allNames = Object.values(groups).flatMap((ms) => ms.map((m) => m.name));
-              if (allNames.length > 0) fetchScenarioStepsCache(allNames);
-            }}>{t('scenario.groupManage')}</Button>
-            <Button icon={<MergeCellsOutlined />} size="small" onClick={openMergeModal}>{t('scenario.mergeTitle')}</Button>
-            <Button icon={<ExportOutlined />} size="small" onClick={() => { setExportSelectedScenarios([]); setExportSelectedGroups([]); setExportAll(false); setExportModalVisible(true); }}>{t('scenario.exportTitle')}</Button>
-            <Button icon={<ImportOutlined />} size="small" onClick={() => { setImportFile(null); setImportPreviewData(null); setImportModalVisible(true); }}>{t('scenario.importTitle')}</Button>
-            <Button onClick={() => { fetchScenarios(); fetchGroups(); }} size="small">{t('common.refresh')}</Button>
-          </Space>
-        }
       >
         {/* Group tabs */}
         <Tabs
@@ -1131,64 +1130,6 @@ export default function ScenarioPage() {
           )}
         />
 
-        {/* Selected scenario action bar */}
-        {selectedName && (
-          <div style={{ marginTop: 8, padding: '8px 0', borderTop: '1px solid #303030', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <strong style={{ marginRight: 4 }}>{selectedName}</strong>
-            <Button icon={<EditOutlined />} size="small" disabled={playing} onClick={openRenameModal}>{t('scenario.rename')}</Button>
-            <Button icon={<CopyOutlined />} size="small" disabled={playing} onClick={openCopyModal}>{t('common.copy')}</Button>
-            {playing && playingName === selectedName ? (
-              <Button danger size="small" icon={<StopOutlined />} onClick={stopPlayback}>{t('scenario.stop')}</Button>
-            ) : (
-              <>
-                <InputNumber
-                  min={1} max={999} size="small"
-                  value={getRepeatCount(selectedName)}
-                  onChange={(v) => setRepeatCount(selectedName, v || 1)}
-                  style={{ width: 60 }}
-                  disabled={playing}
-                />
-                <span style={{ fontSize: 12, color: '#888' }}>{t('scenario.times')}</span>
-                <Button type="primary" size="small" icon={<PlayCircleOutlined />}
-                  loading={playing && playingName === selectedName}
-                  disabled={playing}
-                  onClick={() => playScenario(selectedName)}
-                >{t('scenario.play')}</Button>
-              </>
-            )}
-            <Tooltip title={t('webcam.autoRecordHint')}>
-              <Checkbox
-                checked={webcamAutoRecord}
-                onChange={(e) => setWebcamAutoRecord(e.target.checked)}
-                disabled={playing}
-              >
-                <VideoCameraOutlined style={{ color: webcamAutoRecord ? '#ff4d4f' : undefined }} /> {t('webcam.autoRecord')}
-              </Checkbox>
-            </Tooltip>
-            <Button danger size="small" icon={<DeleteOutlined />} disabled={playing}
-              onClick={() => deleteScenario(selectedName)}>{t('common.delete')}</Button>
-
-            {/* Quick group assign */}
-            {Object.keys(groups).length > 0 && (
-              <>
-                <Divider type="vertical" />
-                <Select
-                  placeholder={t('scenario.addToGroup')}
-                  style={{ width: 140 }}
-                  size="small"
-                  value={undefined}
-                  onChange={(gName: string) => { if (gName && selectedName) addToGroup(gName, selectedName); }}
-                  options={Object.keys(groups)
-                    .filter((g) => !(groups[g] || []).some((m) => m.name === selectedName!))
-                    .map((g) => ({ label: g, value: g }))}
-                />
-                {scenarioGroups(selectedName).map((g) => (
-                  <Tag key={g} closable onClose={() => removeFromGroup(g, selectedName)} color="blue">{g}</Tag>
-                ))}
-              </>
-            )}
-          </div>
-        )}
       </Card>
       </Splitter.Panel>
 
@@ -1205,10 +1146,9 @@ export default function ScenarioPage() {
         <Card
           size="small"
           style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
-          styles={{ body: { flex: 1, overflow: 'auto' } }}
           title={
             (playing || stepResults.length > 0) && playbackScenario ? (
-              <Space>
+              <Space size={4} wrap>
                 <span>{t('scenario.play')}: {playingGroupName ? `[${playingGroupName}]` : ''} {currentGroupScenario || playbackScenario.name}</span>
                 {playingGroupName && groupScenarioTotal > 0 && <Tag color="cyan">{groupScenarioIndex}/{groupScenarioTotal} {t('scenario.title')}</Tag>}
                 {totalIterations > 1 && <Tag color="purple">{currentIteration} / {totalIterations}{t('scenario.times')}</Tag>}
@@ -1217,9 +1157,42 @@ export default function ScenarioPage() {
                 {!playing && stepResults.length > 0 && <Tag color={failCount + errorCount > 0 ? 'red' : warnCount > 0 ? 'orange' : 'green'}>{t('scenario.complete')}</Tag>}
               </Space>
             ) : (
-              <span>{selectedName} — {previewSteps.length} {t('scenario.steps')} {skipStepIds.size > 0 && <Tag color="orange">{skipStepIds.size} skip</Tag>}</span>
+              <Space size={4} wrap>
+                <strong>{selectedName}</strong>
+                <span style={{ fontWeight: 400 }}>— {previewSteps.length} {t('scenario.steps')}</span>
+                {skipStepIds.size > 0 && <Tag color="orange">{skipStepIds.size} skip</Tag>}
+                <Button icon={<EditOutlined />} size="small" disabled={playing} onClick={openRenameModal}>{t('scenario.rename')}</Button>
+                <Button icon={<CopyOutlined />} size="small" disabled={playing} onClick={openCopyModal}>{t('common.copy')}</Button>
+                {playing && playingName === selectedName ? (
+                  <Button danger size="small" icon={<StopOutlined />} onClick={stopPlayback}>{t('scenario.stop')}</Button>
+                ) : (
+                  <>
+                    <InputNumber min={1} max={999} size="small" value={getRepeatCount(selectedName!)} onChange={(v) => setRepeatCount(selectedName!, v || 1)} style={{ width: 60 }} disabled={playing} />
+                    <span style={{ fontSize: 12, fontWeight: 400 }}>{t('scenario.times')}</span>
+                    <Button type="primary" size="small" icon={<PlayCircleOutlined />} loading={playing && playingName === selectedName} disabled={playing} onClick={() => playScenario(selectedName!)}>{t('scenario.play')}</Button>
+                  </>
+                )}
+                <Tooltip title={t('webcam.autoRecordHint')}>
+                  <Checkbox checked={webcamAutoRecord} onChange={(e) => setWebcamAutoRecord(e.target.checked)} disabled={playing}>
+                    <VideoCameraOutlined style={{ color: webcamAutoRecord ? '#ff4d4f' : undefined }} /> {t('webcam.autoRecord')}
+                  </Checkbox>
+                </Tooltip>
+                <Button danger size="small" icon={<DeleteOutlined />} disabled={playing} onClick={() => deleteScenario(selectedName!)}>{t('common.delete')}</Button>
+                {Object.keys(groups).length > 0 && (
+                  <>
+                    <Select placeholder={t('scenario.addToGroup')} style={{ width: 140 }} size="small" value={undefined}
+                      onChange={(gName: string) => { if (gName && selectedName) addToGroup(gName, selectedName); }}
+                      options={Object.keys(groups).filter((g) => !(groups[g] || []).some((m) => m.name === selectedName!)).map((g) => ({ label: g, value: g }))}
+                    />
+                    {scenarioGroups(selectedName!).map((g) => (
+                      <Tag key={g} closable onClose={() => removeFromGroup(g, selectedName!)} color="blue">{g}</Tag>
+                    ))}
+                  </>
+                )}
+              </Space>
             )
           }
+          styles={{ ...({ body: { flex: 1, overflow: 'auto' } }), header: { flexWrap: 'wrap', height: 'auto', minHeight: 40, padding: '4px 12px' } }}
           extra={
             (playing || stepResults.length > 0) ? (
               <Space>
