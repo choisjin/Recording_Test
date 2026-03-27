@@ -559,19 +559,20 @@ class DeviceManager:
                 v.status = "offline"
 
     async def add_adb_device(self, serial: str, device_id: str = "", name: str = "") -> ManagedDevice:
-        """Manually register an ADB device with a custom device ID."""
+        """ADB 디바이스 등록만 (연결은 connect_device_by_id로 별도 수행)."""
         final_id = device_id or self._generate_device_id("adb")
         display_name = name or serial
 
-        # Try to get device info
+        # 디바이스 정보만 조회 (연결 시도 아님)
         info = {}
         try:
             adb_devices = await self.adb.list_devices()
             found = next((d for d in adb_devices if d.serial == serial), None)
-            if found and found.status == "device":
-                info = await self.adb.get_device_info(serial)
+            if found:
+                if found.status == "device":
+                    info = await self.adb.get_device_info(serial)
                 if not name:
-                    display_name = info.get("model", serial)
+                    display_name = info.get("model", serial) if info else serial
         except Exception:
             pass
 
@@ -580,46 +581,29 @@ class DeviceManager:
             type="adb",
             category="primary",
             address=serial,
-            status="connected",
+            status="disconnected",
             name=display_name,
             info=info,
         )
         self._devices[final_id] = dev
-        self._ever_connected.add(final_id)
-        self._save_auxiliary_devices()  # persist all non-adb + adb with custom IDs
+        self._save_auxiliary_devices()
         return dev
 
     async def add_hkmc6th_device(self, host: str, port: int, device_id: str = "", name: str = "") -> ManagedDevice:
-        """Connect to an HKMC 6th gen IVI device over TCP and register it."""
+        """HKMC 디바이스 등록만 (연결은 connect_device_by_id로 별도 수행)."""
         final_id = device_id or self._generate_device_id("hkmc6th")
         display_name = name or f"HKMC ({host}:{port})"
 
-        svc = HKMC6thService(host, port, device_id=final_id)
-        ok = await svc.async_connect()
-        if not ok:
-            raise RuntimeError(f"Cannot connect to HKMC agent at {host}:{port}")
-
-        info = svc.get_info()
-        # 화면 해상도 조회 (프론트엔드 좌표 매핑에 필요)
-        scr_w, scr_h = svc.get_screen_size("front_center")
         dev = ManagedDevice(
             id=final_id,
             type="hkmc6th",
             category="primary",
             address=host,
-            status="connected",
+            status="disconnected",
             name=display_name,
-            info={
-                "port": port,
-                "agent_version": svc.agent_version,
-                "screens": info["screens"],
-                "resolution": {"width": scr_w, "height": scr_h},
-            },
+            info={"port": port},
         )
         self._devices[final_id] = dev
-        self._hkmc_conns[final_id] = svc
-        self._ever_connected.add(final_id)
-        self._hkmc_reconnect_attempts.pop(final_id, None)
         self._save_auxiliary_devices()
         return dev
 
@@ -637,29 +621,16 @@ class DeviceManager:
     async def add_vision_camera_device(self, mac: str, model: str = "", serial: str = "",
                                        ip: str = "", subnetmask: str = "255.255.0.0",
                                        device_id: str = "", name: str = "") -> ManagedDevice:
-        """비전 카메라를 주 디바이스로 연결 및 등록."""
+        """비전 카메라 등록만 (연결은 connect_device_by_id로 별도 수행)."""
         final_id = device_id or self._generate_device_id("vision_camera")
         display_name = name or f"VisionCam ({mac})"
-
-        from ..plugins.VisionCamera import VisionCamera
-        cam = VisionCamera(mac=mac, model=model, serial=serial, ip=ip, subnetmask=subnetmask)
-        loop = asyncio.get_event_loop()
-        try:
-            result = await asyncio.wait_for(
-                loop.run_in_executor(None, cam.Connect),
-                timeout=30.0,
-            )
-        except asyncio.TimeoutError:
-            raise RuntimeError("VisionCamera connect timeout (30s) — 카메라가 네트워크에 연결되어 있는지 확인하세요")
-        except Exception as e:
-            raise RuntimeError(f"VisionCamera connect failed: {e}")
 
         dev = ManagedDevice(
             id=final_id,
             type="vision_camera",
             category="primary",
             address=ip or mac,
-            status="connected",
+            status="disconnected",
             name=display_name,
             info={
                 "mac": mac,
@@ -670,8 +641,6 @@ class DeviceManager:
             },
         )
         self._devices[final_id] = dev
-        self._vision_cams[final_id] = cam
-        self._ever_connected.add(final_id)
         self._save_auxiliary_devices()
         return dev
 
@@ -858,36 +827,24 @@ class DeviceManager:
             return f"ForceIP error: {e}"
 
     async def add_serial_device(self, port: str, baudrate: int = 115200, name: str = "", category: str = "auxiliary", device_id: str = "") -> ManagedDevice:
-        """Add a serial device and open a persistent connection."""
+        """시리얼 디바이스 등록만 (연결은 connect_device_by_id로 별도 수행)."""
         final_id = device_id or self._generate_device_id("serial")
         dev = ManagedDevice(
             id=final_id,
             type="serial",
             category=category,
             address=port,
-            status="connected",
+            status="disconnected",
             name=name or final_id,
             info={"baudrate": baudrate},
         )
         self._devices[final_id] = dev
         self._save_auxiliary_devices()
-
-        # Open persistent connection (validates port + keeps it open)
-        loop = asyncio.get_event_loop()
-        try:
-            await loop.run_in_executor(None, self._get_serial_conn, final_id)
-            self._ever_connected.add(final_id)
-        except Exception as e:
-            # Remove device if connection fails
-            self._devices.pop(final_id, None)
-            self._save_auxiliary_devices()
-            raise RuntimeError(f"Cannot open {port}: {e}")
-
         return dev
 
     async def add_module_device(self, address: str, module: str, connect_type: str = "none",
                                name: str = "", extra_fields: dict | None = None, device_id: str = "") -> ManagedDevice:
-        """Add a module-only device (socket, CAN, no-connection, etc.)."""
+        """모듈 디바이스 등록만 (연결은 connect_device_by_id로 별도 수행)."""
         final_id = device_id or self._generate_device_id("module", module)
         display_name = name or (f"{module} ({address})" if address else module)
         info: dict = {"module": module, "connect_type": connect_type}
@@ -898,49 +855,30 @@ class DeviceManager:
             type="module",
             category="auxiliary",
             address=address,
-            status="unknown",
+            status="disconnected",
             name=display_name,
             info=info,
         )
         self._devices[final_id] = dev
         self._save_auxiliary_devices()
 
-        # 즉시 모듈 인스턴스 생성 + 연결 시도
-        try:
-            from .module_service import _get_instance, _is_connected
-            from ..routers.device import _build_constructor_kwargs
-            ctor_kwargs = _build_constructor_kwargs(dev)
-            loop = asyncio.get_event_loop()
-            instance = await loop.run_in_executor(None, _get_instance, module, ctor_kwargs)
-            if _is_connected(instance):
-                dev.status = "connected"
-                self._ever_connected.add(final_id)
-            else:
-                dev.status = "disconnected"
-        except Exception as e:
-            dev.status = "disconnected"
-            logger.warning("Module %s init failed on add: %s", module, e)
-
         return dev
 
     async def add_adb_wifi(self, address: str) -> ManagedDevice:
-        """Connect ADB over WiFi and add to managed list."""
-        result = await self.adb.connect_device(address)
-        await self.refresh_adb()
+        """ADB WiFi 디바이스 등록만 (연결은 connect_device_by_id로 별도 수행)."""
         if address in self._devices:
             return self._devices[address]
-        # Might be connected with different format
         dev = ManagedDevice(
             id=address,
             type="adb",
             category="primary",
             address=address,
-            status="connected",
+            status="disconnected",
             name=address,
-            info={"connect_result": result.strip()},
+            info={},
         )
         self._devices[address] = dev
-        self._ever_connected.add(address)
+        self._save_auxiliary_devices()
         return dev
 
     async def remove_device(self, device_id: str) -> str:
@@ -972,6 +910,7 @@ class DeviceManager:
             from .module_service import reset_instance
             reset_instance(module_name)
         self._devices.pop(dev.id, None)
+        self._ever_connected.discard(dev.id)
         self._save_auxiliary_devices()
         return result
 
