@@ -379,11 +379,19 @@ export default function RecordPage() {
     }).catch(() => {});
   }, []);
 
-  // Auto-select first primary device for screen
+  // 연결된 주 디바이스만 필터
+  const connectedPrimaryDevices = primaryDevices.filter(d => d.status === 'device' || d.status === 'connected');
+
+  // Auto-select first connected primary device for screen
   useEffect(() => {
-    if (!screenshotDeviceId && primaryDevices.length > 0) {
-      const ready = primaryDevices.find(d => d.status === 'device' || d.status === 'connected');
-      if (ready) setScreenshotDeviceId(ready.id);
+    if (!screenshotDeviceId && connectedPrimaryDevices.length > 0) {
+      setScreenshotDeviceId(connectedPrimaryDevices[0].id);
+    }
+    // 선택된 디바이스가 연결 끊기면 해제
+    if (screenshotDeviceId && !connectedPrimaryDevices.find(d => d.id === screenshotDeviceId)) {
+      const next = connectedPrimaryDevices.length > 0 ? connectedPrimaryDevices[0].id : '';
+      setScreenshotDeviceId(next);
+      if (stepDeviceId === screenshotDeviceId) setStepDeviceId(next);
     }
   }, [primaryDevices]);
 
@@ -1979,7 +1987,7 @@ export default function RecordPage() {
               </Space>
             }
             extra={
-              primaryDevices.length > 0 && (
+              connectedPrimaryDevices.length > 0 && (
                 <Space size={4} wrap style={{ justifyContent: 'flex-end' }}>
                   <Select
                     value={screenshotDeviceId || undefined}
@@ -1991,7 +1999,7 @@ export default function RecordPage() {
                     size="small"
                     style={{ minWidth: 140, maxWidth: 280 }}
                   >
-                    {primaryDevices.map(d => (
+                    {connectedPrimaryDevices.map(d => (
                       <Option key={d.id} value={d.id}>{d.name || d.id}</Option>
                     ))}
                   </Select>
@@ -2201,7 +2209,7 @@ export default function RecordPage() {
               </>
             ) : (
               <div style={{ color: mutedTextColor, textAlign: 'center', padding: 24 }}>
-                {primaryDevices.length === 0
+                {connectedPrimaryDevices.length === 0
                   ? t('record.addPrimaryDevice')
                   : t('record.selectPrimaryDevice')}
               </div>
