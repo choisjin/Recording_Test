@@ -2220,17 +2220,15 @@ export default function RecordPage() {
               size="small"
               title={t('record.manualStep')}
               extra={
-                ['input_text', 'key_event', 'wait', 'adb_command', 'serial_command', 'module_command', 'hkmc_key', 'cmd_send', 'cmd_check'].includes(stepType) ? (
-                  <Button
-                    size="small"
-                    type="primary"
-                    icon={<PlusOutlined />}
-                    onClick={addManualStep}
-                    disabled={!stepDeviceId && stepType !== 'wait'}
-                  >
-                    {t('record.addStep')}
-                  </Button>
-                ) : undefined
+                <Button
+                  size="small"
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={addManualStep}
+                  disabled={!stepDeviceId && stepType !== 'wait'}
+                >
+                  {t('record.addStep')}
+                </Button>
               }
               style={{ flex: 1, minWidth: 0 }}
             >
