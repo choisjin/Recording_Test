@@ -1959,11 +1959,13 @@ export default function RecordPage() {
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
         .record-page .ant-tag { line-height: 22px; }
         .record-page .ant-input-sm,
-        .record-page .ant-input-number-sm,
-        .record-page .ant-input-number-sm .ant-input-number-input,
         .record-page .ant-select-sm,
-        .record-page .ant-select-sm .ant-select-selector { height: 24px !important; min-height: 24px !important; }
-        .record-page .ant-btn-sm { height: 24px; }
+        .record-page .ant-select-sm .ant-select-selector,
+        .record-page .ant-btn-sm,
+        .record-page .ant-input-number-sm,
+        .record-page .ant-input-number-sm .ant-input-number-input-wrap,
+        .record-page .ant-input-number-sm .ant-input-number-input { height: 24px !important; min-height: 24px !important; }
+        .record-page .ant-input-number-sm .ant-input-number-handler-wrap { display: none; }
       `}</style>
       <Splitter style={{ flex: 1, minHeight: 0 }}>
         <Splitter.Panel defaultSize="40%" min="20%" max="70%" style={{ display: 'flex', flexDirection: 'column', gap: 8, overflow: 'hidden' }}>
