@@ -1214,13 +1214,13 @@ export default function ScenarioPage() {
         >
           {(playing || stepResults.length > 0) ? (
             /* 재생 중 / 완료: 결과 테이블 (스텝만 스크롤, 자동 최하단) */
-            <div ref={playbackScrollRef} style={{ flex: 1, overflow: 'auto' }}>
-            <Table columns={makeStepResultColumns(totalIterations)} dataSource={stepResults} rowKey={(_r, idx) => `${idx}`} size="small" pagination={false}
+            <div style={{ flex: 1, overflow: 'auto' }}>
+            <Table columns={makeStepResultColumns(totalIterations)} dataSource={playing ? [...stepResults].reverse() : stepResults} rowKey={(_r, idx) => `${idx}`} size="small" pagination={false}
               rowClassName={(r: StepResultData) => r.status === 'running' ? 'row-running' : r.status === 'fail' ? 'row-fail' : r.status === 'error' ? 'row-error' : r.status === 'pass' ? 'row-pass' : ''} />
             </div>
           ) : (
             /* 미리보기: 스텝 편집 테이블 */
-            <div style={{ maxHeight: 400, overflow: 'auto' }}>
+            <div style={{ flex: 1, overflow: 'auto' }}>
               <Table
                 size="small"
                 pagination={false}
