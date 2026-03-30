@@ -1731,12 +1731,18 @@ export default function RecordPage() {
 
   const createNewWithName = () => {
     promptScenarioName(t('record.createNewScenario'), '', async (name) => {
-      setOriginalScenarioName('');
+      // 빈 시나리오를 백엔드에 즉시 저장
+      try {
+        await scenarioApi.update(name, { name, description: '', steps: [] });
+      } catch (e: any) {
+        message.error(e.response?.data?.detail || t('common.saveFailed'));
+        return;
+      }
+      setOriginalScenarioName(name);
       setDescription('');
       setSteps([]);
       savedStepsRef.current = '[]';
-      setEditingExisting(false);
-      // 콤보 목록에 새 이름 추가 후 선택
+      setEditingExisting(true);
       setSavedScenarios(prev => prev.includes(name) ? prev : [...prev, name]);
       setScenarioName(name);
     });
