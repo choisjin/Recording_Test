@@ -30,7 +30,6 @@ imutils==0.5.4
 invoke==2.2.1
 joblib==1.5.3
 lazy-loader==0.5
-lge.auto @ file:///E:/Project/Recording_Test/lge.auto-1.0.19-cp310-cp310-win_amd64.whl#sha256=ae466ec950b8738f43de58a4a4a88fc3a5291b78e4cdf90210cc6c2b56b293ca
 librosa==0.11.0
 llvmlite==0.46.0
 minimalmodbus==2.1.1
