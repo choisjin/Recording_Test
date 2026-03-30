@@ -32,7 +32,12 @@ def _build_constructor_kwargs(dev) -> dict | None:
         return None
     connect_type = dev.info.get("connect_type", "serial" if dev.type == "serial" else "none")
     if connect_type == "serial":
-        return {"port": dev.address, "bps": dev.info.get("baudrate", 115200)}
+        kwargs = {"port": dev.address, "bps": dev.info.get("baudrate", 115200)}
+        # connect_fields의 추가 필드도 포함 (e.g. CANAT의 log_path, ch1_fd 등)
+        for k, v in dev.info.items():
+            if k not in ("module", "connect_type", "baudrate"):
+                kwargs[k] = v
+        return kwargs
     elif connect_type == "socket":
         kwargs = {"host": dev.address}
         # 추가 필드 전달 (예: udp_port) — 생성자 시그니처 매칭으로 필터링됨
