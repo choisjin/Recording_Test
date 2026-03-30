@@ -638,14 +638,32 @@ export default function ScenarioPage() {
 
     // 재생 확인 모달 표시 (디바이스 매핑 + 웹캠 녹화 설정)
     const dmap = scenarioData.device_map || {};
+    let devices: { id: string; name: string; type: string; status: string; address?: string }[] = [];
     try {
       const devRes = await deviceApi.list();
-      setConnectedDevices([
-        ...(devRes.data.primary || []).map((d: any) => ({ id: d.id, name: d.name || d.id, type: d.type, status: d.status })),
-        ...(devRes.data.auxiliary || []).map((d: any) => ({ id: d.id, name: d.name || d.id, type: d.type, status: d.status })),
-      ]);
+      devices = [
+        ...(devRes.data.primary || []).map((d: any) => ({ id: d.id, name: d.name || d.id, type: d.type, status: d.status, address: d.address })),
+        ...(devRes.data.auxiliary || []).map((d: any) => ({ id: d.id, name: d.name || d.id, type: d.type, status: d.status, address: d.address })),
+      ];
+      setConnectedDevices(devices);
     } catch { /* ignore */ }
-    setDeviceMapEditing({ ...dmap });
+    // 시나리오의 매핑값(이전 환경 ID)을 현재 디바이스 ID로 자동 매칭
+    const resolved: Record<string, string> = {};
+    for (const [alias, savedId] of Object.entries(dmap)) {
+      const exact = devices.find(d => d.id === savedId);
+      if (exact) {
+        resolved[alias] = savedId;
+      } else {
+        // ID가 안 맞으면 같은 alias 이름의 디바이스를 찾거나, 주소로 매칭
+        const byAlias = devices.find(d => d.id === alias);
+        if (byAlias) {
+          resolved[alias] = byAlias.id;
+        } else {
+          resolved[alias] = savedId; // 매칭 실패 시 원래 값 유지
+        }
+      }
+    }
+    setDeviceMapEditing(resolved);
     setDeviceMapScenarioName(name);
     setDeviceMapModalVisible(true);
   };
@@ -803,14 +821,26 @@ export default function ScenarioPage() {
       } catch { /* ignore */ }
     }
 
+    let devices: { id: string; name: string; type: string; status: string; address?: string }[] = [];
     try {
       const devRes = await deviceApi.list();
-      setConnectedDevices([
-        ...(devRes.data.primary || []).map((d: any) => ({ id: d.id, name: d.name || d.id, type: d.type, status: d.status })),
-        ...(devRes.data.auxiliary || []).map((d: any) => ({ id: d.id, name: d.name || d.id, type: d.type, status: d.status })),
-      ]);
+      devices = [
+        ...(devRes.data.primary || []).map((d: any) => ({ id: d.id, name: d.name || d.id, type: d.type, status: d.status, address: d.address })),
+        ...(devRes.data.auxiliary || []).map((d: any) => ({ id: d.id, name: d.name || d.id, type: d.type, status: d.status, address: d.address })),
+      ];
+      setConnectedDevices(devices);
     } catch { /* ignore */ }
-    setDeviceMapEditing({ ...mergedMap });
+    const resolved: Record<string, string> = {};
+    for (const [alias, savedId] of Object.entries(mergedMap)) {
+      const exact = devices.find(d => d.id === savedId);
+      if (exact) {
+        resolved[alias] = savedId;
+      } else {
+        const byAlias = devices.find(d => d.id === alias);
+        resolved[alias] = byAlias ? byAlias.id : savedId;
+      }
+    }
+    setDeviceMapEditing(resolved);
     setDeviceMapScenarioName(`group:${gName}`);
     setDeviceMapModalVisible(true);
   };
