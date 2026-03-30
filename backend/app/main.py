@@ -399,10 +399,13 @@ async def websocket_screen_mirror(websocket: WebSocket):
         # 모드 협상: force_h264일 때만 H.264 raw, 기본은 JPEG
         if force_h264 and scrcpy_stream and scrcpy_stream.is_running:
             h264_mode = True
+            vid_w = scrcpy_stream._video_width or 1080
+            vid_h = scrcpy_stream._video_height or 1920
+            logger.info("H.264 stream size: %dx%d (display=%d)", vid_w, vid_h, scrcpy_display)
             await websocket.send_json({
                 "mode": "h264",
-                "width": scrcpy_stream._video_width or 1080,
-                "height": scrcpy_stream._video_height or 1920,
+                "width": vid_w,
+                "height": vid_h,
             })
         else:
             await websocket.send_json({"mode": "jpeg"})

@@ -21,10 +21,18 @@ def resolve_sf_display_id(dev_info: dict | None, logical_id: int | None) -> str 
 
     dev_info: ManagedDevice.info dict (displays 리스트 포함).
     SF display ID를 찾지 못하면 logical_id를 문자열로 폴백 반환.
+    멀티 디스플레이에서 logical_id=None이면 display 0의 sf_id 반환.
     """
-    if logical_id is None or not dev_info:
+    if not dev_info:
         return None
-    for d in dev_info.get("displays", []):
+    displays = dev_info.get("displays", [])
+    is_multi = len(displays) > 1
+    # logical_id가 None이고 멀티 디스플레이면 display 0 사용
+    if logical_id is None:
+        if is_multi and displays:
+            return displays[0].get("sf_id")
+        return None
+    for d in displays:
         if d.get("id") == logical_id:
             sf_id = d.get("sf_id")
             if sf_id is not None:
@@ -305,11 +313,25 @@ class ADBService:
             raise ValueError("No device selected")
         Path(save_path).parent.mkdir(parents=True, exist_ok=True)
         dflag = f"-d {sf_display_id} " if sf_display_id else ""
-        cmd = f'{ADB_PATH} -s {s} exec-out screencap {dflag}-p > "{save_path}"'
         loop = asyncio.get_event_loop()
+        # 먼저 exec-out 시도 (빠름)
+        cmd = f'{ADB_PATH} -s {s} exec-out screencap {dflag}-p > "{save_path}"'
         stdout, stderr, rc = await loop.run_in_executor(None, functools.partial(_run_sync, cmd))
-        if rc != 0:
-            logger.error("screencap save error: %s", stderr)
+        # 깨진 PNG 확인 → 파일 경유 폴백
+        try:
+            with open(save_path, "rb") as f:
+                header = f.read(4)
+            if header != b'\x89PNG':
+                raise ValueError("corrupted")
+        except Exception:
+            logger.debug("exec-out screencap corrupted, falling back to file method")
+            remote_path = "/data/local/tmp/_rk_screencap.png"
+            cmd_save = f"{ADB_PATH} -s {s} shell screencap {dflag}-p {remote_path}"
+            await loop.run_in_executor(None, functools.partial(_run_sync, cmd_save))
+            cmd_pull = f'{ADB_PATH} -s {s} pull {remote_path} "{save_path}"'
+            _, stderr2, rc2 = await loop.run_in_executor(None, functools.partial(_run_sync, cmd_pull))
+            if rc2 != 0:
+                logger.error("screencap pull error: %s", stderr2)
         return save_path
 
     async def screencap_bytes(self, serial: Optional[str] = None, fmt: str = "png",
@@ -323,11 +345,24 @@ class ADBService:
         if not s:
             raise ValueError("No device selected")
         dflag = f"-d {sf_display_id} " if sf_display_id else ""
+
+        # 먼저 exec-out (빠름) 시도
         cmd = f"{ADB_PATH} -s {s} exec-out screencap {dflag}-p"
         loop = asyncio.get_event_loop()
         stdout, stderr, rc = await loop.run_in_executor(None, functools.partial(_run_sync_bytes, cmd))
-        if rc != 0:
-            raise RuntimeError(f"screencap failed: {stderr}")
+
+        # exec-out 실패 또는 깨진 PNG → 파일 경유 폴백 (멀티 디스플레이에서 안정적)
+        if rc != 0 or (stdout and len(stdout) > 0 and stdout[:4] != b'\x89PNG'):
+            logger.debug("exec-out screencap failed or corrupted, falling back to file method")
+            remote_path = "/data/local/tmp/_rk_screencap.png"
+            cmd_save = f"{ADB_PATH} -s {s} shell screencap {dflag}-p {remote_path}"
+            _, stderr2, rc2 = await loop.run_in_executor(None, functools.partial(_run_sync, cmd_save))
+            if rc2 == 0:
+                cmd_cat = f"{ADB_PATH} -s {s} exec-out cat {remote_path}"
+                stdout, _, _ = await loop.run_in_executor(None, functools.partial(_run_sync_bytes, cmd_cat))
+            else:
+                raise RuntimeError(f"screencap failed: {stderr2}")
+
         if fmt == "jpeg" and stdout:
             import cv2
             import numpy as np
