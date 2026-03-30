@@ -428,9 +428,12 @@ class ServerManagerApp:
             git_available = _run_cmd(["git", "--version"], timeout=5)[0] == 0
             if git_available:
                 # 원격 최신 상태로 강제 동기화 (배포 PC는 수신 전용)
-                log_callback("[동기화] 원격 최신 상태 가져오는 중...")
-                _run_cmd(git + ["fetch", "origin", "main"], timeout=30)
-                code, out = _run_cmd(git + ["reset", "--hard", "origin/main"], timeout=15)
+                # deploy remote가 있으면 회사 깃에서, 없으면 origin에서 pull
+                _det_code, _det_out = _run_cmd(git + ["remote", "get-url", "deploy"], timeout=5)
+                _sync_remote = "deploy" if _det_code == 0 and _det_out.strip() else "origin"
+                log_callback(f"[동기화] {_sync_remote} 에서 최신 상태 가져오는 중...")
+                _run_cmd(git + ["fetch", _sync_remote, "main"], timeout=30)
+                code, out = _run_cmd(git + ["reset", "--hard", f"{_sync_remote}/main"], timeout=15)
                 if out:
                     log_callback(f"[동기화] {out}")
                 if code != 0:
