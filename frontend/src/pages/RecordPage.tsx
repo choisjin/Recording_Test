@@ -2412,6 +2412,11 @@ export default function RecordPage() {
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {stepType === 'module_command' ? (
                   <>
+                    {moduleDescription && (
+                      <div style={{ padding: '4px 8px', background: isDark ? '#1a2a1a' : '#f6ffed', borderRadius: 4, fontSize: 12, color: isDark ? '#8bc48b' : '#52c41a', lineHeight: 1.5, border: `1px solid ${isDark ? '#1a3a1a' : '#d9f7be'}` }}>
+                        {moduleDescription}
+                      </div>
+                    )}
                     <Select
                       showSearch
                       placeholder={t('record.selectFunction')}
