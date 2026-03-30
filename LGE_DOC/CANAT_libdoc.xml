@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<keywordspec name="lge.auto.CANAT" type="LIBRARY" format="ROBOT" scope="TEST" generated="2025-12-12T03:19:22+00:00" specversion="6" source="E:\robot_framework_ui\LG_RobotEZ\venv\lib\site-packages\lge\auto\CANAT.cp310-win_amd64.pyd" lineno="1">
+<version/>
+<doc>Documentation for library ``lge.auto.CANAT``.</doc>
+<tags>
+</tags>
+<inits>
+</inits>
+<keywords>
+<kw name="Disconnect CANat">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Init CANat">
+<arguments repr="comport, log_path, ch1_fd=True, ch2_fd=False">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="comport">
+<name>comport</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="log_path">
+<name>log_path</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="ch1_fd=True">
+<name>ch1_fd</name>
+<default>True</default>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="ch2_fd=False">
+<name>ch2_fd</name>
+<default>False</default>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Send All CAN Message Stop">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Send CAN Message">
+<arguments repr="message_id, cycle_time, can_message, bus_channel, message_type=FD">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="message_id">
+<name>message_id</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="cycle_time">
+<name>cycle_time</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="can_message">
+<name>can_message</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="bus_channel">
+<name>bus_channel</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="message_type=FD">
+<name>message_type</name>
+<default>FD</default>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Start Save CAN Message">
+<arguments repr="save_path=">
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="save_path=">
+<name>save_path</name>
+<default/>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Stop CAN Message">
+<arguments repr="message_id, cycle_time, can_message, bus_channel, message_type=FD">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="message_id">
+<name>message_id</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="cycle_time">
+<name>cycle_time</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="can_message">
+<name>can_message</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="bus_channel">
+<name>bus_channel</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="message_type=FD">
+<name>message_type</name>
+<default>FD</default>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Stop Save CAN Message">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+</keywords>
+<typedocs>
+</typedocs>
+</keywordspec>

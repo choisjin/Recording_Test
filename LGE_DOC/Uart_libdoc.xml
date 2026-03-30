@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<keywordspec name="lge.auto.Uart" type="LIBRARY" format="ROBOT" scope="TEST" generated="2025-12-12T03:19:23+00:00" specversion="6" source="E:\robot_framework_ui\LG_RobotEZ\venv\lib\site-packages\lge\auto\Uart.cp310-win_amd64.pyd" lineno="1">
+<version/>
+<doc>The `Uart` Class can send string to some serial port.
+And this Class has a thread for recvie and save uart data.
+So this class can save a log file.</doc>
+<tags>
+</tags>
+<inits>
+</inits>
+<keywords>
+<kw name="Add Uart Port">
+<arguments repr="port, bps, logFilePath, endline=\r">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="port">
+<name>port</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="bps">
+<name>bps</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="logFilePath">
+<name>logFilePath</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="endline=\r">
+<name>endline</name>
+<default>\r</default>
+</arg>
+</arguments>
+<doc>Add uart port
+
+argument:
+    - ``port`` : Uart port ex)COM1 , /dev/ttyUSB0
+    - ``bps`` : Uart Bytes per second ex) 115200
+    - ``logFilePath`` : Uart log file path
+
+Examples:
+| `Add Uart Port` | COM1 | 115200 | ${LOG PATH}\log.txt |</doc>
+<shortdoc>Add uart port</shortdoc>
+</kw>
+<kw name="Close Uart Port">
+<arguments repr="">
+</arguments>
+<doc>disconnect uart port
+
+Examples:
+| `Close Uart Port` |</doc>
+<shortdoc>disconnect uart port</shortdoc>
+</kw>
+<kw name="Connect Uart Port">
+<arguments repr="port, bps, endline=\r">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="port">
+<name>port</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="bps">
+<name>bps</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="endline=\r">
+<name>endline</name>
+<default>\r</default>
+</arg>
+</arguments>
+<doc>Connect uart port
+
+argument:
+    - ``port`` : Uart port ex)COM1 , /dev/ttyUSB0
+    - ``bps`` : Uart Bytes per second ex) 115200
+
+Examples:
+| `Connect Uart Port` | COM1 | 115200 |</doc>
+<shortdoc>Connect uart port</shortdoc>
+</kw>
+<kw name="Get File Path">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Send Char to Uart">
+<arguments repr="char">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="char">
+<name>char</name>
+</arg>
+</arguments>
+<doc>send character to connected uart port
+   It's not include endLine ()
+
+argument:
+    - ``char`` : character
+
+Examples:
+| `Send String to Uart` | s |</doc>
+<shortdoc>send character to connected uart port    It's not include endLine ( )</shortdoc>
+</kw>
+<kw name="Send Control Character">
+<arguments repr="control_character">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="control_character">
+<name>control_character</name>
+</arg>
+</arguments>
+<doc>send special character to connected uart port. example Ctrl-C
+
+argument:
+    - ``control_character`` : ETX or Ctrl-C
+
+Examples:
+| `Send Control Character` | Ctrl-C |</doc>
+<shortdoc>send special character to connected uart port. example Ctrl-C</shortdoc>
+</kw>
+<kw name="Send String to Uart">
+<arguments repr="command">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="command">
+<name>command</name>
+</arg>
+</arguments>
+<doc>send string to connected uart port
+
+argument:
+    - ``command`` : linux commad ex)ls -al
+
+Examples:
+| `Send String to Uart` | ls -al |</doc>
+<shortdoc>send string to connected uart port</shortdoc>
+</kw>
+<kw name="Start Save File">
+<arguments repr="path_log">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="path_log">
+<name>path_log</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Stop Save File">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+</keywords>
+<typedocs>
+</typedocs>
+</keywordspec>

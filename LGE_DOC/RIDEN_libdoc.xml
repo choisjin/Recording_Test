@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<keywordspec name="lge.auto.RIDEN" type="LIBRARY" format="ROBOT" scope="TEST" generated="2025-12-12T03:19:23+00:00" specversion="6" source="E:\robot_framework_ui\LG_RobotEZ\venv\lib\site-packages\lge\auto\RIDEN.cp310-win_amd64.pyd" lineno="1">
+<version/>
+<doc>Documentation for library ``lge.auto.RIDEN``.</doc>
+<tags>
+</tags>
+<inits>
+</inits>
+<keywords>
+<kw name="Turn Off Power Supply">
+<arguments repr="port">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="port">
+<name>port</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Turn On Power Supply with Voltage">
+<arguments repr="port, voltage">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="port">
+<name>port</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="voltage">
+<name>voltage</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+</keywords>
+<typedocs>
+</typedocs>
+</keywordspec>

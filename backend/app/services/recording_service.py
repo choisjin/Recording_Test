@@ -448,6 +448,7 @@ class RecordingService:
     async def merge_scenarios(self, names: list[str], target_name: str) -> Scenario:
         """Merge multiple scenarios into one new scenario."""
         merged_steps: list[Step] = []
+        merged_device_map: dict[str, str] = {}
         step_id = 0
 
         tgt_ss_dir = SCREENSHOTS_DIR / target_name
@@ -456,9 +457,16 @@ class RecordingService:
         for name in names:
             scen = await self.load_scenario(name)
             src_ss_dir = SCREENSHOTS_DIR / name
+            # device_map 합치기 (뒤 시나리오가 동일 alias면 덮어씀)
+            merged_device_map.update(scen.device_map or {})
+            # 원본 step ID → 새 step ID 매핑 (goto 갱신용)
+            id_map: dict[int, int] = {}
+            scenario_steps: list[Step] = []
             for step in scen.steps:
+                old_id = step.id
                 step_id += 1
                 step.id = step_id
+                id_map[old_id] = step_id
                 if step.expected_image:
                     old_file = src_ss_dir / step.expected_image
                     new_filename = f"{target_name}_step_{step_id:03d}.png"
@@ -475,11 +483,19 @@ class RecordingService:
                         if old_ci.exists():
                             shutil.copy2(str(old_ci), str(new_ci))
                         ci.image = new_ci_name
-                merged_steps.append(step)
+                scenario_steps.append(step)
+            # on_pass_goto / on_fail_goto를 새 ID로 갱신
+            for step in scenario_steps:
+                if step.on_pass_goto is not None and step.on_pass_goto in id_map:
+                    step.on_pass_goto = id_map[step.on_pass_goto]
+                if step.on_fail_goto is not None and step.on_fail_goto in id_map:
+                    step.on_fail_goto = id_map[step.on_fail_goto]
+            merged_steps.extend(scenario_steps)
 
         merged = Scenario(
             name=target_name,
             steps=merged_steps,
+            device_map=merged_device_map,
             created_at=datetime.now(timezone.utc).isoformat(),
         )
         await self.save_scenario(merged)

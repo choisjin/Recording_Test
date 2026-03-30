@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<keywordspec name="lge.auto.COMMON_WINDOWS" type="LIBRARY" format="ROBOT" scope="TEST" generated="2025-12-12T03:19:22+00:00" specversion="6" source="E:\robot_framework_ui\LG_RobotEZ\venv\lib\site-packages\lge\auto\COMMON_WINDOWS.cp310-win_amd64.pyd" lineno="1">
+<version/>
+<doc>Documentation for library ``lge.auto.COMMON_WINDOWS``.</doc>
+<tags>
+</tags>
+<inits>
+</inits>
+<keywords>
+<kw name="Get File Path">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Start Save File From Command">
+<arguments repr="command, path_dir_log">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="command">
+<name>command</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="path_dir_log">
+<name>path_dir_log</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Stop Save File">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+</keywords>
+<typedocs>
+</typedocs>
+</keywordspec>

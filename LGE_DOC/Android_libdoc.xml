@@ -1,0 +1,384 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<keywordspec name="lge.auto.Android" type="LIBRARY" format="ROBOT" scope="TEST" generated="2025-12-12T03:19:21+00:00" specversion="6" source="E:\robot_framework_ui\LG_RobotEZ\venv\lib\site-packages\lge\auto\Android.cp310-win_amd64.pyd" lineno="1">
+<version/>
+<doc>The `Android` class can control android device via adb server.
+- refer : https://github.com/Swind/pure-python-adb
+
+This class connect adb server and then this class control android device by serial name each other.
+https://raw.githubusercontent.com/Swind/pure-python-adb/master/docs/adb_pure_python_adb.png
+
+
+And you can download the Android SDK https://developer.android.com/studio/releases/platform-tools page.</doc>
+<tags>
+</tags>
+<inits>
+</inits>
+<keywords>
+<kw name="Adb Devices">
+<arguments repr="">
+</arguments>
+<doc>run adb devices
+
+return: adb device list. type is list.
+
+Examples:
+| @{adb devicr list}= |  Adb Devices |</doc>
+<shortdoc>run adb devices</shortdoc>
+</kw>
+<kw name="Connect Adb Server">
+<arguments repr="host=127.0.0.1, port=5037">
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="host=127.0.0.1">
+<name>host</name>
+<default>127.0.0.1</default>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="port=5037">
+<name>port</name>
+<default>5037</default>
+</arg>
+</arguments>
+<doc>Connect adb server. this command function result is same result of `adb start-server` command.
+And the first adb device was setted defaultly 'adb -s' option
+
+argument:
+- ``host`` : adb server ip. default value is 127.0.0.1
+- ``port`` : adb server port. default value is 5037
+
+Examples:
+| `Connect Adb Server` |
+| `Connect Adb Server` |    127.0.0.1   |   5037    |</doc>
+<shortdoc>Connect adb server. this command function result is same result of `adb start-server` command. And the first adb device was setted defaultly 'adb -s' option</shortdoc>
+</kw>
+<kw name="Incoming Call">
+<arguments repr="number, serial=None">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="number">
+<name>number</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="serial=None">
+<name>serial</name>
+<default>None</default>
+</arg>
+</arguments>
+<doc>run `adb input keyevent 5` and `adb input text`
+
+argument:
+- ``number`` : phone number
+- ``serial`` : if serial is None, select the first device in the adb device list then run screen capture. else select the device named ``serial`` then run screen capture. it's same '-s' option in adb
+
+Examples:
+| `Incoming Call` | 01012345678 |
+| `Incoming Call` | 01012345678 | serial=R3CR600XL3D |</doc>
+<shortdoc>run `adb input keyevent 5` and `adb input text`</shortdoc>
+</kw>
+<kw name="Input Text">
+<arguments repr="text, serial=None">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="text">
+<name>text</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="serial=None">
+<name>serial</name>
+<default>None</default>
+</arg>
+</arguments>
+<doc>run `adb input text`
+
+argument:
+- ``text`` : string
+- ``serial`` : if serial is None, select the first device in the adb device list then run screen capture. else select the device named ``serial`` then run screen capture. it's same '-s' option in adb
+
+Examples:
+| `Incoming Call` | hello |
+| `Incoming Call` | hello | serial=R3CR600XL3D |</doc>
+<shortdoc>run `adb input text`</shortdoc>
+</kw>
+<kw name="Install">
+<arguments repr="apk_path, serial=None">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="apk_path">
+<name>apk_path</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="serial=None">
+<name>serial</name>
+<default>None</default>
+</arg>
+</arguments>
+<doc>run `adb install` ``apk_path``
+
+argument:
+- ``apk_path`` : path of apk file
+- ``serial`` : if serial is None, select the first device in the adb device list then install apk. else select the device named ``serial`` then install apk. it's same '-s' option in adb
+
+Examples:
+| `Install` |  test.apk |
+| `Install` |  test.apk | serial=R3CR600XL3D |</doc>
+<shortdoc>run `adb install` ``apk_path``</shortdoc>
+</kw>
+<kw name="KeyEvent">
+<arguments repr="keycode, long_press=False, serial=None">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="keycode">
+<name>keycode</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="long_press=False">
+<name>long_press</name>
+<default>False</default>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="serial=None">
+<name>serial</name>
+<default>None</default>
+</arg>
+</arguments>
+<doc>run `adb input keyevent` ``keycode``
+
+argument:
+- ``keycode`` : code of keyevent. reference : https://developer.android.com/reference/android/view/KeyEvent#constants_1
+- ``long_press`` : if you want to make long press, set True. default value is False.
+- ``serial`` : if serial is None, select the first device in the adb device list then run keyevent. else select the device named ``serial`` then run keyevent. it's same '-s' option in adb
+
+Examples:
+| `KeyEvent` |  3 |
+| `KeyEvent` |  3 | serial=R3CR600XL3D |</doc>
+<shortdoc>run `adb input keyevent` ``keycode``</shortdoc>
+</kw>
+<kw name="Pull">
+<arguments repr="src, dest, serial=None">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="src">
+<name>src</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="dest">
+<name>dest</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="serial=None">
+<name>serial</name>
+<default>None</default>
+</arg>
+</arguments>
+<doc>run `adb pull` ``src`` ``dest``
+
+argument:
+- ``src`` : path of src file
+- ``dest`` : path of PC
+- ``serial`` : if serial is None, select the first device in the adb device list then run adb pull. else select the device named ``serial`` then run adb pull. it's same '-s' option in adb
+
+Examples:
+| `Pull` |  /sdcard/test.jpg | D:\test\test.jpg |
+| `Pull` |  /sdcard/test.jpg | D:\test\test.jpg | serial=R3CR600XL3D |</doc>
+<shortdoc>run `adb pull` ``src`` ``dest``</shortdoc>
+</kw>
+<kw name="Push">
+<arguments repr="src, dest, serial=None">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="src">
+<name>src</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="dest">
+<name>dest</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="serial=None">
+<name>serial</name>
+<default>None</default>
+</arg>
+</arguments>
+<doc>run `adb push` ``src`` ``dest``
+
+argument:
+- ``src`` : path of src file
+- ``dest`` : path of android device
+- ``serial`` : if serial is None, select the first device in the adb device list then run adb push. else select the device named ``serial`` then run adb push. it's same '-s' option in adb
+
+Examples:
+| `Push` |  D:\test\test.jpg | /sdcard/test.jpg  |
+| `Push` |  D:\test\test.jpg | /sdcard/test.jpg  | serial=R3CR600XL3D |</doc>
+<shortdoc>run `adb push` ``src`` ``dest``</shortdoc>
+</kw>
+<kw name="Reboot">
+<arguments repr="serial=None">
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="serial=None">
+<name>serial</name>
+<default>None</default>
+</arg>
+</arguments>
+<doc>run `adb reboot`
+
+argument:
+- ``serial`` : if serial is None, select the first device in the adb device list then run adb reboot. else select the device named ``serial`` then run adb reboot. it's same '-s' option in adb
+
+Examples:
+| `reboot` |
+| `reboot` | serial=R3CR600XL3D |</doc>
+<shortdoc>run `adb reboot`</shortdoc>
+</kw>
+<kw name="ScreenCap">
+<arguments repr="img_path, serial=None">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="img_path">
+<name>img_path</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="serial=None">
+<name>serial</name>
+<default>None</default>
+</arg>
+</arguments>
+<doc>run `adb screencap` and save image file on PC
+
+argument:
+- ``img_path`` : PC`s path of captured img
+- ``serial`` : if serial is None, select the first device in the adb device list then run screen capture. else select the device named ``serial`` then run screen capture. it's same '-s' option in adb
+
+Examples:
+| `ScreenCap` | D:\test\test.jpg |
+| `ScreenCap` | D:\test\test.jpg | serial=R3CR600XL3D |</doc>
+<shortdoc>run `adb screencap` and save image file on PC</shortdoc>
+</kw>
+<kw name="Select Device">
+<arguments repr="serial">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="serial">
+<name>serial</name>
+</arg>
+</arguments>
+<doc>changed 'adb -s' device
+
+argument:
+- ``serial`` : adb device serial name
+
+Examples:
+| `Select Device` |  R3CR600XL3D  |</doc>
+<shortdoc>changed 'adb -s' device</shortdoc>
+</kw>
+<kw name="Shell">
+<arguments repr="cmd, serial=None">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="cmd">
+<name>cmd</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="serial=None">
+<name>serial</name>
+<default>None</default>
+</arg>
+</arguments>
+<doc>run `adb shell` ``cmd``
+
+argument:
+- ``cmd`` : adb shell command
+- ``serial`` : if serial is None, select the first device in the adb device list then run adb shell ``cmd``. else select the device named ``serial`` then run adb shell ``cmd``. it's same '-s' option in adb
+
+return: result of adb shell ``cmd`` stdout
+
+Examples:
+|   ${result}= | `Shell` |  ls -al  |
+|   ${result}= | `Shell` |  ls -al  |  R3CR600XL3D |</doc>
+<shortdoc>run `adb shell` ``cmd``</shortdoc>
+</kw>
+<kw name="Start Logcat">
+<arguments repr="logpath, serial=None">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="logpath">
+<name>logpath</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="serial=None">
+<name>serial</name>
+<default>None</default>
+</arg>
+</arguments>
+<doc>start logcat
+
+argument:
+- ``logpath`` : path of logcat log file
+- ``serial`` : if serial is None, select the first device in the adb device list then save logcat. else select the device named ``serial`` then save logcat. it's same '-s' option in adb
+
+Examples:
+| `Start Logcat` |  adb.log |
+| `Start Logcat` |  adb.log |   serial=R3CR600XL3D  |</doc>
+<shortdoc>start logcat</shortdoc>
+</kw>
+<kw name="Stop Logcat">
+<arguments repr="">
+</arguments>
+<doc>stop logcat
+
+Examples:
+| `Stop Logcat` |</doc>
+<shortdoc>stop logcat</shortdoc>
+</kw>
+<kw name="Swipe">
+<arguments repr="x1, y1, x2, y2, duration=300, serial=None">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="x1">
+<name>x1</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="y1">
+<name>y1</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="x2">
+<name>x2</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="y2">
+<name>y2</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="duration=300">
+<name>duration</name>
+<default>300</default>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="serial=None">
+<name>serial</name>
+<default>None</default>
+</arg>
+</arguments>
+<doc>run `adb input Swipe` ``x1`` ``y1`` ``x2`` ``y2``  ``duration``
+
+argument:
+- ``x1`` : the x coordinate of the start point
+- ``y1`` : the y coordinate of the start point
+- ``x2`` : the x coordinate of the end point
+- ``y2`` : the y coordinate of the end point
+- ``duration`` : duration of swipe (ms). default value is 300ms
+- ``serial`` : if serial is None, select the first device in the adb device list then make swipe. else select the device named ``serial`` then make swipe. it's same '-s' option in adb
+
+Examples:
+| `Swipe` |  900  | 1000 |  800 |  200 |
+| `Swipe` |  900  | 1000 |  800 |  200 | serial=R3CR600XL3D |
+| `Swipe` |  900  | 1000 |  900 |  1000 | duration=5000 | serial=R3CR600XL3D |</doc>
+<shortdoc>run `adb input Swipe` ``x1`` ``y1`` ``x2`` ``y2``  ``duration``</shortdoc>
+</kw>
+<kw name="Touch">
+<arguments repr="x, y, serial=None">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="x">
+<name>x</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="y">
+<name>y</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="serial=None">
+<name>serial</name>
+<default>None</default>
+</arg>
+</arguments>
+<doc>run `adb input tap` ``x`` ``y``
+
+argument:
+- ``x`` : x coordinate of touch
+- ``y`` : y coordinate of touch
+- ``serial`` : if serial is None, select the first device in the adb device list then make touch. else select the device named ``serial`` then make touch. it's same '-s' option in adb
+
+Examples:
+| `Touch` |  900  | 1000 |
+| `Touch` |  900  | 1000 |  R3CR600XL3D |</doc>
+<shortdoc>run `adb input tap` ``x`` ``y``</shortdoc>
+</kw>
+<kw name="Uninstall">
+<arguments repr="apk_package, serial=None">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="apk_package">
+<name>apk_package</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="serial=None">
+<name>serial</name>
+<default>None</default>
+</arg>
+</arguments>
+<doc>run `adb uninstall` ``apk_package``
+
+argument:
+- ``apk_package`` : name of pakcage
+- ``serial`` : if serial is None, select the first device in the adb device list then uninstall package. else select the device named ``serial`` then uninstall package. it's same '-s' option in adb
+
+Examples:
+| `Uninstall` |  package.test |
+| `Uninstall` |  package.test | serial=R3CR600XL3D |</doc>
+<shortdoc>run `adb uninstall` ``apk_package``</shortdoc>
+</kw>
+</keywords>
+<typedocs>
+</typedocs>
+</keywordspec>

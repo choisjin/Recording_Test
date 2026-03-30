@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<keywordspec name="lge.auto.POWER" type="LIBRARY" format="ROBOT" scope="TEST" generated="2025-12-12T03:19:23+00:00" specversion="6" source="E:\robot_framework_ui\LG_RobotEZ\venv\lib\site-packages\lge\auto\POWER.cp310-win_amd64.pyd" lineno="1">
+<version/>
+<doc>For power programming
+IDN: VUPOWER, K3010, VER.KS.1.052</doc>
+<tags>
+</tags>
+<inits>
+</inits>
+<keywords>
+<kw name="Add Power Port">
+<arguments repr="port, bps">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="port">
+<name>port</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="bps">
+<name>bps</name>
+</arg>
+</arguments>
+<doc>Connect Power
+
+argument:
+    - ``port`` : CANat port ex)COM1
+    - ``bps`` : CANat Bytes per second ex) 115200
+    
+Examples:
+| `Add POWER Port` | COM1 | 115200 |</doc>
+<shortdoc>Connect Power</shortdoc>
+</kw>
+<kw name="Close Power Port">
+<arguments repr="">
+</arguments>
+<doc>disconnect Power port
+
+Examples:
+| `Close Power Port` |</doc>
+<shortdoc>disconnect Power port</shortdoc>
+</kw>
+<kw name="Read Value">
+<arguments repr="set_type">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="set_type">
+<name>set_type</name>
+</arg>
+</arguments>
+<doc>Measure Value Power: Voltage, Current
+
+argument:
+    - ``set_type`` : VOLT | CURR
+    
+Examples:
+| `Measure Value` | VOLT</doc>
+<shortdoc>Measure Value Power: Voltage, Current</shortdoc>
+</kw>
+<kw name="Send Cmd">
+<arguments repr="cmd">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="cmd">
+<name>cmd</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Set Output">
+<arguments repr="status">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="status">
+<name>status</name>
+</arg>
+</arguments>
+<doc>Setup Output Power: ON/OFF
+
+argument:
+    - ``status`` : ON | OFF
+    
+Examples:
+| `Set Output` | ON</doc>
+<shortdoc>Setup Output Power: ON/OFF</shortdoc>
+</kw>
+<kw name="Set Value">
+<arguments repr="set_type, value">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="set_type">
+<name>set_type</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="value">
+<name>value</name>
+</arg>
+</arguments>
+<doc>Set Value Power: Voltage, Current
+
+argument:
+    - ``set_type`` : VOLT | CURR
+    - ``value`` : value of type, unit: Voltage(V), Current(A)
+    
+Examples:
+| `Set Value` | VOLT | 12 |</doc>
+<shortdoc>Set Value Power: Voltage, Current</shortdoc>
+</kw>
+</keywords>
+<typedocs>
+</typedocs>
+</keywordspec>

@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<keywordspec name="lge.auto.Trace" type="LIBRARY" format="ROBOT" scope="TEST" generated="2025-12-12T03:19:23+00:00" specversion="6" source="E:\robot_framework_ui\LG_RobotEZ\venv\lib\site-packages\lge\auto\Trace.cp310-win_amd64.pyd" lineno="1">
+<version/>
+<doc>usage:</doc>
+<tags>
+</tags>
+<inits>
+</inits>
+<keywords>
+<kw name="Append expected results">
+<arguments repr="caller: str, callee: str">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="caller: str">
+<name>caller</name>
+<type name="str" typedoc="string"/>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="callee: str">
+<name>callee</name>
+<type name="str" typedoc="string"/>
+</arg>
+</arguments>
+<doc>Append expected results
+
+argument:
+    - caller: caller function name
+    - callee: callee function name
+
+Examples:
+| Append expected results | main | initialize |</doc>
+<shortdoc>Append expected results</shortdoc>
+</kw>
+<kw name="Check timeliness">
+<arguments repr="time_diff: int">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="time_diff: int">
+<name>time_diff</name>
+<type name="int" typedoc="integer"/>
+</arg>
+</arguments>
+<returntype name="bool" typedoc="boolean"/>
+<doc>Check timeliness
+    - this should be called after compare
+    - check time diff from first expected result to last expected result
+
+argument:
+    - time_diff: milliseconds
+
+return:
+    - True: if last function of expected results called within time_diff milliseconds
+    - False: if not last function of expected results called within time_diff milliseconds
+
+Examples:
+| Check timeliness | 100 |</doc>
+<shortdoc>Check timeliness     - this should be called after compare     - check time diff from first expected result to last expected result</shortdoc>
+</kw>
+<kw name="Compare expected to actual">
+<arguments repr="">
+</arguments>
+<returntype name="list" typedoc="list"/>
+<doc>Compare expected results to actual results
+
+argument:
+
+return:
+    [   { 'caller': func, 'callee': func, 'result': boolean, 'timestamp': unix timestamp (microseconds) },
+        { 'caller': func, 'callee': func, 'result': boolean, 'timestamp': unix timestamp (microseconds) }    ]
+
+Examples:
+| Compare expected to actual |</doc>
+<shortdoc>Compare expected results to actual results</shortdoc>
+</kw>
+<kw name="Get basename of trace file">
+<arguments repr="trace_file: str">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="trace_file: str">
+<name>trace_file</name>
+<type name="str" typedoc="string"/>
+</arg>
+</arguments>
+<returntype name="str" typedoc="string"/>
+<doc>Get basename of trace file
+
+argument:
+    - trace_file: trace log file
+
+Examples:
+| Get basename of trace file | ${LOG PATH}\___lge___app_ro___network___network |</doc>
+<shortdoc>Get basename of trace file</shortdoc>
+</kw>
+<kw name="Initialize">
+<arguments repr="">
+</arguments>
+<doc>Initialize Trace member variables</doc>
+<shortdoc>Initialize Trace member variables</shortdoc>
+</kw>
+<kw name="Set actual results">
+<arguments repr="path: str">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="path: str">
+<name>path</name>
+<type name="str" typedoc="string"/>
+</arg>
+</arguments>
+<doc>Set actual results
+    - concatenate all parsed files in a path
+    - sorting by time ascending
+    - save to csv file
+
+argument:
+    - path: directory in local pc
+
+Examples:
+| Set actual results | ${TRACE_LOG_PATH} |</doc>
+<shortdoc>Set actual results     - concatenate all parsed files in a path     - sorting by time ascending     - save to csv file</shortdoc>
+</kw>
+<kw name="Set start timestamp">
+<arguments repr="timestamp: str">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="timestamp: str">
+<name>timestamp</name>
+<type name="str" typedoc="string"/>
+</arg>
+</arguments>
+<doc>Set trace start timestamp
+ - convert seconds to microseconds
+ - convert string to int
+
+argument:
+    - timestamp: the started seconds since the epoch of target
+
+Examples:
+| Set start timestamp | timestamp |</doc>
+<shortdoc>Set trace start timestamp  - convert seconds to microseconds  - convert string to int</shortdoc>
+</kw>
+</keywords>
+<typedocs>
+<type name="boolean" type="Standard">
+<doc>Strings ``TRUE``, ``YES``, ``ON`` and ``1`` are converted to Boolean ``True``,
+the empty string as well as strings ``FALSE``, ``NO``, ``OFF`` and ``0``
+are converted to Boolean ``False``, and the string ``NONE`` is converted
+to the Python ``None`` object. Other strings and other accepted values are
+passed as-is, allowing keywords to handle them specially if
+needed. All string comparisons are case-insensitive.
+
+Examples: ``TRUE`` (converted to ``True``), ``off`` (converted to ``False``),
+``example`` (used as-is)
+</doc>
+<accepts>
+<type>string</type>
+<type>integer</type>
+<type>float</type>
+<type>None</type>
+</accepts>
+<usages>
+<usage>Check timeliness</usage>
+</usages>
+</type>
+<type name="integer" type="Standard">
+<doc>Conversion is done using Python's [https://docs.python.org/library/functions.html#int|int]
+built-in function. Floating point
+numbers are accepted only if they can be represented as integers exactly.
+For example, ``1.0`` is accepted and ``1.1`` is not.
+
+Starting from RF 4.1, it is possible to use hexadecimal, octal and binary
+numbers by prefixing values with ``0x``, ``0o`` and ``0b``, respectively.
+
+Starting from RF 4.1, spaces and underscores can be used as visual separators
+for digit grouping purposes.
+
+Examples: ``42``, ``-1``, ``0b1010``, ``10 000 000``, ``0xBAD_C0FFEE``
+</doc>
+<accepts>
+<type>string</type>
+<type>float</type>
+</accepts>
+<usages>
+<usage>Check timeliness</usage>
+</usages>
+</type>
+<type name="list" type="Standard">
+<doc>Strings must be Python [https://docs.python.org/library/stdtypes.html#list|list]
+literals. They are converted to actual lists using the
+[https://docs.python.org/library/ast.html#ast.literal_eval|ast.literal_eval]
+function. They can contain any values ``ast.literal_eval`` supports, including
+lists and other containers.
+
+If the type has nested types like ``list[int]``, items are converted
+to those types automatically. This in new in Robot Framework 6.0.
+
+Examples: ``['one', 'two']``, ``[('one', 1), ('two', 2)]``
+</doc>
+<accepts>
+<type>string</type>
+<type>Sequence</type>
+</accepts>
+<usages>
+<usage>Compare expected to actual</usage>
+</usages>
+</type>
+<type name="string" type="Standard">
+<doc>All arguments are converted to Unicode strings.</doc>
+<accepts>
+<type>Any</type>
+</accepts>
+<usages>
+<usage>Append expected results</usage>
+<usage>Get basename of trace file</usage>
+<usage>Set actual results</usage>
+<usage>Set start timestamp</usage>
+</usages>
+</type>
+</typedocs>
+</keywordspec>

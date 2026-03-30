@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<keywordspec name="lge.auto.TextProcessing" type="LIBRARY" format="ROBOT" scope="TEST" generated="2025-12-12T03:19:23+00:00" specversion="6" source="E:\robot_framework_ui\LG_RobotEZ\venv\lib\site-packages\lge\auto\TextProcessing.cp310-win_amd64.pyd" lineno="1">
+<version/>
+<doc>Documentation for library ``lge.auto.TextProcessing``.</doc>
+<tags>
+</tags>
+<inits>
+</inits>
+<keywords>
+<kw name="Check a value is less than a number">
+<arguments repr="logFilePath, value=30">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="logFilePath">
+<name>logFilePath</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="value=30">
+<name>value</name>
+<default>30</default>
+</arg>
+</arguments>
+<doc>check if a value is less than a number
+:return: return_status</doc>
+<shortdoc>check if a value is less than a number :return: return_status</shortdoc>
+</kw>
+<kw name="Convert MLP to Text">
+<arguments repr="mlp_file, txt_file, start_bit=0">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="mlp_file">
+<name>mlp_file</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="txt_file">
+<name>txt_file</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="start_bit=0">
+<name>start_bit</name>
+<default>0</default>
+</arg>
+</arguments>
+<doc>Convert the MLP Log to text file
+
+:argument
+    - ``mlp_file`` : the path of mlp ivi or mlp safe   (required)
+    - ``txt_file`` : the path of text file  (required)
+    - ``start_bit`` : the bit of start reading
+
+:return
+    - seek_bit : the bit of end reading
+
+Examples:
+| `Convert MLP to Text` | mlp_file=${Log Path}\${SUITE NAME}.mlp_ivi | txt_file=${Log Path}\${SUITE NAME}.txt |
+| `Convert MLP to Text` | mlp_file=${Log Path}\${SUITE NAME}.mlp_ivi | txt_file=${Log Path}\${SUITE NAME}.txt | start_bit=29130 |</doc>
+<shortdoc>Convert the MLP Log to text file</shortdoc>
+</kw>
+<kw name="Find CAN Message in ASC File">
+<arguments repr="log_file_path, find_msg_id, find_msg=, start_line=0">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="log_file_path">
+<name>log_file_path</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="find_msg_id">
+<name>find_msg_id</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="find_msg=">
+<name>find_msg</name>
+<default/>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="start_line=0">
+<name>start_line</name>
+<default>0</default>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Find String in Log File">
+<arguments repr="logFilePath, findString, exclude=None, start_line=0">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="logFilePath">
+<name>logFilePath</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="findString">
+<name>findString</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="exclude=None">
+<name>exclude</name>
+<default>None</default>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="start_line=0">
+<name>start_line</name>
+<default>0</default>
+</arg>
+</arguments>
+<doc>Find string in saved log ( ``logFilePath``)
+
+:argument
+    - ``logFilePath`` : path of log file
+    - ``findString`` : Keyword you want to find. Multiple keywords can be received through the delimiter (||) ex) keyword_A||keyword_B
+    - ``exclude`` : Keyword you want to ignore. When if find ``findString``, If you want ignore keyword in same line. use this.  Multiple keywords can be received through the delimiter (&amp;&amp;)
+    - ``start_line`` : starting line reading a log. type is int
+
+:returns
+    - ``result`` : If find return True, else return False. type is boolean.
+    - ``search_index`` : If find, return searching line . else return end of file line.
+
+Examples:
+| ${result} | ${CPU_INDEX} | `Find String in Log File` | find_Keyword | ignore_keyword | 100 |
+| ${result} | ${CPU_INDEX} | `Find String in Log File` | find_Keyword_1||find_Keyword_2 | ignore_keyword_1&amp;&amp;ignore_keyword_2 | start_line=80 |</doc>
+<shortdoc>Find string in saved log ( ``logFilePath``)</shortdoc>
+</kw>
+<kw name="Find String in Log File And Return Output">
+<arguments repr="logFilePath, findString, exclude=None, start_line=0">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="logFilePath">
+<name>logFilePath</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="findString">
+<name>findString</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="exclude=None">
+<name>exclude</name>
+<default>None</default>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="start_line=0">
+<name>start_line</name>
+<default>0</default>
+</arg>
+</arguments>
+<doc>Find string in saved log ( ``logFilePath``)
+
+:argument
+    - ``logFilePath`` : path of log file
+    - ``findString`` : Keyword you want to find. Multiple keywords can be received through the delimiter (||) ex) keyword_A||keyword_B
+    - ``exclude`` : Keyword you want to ignore. When if find ``findString``, If you want ignore keyword in same line. use this.  Multiple keywords can be received through the delimiter (&amp;&amp;)
+    - ``start_line`` : starting line reading a log. type is int
+
+:returns
+    - ``result`` : If find return True, else return False. type is boolean.
+    - ``search_index`` : If find, return searching line . else return end of file line.
+
+Examples:
+| ${result} | ${CPU_INDEX} | `Find String in Log File` | find_Keyword | ignore_keyword | 100 |
+| ${result} | ${CPU_INDEX} | `Find String in Log File` | find_Keyword_1||find_Keyword_2 | ignore_keyword_1&amp;&amp;ignore_keyword_2 | start_line=80 |</doc>
+<shortdoc>Find string in saved log ( ``logFilePath``)</shortdoc>
+</kw>
+<kw name="Get Last Index">
+<arguments repr="logFilePath">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="logFilePath">
+<name>logFilePath</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+</keywords>
+<typedocs>
+</typedocs>
+</keywordspec>

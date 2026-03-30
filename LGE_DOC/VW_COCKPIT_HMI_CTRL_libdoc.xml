@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<keywordspec name="lge.auto.VW_COCKPIT_HMI_CTRL" type="LIBRARY" format="ROBOT" scope="TEST" generated="2025-12-12T03:19:44+00:00" specversion="6" source="E:\robot_framework_ui\LG_RobotEZ\venv\lib\site-packages\lge\auto\VW_COCKPIT_HMI_CTRL.cp310-win_amd64.pyd" lineno="1">
+<version/>
+<doc>Documentation for library ``lge.auto.VW_COCKPIT_HMI_CTRL``.</doc>
+<tags>
+</tags>
+<inits>
+</inits>
+<keywords>
+<kw name="Abt">
+<arguments repr="key_name, event">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="key_name">
+<name>key_name</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="event">
+<name>event</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Convert Hex Coordinate">
+<arguments repr="inputX, inputY, resolution=15inch">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="inputX">
+<name>inputX</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="inputY">
+<name>inputY</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="resolution=15inch">
+<name>resolution</name>
+<default>15inch</default>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Mfl">
+<arguments repr="key_name, event">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="key_name">
+<name>key_name</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="event">
+<name>event</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="PRESS ABT HOME">
+<arguments repr="press_time=short">
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="press_time=short">
+<name>press_time</name>
+<default>short</default>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="PRESS ABT MENU">
+<arguments repr="press_time=short">
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="press_time=short">
+<name>press_time</name>
+<default>short</default>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="PRESS ABT MUTE">
+<arguments repr="press_time=short">
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="press_time=short">
+<name>press_time</name>
+<default>short</default>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="PRESS ABT POWER">
+<arguments repr="press_time=short">
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="press_time=short">
+<name>press_time</name>
+<default>short</default>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="PRESS MFL MUTE">
+<arguments repr="press_time=short">
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="press_time=short">
+<name>press_time</name>
+<default>short</default>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="PRESS MFL PTT">
+<arguments repr="press_time=short">
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="press_time=short">
+<name>press_time</name>
+<default>short</default>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="PRESS MFL VOLUME DOWN">
+<arguments repr="press_time=short">
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="press_time=short">
+<name>press_time</name>
+<default>short</default>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="PRESS MFL VOLUME UP">
+<arguments repr="press_time=short">
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="press_time=short">
+<name>press_time</name>
+<default>short</default>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="SLIDE">
+<arguments repr="startX, startY, endX, endY, resolution=15inch">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="startX">
+<name>startX</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="startY">
+<name>startY</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="endX">
+<name>endX</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="endY">
+<name>endY</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="resolution=15inch">
+<name>resolution</name>
+<default>15inch</default>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="SSH Connect">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="SSH Disconnect">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="TOUCH">
+<arguments repr="inputX, inputY, press_time=short, resolution=15inch">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="inputX">
+<name>inputX</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="inputY">
+<name>inputY</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="press_time=short">
+<name>press_time</name>
+<default>short</default>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="resolution=15inch">
+<name>resolution</name>
+<default>15inch</default>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="TOUCH ABT KEYBOARD">
+<arguments repr="input_text, resolution=15inch">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="input_text">
+<name>input_text</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="resolution=15inch">
+<name>resolution</name>
+<default>15inch</default>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="TOUCH PRESS">
+<arguments repr="inputX, inputY, resolution=15inch">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="inputX">
+<name>inputX</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="inputY">
+<name>inputY</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="resolution=15inch">
+<name>resolution</name>
+<default>15inch</default>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="TOUCH RELEASE">
+<arguments repr="inputX, inputY, resolution=15inch">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="inputX">
+<name>inputX</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="inputY">
+<name>inputY</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="resolution=15inch">
+<name>resolution</name>
+<default>15inch</default>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+</keywords>
+<typedocs>
+</typedocs>
+</keywordspec>

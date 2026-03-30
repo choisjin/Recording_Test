@@ -9,6 +9,7 @@ import asyncio
 import importlib
 import inspect
 import functools
+import json
 import logging
 from pathlib import Path
 from typing import Any, Optional
@@ -29,6 +30,30 @@ _PLUGINS_DIR = Path(__file__).resolve().parent.parent / "plugins"
 
 # Modules directory (DLL 등 모듈 런타임 파일)
 _MODULES_DIR = Path(__file__).resolve().parent.parent / "modules"
+
+# 모듈 가이드 JSON (함수/파라미터 설명)
+_GUIDES_FILE = Path(__file__).resolve().parent / "module_guides.json"
+_guides_cache: dict | None = None
+_guides_mtime: float = 0
+
+
+def _load_guides() -> dict:
+    """가이드 JSON을 로드 (파일 변경 시 자동 리로드)."""
+    global _guides_cache, _guides_mtime
+    if not _GUIDES_FILE.is_file():
+        return {}
+    try:
+        mtime = _GUIDES_FILE.stat().st_mtime
+        if _guides_cache is None or mtime != _guides_mtime:
+            with open(_GUIDES_FILE, "r", encoding="utf-8") as f:
+                _guides_cache = json.load(f)
+            _guides_mtime = mtime
+            logger.info("Module guides loaded from %s", _GUIDES_FILE)
+    except Exception as e:
+        logger.warning("Failed to load module guides: %s", e)
+        if _guides_cache is None:
+            _guides_cache = {}
+    return _guides_cache
 
 
 def _load_plugin_from_file(py_file: Path):
@@ -267,6 +292,19 @@ def get_module_functions(module_name: str) -> list[dict]:
             "name": name,
             "params": params,
         })
+
+    # 가이드 데이터 병합
+    guides = _load_guides()
+    mod_guide = guides.get(module_name, {})
+    func_guides = mod_guide.get("functions", {})
+    mod_description = mod_guide.get("_description", "")
+
+    for fn in functions:
+        fg = func_guides.get(fn["name"], {})
+        fn["description"] = fg.get("description", "")
+        param_guides = fg.get("params", {})
+        for p in fn["params"]:
+            p["description"] = param_guides.get(p["name"], "")
 
     _module_functions_cache[module_name] = functions
     return functions

@@ -1,0 +1,2105 @@
+{
+  "_meta": {
+    "version": "2.0",
+    "description": "모듈 함수 가이드 — 각 함수의 설명과 파라미터 설명을 포함합니다. 수정 후 서버 재시작 없이 반영됩니다."
+  },
+
+  "POWER": {
+    "_description": "전원 공급기 제어 — 시리얼(RS-232) 연결된 VUPOWER/K3010 전원 공급 장비의 전압/전류를 설정하고 측정하는 모듈",
+    "functions": {
+      "Connect": {
+        "description": "전원 공급기에 시리얼 포트로 연결합니다. 장비 추가 시 자동 호출됩니다.",
+        "params": {
+          "port": "COM 포트. 예: 'COM1', 'COM3'",
+          "bps": "통신 속도(Baud Rate). 예: 115200"
+        }
+      },
+      "DisConnect": {
+        "description": "전원 공급기 연결을 해제합니다.",
+        "params": {}
+      },
+      "SetOutput": {
+        "description": "전원 공급기의 출력을 켜거나 끕니다.",
+        "params": {
+          "status": "'ON' = 출력 켜기, 'OFF' = 출력 끄기"
+        }
+      },
+      "SetValue": {
+        "description": "전원 공급기의 전압 또는 전류 값을 설정합니다.",
+        "params": {
+          "set_type": "'VOLT' = 전압 설정, 'CURR' = 전류 설정",
+          "value": "설정할 값. 전압: V 단위 (예: 14.4), 전류: A 단위 (예: 3.0)"
+        }
+      },
+      "ReadValue": {
+        "description": "전원 공급기의 현재 전압 또는 전류를 측정합니다.",
+        "params": {
+          "set_type": "'VOLT' = 전압 측정, 'CURR' = 전류 측정"
+        }
+      },
+      "SendCmd": {
+        "description": "전원 공급기에 직접 명령어를 전송합니다. 고급 사용자용.",
+        "params": {
+          "cmd": "전송할 명령어 문자열"
+        }
+      }
+    }
+  },
+
+  "RIDEN": {
+    "_description": "RIDEN 전원 공급기 — 시리얼 연결된 RIDEN 전원 공급 장비를 제어하는 모듈",
+    "functions": {
+      "TurnOn": {
+        "description": "RIDEN 전원 공급기를 켜고 지정 전압으로 설정합니다.",
+        "params": {
+          "port": "COM 포트. 예: 'COM1'",
+          "voltage": "설정할 전압 (V 단위). 예: 14.4"
+        }
+      },
+      "Turnoff": {
+        "description": "RIDEN 전원 공급기를 끕니다.",
+        "params": {
+          "port": "COM 포트. 예: 'COM1'"
+        }
+      }
+    }
+  },
+
+  "CAN": {
+    "_description": "CAN 버스 통신 — PCAN/Vector/Kvaser 등 CAN 인터페이스를 통해 차량 CAN 메시지를 송수신하는 모듈",
+    "functions": {
+      "Bus": {
+        "description": "CAN 디바이스에 연결합니다. 장비 추가 시 자동 호출됩니다.",
+        "params": {
+          "kwargs": "연결 설정 (interface, channel, bitrate, fd 등)"
+        }
+      },
+      "send_msg": {
+        "description": "CAN 메시지를 전송합니다. 주기적 또는 1회 전송이 가능합니다.",
+        "params": {
+          "message_id": "CAN 메시지 ID (16진수). 예: '0x123'",
+          "cycle_time": "전송 주기 (ms). 0이면 1회 전송",
+          "can_message": "메시지 데이터 (16진수). 예: '00 11 22 33 44 55 66 77'",
+          "bus_channel": "CAN 채널. 예: 'PCAN_USBBUS1'",
+          "message_type": "메시지 타입. 'FD' = CAN FD (기본값), 'Classic' = CAN 2.0"
+        }
+      },
+      "stop_all_periodic_tasks": {
+        "description": "모든 주기적 CAN 메시지 전송을 중지합니다.",
+        "params": {}
+      },
+      "start_log_save": {
+        "description": "CAN 로그를 파일로 저장하기 시작합니다.",
+        "params": {
+          "logpath": "로그 파일 저장 경로"
+        }
+      },
+      "stop_log_save": {
+        "description": "CAN 로그 저장을 중지합니다.",
+        "params": {}
+      },
+      "status": {
+        "description": "CAN 디바이스의 현재 상태를 반환합니다.",
+        "params": {}
+      },
+      "status_is_ok": {
+        "description": "CAN 디바이스 상태가 정상인지 확인합니다.",
+        "params": {}
+      },
+      "status_string": {
+        "description": "CAN 디바이스 상태를 문자열로 반환합니다.",
+        "params": {}
+      },
+      "shutdown": {
+        "description": "CAN 디바이스 연결을 해제합니다.",
+        "params": {}
+      },
+      "flush_tx_buffer": {
+        "description": "송신 버퍼를 비웁니다.",
+        "params": {}
+      },
+      "get_device_number": {
+        "description": "연결된 CAN 디바이스 번호를 반환합니다.",
+        "params": {}
+      },
+      "read_thread": {
+        "description": "CAN 수신 스레드를 시작합니다.",
+        "params": {
+          "bus": "CAN 버스 객체",
+          "logpath": "로그 파일 경로"
+        }
+      }
+    }
+  },
+
+  "CANOE": {
+    "_description": "CANoe 제어 — Vector CANoe 시뮬레이션 소프트웨어의 시작/중지, 환경변수/시스템변수 설정을 제어하는 모듈",
+    "functions": {
+      "open_simulation": {
+        "description": "CANoe 시뮬레이션을 엽니다 (.cfg 파일 로드).",
+        "params": {
+          "cfgname": "CANoe 설정 파일(.cfg) 경로. 예: 'C:/canoe/project.cfg'"
+        }
+      },
+      "close_simulation": {
+        "description": "CANoe 시뮬레이션을 닫고 프로그램을 종료합니다.",
+        "params": {}
+      },
+      "start_Measurement": {
+        "description": "CANoe 측정(Measurement)을 시작합니다.",
+        "params": {}
+      },
+      "stop_Measurement": {
+        "description": "CANoe 측정(Measurement)을 중지합니다.",
+        "params": {}
+      },
+      "get_EnvVar": {
+        "description": "CANoe 환경 변수 값을 읽습니다.",
+        "params": {
+          "var": "환경 변수 이름"
+        }
+      },
+      "set_EnvVar": {
+        "description": "CANoe 환경 변수 값을 설정합니다.",
+        "params": {
+          "var": "환경 변수 이름",
+          "value": "설정할 값 (숫자)"
+        }
+      }
+    }
+  },
+
+  "CANAT": {
+    "_description": "CANat 디바이스 — CANat 하드웨어를 통해 CAN 버스 메시지를 송수신하는 모듈",
+    "functions": {
+      "init": {
+        "description": "CANat 디바이스를 초기화하고 연결합니다.",
+        "params": {
+          "comport": "COM 포트. 예: 'COM3'",
+          "log_path": "로그 파일 저장 경로",
+          "ch1_fd": "채널 1 CAN FD 사용 여부. True(기본) = FD, False = Classic",
+          "ch2_fd": "채널 2 CAN FD 사용 여부. True = FD, False(기본) = Classic"
+        }
+      },
+      "disconnect": {
+        "description": "CANat 디바이스 연결을 해제합니다.",
+        "params": {}
+      },
+      "send_can_message": {
+        "description": "CAN 메시지를 전송합니다.",
+        "params": {
+          "message_id": "CAN 메시지 ID",
+          "cycle_time": "전송 주기 (ms). 0이면 1회 전송",
+          "can_message": "메시지 데이터 (16진수)",
+          "bus_channel": "CAN 채널",
+          "message_type": "'FD'(기본) 또는 'Classic'"
+        }
+      },
+      "stop_can_message": {
+        "description": "특정 CAN 메시지의 주기적 전송을 중지합니다.",
+        "params": {
+          "message_id": "중지할 메시지 ID",
+          "cycle_time": "주기",
+          "can_message": "메시지 데이터",
+          "bus_channel": "CAN 채널",
+          "message_type": "'FD' 또는 'Classic'"
+        }
+      },
+      "send_cam_message_all_stop": {
+        "description": "모든 CAN 메시지 전송을 중지합니다.",
+        "params": {}
+      },
+      "can_message_save_start": {
+        "description": "CAN 메시지를 파일로 저장하기 시작합니다.",
+        "params": {
+          "save_path": "저장 경로. 비워두면 기본 경로 사용"
+        }
+      },
+      "can_message_save_stop": {
+        "description": "CAN 메시지 저장을 중지합니다.",
+        "params": {}
+      }
+    }
+  },
+
+  "BENCH": {
+    "_description": "벤치 소켓 통신 — TCP 소켓으로 벤치 장비와 데이터를 주고받고 전류를 측정하는 모듈",
+    "functions": {
+      "socket_connect": {
+        "description": "벤치 장비에 소켓 연결합니다.",
+        "params": {
+          "host": "벤치 장비 IP 주소. 예: '192.168.1.100'"
+        }
+      },
+      "socket_close": {
+        "description": "벤치 장비와의 소켓 연결을 해제합니다.",
+        "params": {}
+      },
+      "SendData": {
+        "description": "벤치 장비로 데이터를 전송합니다.",
+        "params": {
+          "data": "전송할 데이터 문자열. 기본값: 'Test'"
+        }
+      },
+      "check_current": {
+        "description": "전류가 지정 범위 내에 있는지 측정 시간 동안 확인합니다.",
+        "params": {
+          "min_current": "최소 전류 (A)",
+          "max_current": "최대 전류 (A)",
+          "meas_time": "측정 시간 (초)"
+        }
+      }
+    }
+  },
+
+  "IVIQEBenchIOClient": {
+    "_description": "IVI QE 벤치 — 시리얼 연결된 QE 테스트 벤치의 릴레이, 전원, 센서, 오디오, LCD, 버튼, USB 등을 종합 제어하는 모듈",
+    "functions": {
+      "Connect": {
+        "description": "벤치에 시리얼 연결합니다. 장비 추가 시 자동 호출됩니다.",
+        "params": {}
+      },
+      "Disconnect": {
+        "description": "벤치 연결을 해제합니다.",
+        "params": {}
+      },
+      "ACCOnOff": {
+        "description": "ACC(Accessory) 전원을 켜거나 끕니다.",
+        "params": {
+          "state": "0 = OFF (끄기), 1 = ON (켜기)",
+          "bench_info": "벤치 종류. 'OLD_BENCH'(기본) 또는 'NEW_BENCH'"
+        }
+      },
+      "ACCSinglePulse": {
+        "description": "ACC 전원에 단일 펄스를 생성합니다. 전압을 순간적으로 변동시키는 테스트에 사용합니다.",
+        "params": {
+          "nVoltage": "펄스 전압 (V)",
+          "nDelay": "펄스 간 지연 시간 (ms)",
+          "nCnt": "펄스 반복 횟수"
+        }
+      },
+      "AccControl": {
+        "description": "ACC 릴레이를 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF, 1 = ON",
+          "bench_info": "벤치 종류"
+        }
+      },
+      "AccVoltage": {
+        "description": "ACC 전압 상태를 설정합니다.",
+        "params": {
+          "nState": "전압 상태 값"
+        }
+      },
+      "BatteryOnOff": {
+        "description": "배터리 전원을 켜거나 끕니다.",
+        "params": {
+          "nState": "0 = OFF (배터리 차단), 1 = ON (배터리 연결)",
+          "bench_info": "벤치 종류. 'OLD_BENCH'(기본) 또는 'NEW_BENCH'"
+        }
+      },
+      "BatteryControl": {
+        "description": "배터리 릴레이를 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF, 1 = ON",
+          "bench_info": "벤치 종류"
+        }
+      },
+      "BatteryMinusControl": {
+        "description": "배터리 마이너스(-) 단자 릴레이를 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF (연결), 1 = ON (차단)"
+        }
+      },
+      "BatteryVoltage": {
+        "description": "배터리 전압 상태를 설정합니다.",
+        "params": {
+          "nState": "전압 상태 값"
+        }
+      },
+      "BatterySinglePulse": {
+        "description": "배터리에 단일 펄스를 생성합니다.",
+        "params": {
+          "nVoltage": "펄스 전압 (V)",
+          "nDelay": "펄스 간 지연 시간 (ms)",
+          "nCnt": "펄스 반복 횟수"
+        }
+      },
+      "IGNControl": {
+        "description": "이그니션(IGN) 전원을 제어합니다.",
+        "params": {
+          "status": "0 = OFF, 1 = ON"
+        }
+      },
+      "IGN3Control": {
+        "description": "이그니션 3(IGN3) 전원을 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF, 1 = ON"
+        }
+      },
+      "ALTControl": {
+        "description": "알터네이터(발전기) 신호를 제어합니다.",
+        "params": {
+          "status": "0 = OFF, 1 = ON"
+        }
+      },
+      "ILLControl": {
+        "description": "일루미네이션(차량 조명 연동 신호)을 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF, 1 = ON"
+        }
+      },
+      "ILLControlMinus": {
+        "description": "일루미네이션 마이너스 신호를 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF, 1 = ON"
+        }
+      },
+      "ReverseControl": {
+        "description": "후진(Reverse) 기어 신호를 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF (전진), 1 = ON (후진)"
+        }
+      },
+      "ReverseActiveHigh": {
+        "description": "후진 신호를 Active High로 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF, 1 = ON"
+        }
+      },
+      "ReverseActiveLow": {
+        "description": "후진 신호를 Active Low로 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF, 1 = ON"
+        }
+      },
+      "ParkingControl": {
+        "description": "주차(Parking) 신호를 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF, 1 = ON"
+        }
+      },
+      "PPositonControl": {
+        "description": "P(주차) 기어 포지션 신호를 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF, 1 = ON"
+        }
+      },
+      "NPositionControl": {
+        "description": "N(중립) 기어 포지션 신호를 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF, 1 = ON"
+        }
+      },
+      "SpeedControl": {
+        "description": "차량 속도 신호를 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF (정지), 1 = ON (주행)"
+        }
+      },
+      "DoorControl": {
+        "description": "도어 열림/닫힘 신호를 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF (닫힘), 1 = ON (열림)"
+        }
+      },
+      "DoorUnLockControl": {
+        "description": "도어 잠금 해제 신호를 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF (잠금), 1 = ON (해제)"
+        }
+      },
+      "TransDetectControl": {
+        "description": "변속기 감지 신호를 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF, 1 = ON"
+        }
+      },
+      "FUELControl": {
+        "description": "연료 관련 신호를 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF, 1 = ON"
+        }
+      },
+      "KeylessBootingControl": {
+        "description": "키리스(스마트키) 부팅 신호를 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF, 1 = ON"
+        }
+      },
+      "AutolightControl": {
+        "description": "오토라이트(자동 조명) 신호를 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF, 1 = ON"
+        }
+      },
+      "AlarmDetectControl": {
+        "description": "알람 감지 신호를 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF, 1 = ON"
+        }
+      },
+      "AirbagCrashDetection": {
+        "description": "에어백 충돌 감지 신호를 제어합니다.",
+        "params": {
+          "model": "차량 모델명",
+          "nStatus": "0 = OFF, 1 = ON"
+        }
+      },
+      "ShieldBoxControl": {
+        "description": "실드 박스(전파 차폐 박스) 개폐를 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF (닫기), 1 = ON (열기)"
+        }
+      },
+      "ANTControl": {
+        "description": "안테나 릴레이를 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF, 1 = ON"
+        }
+      },
+      "AmpControl": {
+        "description": "앰프(외장 오디오 증폭기) 전원을 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF, 1 = ON"
+        }
+      },
+      "MICControl": {
+        "description": "마이크 릴레이를 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF, 1 = ON"
+        }
+      },
+      "AUXControl": {
+        "description": "AUX 입력 릴레이를 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF, 1 = ON"
+        }
+      },
+      "CDControl": {
+        "description": "CD 드라이브 릴레이를 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF, 1 = ON"
+        }
+      },
+      "IPODControl": {
+        "description": "iPod 연결 릴레이를 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF, 1 = ON"
+        }
+      },
+      "RcInControl": {
+        "description": "RC 입력 릴레이를 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF, 1 = ON"
+        }
+      },
+      "ComEnableControl": {
+        "description": "통신(COM) 활성화를 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF (비활성), 1 = ON (활성)"
+        }
+      },
+      "Detent": {
+        "description": "디텐트(볼륨 노브 등 회전 감지) 신호를 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF, 1 = ON"
+        }
+      },
+      "AVNSDDetect": {
+        "description": "AVN SD 카드 감지 신호를 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF (미삽입), 1 = ON (삽입)"
+        }
+      },
+      "USB1Control": {
+        "description": "USB 1 포트 릴레이를 제어합니다.",
+        "params": {
+          "Status": "0 = OFF, 1 = ON"
+        }
+      },
+      "USBFrontSwitchControl": {
+        "description": "전면 USB 스위치 릴레이를 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF, 1 = ON"
+        }
+      },
+      "USBRearSwitchControl": {
+        "description": "후면 USB 스위치 릴레이를 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF, 1 = ON"
+        }
+      },
+      "USBSelectorControl": {
+        "description": "USB 셀렉터의 포트를 선택합니다.",
+        "params": {
+          "nOnPortNum": "활성화할 USB 포트 번호"
+        }
+      },
+      "USBSelector10CHSwitch5CH": {
+        "description": "USB 셀렉터의 10채널/5채널 스위치를 제어합니다.",
+        "params": {
+          "nType": "스위치 타입",
+          "nPortNum": "포트 번호",
+          "nOnOffStatus": "0 = OFF, 1 = ON"
+        }
+      },
+      "Telltale": {
+        "description": "텔테일(계기판 경고등) 릴레이를 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF, 1 = ON"
+        }
+      },
+      "TelltaleLED": {
+        "description": "텔테일 LED 점멸 주기를 설정합니다.",
+        "params": {
+          "nPeriod": "점멸 주기 (ms)"
+        }
+      },
+      "CheckTelltale": {
+        "description": "텔테일(경고등) 상태를 확인합니다.",
+        "params": {}
+      },
+      "LEDPulse": {
+        "description": "LED 점멸 주기를 설정합니다.",
+        "params": {
+          "nPeriod": "점멸 주기 (ms)"
+        }
+      },
+      "LedTCU4": {
+        "description": "TCU4 LED 점멸 주기를 설정합니다.",
+        "params": {
+          "nPeriod": "점멸 주기 (ms)"
+        }
+      },
+      "CheckLedTCU4": {
+        "description": "TCU4 LED 상태를 확인합니다.",
+        "params": {}
+      },
+      "GetLEDPulse": {
+        "description": "현재 LED 펄스 값을 읽어옵니다.",
+        "params": {}
+      },
+      "CheckLCD": {
+        "description": "LCD 디스플레이 상태를 확인합니다.",
+        "params": {
+          "nStatus": "확인할 상태 값"
+        }
+      },
+      "CheckLCDDimming": {
+        "description": "LCD 디밍(밝기 조절) 상태를 확인합니다.",
+        "params": {
+          "nStatus": "확인할 상태 값"
+        }
+      },
+      "SetLCDValue": {
+        "description": "LCD 값을 설정합니다.",
+        "params": {
+          "nLCDValue": "설정할 LCD 값"
+        }
+      },
+      "GetLCDValue": {
+        "description": "현재 LCD 값을 읽어옵니다.",
+        "params": {}
+      },
+      "CheckVoltage": {
+        "description": "전압이 지정 범위 내에 있는지 확인합니다.",
+        "params": {
+          "nMin": "최소 전압 (V)",
+          "nMax": "최대 전압 (V)"
+        }
+      },
+      "CheckCurrent": {
+        "description": "전류가 지정 범위 내에 있는지 확인합니다.",
+        "params": {
+          "nMin": "최소 전류 (A)",
+          "nMax": "최대 전류 (A)"
+        }
+      },
+      "ExtCheckCurrent": {
+        "description": "외부 전류가 지정 범위 내에 있는지 확인합니다.",
+        "params": {
+          "fMin": "최소 전류 (A)",
+          "fMax": "최대 전류 (A)"
+        }
+      },
+      "EXT_CURRENT": {
+        "description": "외부 전류를 지연 후 범위 확인합니다.",
+        "params": {
+          "min_current": "최소 전류 (A)",
+          "max_current": "최대 전류 (A)",
+          "check_delay": "확인 전 지연 시간 (초)"
+        }
+      },
+      "GetEXTCurrent": {
+        "description": "현재 외부 전류 값을 읽어옵니다.",
+        "params": {}
+      },
+      "CheckEXTCurrentList": {
+        "description": "수집된 외부 전류 목록이 범위 내인지 확인합니다.",
+        "params": {
+          "nMin": "최소 전류 (A)",
+          "nMax": "최대 전류 (A)"
+        }
+      },
+      "ClearEXTCurrentList": {
+        "description": "수집된 외부 전류 목록을 초기화합니다.",
+        "params": {}
+      },
+      "CheckKeyOutVoltage": {
+        "description": "키 출력 전압이 범위 내에 있는지 확인합니다.",
+        "params": {
+          "nMin": "최소 전압 (V)",
+          "nMax": "최대 전압 (V)"
+        }
+      },
+      "ClearKeyOutVoltageList": {
+        "description": "키 출력 전압 목록을 초기화합니다.",
+        "params": {}
+      },
+      "CheckSound": {
+        "description": "오디오 출력 상태를 확인합니다.",
+        "params": {
+          "nStatus": "확인할 상태 값"
+        }
+      },
+      "PlaySound": {
+        "description": "벤치에서 사운드 파일을 재생합니다.",
+        "params": {
+          "strFileName": "재생할 파일 이름",
+          "nFileNameLen": "파일 이름 길이"
+        }
+      },
+      "InitSoundUpdate": {
+        "description": "사운드 업데이트를 초기화합니다.",
+        "params": {}
+      },
+      "WaitSoundUpdate": {
+        "description": "사운드 업데이트가 완료될 때까지 대기합니다.",
+        "params": {
+          "timeout": "최대 대기 시간 (초)"
+        }
+      },
+      "RequestLightSensorControl": {
+        "description": "조도 센서를 제어합니다.",
+        "params": {
+          "nStatus": "0 = OFF, 1 = ON",
+          "pbData": "PB 데이터",
+          "twData": "TW 데이터"
+        }
+      },
+      "GetLightSensorData": {
+        "description": "조도 센서 데이터를 읽어옵니다.",
+        "params": {}
+      },
+      "CheckLightSensorResult": {
+        "description": "조도 센서 결과를 확인합니다.",
+        "params": {}
+      },
+      "TenButton": {
+        "description": "10버튼 패널에서 버튼을 누릅니다.",
+        "params": {
+          "nButton": "버튼 번호 (0~9)",
+          "nDelay": "버튼 누름 지속 시간 (ms)"
+        }
+      },
+      "ThreeButton": {
+        "description": "3버튼 패널에서 버튼을 누릅니다.",
+        "params": {
+          "nButton": "버튼 번호 (0~2)",
+          "nDelay": "버튼 누름 지속 시간 (ms)"
+        }
+      },
+      "ThreeButton_Front": {
+        "description": "전면 3버튼 패널에서 버튼을 누릅니다.",
+        "params": {
+          "nButton": "버튼 번호 (0~2)",
+          "nDelay": "버튼 누름 지속 시간 (ms)"
+        }
+      },
+      "ThreeButton_Rear": {
+        "description": "후면 3버튼 패널에서 버튼을 누릅니다.",
+        "params": {
+          "nButton": "버튼 번호 (0~2)",
+          "nDelay": "버튼 누름 지속 시간 (ms)"
+        }
+      },
+      "TwoButton": {
+        "description": "2버튼 패널에서 버튼을 누릅니다.",
+        "params": {
+          "nButton": "버튼 번호 (0~1)",
+          "nDelay": "버튼 누름 지속 시간 (ms)"
+        }
+      },
+      "rf_btn_press": {
+        "description": "RF 버튼을 누릅니다.",
+        "params": {
+          "btnNum": "버튼 번호",
+          "delay": "누름 지속 시간 (ms)"
+        }
+      },
+      "FileToSD": {
+        "description": "파일을 SD 카드로 복사합니다.",
+        "params": {
+          "userFilePath": "PC의 원본 파일 경로",
+          "sdCardFileName": "SD 카드에 저장될 파일 이름"
+        }
+      },
+      "Relay_10": {
+        "description": "릴레이 10번을 제어합니다.",
+        "params": { "nStatus": "0 = OFF, 1 = ON" }
+      },
+      "Relay_11": {
+        "description": "릴레이 11번을 제어합니다.",
+        "params": { "nStatus": "0 = OFF, 1 = ON" }
+      },
+      "Relay_12": {
+        "description": "릴레이 12번을 제어합니다.",
+        "params": { "nStatus": "0 = OFF, 1 = ON" }
+      },
+      "Relay_13": {
+        "description": "릴레이 13번을 제어합니다.",
+        "params": { "nStatus": "0 = OFF, 1 = ON" }
+      },
+      "Relay_14": {
+        "description": "릴레이 14번을 제어합니다.",
+        "params": { "nStatus": "0 = OFF, 1 = ON" }
+      },
+      "RelayInitialization": {
+        "description": "모든 릴레이를 초기값으로 설정합니다.",
+        "params": {
+          "init_value": "초기화 값"
+        }
+      },
+      "SetRelayConfig": {
+        "description": "릴레이 구성을 설정합니다.",
+        "params": {
+          "nRelayCfg": "릴레이 구성 값"
+        }
+      },
+      "CallRelayFunc": {
+        "description": "릴레이 함수를 인덱스로 호출합니다.",
+        "params": {
+          "func_index": "함수 인덱스 번호",
+          "data": "전달할 데이터"
+        }
+      },
+      "RequestRelayInitialStatus": {
+        "description": "릴레이 초기 상태를 요청합니다.",
+        "params": {}
+      },
+      "RequestRelaySet": {
+        "description": "릴레이를 명령 목록으로 설정합니다.",
+        "params": {
+          "nCmdList": "릴레이 명령 목록"
+        }
+      },
+      "SystemReset": {
+        "description": "벤치 시스템을 리셋합니다.",
+        "params": {
+          "nMs": "리셋 후 대기 시간 (ms). 기본값: 1000"
+        }
+      },
+      "SetSystemTime": {
+        "description": "벤치 시스템 시간을 현재 PC 시간으로 설정합니다.",
+        "params": {}
+      },
+      "RequestSystemVersion": {
+        "description": "벤치 시스템 버전 정보를 요청합니다.",
+        "params": {}
+      },
+      "CalcCRC16": {
+        "description": "CRC-16 체크섬을 계산합니다. 통신 데이터 검증용.",
+        "params": {
+          "listData": "데이터 리스트",
+          "nLen": "데이터 길이"
+        }
+      },
+      "CalibrationStartOrStop": {
+        "description": "캘리브레이션(보정)을 시작하거나 중지합니다.",
+        "params": {
+          "sensitivity": "감도 값",
+          "threshold": "임계값"
+        }
+      },
+      "AnnouncesAutoTestStartOrEnd": {
+        "description": "자동 테스트 시작/종료를 알립니다.",
+        "params": {
+          "bisStart": "True = 테스트 시작, False = 테스트 종료"
+        }
+      },
+      "BATSwitchSETtoPC": {
+        "description": "배터리 스위치를 SET→PC로 전환합니다.",
+        "params": {}
+      },
+      "BATSwitchUSBtoPC": {
+        "description": "배터리 스위치를 USB→PC로 전환합니다.",
+        "params": {}
+      },
+      "RequestAudioFrequency": {
+        "description": "오디오 주파수 측정을 요청합니다.",
+        "params": {
+          "bStart": "True = 시작, False = 중지",
+          "nMs": "측정 간격 (ms)"
+        }
+      },
+      "RequestAudioStatusAndADCValue": {
+        "description": "오디오 상태와 ADC 값을 요청합니다.",
+        "params": {
+          "nMs": "응답 대기 시간 (ms)"
+        }
+      },
+      "RequestAudioStatusAndADCValuePeriodicallyNoti": {
+        "description": "오디오 상태와 ADC 값을 주기적으로 알림 받습니다.",
+        "params": {
+          "bStart": "True = 시작, False = 중지",
+          "nPeriodMs": "알림 주기 (ms)"
+        }
+      },
+      "RequestAudioStatusPeriodicallyNoti": {
+        "description": "오디오 상태를 주기적으로 알림 받습니다.",
+        "params": {
+          "bStart": "True = 시작, False = 중지",
+          "nPeriodMs": "알림 주기 (ms)"
+        }
+      },
+      "RequestCurrentPeriodicallyNoti": {
+        "description": "전류 값을 주기적으로 알림 받습니다.",
+        "params": {
+          "bStart": "True = 시작, False = 중지",
+          "nPeriodMs": "알림 주기 (ms)"
+        }
+      },
+      "RequestExtCurrentPeriodicallyNoti": {
+        "description": "외부 전류 값을 주기적으로 알림 받습니다.",
+        "params": {
+          "bStart": "True = 시작, False = 중지",
+          "nPeriodMs": "알림 주기 (ms)"
+        }
+      },
+      "RequestVoltagePeriodicallyNoti": {
+        "description": "전압 값을 주기적으로 알림 받습니다.",
+        "params": {
+          "bStart": "True = 시작, False = 중지",
+          "nPeriodMs": "알림 주기 (ms)"
+        }
+      },
+      "RequestKeyOutVoltagePeriodicallyNoti": {
+        "description": "키 출력 전압을 주기적으로 알림 받습니다.",
+        "params": {
+          "bStart": "True = 시작, False = 중지",
+          "nPeriodMs": "알림 주기 (ms)"
+        }
+      },
+      "RequestLCDStatus": {
+        "description": "LCD 상태를 요청합니다.",
+        "params": {
+          "bStart": "True = 시작, False = 중지",
+          "nMs": "응답 대기 시간 (ms)"
+        }
+      },
+      "RequestLCDIllumiSensorValue": {
+        "description": "LCD 조도 센서 값을 요청합니다.",
+        "params": {
+          "bStart": "True = 시작, False = 중지",
+          "nMs": "응답 대기 시간 (ms)"
+        }
+      },
+      "RequestLCDStatusAndIllumiSensorValuePeriodicallyNoti": {
+        "description": "LCD 상태와 조도 센서 값을 주기적으로 알림 받습니다.",
+        "params": {
+          "bStart": "True = 시작, False = 중지",
+          "nPeriodMs": "알림 주기 (ms)"
+        }
+      },
+      "RequestSoundFileInfo": {
+        "description": "사운드 파일 정보를 요청합니다.",
+        "params": {
+          "nSoundType": "사운드 타입"
+        }
+      },
+      "RequestSoundFileList": {
+        "description": "사운드 파일 목록을 요청합니다.",
+        "params": {
+          "nSoundType": "사운드 타입"
+        }
+      },
+      "Read": {
+        "description": "벤치에서 데이터를 읽어옵니다.",
+        "params": {}
+      },
+      "Send": {
+        "description": "벤치에 직접 바이트 데이터를 전송합니다.",
+        "params": {
+          "listData": "전송할 데이터 리스트",
+          "nLen": "데이터 길이"
+        }
+      },
+      "WriteRawString": {
+        "description": "벤치에 원시 문자열을 전송합니다.",
+        "params": {
+          "string": "전송할 문자열"
+        }
+      },
+      "ReceiveStart": {
+        "description": "벤치 데이터 수신을 시작/중지합니다.",
+        "params": {
+          "bStart": "True = 수신 시작, False = 수신 중지",
+          "queue": "수신 데이터를 넣을 큐 (선택)"
+        }
+      },
+      "timer_compare": {
+        "description": "타이머 값을 비교합니다.",
+        "params": {
+          "Time_Init": "시작 시간",
+          "Time_Check": "비교할 시간"
+        }
+      }
+    }
+  },
+
+  "SP25Bench": {
+    "_description": "SP25 벤치 — SP25 테스트 벤치를 제어하는 모듈 (eCall, 리부팅, 팩토리 리셋)",
+    "functions": {
+      "eCall": {
+        "description": "eCall(긴급 통화)을 실행합니다.",
+        "params": {}
+      },
+      "factory_reset": {
+        "description": "장비를 공장 초기화합니다.",
+        "params": {}
+      },
+      "reboot": {
+        "description": "장비를 재부팅합니다.",
+        "params": {}
+      }
+    }
+  },
+
+  "Uart": {
+    "_description": "UART 통신 — 시리얼 포트로 UART 통신을 수행하고 로그를 저장하는 모듈. 리눅스 콘솔 접속 등에 사용",
+    "functions": {
+      "connect": {
+        "description": "UART 포트에 연결합니다 (로그 저장 없음).",
+        "params": {
+          "port": "시리얼 포트. 예: 'COM1', '/dev/ttyUSB0'",
+          "bps": "통신 속도. 예: 115200",
+          "endline": "줄 끝 문자. 기본값: '\\r'"
+        }
+      },
+      "close": {
+        "description": "UART 포트 연결을 해제합니다.",
+        "params": {}
+      },
+      "add_uart_port": {
+        "description": "UART 포트에 연결하면서 로그 파일 저장도 함께 시작합니다.",
+        "params": {
+          "port": "시리얼 포트. 예: 'COM1'",
+          "bps": "통신 속도. 예: 115200",
+          "logFilePath": "로그 파일 저장 경로",
+          "endline": "줄 끝 문자. 기본값: '\\r'"
+        }
+      },
+      "send_string": {
+        "description": "문자열 명령을 UART로 전송합니다.",
+        "params": {
+          "command": "전송할 명령어. 예: 'ls -al', 'reboot'"
+        }
+      },
+      "send_char": {
+        "description": "단일 문자를 전송합니다. 줄바꿈이 추가되지 않습니다.",
+        "params": {
+          "char": "전송할 문자 (한 글자)"
+        }
+      },
+      "send_control_character": {
+        "description": "제어 문자를 전송합니다. Ctrl+C 등 특수 키 입력에 사용합니다.",
+        "params": {
+          "control_character": "제어 문자. 예: 'ETX' (Ctrl+C)"
+        }
+      },
+      "start_save_file": {
+        "description": "UART 수신 데이터를 파일로 저장하기 시작합니다.",
+        "params": {
+          "path_log": "로그 파일 저장 경로"
+        }
+      },
+      "stop_save_file": {
+        "description": "UART 로그 파일 저장을 중지합니다.",
+        "params": {}
+      },
+      "get_file_path": {
+        "description": "현재 로그 파일 경로를 반환합니다.",
+        "params": {}
+      },
+      "read_thread": {
+        "description": "UART 수신 스레드를 시작합니다. 내부적으로 자동 호출됩니다.",
+        "params": {
+          "connect": "연결 객체",
+          "logfilepath": "로그 파일 경로"
+        }
+      }
+    }
+  },
+
+  "Ignition": {
+    "_description": "이그니션 제어 — ICAS3/MIB3 장비의 이그니션을 TCP 소켓으로 제어하는 모듈 (기본: 192.168.1.4:15500)",
+    "functions": {
+      "connect": {
+        "description": "이그니션 장비에 TCP 소켓으로 연결합니다. 주의: testiface가 실행 중이어야 합니다.",
+        "params": {
+          "host": "장비 IP 주소. 기본값: '192.168.1.4'",
+          "port": "TCP 포트. 기본값: 15500"
+        }
+      },
+      "close": {
+        "description": "이그니션 장비 연결을 해제합니다.",
+        "params": {}
+      },
+      "send_packet": {
+        "description": "HU(Head Unit)에 이그니션 명령 패킷을 전송합니다.",
+        "params": {
+          "cmd": "16진수 명령어 문자열. 예: '02 2c 01 09'"
+        }
+      },
+      "compare_packet": {
+        "description": "마지막 수신 패킷에 예상 데이터가 포함되어 있는지 비교합니다.",
+        "params": {
+          "expected": "예상하는 16진수 문자열. 예: '00 65'. 포함되면 True, 아니면 False"
+        }
+      }
+    }
+  },
+
+  "KeysightPower": {
+    "_description": "Keysight 전원 공급기 — 이더넷/GPIB 연결된 Keysight 전원 공급기의 전압 설정, 파형 시퀀스 제어를 수행하는 모듈",
+    "functions": {
+      "connectPowerSupply": {
+        "description": "Keysight 전원 공급기에 이더넷으로 연결합니다.",
+        "params": {
+          "eth": "이더넷 인터페이스. 기본값: None (자동 감지)"
+        }
+      },
+      "closePowerSupply": {
+        "description": "전원 공급기 연결을 해제합니다.",
+        "params": {}
+      },
+      "setVoltage": {
+        "description": "출력 전압을 설정합니다.",
+        "params": {
+          "volt": "전압 (V 단위). 예: 14.4"
+        }
+      },
+      "setMaxVoltage": {
+        "description": "최대 전압 제한을 설정합니다.",
+        "params": {
+          "volt": "최대 전압 (V 단위)"
+        }
+      },
+      "turnOnOutput": {
+        "description": "전원 출력을 켭니다.",
+        "params": {}
+      },
+      "turnOffOutput": {
+        "description": "전원 출력을 끕니다.",
+        "params": {}
+      },
+      "getCurrentStatus": {
+        "description": "현재 전원 공급기 상태를 반환합니다.",
+        "params": {}
+      },
+      "getPort": {
+        "description": "포트 정보를 반환합니다.",
+        "params": {}
+      },
+      "setCurrentRangeAuto": {
+        "description": "전류 측정 범위를 자동으로 설정합니다.",
+        "params": {}
+      },
+      "setInterface": {
+        "description": "통신 인터페이스를 선택합니다.",
+        "params": {
+          "inf_sel": "인터페이스 선택 값"
+        }
+      },
+      "checkMeasCurrentLessThan": {
+        "description": "측정 전류가 임계값 이하인지 확인합니다.",
+        "params": {
+          "Threshold": "전류 임계값 (A)"
+        }
+      },
+      "powerSupply_ask": {
+        "description": "전원 공급기에 직접 SCPI 명령을 보내고 응답을 받습니다.",
+        "params": {
+          "cmd": "SCPI 명령어 문자열"
+        }
+      },
+      "addToSeq_Step": {
+        "description": "시퀀스에 계단(Step) 파형을 추가합니다. 특정 시점에 전압을 급변시킵니다.",
+        "params": {
+          "step": "시퀀스 단계 번호",
+          "vStart": "시작 전압 (V)",
+          "vEnd": "종료 전압 (V)",
+          "tStart": "시작 시간 (s)",
+          "tEnd": "종료 시간 (s)"
+        }
+      },
+      "addToSeq_Ramp": {
+        "description": "시퀀스에 램프(경사) 파형을 추가합니다. 전압을 서서히 변화시킵니다.",
+        "params": {
+          "step": "시퀀스 단계 번호",
+          "vStart": "시작 전압 (V)",
+          "vEnd": "종료 전압 (V)",
+          "tStart": "시작 시간 (s)",
+          "tRamp": "경사 시간 (s)",
+          "tEnd": "종료 시간 (s)",
+          "repeat": "반복 횟수"
+        }
+      },
+      "addToSeq_Puls": {
+        "description": "시퀀스에 펄스 파형을 추가합니다.",
+        "params": {
+          "step": "시퀀스 단계 번호",
+          "vStart": "기저 전압 (V)",
+          "vTop": "펄스 상단 전압 (V)",
+          "tStart": "시작 시간 (s)",
+          "tTop": "상단 유지 시간 (s)",
+          "tEnd": "종료 시간 (s)",
+          "repeat": "반복 횟수"
+        }
+      },
+      "addToSeq_Sine": {
+        "description": "시퀀스에 정현파(사인) 파형을 추가합니다.",
+        "params": {
+          "step": "시퀀스 단계 번호",
+          "ampl": "진폭 (V)",
+          "offs": "오프셋 전압 (V)",
+          "freq": "주파수 (Hz)",
+          "repeat": "반복 횟수"
+        }
+      },
+      "addToSeq_Exp": {
+        "description": "시퀀스에 지수 파형을 추가합니다.",
+        "params": {
+          "step": "시퀀스 단계 번호",
+          "vStart": "시작 전압 (V)",
+          "vEnd": "종료 전압 (V)",
+          "tStart": "시작 시간 (s)",
+          "tWave": "파형 시간 (s)",
+          "tConst": "시정수 (s)",
+          "repeat": "반복 횟수"
+        }
+      },
+      "addToSeq_Stair": {
+        "description": "시퀀스에 계단형 파형을 추가합니다. 전압이 단계적으로 변합니다.",
+        "params": {
+          "step": "시퀀스 단계 번호",
+          "vStart": "시작 전압 (V)",
+          "vEnd": "종료 전압 (V)",
+          "tStart": "시작 시간 (s)",
+          "tStep": "각 단계 시간 (s)",
+          "tEnd": "종료 시간 (s)",
+          "nStep": "단계 수",
+          "repeat": "반복 횟수"
+        }
+      },
+      "addToSeq_Trap": {
+        "description": "시퀀스에 사다리꼴 파형을 추가합니다.",
+        "params": {
+          "step": "시퀀스 단계 번호",
+          "vStart": "기저 전압 (V)",
+          "vTop": "상단 전압 (V)",
+          "tStart": "시작 시간 (s)",
+          "tRise": "상승 시간 (s)",
+          "tTop": "상단 유지 시간 (s)",
+          "tFall": "하강 시간 (s)",
+          "tEnd": "종료 시간 (s)",
+          "repeat": "반복 횟수"
+        }
+      },
+      "setSeqArb": {
+        "description": "임의 파형 시퀀스를 전원 공급기에 설정합니다.",
+        "params": {}
+      },
+      "runSeqArb": {
+        "description": "설정된 임의 파형 시퀀스를 실행합니다.",
+        "params": {
+          "repeat": "반복 횟수"
+        }
+      },
+      "isArbSeqStillRun": {
+        "description": "임의 파형 시퀀스가 아직 실행 중인지 확인합니다.",
+        "params": {}
+      }
+    }
+  },
+
+  "SSHManager": {
+    "_description": "SSH 접속 — SSH로 원격 장비에 접속하여 명령 실행, 파일 전송을 수행하는 모듈",
+    "functions": {
+      "create_ssh_client": {
+        "description": "SSH 연결을 생성합니다.",
+        "params": {
+          "hostname": "원격 장비 IP 또는 호스트명. 예: '192.168.1.100'",
+          "username": "SSH 사용자 이름. 예: 'root'",
+          "password": "SSH 비밀번호",
+          "key_filePath": "SSH 키 파일 경로 (비밀번호 대신 사용). 기본값: None"
+        }
+      },
+      "close_ssh_client": {
+        "description": "SSH 연결을 종료합니다.",
+        "params": {}
+      },
+      "send_command": {
+        "description": "SSH로 명령어를 실행합니다.",
+        "params": {
+          "command": "실행할 명령어. 예: 'ls -al', 'cat /etc/version'"
+        }
+      },
+      "send_file": {
+        "description": "로컬 파일을 원격 장비로 전송합니다.",
+        "params": {
+          "local_path": "PC의 파일 경로",
+          "remote_path": "원격 장비의 저장 경로"
+        }
+      },
+      "get_file": {
+        "description": "원격 장비의 파일을 PC로 가져옵니다.",
+        "params": {
+          "remote_path": "원격 장비의 파일 경로",
+          "local_path": "PC의 저장 경로"
+        }
+      },
+      "get_file_list_in_dir": {
+        "description": "원격 장비의 디렉토리 내 파일 목록을 조회합니다.",
+        "params": {
+          "path": "조회할 디렉토리 경로",
+          "_filter": "파일 필터 패턴. 기본값: '*' (전체). 예: '*.log'"
+        }
+      }
+    }
+  },
+
+  "AudioLibrary": {
+    "_description": "오디오 분석 — 오디오 녹음 및 음소거 판별을 수행하는 모듈. 음악/라디오 소스에서 무음 여부를 확인",
+    "functions": {
+      "select_channels": {
+        "description": "오디오 입력 디바이스를 선택합니다.",
+        "params": {
+          "audio_device_s": "오디오 디바이스 이름의 일부. 예: 'USB', 'PnP', 'pulse'. 기본값: 'pulse'"
+        }
+      },
+      "start_recording": {
+        "description": "오디오 녹음을 시작합니다.",
+        "params": {
+          "record_seconds": "녹음 시간 (초). 예: 5 = 5초, 0.5 = 500ms. 기본값: 5",
+          "rate": "샘플링 레이트. 기본값: 44100",
+          "chunk": "버퍼 크기. 기본값: 1024",
+          "format": "오디오 포맷. 기본값: 8"
+        }
+      },
+      "stop_recording": {
+        "description": "오디오 녹음을 중지합니다.",
+        "params": {}
+      },
+      "isMute": {
+        "description": "현재 오디오가 음소거 상태인지 확인합니다. 음악/라디오 소스용입니다 (단일 톤, 화이트 노이즈는 정확하지 않음). 신호/노이즈 비율이 25dB 이하이면 TRUE(음소거)를 반환합니다.",
+        "params": {}
+      },
+      "get_max_value": {
+        "description": "녹음된 오디오의 최대 진폭 값을 반환합니다.",
+        "params": {}
+      },
+      "get_min_max_local_maxima": {
+        "description": "녹음된 오디오의 국소 최대/최소값을 반환합니다.",
+        "params": {}
+      },
+      "close": {
+        "description": "AudioLibrary를 종료하고 리소스를 해제합니다.",
+        "params": {}
+      }
+    }
+  },
+
+  "ImageProcessing": {
+    "_description": "이미지 처리 — OCR(문자 인식), 이미지 비교, 템플릿 매칭 등 이미지 분석을 수행하는 모듈. Tesseract-OCR 필요",
+    "functions": {
+      "image_compare": {
+        "description": "두 이미지 파일을 비교합니다. 일치 여부와 일치율을 반환합니다.",
+        "params": {
+          "origin": "비교할 원본 이미지 경로 (jpg)",
+          "expected": "기대 이미지 경로 (jpg)"
+        }
+      },
+      "imagesearch": {
+        "description": "원본 이미지 안에서 대상 이미지를 찾습니다 (템플릿 매칭). 위치와 일치율을 반환합니다.",
+        "params": {
+          "origin": "원본 이미지 경로 (캡처된 화면)",
+          "expected": "찾을 이미지 경로 (아이콘, 버튼 등)",
+          "threshold": "일치 임계값 (0~100). 기본값: 99"
+        }
+      },
+      "image_cut": {
+        "description": "이미지의 특정 영역을 잘라냅니다 (크롭).",
+        "params": {
+          "origin": "원본 이미지 경로",
+          "cut_img": "잘라낸 이미지 저장 경로",
+          "x1": "좌상단 X 좌표",
+          "y1": "좌상단 Y 좌표",
+          "x2": "우하단 X 좌표",
+          "y2": "우하단 Y 좌표"
+        }
+      },
+      "image_valid": {
+        "description": "캡처된 이미지가 유효한지 (OpenCV로 읽을 수 있는지) 확인합니다.",
+        "params": {
+          "image": "확인할 이미지 경로 (jpg)"
+        }
+      },
+      "ocr": {
+        "description": "이미지에서 텍스트를 인식합니다 (OCR). Tesseract-OCR이 설치되어 있어야 합니다.",
+        "params": {
+          "img_path": "이미지 경로 (jpg)",
+          "language": "인식 언어. 기본값: 'eng'. 한국어: 'kor'",
+          "psm": "페이지 세그먼트 모드. 기본값: 6 (단일 블록)"
+        }
+      },
+      "ocr_coordinate": {
+        "description": "이미지에서 특정 문자열의 좌표를 찾습니다.",
+        "params": {
+          "img_path": "이미지 경로",
+          "string": "찾을 문자열",
+          "language": "인식 언어. 기본값: 'eng'",
+          "rect_size": "인식 영역 크기. 기본값: 15",
+          "full_screen_check": "전체 화면 검색 여부. 기본값: True"
+        }
+      },
+      "ocr_sentence": {
+        "description": "이미지에서 문장을 찾아 좌표를 반환합니다.",
+        "params": {
+          "img_path": "이미지 경로",
+          "string": "찾을 문장",
+          "output_suffix": "출력 파일 접미사",
+          "language": "인식 언어. 기본값: 'eng'",
+          "rect_size": "인식 영역 크기. 기본값: 15",
+          "full_screen_check": "전체 화면 검색. 기본값: True"
+        }
+      },
+      "is_similar": {
+        "description": "두 텍스트가 유사한지 비교합니다.",
+        "params": {
+          "text1": "비교할 텍스트 1",
+          "text2": "비교할 텍스트 2",
+          "tolerance": "허용 오차. 기본값: 0 (정확히 일치)"
+        }
+      },
+      "calculate_coordinate": {
+        "description": "OCR 결과에서 좌표를 계산합니다.",
+        "params": {
+          "boxes": "OCR 박스 데이터",
+          "height": "이미지 높이",
+          "string": "찾을 문자열"
+        }
+      },
+      "calculate_sentence": {
+        "description": "OCR 결과에서 문장 위치를 계산합니다.",
+        "params": {
+          "boxes": "OCR 박스 데이터",
+          "height": "이미지 높이",
+          "string": "찾을 문장",
+          "image": "이미지 객체"
+        }
+      },
+      "preprocess_image": {
+        "description": "OCR 인식률 향상을 위해 이미지를 전처리합니다.",
+        "params": {
+          "image": "전처리할 이미지 객체"
+        }
+      }
+    }
+  },
+
+  "DLTLogging": {
+    "_description": "DLT 로깅 — DLT Viewer 프로그램을 통해 ECU 로그를 저장하고 검색하는 모듈 (GUI 기반)",
+    "functions": {
+      "DLT_START": {
+        "description": "DLT Viewer를 실행하고 로깅을 시작합니다.",
+        "params": {
+          "dlt_project": "DLT 프로젝트 파일(.dlp) 경로",
+          "SW_SHOWNORMAL": "창 표시 모드. 1 = 일반(기본), 0 = 숨김"
+        }
+      },
+      "DLT_EXIT": {
+        "description": "DLT 로깅을 종료합니다.",
+        "params": {
+          "dlt_log": "로그 파일 경로 (선택)"
+        }
+      },
+      "DLT_FIND": {
+        "description": "DLT 로그에서 키워드를 검색합니다.",
+        "params": {
+          "dlt_log": "검색할 로그 파일 경로",
+          "find_timeout": "검색 타임아웃 (초)"
+        }
+      },
+      "DLT_EXPORT": {
+        "description": "DLT 로그를 CSV 파일로 내보냅니다.",
+        "params": {
+          "csv_file": "CSV 파일 저장 경로"
+        }
+      },
+      "DLT_COMMAND": {
+        "description": "DLT 명령어를 실행합니다.",
+        "params": {
+          "argument_lists": "명령어 인수 목록"
+        }
+      },
+      "MCU_Injection": {
+        "description": "MCU 인젝션 명령을 실행합니다.",
+        "params": {
+          "Inject_Command": "인젝션 명령어"
+        }
+      },
+      "except_action": {
+        "description": "예외 발생 시 처리 액션을 수행합니다.",
+        "params": {}
+      }
+    }
+  },
+
+  "MLP": {
+    "_description": "MLP 로깅 — MIB Log Protocol로 IVI/SAFE 시스템의 실시간 로그를 수신하여 저장하는 모듈. ICAS3/MIB3OI 지원",
+    "functions": {
+      "set_config": {
+        "description": "MLP 설정을 구성합니다. 모델과 로그 저장 경로를 설정합니다.",
+        "params": {
+          "model": "차량 모델. 'ICAS3EU', 'ICAS3CN', 'MIB3OI' 중 선택",
+          "mlp_ivi_file_path": "IVI 로그 저장 경로 (필수)",
+          "mlp_safe_file_path": "SAFE 로그 저장 경로 (ICAS3 전용, 선택)"
+        }
+      },
+      "logging_start": {
+        "description": "MLP 로그 저장을 시작합니다. set_config을 먼저 호출해야 합니다.",
+        "params": {}
+      },
+      "logging_stop": {
+        "description": "MLP 로그 저장을 중지합니다.",
+        "params": {}
+      },
+      "MLP_IVI_READ_THREAD": {
+        "description": "IVI MLP 수신 스레드를 시작합니다. 내부적으로 자동 호출됩니다.",
+        "params": {
+          "mlp_ivi_file_path": "로그 저장 경로",
+          "host": "연결할 호스트 IP",
+          "port": "연결할 포트"
+        }
+      },
+      "MLP_SAFE_READ_THREAD": {
+        "description": "SAFE MLP 수신 스레드를 시작합니다. 내부적으로 자동 호출됩니다.",
+        "params": {
+          "mlp_safe_file_path": "로그 저장 경로",
+          "host": "연결할 호스트 IP",
+          "port": "연결할 포트"
+        }
+      }
+    }
+  },
+
+  "PCANClient": {
+    "_description": "PCAN 클라이언트 — Peak CAN 디바이스를 통해 CAN 메시지를 송수신하는 모듈",
+    "functions": {
+      "send_msg": {
+        "description": "CAN 메시지를 전송합니다.",
+        "params": {
+          "channel": "CAN 채널",
+          "msg_id": "메시지 ID",
+          "type": "메시지 타입",
+          "length": "데이터 길이",
+          "cycle_time": "전송 주기 (ms). 0이면 1회 전송",
+          "msg_data": "메시지 데이터"
+        }
+      },
+      "stop": {
+        "description": "특정 CAN 메시지의 전송을 중지합니다.",
+        "params": {
+          "channel": "CAN 채널",
+          "msg_id": "중지할 메시지 ID"
+        }
+      },
+      "stop_all": {
+        "description": "모든 CAN 메시지 전송을 중지합니다.",
+        "params": {}
+      }
+    }
+  },
+
+  "TigrisCheck": {
+    "_description": "Tigris 검사 — 특정 ADB 디바이스에서 Tigris 테스트 스위트를 실행하고 결과를 확인하는 모듈",
+    "functions": {
+      "checkTigris": {
+        "description": "Tigris 검사를 실행합니다.",
+        "params": {
+          "ADBID": "ADB 디바이스 시리얼 번호",
+          "TIGRIS_FOLDER": "Tigris 폴더 경로",
+          "SUITE_NAME": "실행할 테스트 스위트 이름"
+        }
+      }
+    }
+  },
+
+  "Trace": {
+    "_description": "트레이스 분석 — 함수 호출 트레이스를 분석하여 예상 호출 순서와 실제 호출 순서를 비교하는 모듈",
+    "functions": {
+      "initialize": {
+        "description": "트레이스 분석기를 초기화합니다. 이전 데이터를 모두 삭제합니다.",
+        "params": {}
+      },
+      "append_expected": {
+        "description": "예상되는 함수 호출 쌍(caller → callee)을 추가합니다.",
+        "params": {
+          "caller": "호출자 함수 이름",
+          "callee": "피호출자 함수 이름"
+        }
+      },
+      "set_actual": {
+        "description": "실제 트레이스 파일이 있는 디렉토리를 설정합니다. 파일을 파싱하여 시간순으로 정렬합니다.",
+        "params": {
+          "path": "트레이스 파일이 있는 PC 디렉토리 경로"
+        }
+      },
+      "set_start_timestamp": {
+        "description": "트레이스 시작 타임스탬프를 설정합니다.",
+        "params": {
+          "timestamp": "시작 시간 (에포크 초 단위)"
+        }
+      },
+      "compare": {
+        "description": "예상 호출과 실제 호출을 비교합니다. 각 호출 쌍의 일치 여부를 반환합니다.",
+        "params": {}
+      },
+      "timeliness": {
+        "description": "마지막 예상 결과가 시간 제한 내에 호출되었는지 확인합니다. compare() 이후에 호출해야 합니다.",
+        "params": {
+          "time_diff": "허용 시간 차이 (ms)"
+        }
+      },
+      "get_basename": {
+        "description": "트레이스 파일의 기본 이름을 반환합니다.",
+        "params": {
+          "trace_file": "트레이스 파일 경로"
+        }
+      }
+    }
+  },
+
+  "COMMON_WINDOWS": {
+    "_description": "Windows 유틸리티 — Windows 명령어 출력을 파일로 저장하는 유틸리티 모듈",
+    "functions": {
+      "start_save_file_from_command": {
+        "description": "명령어를 실행하고 출력을 로그 파일로 저장합니다.",
+        "params": {
+          "command": "실행할 명령어",
+          "path_dir_log": "로그 저장 디렉토리 경로"
+        }
+      },
+      "stop_save_file": {
+        "description": "로그 파일 저장을 중지합니다.",
+        "params": {}
+      },
+      "get_file_path": {
+        "description": "현재 로그 파일 경로를 반환합니다.",
+        "params": {}
+      }
+    }
+  },
+
+  "Android": {
+    "_description": "Android ADB 제어 — ADB를 통해 Android 디바이스를 제어하는 모듈. 터치, 스와이프, 앱 설치, 스크린캡처 등",
+    "functions": {
+      "connect_adb_server": {
+        "description": "ADB 서버에 연결합니다. 'adb start-server'와 동일합니다.",
+        "params": {
+          "host": "ADB 서버 호스트. 기본값: '127.0.0.1'",
+          "port": "ADB 서버 포트. 기본값: 5037"
+        }
+      },
+      "adb_devices": {
+        "description": "연결된 ADB 디바이스 목록을 반환합니다. 'adb devices'와 동일합니다.",
+        "params": {}
+      },
+      "select_adb_device": {
+        "description": "명령을 실행할 대상 디바이스를 선택합니다. 'adb -s' 옵션과 동일합니다.",
+        "params": {
+          "serial": "디바이스 시리얼 번호"
+        }
+      },
+      "adb_tap": {
+        "description": "화면의 특정 좌표를 터치합니다.",
+        "params": {
+          "x": "터치할 X 좌표",
+          "y": "터치할 Y 좌표",
+          "serial": "디바이스 시리얼 (선택). 비워두면 기본 디바이스 사용"
+        }
+      },
+      "adb_swipe": {
+        "description": "화면을 스와이프(드래그)합니다.",
+        "params": {
+          "x1": "시작 X 좌표",
+          "y1": "시작 Y 좌표",
+          "x2": "끝 X 좌표",
+          "y2": "끝 Y 좌표",
+          "duration": "스와이프 시간 (ms). 기본값: 300",
+          "serial": "디바이스 시리얼 (선택)"
+        }
+      },
+      "key_event": {
+        "description": "키 이벤트를 전송합니다. 홈, 뒤로가기, 볼륨 등의 하드웨어 키를 제어합니다.",
+        "params": {
+          "keycode": "키코드. 예: 'KEYCODE_HOME', 'KEYCODE_BACK', 'KEYCODE_VOLUME_UP'",
+          "long_press": "길게 누르기 여부. 기본값: False",
+          "serial": "디바이스 시리얼 (선택)"
+        }
+      },
+      "TypingtoScrenn": {
+        "description": "화면에 텍스트를 입력합니다.",
+        "params": {
+          "text": "입력할 텍스트",
+          "serial": "디바이스 시리얼 (선택)"
+        }
+      },
+      "adb_shell": {
+        "description": "ADB 셸 명령을 실행합니다. 결과를 반환합니다.",
+        "params": {
+          "cmd": "셸 명령어. 예: 'getprop ro.build.version.release', 'pm list packages'",
+          "serial": "디바이스 시리얼 (선택)"
+        }
+      },
+      "adb_screencap": {
+        "description": "화면을 캡처하여 PC에 이미지 파일로 저장합니다.",
+        "params": {
+          "img_path": "PC에 저장할 이미지 경로",
+          "serial": "디바이스 시리얼 (선택)"
+        }
+      },
+      "adb_push": {
+        "description": "PC의 파일을 디바이스로 전송합니다.",
+        "params": {
+          "src": "PC의 파일 경로",
+          "dest": "디바이스의 저장 경로",
+          "serial": "디바이스 시리얼 (선택)"
+        }
+      },
+      "adb_pull": {
+        "description": "디바이스의 파일을 PC로 가져옵니다.",
+        "params": {
+          "src": "디바이스의 파일 경로",
+          "dest": "PC의 저장 경로",
+          "serial": "디바이스 시리얼 (선택)"
+        }
+      },
+      "install_apk": {
+        "description": "APK 파일을 디바이스에 설치합니다.",
+        "params": {
+          "apk_path": "APK 파일 경로",
+          "serial": "디바이스 시리얼 (선택)"
+        }
+      },
+      "uninstall_apk": {
+        "description": "앱을 디바이스에서 제거합니다.",
+        "params": {
+          "apk_package": "앱 패키지명. 예: 'com.example.app'",
+          "serial": "디바이스 시리얼 (선택)"
+        }
+      },
+      "adb_reboot": {
+        "description": "디바이스를 재부팅합니다.",
+        "params": {
+          "serial": "디바이스 시리얼 (선택)"
+        }
+      },
+      "IncomingCall": {
+        "description": "수신 전화를 시뮬레이션합니다.",
+        "params": {
+          "number": "전화번호",
+          "serial": "디바이스 시리얼 (선택)"
+        }
+      },
+      "start_logcat": {
+        "description": "로그캣을 파일로 저장하기 시작합니다.",
+        "params": {
+          "logpath": "로그 파일 저장 경로",
+          "serial": "디바이스 시리얼 (선택)"
+        }
+      },
+      "stop_logcat": {
+        "description": "로그캣 저장을 중지합니다.",
+        "params": {}
+      },
+      "read_thread": {
+        "description": "디바이스 로그 수신 스레드를 시작합니다.",
+        "params": {
+          "device": "디바이스 객체",
+          "logpath": "로그 파일 경로"
+        }
+      }
+    }
+  },
+
+  "CCIC_BENCH": {
+    "_description": "CCIC 우현벤치 — UDP 통신으로 차량 전원(IGN/ACC/배터리)을 제어하는 테스트 벤치 장비",
+    "functions": {
+      "Connect": {
+        "description": "벤치 장비에 UDP 네트워크 연결을 수행합니다. 장비 추가 시 자동으로 호출되므로 보통 수동 호출이 필요 없습니다.",
+        "params": {}
+      },
+      "Disconnect": {
+        "description": "벤치 장비와의 UDP 네트워크 연결을 해제합니다.",
+        "params": {}
+      },
+      "IsConnected": {
+        "description": "벤치 장비가 현재 연결되어 있는지 확인합니다.",
+        "params": {}
+      },
+      "IGN1": {
+        "description": "이그니션 1(IGN1) 전원을 켜거나 끕니다. 차량의 시동 전원에 해당합니다.",
+        "params": {
+          "on_off": "0 = OFF (전원 끄기), 1 = ON (전원 켜기). 기본값: 1 (ON)"
+        }
+      },
+      "IGN1_Read": {
+        "description": "이그니션 1(IGN1)의 현재 전원 상태를 읽어옵니다. 반환값: 0=OFF, 1=ON, -1=읽기 실패",
+        "params": {}
+      },
+      "IGN2": {
+        "description": "이그니션 2(IGN2) 전원을 켜거나 끕니다. 보조 이그니션 전원에 해당합니다.",
+        "params": {
+          "on_off": "0 = OFF (전원 끄기), 1 = ON (전원 켜기). 기본값: 1 (ON)"
+        }
+      },
+      "IGN2_Read": {
+        "description": "이그니션 2(IGN2)의 현재 전원 상태를 읽어옵니다. 반환값: 0=OFF, 1=ON, -1=읽기 실패",
+        "params": {}
+      },
+      "ACC": {
+        "description": "ACC(Accessory) 전원을 켜거나 끕니다. 차량의 액세서리 전원(라디오, 내비 등 작동 가능 상태)에 해당합니다.",
+        "params": {
+          "on_off": "0 = OFF (전원 끄기), 1 = ON (전원 켜기). 기본값: 1 (ON)"
+        }
+      },
+      "ACC_Read": {
+        "description": "ACC 전원의 현재 상태를 읽어옵니다. 반환값: 0=OFF, 1=ON, -1=읽기 실패",
+        "params": {}
+      },
+      "BATTERY": {
+        "description": "배터리 릴레이를 켜거나 끕니다. OFF 시 차량에 배터리 전원이 완전히 차단됩니다.",
+        "params": {
+          "on_off": "0 = OFF (배터리 차단), 1 = ON (배터리 연결). 기본값: 1 (ON)"
+        }
+      },
+      "BATTERY_Read": {
+        "description": "배터리 릴레이의 현재 상태를 읽어옵니다. 반환값: 0=OFF, 1=ON, -1=읽기 실패",
+        "params": {}
+      },
+      "BatterySet": {
+        "description": "배터리 출력 전압을 설정합니다. 전압 변동 테스트에 사용합니다.",
+        "params": {
+          "voltage": "설정할 전압 (V 단위, 소수점 가능). 예: 12.0, 14.4, 9.0. 기본값: 14.4V"
+        }
+      },
+      "BatteryCheck": {
+        "description": "현재 배터리 출력 전압을 측정합니다. 반환값: 전압(V), 실패 시 -1.0",
+        "params": {}
+      },
+      "AmpereCheck": {
+        "description": "현재 소비 전류를 측정합니다. 반환값: 전류(A), 실패 시 -1.0",
+        "params": {}
+      },
+      "SendCommand": {
+        "description": "벤치에 직접 UDP 명령을 전송합니다. 고급 사용자용이며, 일반적으로 위의 개별 함수 사용을 권장합니다.",
+        "params": {
+          "cmd1": "명령 코드 1 (정수, 예: 0x24 → 36)",
+          "cmd2": "명령 코드 2 (정수, 예: 0x21 → 33)",
+          "data_hex": "추가 데이터 (공백으로 구분된 16진수 문자열). 예: 'FF 01'. 기본값: 빈 문자열"
+        }
+      },
+      "GetInfo": {
+        "description": "벤치의 현재 연결 정보(IP, 포트, 연결 상태)를 반환합니다.",
+        "params": {}
+      }
+    }
+  },
+
+  "SerialPlugin": {
+    "_description": "범용 시리얼 통신 — RS-232 시리얼 포트로 데이터를 송수신하는 범용 플러그인",
+    "functions": {
+      "Connect": {
+        "description": "시리얼 포트를 엽니다. 장비 추가 시 자동으로 호출됩니다.",
+        "params": {}
+      },
+      "Disconnect": {
+        "description": "시리얼 포트를 닫습니다.",
+        "params": {}
+      },
+      "IsConnected": {
+        "description": "시리얼 포트가 현재 열려있는지 확인합니다.",
+        "params": {}
+      },
+      "SendCommand": {
+        "description": "시리얼 포트로 텍스트 명령을 전송합니다. 기본적으로 줄바꿈이 자동으로 추가됩니다.",
+        "params": {
+          "command": "전송할 명령어 텍스트. 예: 'AT+VERSION', 'RESET'",
+          "encoding": "문자 인코딩. 기본값: 'utf-8'. 특수 장비는 'ascii' 사용",
+          "append_newline": "명령 끝에 줄바꿈 추가 여부. True = 추가(기본), False = 추가하지 않음"
+        }
+      },
+      "ReadLine": {
+        "description": "시리얼 포트에서 한 줄을 읽어옵니다.",
+        "params": {
+          "timeout": "최대 대기 시간 (초). 기본값: 1.0"
+        }
+      },
+      "ReadAll": {
+        "description": "시리얼 포트의 수신 버퍼에 있는 모든 데이터를 읽어옵니다.",
+        "params": {
+          "timeout": "최대 대기 시간 (초). 기본값: 1.0"
+        }
+      },
+      "SendAndRead": {
+        "description": "명령을 전송하고 응답 한 줄을 읽어 반환합니다.",
+        "params": {
+          "command": "전송할 명령어 텍스트",
+          "timeout": "응답 대기 시간 (초). 기본값: 1.0",
+          "encoding": "문자 인코딩. 기본값: 'utf-8'"
+        }
+      },
+      "SendHex": {
+        "description": "16진수 바이트를 직접 전송합니다.",
+        "params": {
+          "hex_string": "전송할 16진수 문자열. 예: 'FF 01 A0'"
+        }
+      },
+      "ReadHex": {
+        "description": "지정된 바이트 수만큼 읽어 16진수 문자열로 반환합니다.",
+        "params": {
+          "count": "읽을 바이트 수. 기본값: 1",
+          "timeout": "최대 대기 시간 (초). 기본값: 1.0"
+        }
+      },
+      "SetBaudrate": {
+        "description": "시리얼 통신 속도(Baud Rate)를 변경합니다.",
+        "params": {
+          "baudrate": "통신 속도. 예: 9600, 115200"
+        }
+      },
+      "GetPortInfo": {
+        "description": "현재 시리얼 포트 정보를 반환합니다.",
+        "params": {}
+      }
+    }
+  },
+
+  "CMD": {
+    "_description": "명령어 실행 — Windows 명령 프롬프트(CMD) 명령을 실행하는 모듈. 외부 프로그램 실행이나 시스템 명령에 사용",
+    "functions": {
+      "Run": {
+        "description": "명령어를 실행하고 완료될 때까지 기다립니다(블로킹). 실행 결과를 반환합니다.",
+        "params": {
+          "command": "실행할 명령어. 예: 'ping 127.0.0.1 -n 3', 'ipconfig'",
+          "timeout": "최대 대기 시간 (초). 기본값: 300초"
+        }
+      },
+      "RunBackground": {
+        "description": "명령어를 백그라운드로 실행합니다(논블로킹). PID가 반환됩니다.",
+        "params": {
+          "command": "실행할 명령어. 예: 'notepad', 'python script.py'"
+        }
+      },
+      "Kill": {
+        "description": "백그라운드 프로세스를 종료합니다.",
+        "params": {
+          "pid": "종료할 프로세스 PID"
+        }
+      },
+      "ListBackground": {
+        "description": "실행 중인 백그라운드 프로세스 목록을 반환합니다.",
+        "params": {}
+      }
+    }
+  },
+
+  "DLTViewer": {
+    "_description": "DLT 로그 뷰어 — 차량 ECU의 DLT 로그를 실시간으로 수신하고 분석하는 모듈 (TCP 직접 연결)",
+    "functions": {
+      "Connect": {
+        "description": "DLT 데몬(ECU)에 TCP 연결하고 실시간 로그 캡처를 시작합니다.",
+        "params": {}
+      },
+      "Disconnect": {
+        "description": "DLT 데몬과의 연결을 해제하고 로그 캡처를 중지합니다.",
+        "params": {}
+      },
+      "IsConnected": {
+        "description": "DLT 데몬에 현재 연결되어 있는지 확인합니다.",
+        "params": {}
+      },
+      "WaitLog": {
+        "description": "키워드가 포함된 로그가 나타날 때까지 기다립니다(블로킹). 공백으로 여러 키워드 지정 시 AND 조건.",
+        "params": {
+          "keyword": "검색할 키워드. 예: 'BootComplete', 'ERROR crash'",
+          "timeout": "최대 대기 시간 (초). 기본값: 30"
+        }
+      },
+      "StartMonitor": {
+        "description": "백그라운드에서 키워드를 감시합니다(논블로킹). 결과는 GetMonitorResult로 확인.",
+        "params": {
+          "keyword": "감시할 키워드",
+          "timeout": "최대 감시 시간 (초). 기본값: 60"
+        }
+      },
+      "StopMonitor": {
+        "description": "백그라운드 모니터링을 중지합니다.",
+        "params": {
+          "monitor_id": "모니터 ID. 비워두면 전체 중지"
+        }
+      },
+      "GetMonitorResult": {
+        "description": "모니터링 결과를 확인합니다. PASS/FAIL/RUNNING 반환.",
+        "params": {
+          "monitor_id": "모니터 ID. 비워두면 전체 결과"
+        }
+      },
+      "SearchLog": {
+        "description": "로그 버퍼에서 키워드를 검색합니다.",
+        "params": {
+          "keyword": "검색할 키워드",
+          "count": "최대 결과 수. 기본값: 10"
+        }
+      },
+      "GetRecentLogs": {
+        "description": "최근 수신된 로그를 조회합니다.",
+        "params": {
+          "count": "조회할 줄 수. 기본값: 100"
+        }
+      },
+      "GetLogCount": {
+        "description": "수신된 총 로그 수를 반환합니다.",
+        "params": {}
+      },
+      "ClearLogs": {
+        "description": "로그 버퍼를 비웁니다.",
+        "params": {}
+      },
+      "LaunchViewer": {
+        "description": "DLT Viewer GUI 프로그램을 실행합니다.",
+        "params": {
+          "project_file": ".dlp 프로젝트 파일 경로 (선택)",
+          "log_file": ".dlt 로그 파일 경로 (선택)"
+        }
+      },
+      "CloseViewer": {
+        "description": "DLT Viewer GUI를 종료합니다.",
+        "params": {}
+      },
+      "CreateProject": {
+        "description": "DLT Viewer 프로젝트 파일(.dlp)을 생성합니다.",
+        "params": {
+          "file_path": ".dlp 파일 저장 경로",
+          "host": "ECU IP 주소 (선택)",
+          "port": "DLT 포트. 기본값: 3490"
+        }
+      },
+      "GetStatus": {
+        "description": "DLT 모듈의 현재 상태를 종합적으로 반환합니다.",
+        "params": {}
+      }
+    }
+  },
+
+  "VisionCamera": {
+    "_description": "비전 카메라 — GigE Vision 산업용 카메라로 화면을 캡처하는 모듈",
+    "functions": {
+      "Connect": {
+        "description": "비전 카메라에 연결합니다.",
+        "params": {}
+      },
+      "Disconnect": {
+        "description": "비전 카메라 연결을 해제합니다.",
+        "params": {}
+      },
+      "IsConnected": {
+        "description": "연결 상태를 확인합니다.",
+        "params": {}
+      },
+      "Capture": {
+        "description": "화면을 캡처하여 이미지 파일로 저장합니다.",
+        "params": {
+          "save_path": "이미지 저장 경로. 비워두면 임시 폴더에 저장"
+        }
+      },
+      "CaptureBytes": {
+        "description": "화면을 캡처하여 바이트 데이터로 반환합니다.",
+        "params": {
+          "fmt": "'png' (고품질) 또는 'jpeg' (빠름). 기본값: 'png'"
+        }
+      },
+      "CaptureToFile": {
+        "description": "지정 경로에 PNG 이미지를 캡처합니다.",
+        "params": {
+          "save_path": "저장 경로 (필수)"
+        }
+      },
+      "CropCapture": {
+        "description": "특정 영역만 잘라서 캡처합니다.",
+        "params": {
+          "save_path": "저장 경로 (필수)",
+          "left": "왼쪽 좌표 (px)",
+          "top": "위쪽 좌표 (px)",
+          "right": "오른쪽 좌표 (px)",
+          "bottom": "아래쪽 좌표 (px)"
+        }
+      },
+      "GetInfo": {
+        "description": "카메라 정보를 반환합니다.",
+        "params": {}
+      }
+    }
+  },
+
+  "VisionCameraClient": {
+    "_description": "비전 카메라 클라이언트 — VisionCamera 내부에서 사용하는 저수준 카메라 제어 모듈",
+    "functions": {
+      "md_VisionConnect": {
+        "description": "비전 카메라에 저수준 연결을 수행합니다. 일반적으로 VisionCamera.Connect()를 사용하세요.",
+        "params": {}
+      },
+      "md_VisionDisconnect": {
+        "description": "비전 카메라 연결을 해제합니다.",
+        "params": {}
+      },
+      "md_IsConnect": {
+        "description": "연결 상태를 확인합니다.",
+        "params": {}
+      },
+      "md_VisionCapture": {
+        "description": "이미지를 캡처하여 파일로 저장합니다.",
+        "params": {
+          "szPath": "저장 경로 (필수)",
+          "left": "크롭 왼쪽 좌표. -1이면 전체. 기본값: -1",
+          "top": "크롭 위쪽 좌표. 기본값: -1",
+          "right": "크롭 오른쪽 좌표. 기본값: -1",
+          "bottom": "크롭 아래쪽 좌표. 기본값: -1"
+        }
+      },
+      "md_CaptureBytes": {
+        "description": "이미지를 바이트 데이터로 반환합니다.",
+        "params": {
+          "fmt": "'png' 또는 'jpeg'. 기본값: 'jpeg'"
+        }
+      },
+      "dispose": {
+        "description": "카메라 리소스를 정리합니다.",
+        "params": {}
+      }
+    }
+  }
+}

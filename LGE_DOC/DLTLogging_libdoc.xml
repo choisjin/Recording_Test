@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<keywordspec name="lge.auto.DLTLogging" type="LIBRARY" format="ROBOT" scope="TEST" generated="2025-12-12T03:19:22+00:00" specversion="6" source="E:\robot_framework_ui\LG_RobotEZ\venv\lib\site-packages\lge\auto\DLTLogging.cp310-win_amd64.pyd" lineno="1">
+<version/>
+<doc>Documentation for library ``lge.auto.DLTLogging``.</doc>
+<tags>
+</tags>
+<inits>
+</inits>
+<keywords>
+<kw name="END DLT Logging">
+<arguments repr="dlt_log=None">
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="dlt_log=None">
+<name>dlt_log</name>
+<default>None</default>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Except Action">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Execute DLT Command">
+<arguments repr="argument_lists">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="argument_lists">
+<name>argument_lists</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Find DLT">
+<arguments repr="dlt_log, find_timeout">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="dlt_log">
+<name>dlt_log</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="find_timeout">
+<name>find_timeout</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="MCU Injection">
+<arguments repr="Inject_Command">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="Inject_Command">
+<name>Inject_Command</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Save DLT Log">
+<arguments repr="csv_file">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="csv_file">
+<name>csv_file</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Start DLT Logging">
+<arguments repr="dlt_project, SW_SHOWNORMAL=1">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="dlt_project">
+<name>dlt_project</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="SW_SHOWNORMAL=1">
+<name>SW_SHOWNORMAL</name>
+<default>1</default>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+</keywords>
+<typedocs>
+</typedocs>
+</keywordspec>

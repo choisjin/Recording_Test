@@ -249,9 +249,10 @@ export default function RecordPage() {
   const [compareModePopoverIndex, setCompareModePopoverIndex] = useState<number | null>(null);
 
   // Module command
-  const [moduleFunctions, setModuleFunctions] = useState<{ name: string; params: { name: string; required: boolean; default?: string }[] }[]>([]);
+  const [moduleFunctions, setModuleFunctions] = useState<{ name: string; description?: string; params: { name: string; required: boolean; default?: string; description?: string }[] }[]>([]);
   const [selectedModuleFunc, setSelectedModuleFunc] = useState('');
   const [moduleFuncArgs, setModuleFuncArgs] = useState<Record<string, string>>({});
+  const [moduleDescription, setModuleDescription] = useState('');
   const [dltBackground, setDltBackground] = useState(false);
 
   // HKMC hardware keys
@@ -425,9 +426,10 @@ export default function RecordPage() {
         setStepType('module_command');
         deviceApi.getModuleFunctions(stepDeviceModule).then(res => {
           setModuleFunctions(res.data.functions || []);
+          setModuleDescription(res.data.module_description || '');
           setSelectedModuleFunc('');
           setModuleFuncArgs({});
-        }).catch(() => setModuleFunctions([]));
+        }).catch(() => { setModuleFunctions([]); setModuleDescription(''); });
       } else {
         setStepType('serial_command');
         setModuleFunctions([]);
@@ -1566,6 +1568,13 @@ export default function RecordPage() {
     editScreenshotRef.current = await snapshotScreenshot();
     setEditStepIndex(index);
     setEditStepParams({ ...s.params });
+    // module_command 편집 시 해당 모듈의 함수 가이드 로딩
+    if (s.type === 'module_command' && s.params?.module) {
+      deviceApi.getModuleFunctions(s.params.module).then(res => {
+        setModuleFunctions(res.data.functions || []);
+        setModuleDescription(res.data.module_description || '');
+      }).catch(() => {});
+    }
   }, [steps, snapshotScreenshot]);
 
   const drawEditCanvas = useCallback(() => {
@@ -2427,20 +2436,32 @@ export default function RecordPage() {
                     />
                     {selectedModuleFunc && (() => {
                       const fn = moduleFunctions.find(f => f.name === selectedModuleFunc);
-                      if (!fn || fn.params.length === 0) return null;
+                      if (!fn) return null;
                       return (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          {fn.params.map(p => (
-                            <Space key={p.name} size={4} style={{ width: '100%' }}>
-                              <Tag style={{ minWidth: 70, textAlign: 'center', margin: 0 }}>{p.name}{p.required && <span style={{ color: '#ff4d4f' }}>*</span>}</Tag>
-                              <Input
-                                size="small"
-                                placeholder={p.required ? t('common.required') : `${t('common.default')}: ${p.default}`}
-                                value={moduleFuncArgs[p.name] ?? ''}
-                                onChange={(e) => setModuleFuncArgs(prev => ({ ...prev, [p.name]: e.target.value }))}
-                                style={{ flex: 1 }}
-                              />
-                            </Space>
+                          {fn.description && (
+                            <div style={{ padding: '4px 8px', background: isDark ? '#1a2332' : '#f0f7ff', borderRadius: 4, fontSize: 12, color: isDark ? '#8bb4e0' : '#1677ff', lineHeight: 1.5, border: `1px solid ${isDark ? '#1a3a5c' : '#d6e8fc'}` }}>
+                              {fn.description}
+                            </div>
+                          )}
+                          {fn.params.length > 0 && fn.params.map(p => (
+                            <div key={p.name} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                              <Space size={4} style={{ width: '100%' }}>
+                                <Tag style={{ minWidth: 70, textAlign: 'center', margin: 0 }}>{p.name}{p.required && <span style={{ color: '#ff4d4f' }}>*</span>}</Tag>
+                                <Input
+                                  size="small"
+                                  placeholder={p.required ? t('common.required') : `${t('common.default')}: ${p.default}`}
+                                  value={moduleFuncArgs[p.name] ?? ''}
+                                  onChange={(e) => setModuleFuncArgs(prev => ({ ...prev, [p.name]: e.target.value }))}
+                                  style={{ flex: 1 }}
+                                />
+                              </Space>
+                              {p.description && (
+                                <div style={{ marginLeft: 78, fontSize: 11, color: isDark ? '#888' : '#999', lineHeight: 1.4 }}>
+                                  {p.description}
+                                </div>
+                              )}
+                            </div>
                           ))}
                         </div>
                       );
@@ -2989,22 +3010,38 @@ export default function RecordPage() {
 
           if (step.type === 'module_command') {
             const args = editStepParams.args || {};
+            const editFnGuide = moduleFunctions.find(f => f.name === editStepParams.function);
             return (
               <div>
                 <div style={{ marginBottom: 8, fontWeight: 600 }}>{editStepParams.module}::{editStepParams.function}()</div>
+                {editFnGuide?.description && (
+                  <div style={{ padding: '4px 8px', marginBottom: 8, background: isDark ? '#1a2332' : '#f0f7ff', borderRadius: 4, fontSize: 12, color: isDark ? '#8bb4e0' : '#1677ff', lineHeight: 1.5, border: `1px solid ${isDark ? '#1a3a5c' : '#d6e8fc'}` }}>
+                    {editFnGuide.description}
+                  </div>
+                )}
                 {Object.keys(args).length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {Object.entries(args).map(([k, v]) => (
-                      <Space key={k} size={4} style={{ width: '100%' }}>
-                        <Tag style={{ minWidth: 70, textAlign: 'center', margin: 0 }}>{k}</Tag>
-                        <Input
-                          size="small"
-                          value={String(v ?? '')}
-                          onChange={(e) => setEditStepParams({ ...editStepParams, args: { ...args, [k]: e.target.value } })}
-                          style={{ flex: 1 }}
-                        />
-                      </Space>
-                    ))}
+                    {Object.entries(args).map(([k, v]) => {
+                      const paramGuide = editFnGuide?.params.find(p => p.name === k);
+                      return (
+                        <div key={k} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          <Space size={4} style={{ width: '100%' }}>
+                            <Tag style={{ minWidth: 70, textAlign: 'center', margin: 0 }}>{k}</Tag>
+                            <Input
+                              size="small"
+                              value={String(v ?? '')}
+                              onChange={(e) => setEditStepParams({ ...editStepParams, args: { ...args, [k]: e.target.value } })}
+                              style={{ flex: 1 }}
+                            />
+                          </Space>
+                          {paramGuide?.description && (
+                            <div style={{ marginLeft: 78, fontSize: 11, color: isDark ? '#888' : '#999', lineHeight: 1.4 }}>
+                              {paramGuide.description}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : (
                   <div style={{ color: subTextColor }}>{t('record.noParams')}</div>

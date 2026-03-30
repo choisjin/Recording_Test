@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<keywordspec name="lge.auto.TDT" type="LIBRARY" format="ROBOT" scope="TEST" generated="2025-12-12T03:19:23+00:00" specversion="6" source="E:\robot_framework_ui\LG_RobotEZ\venv\lib\site-packages\lge\auto\TDT.cp310-win_amd64.pyd" lineno="1">
+<version/>
+<doc>The TDT class can perform HW function testing.
+This class is used in the SW development stage and DQA verification stage, and the protocol used in the TDT class is also used in process inspection technology.</doc>
+<tags>
+</tags>
+<inits>
+</inits>
+<keywords>
+<kw name="Add Uart Port">
+<arguments repr="port, bps, endline=\r">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="port">
+<name>port</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="bps">
+<name>bps</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="endline=\r">
+<name>endline</name>
+<default>\r</default>
+</arg>
+</arguments>
+<doc>Connect to HW using the serial port.
+argument:
+  - ``port`` : HW Serial Port Number (e.g: COM14)
+  - ``bps`` : BPS (e.g: 115200)
+
+Examples:
+| `Add Uart Port` |
+| `Add Uart Port` |    COM14  |   115200    |</doc>
+<shortdoc>Connect to HW using the serial port. argument:   - ``port`` : HW Serial Port Number (e.g: COM14)   - ``bps`` : BPS (e.g: 115200)</shortdoc>
+</kw>
+<kw name="Close Uart Port">
+<arguments repr="">
+</arguments>
+<doc>Terminate the thread for reading the response and disconnect the serial port.
+
+argument: None
+
+Examples:
+| `Close Uart Port` |</doc>
+<shortdoc>Terminate the thread for reading the response and disconnect the serial port.</shortdoc>
+</kw>
+<kw name="Crc 16 L Step">
+<arguments repr="seed, byte_ptr">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="seed">
+<name>seed</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="byte_ptr">
+<name>byte_ptr</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Encode Hdlc">
+<arguments repr="raw_data">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="raw_data">
+<name>raw_data</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Import XML">
+<arguments repr="xml_file">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="xml_file">
+<name>xml_file</name>
+</arg>
+</arguments>
+<doc>Parse the XML file and check request data and response data.
+argument:
+  - ``xml_file`` : xml file path
+
+Examples:
+| `Import XML` |    COM14  |</doc>
+<shortdoc>Parse the XML file and check request data and response data. argument:   - ``xml_file`` : xml file path</shortdoc>
+</kw>
+<kw name="Make Request Packet">
+<arguments repr="command_type, debug, module_code, function_code, function_code_2, result_code, user_data_len, user_data">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="command_type">
+<name>command_type</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="debug">
+<name>debug</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="module_code">
+<name>module_code</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="function_code">
+<name>function_code</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="function_code_2">
+<name>function_code_2</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="result_code">
+<name>result_code</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="user_data_len">
+<name>user_data_len</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="user_data">
+<name>user_data</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Make User Data">
+<arguments repr="data_type, data_value">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="data_type">
+<name>data_type</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="data_value">
+<name>data_value</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Result Analysis">
+<arguments repr="compare_type">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="compare_type">
+<name>compare_type</name>
+</arg>
+</arguments>
+<doc>Compare response data and expected data
+
+argument:
+ - ``compare_type`` :
+    - COMPARE_NONE                = 0
+    - COMPARE_EQUAL               = 1
+    - COPRE_NOT_EQUAL             = 2
+    - COMPARE_LESS_THAN           = 3
+    - COMPARE_GREATER_THAN        = 4
+    - COMPARE_LESS_OR_EQUAL       = 5
+    - COMPARE_GREATER_OR_EQUAL    = 6
+    - COMPARE_CONTAIN             = 7
+
+Examples:
+| `Result Analysis` | COMPARE_NONE /</doc>
+<shortdoc>Compare response data and expected data</shortdoc>
+</kw>
+<kw name="Run Test">
+<arguments repr="">
+</arguments>
+<doc>Send request message and read response message
+argument:
+
+Examples:
+| `Run Test` |</doc>
+<shortdoc>Send request message and read response message argument:</shortdoc>
+</kw>
+</keywords>
+<typedocs>
+</typedocs>
+</keywordspec>

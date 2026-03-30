@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<keywordspec name="lge.auto.Ignition" type="LIBRARY" format="ROBOT" scope="TEST" generated="2025-12-12T03:19:22+00:00" specversion="6" source="E:\robot_framework_ui\LG_RobotEZ\venv\lib\site-packages\lge\auto\Ignition.cp310-win_amd64.pyd" lineno="1">
+<version/>
+<doc>Library for Ignition.
+
+*Useage*:
+1. Call `Connect Ignition`
+    - ``host`` default value is 192.18.1.4
+    - ``port`` default value is 15500
+    - connect ignintion
+
+2. Call `Send Command`
+    - ``cmd`` hex format string
+    - send cmd to HU
+
+3. Call `Compare packet`
+   - ``expected`` hex format string
+
+4. Call `Disconnect Ignition`
+   - disconnect ICAS3 ignition</doc>
+<tags>
+</tags>
+<inits>
+</inits>
+<keywords>
+<kw name="Compare packet">
+<arguments repr="expected">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="expected">
+<name>expected</name>
+</arg>
+</arguments>
+<doc>Compare ``expected`` and self.last_recv
+
+- :param expected: hex string ex: 00 65
+- :return: If found expected in self.last_recv then return True. else return False (boolean)
+
+Examples:
+| `Compare packet` | 00_65 |
+|   ${result}=    | `Compare packet` | 00_65 |
+|   ${result}=    | `Compare packet` | 00 65 |</doc>
+<shortdoc>Compare ``expected`` and self.last_recv</shortdoc>
+</kw>
+<kw name="Connect Ignition">
+<arguments repr="host=192.168.1.4, port=15500">
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="host=192.168.1.4">
+<name>host</name>
+<default>192.168.1.4</default>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="port=15500">
+<name>port</name>
+<default>15500</default>
+</arg>
+</arguments>
+<doc>connect Ignition
+
+precondtion is that does not input "enter key" on uart
+because if input "enter key" to uart, does not run testiface in ICAS3 or MIB3
+
+- :param host: default value is 192.168.1.4
+- :param port: default value is 15500
+- :return: return socket.connect_ex result
+
+Examples:
+| `Connect Ignition` |
+| `Connect Ignition` | 192.168.1.4 | 15500 |</doc>
+<shortdoc>connect Ignition</shortdoc>
+</kw>
+<kw name="Disconnect Ignition">
+<arguments repr="">
+</arguments>
+<doc>Disconnect ignition
+
+Examples:
+| `Disconnect Ignition` |</doc>
+<shortdoc>Disconnect ignition</shortdoc>
+</kw>
+<kw name="Send Command">
+<arguments repr="cmd">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="cmd">
+<name>cmd</name>
+</arg>
+</arguments>
+<doc>Send packet to HU.
+
+parket format is Header + ``cmd`` + checksum
+In this method make packet and send packet to HU
+And save last recive packet to self.last_recv in Ignition Class
+
+- :param cmd: hex format string ex) 02 2c 01 09
+- :return: recvie packet ex) 93 87 ab cd 00 00 00 00 82 2c 02 00 65 bb
+
+Examples:
+| `Send Command` | 02 2c 01 09 |
+|   ${result}=   | `Send Command` | 02 2c 01 09 |</doc>
+<shortdoc>Send packet to HU.</shortdoc>
+</kw>
+</keywords>
+<typedocs>
+</typedocs>
+</keywordspec>

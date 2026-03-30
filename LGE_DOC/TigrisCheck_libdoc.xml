@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<keywordspec name="lge.auto.TigrisCheck" type="LIBRARY" format="ROBOT" scope="TEST" generated="2025-12-12T03:19:23+00:00" specversion="6" source="E:\robot_framework_ui\LG_RobotEZ\venv\lib\site-packages\lge\auto\TigrisCheck.cp310-win_amd64.pyd" lineno="1">
+<version/>
+<doc>Documentation for library ``lge.auto.TigrisCheck``.</doc>
+<tags>
+</tags>
+<inits>
+</inits>
+<keywords>
+<kw name="Check Tigris">
+<arguments repr="ADBID, TIGRIS_FOLDER, SUITE_NAME">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="ADBID">
+<name>ADBID</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="TIGRIS_FOLDER">
+<name>TIGRIS_FOLDER</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="SUITE_NAME">
+<name>SUITE_NAME</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+</keywords>
+<typedocs>
+</typedocs>
+</keywordspec>

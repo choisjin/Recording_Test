@@ -1,0 +1,369 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<keywordspec name="lge.auto.IVIQEBenchIOReceive" type="LIBRARY" format="ROBOT" scope="TEST" generated="2025-12-12T03:19:23+00:00" specversion="6" source="E:\robot_framework_ui\LG_RobotEZ\venv\lib\site-packages\lge\auto\IVIQEBenchIOReceive.cp310-win_amd64.pyd" lineno="1">
+<version/>
+<doc>Receive the log data using thread from QE Bench</doc>
+<tags>
+</tags>
+<inits>
+</inits>
+<keywords>
+<kw name="Get Name" source="C:\Python310\lib\threading.py" lineno="1221">
+<arguments repr="">
+</arguments>
+<doc>Return a string used for identification purposes only.
+
+This method is deprecated, use the name attribute instead.</doc>
+<shortdoc>Return a string used for identification purposes only.</shortdoc>
+</kw>
+<kw name="Is Alive" source="C:\Python310\lib\threading.py" lineno="1162">
+<arguments repr="">
+</arguments>
+<doc>Return whether the thread is alive.
+
+This method returns True just before the run() method starts until just
+after the run() method terminates. See also the module function
+enumerate().</doc>
+<shortdoc>Return whether the thread is alive.</shortdoc>
+</kw>
+<kw name="Is Daemon" source="C:\Python310\lib\threading.py" lineno="1199">
+<arguments repr="">
+</arguments>
+<doc>Return whether this thread is a daemon.
+
+This method is deprecated, use the daemon attribute instead.</doc>
+<shortdoc>Return whether this thread is a daemon.</shortdoc>
+</kw>
+<kw name="Join" source="C:\Python310\lib\threading.py" lineno="1057">
+<arguments repr="timeout=None">
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="timeout=None">
+<name>timeout</name>
+<default>None</default>
+</arg>
+</arguments>
+<doc>Wait until the thread terminates.
+
+This blocks the calling thread until the thread whose join() method is
+called terminates -- either normally or through an unhandled exception
+or until the optional timeout occurs.
+
+When the timeout argument is present and not None, it should be a
+floating point number specifying a timeout for the operation in seconds
+(or fractions thereof). As join() always returns None, you must call
+is_alive() after join() to decide whether a timeout happened -- if the
+thread is still alive, the join() call timed out.
+
+When the timeout argument is not present or None, the operation will
+block until the thread terminates.
+
+A thread can be join()ed many times.
+
+join() raises a RuntimeError if an attempt is made to join the current
+thread as that would cause a deadlock. It is also an error to join() a
+thread before it has been started and attempts to do so raises the same
+exception.</doc>
+<shortdoc>Wait until the thread terminates.</shortdoc>
+</kw>
+<kw name="Process Received Data">
+<arguments repr="arData">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="arData">
+<name>arData</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Process Response Acknowledge">
+<arguments repr="arData, nLen">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="arData">
+<name>arData</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nLen">
+<name>nLen</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Receive Exit">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Receive Resume">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Receive Suspend">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Response Audio Frequency">
+<arguments repr="arData, nLen">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="arData">
+<name>arData</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nLen">
+<name>nLen</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Response Audio Status And ADC Value">
+<arguments repr="arData, nLen">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="arData">
+<name>arData</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nLen">
+<name>nLen</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Response Audio Status And ADC Value Periodically Noti">
+<arguments repr="arData, nLen">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="arData">
+<name>arData</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nLen">
+<name>nLen</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Response Audio Status Periodically Noti">
+<arguments repr="arData, nLen">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="arData">
+<name>arData</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nLen">
+<name>nLen</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Response Auto Calibration">
+<arguments repr="arData, nLen">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="arData">
+<name>arData</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nLen">
+<name>nLen</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Response Current Periodically Noti">
+<arguments repr="arData, nLen">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="arData">
+<name>arData</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nLen">
+<name>nLen</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Response Ext Current Periodically Noti">
+<arguments repr="arData, nLen">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="arData">
+<name>arData</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nLen">
+<name>nLen</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Response File To SD Card">
+<arguments repr="arData, nLen">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="arData">
+<name>arData</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nLen">
+<name>nLen</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Response Key Out Voltage Periodically Noti">
+<arguments repr="arData, nLen">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="arData">
+<name>arData</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nLen">
+<name>nLen</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Response LCD Status">
+<arguments repr="arData, nLen">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="arData">
+<name>arData</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nLen">
+<name>nLen</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Response LCD Status And Illumi Sensor Value Periodically Noti">
+<arguments repr="arData, nLen">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="arData">
+<name>arData</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nLen">
+<name>nLen</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Response LED Status">
+<arguments repr="arData, nLen">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="arData">
+<name>arData</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nLen">
+<name>nLen</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Response Light Sensor">
+<arguments repr="arData, nLen">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="arData">
+<name>arData</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nLen">
+<name>nLen</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Response Relay Initial Status">
+<arguments repr="arData, nLen">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="arData">
+<name>arData</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nLen">
+<name>nLen</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Response Relay Set">
+<arguments repr="arData, nLen">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="arData">
+<name>arData</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nLen">
+<name>nLen</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Response System Version">
+<arguments repr="arData, nLen">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="arData">
+<name>arData</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nLen">
+<name>nLen</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Response Telltale Status">
+<arguments repr="arData, nLen">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="arData">
+<name>arData</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nLen">
+<name>nLen</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Response Voltage Periodically Noti">
+<arguments repr="arData, nLen">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="arData">
+<name>arData</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nLen">
+<name>nLen</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Run">
+<arguments repr="">
+</arguments>
+<doc>Method representing the thread's activity.
+
+You may override this method in a subclass. The standard run() method
+invokes the callable object passed to the object's constructor as the
+target argument, if any, with sequential and keyword arguments taken
+from the args and kwargs arguments, respectively.</doc>
+<shortdoc>Method representing the thread's activity.</shortdoc>
+</kw>
+<kw name="Set Daemon" source="C:\Python310\lib\threading.py" lineno="1210">
+<arguments repr="daemonic">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="daemonic">
+<name>daemonic</name>
+</arg>
+</arguments>
+<doc>Set whether this thread is a daemon.
+
+This method is deprecated, use the .daemon property instead.</doc>
+<shortdoc>Set whether this thread is a daemon.</shortdoc>
+</kw>
+<kw name="Set Name" source="C:\Python310\lib\threading.py" lineno="1232">
+<arguments repr="name">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="name">
+<name>name</name>
+</arg>
+</arguments>
+<doc>Set the name string for this thread.
+
+This method is deprecated, use the name attribute instead.</doc>
+<shortdoc>Set the name string for this thread.</shortdoc>
+</kw>
+<kw name="Start" source="C:\Python310\lib\threading.py" lineno="909">
+<arguments repr="">
+</arguments>
+<doc>Start the thread's activity.
+
+It must be called at most once per thread object. It arranges for the
+object's run() method to be invoked in a separate thread of control.
+
+This method will raise a RuntimeError if called more than once on the
+same thread object.</doc>
+<shortdoc>Start the thread's activity.</shortdoc>
+</kw>
+</keywords>
+<typedocs>
+</typedocs>
+</keywordspec>

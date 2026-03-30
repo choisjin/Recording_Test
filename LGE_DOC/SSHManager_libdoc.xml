@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<keywordspec name="lge.auto.SSHManager" type="LIBRARY" format="ROBOT" scope="TEST" generated="2025-12-12T03:19:23+00:00" specversion="6" source="E:\robot_framework_ui\LG_RobotEZ\venv\lib\site-packages\lge\auto\SSHManager.cp310-win_amd64.pyd" lineno="1">
+<version/>
+<doc>usage:
+    &gt;&gt;&gt; import SSHManager
+    &gt;&gt;&gt; ssh_manager = SSHManager()
+    &gt;&gt;&gt; ssh_manager.create_ssh_client(hostname, username, password)
+    &gt;&gt;&gt; ssh_manager.send_command("ls -al")
+    &gt;&gt;&gt; ssh_manager.send_file("/path/to/local_path", "/path/to/remote_path")
+    &gt;&gt;&gt; ssh_manager.get_file("/path/to/remote_path", "/path/to/local_path")
+    ...
+    &gt;&gt;&gt; ssh_manager.close_ssh_client()</doc>
+<tags>
+</tags>
+<inits>
+</inits>
+<keywords>
+<kw name="Connect console via ssh">
+<arguments repr="hostname, username, password, key_filePath=None">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="hostname">
+<name>hostname</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="username">
+<name>username</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="password">
+<name>password</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="key_filePath=None">
+<name>key_filePath</name>
+<default>None</default>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Disconnect console via ssh">
+<arguments repr="">
+</arguments>
+<doc>Close SSH client session</doc>
+<shortdoc>Close SSH client session</shortdoc>
+</kw>
+<kw name="Get file list in directory">
+<arguments repr="path: str, _filter: str = *">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="path: str">
+<name>path</name>
+<type name="str" typedoc="string"/>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="_filter: str = *">
+<name>_filter</name>
+<type name="str" typedoc="string"/>
+<default>*</default>
+</arg>
+</arguments>
+<returntype name="list" typedoc="list"/>
+<doc>Get file list in directory with path</doc>
+<shortdoc>Get file list in directory with path</shortdoc>
+</kw>
+<kw name="Get File via ssh">
+<arguments repr="remote_path, local_path">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="remote_path">
+<name>remote_path</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="local_path">
+<name>local_path</name>
+</arg>
+</arguments>
+<doc>Get a single file from remote path</doc>
+<shortdoc>Get a single file from remote path</shortdoc>
+</kw>
+<kw name="Send command via ssh">
+<arguments repr="command">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="command">
+<name>command</name>
+</arg>
+</arguments>
+<doc>Send a single command</doc>
+<shortdoc>Send a single command</shortdoc>
+</kw>
+<kw name="Send File via ssh">
+<arguments repr="local_path, remote_path">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="local_path">
+<name>local_path</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="remote_path">
+<name>remote_path</name>
+</arg>
+</arguments>
+<doc>Send a single file to remote path</doc>
+<shortdoc>Send a single file to remote path</shortdoc>
+</kw>
+</keywords>
+<typedocs>
+<type name="list" type="Standard">
+<doc>Strings must be Python [https://docs.python.org/library/stdtypes.html#list|list]
+literals. They are converted to actual lists using the
+[https://docs.python.org/library/ast.html#ast.literal_eval|ast.literal_eval]
+function. They can contain any values ``ast.literal_eval`` supports, including
+lists and other containers.
+
+If the type has nested types like ``list[int]``, items are converted
+to those types automatically. This in new in Robot Framework 6.0.
+
+Examples: ``['one', 'two']``, ``[('one', 1), ('two', 2)]``
+</doc>
+<accepts>
+<type>string</type>
+<type>Sequence</type>
+</accepts>
+<usages>
+<usage>Get file list in directory</usage>
+</usages>
+</type>
+<type name="string" type="Standard">
+<doc>All arguments are converted to Unicode strings.</doc>
+<accepts>
+<type>Any</type>
+</accepts>
+<usages>
+<usage>Get file list in directory</usage>
+</usages>
+</type>
+</typedocs>
+</keywordspec>

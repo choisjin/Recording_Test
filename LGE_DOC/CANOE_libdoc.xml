@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<keywordspec name="lge.auto.CANOE" type="LIBRARY" format="ROBOT" scope="TEST" generated="2025-12-12T03:19:22+00:00" specversion="6" source="E:\robot_framework_ui\LG_RobotEZ\venv\lib\site-packages\lge\auto\CANOE.cp310-win_amd64.pyd" lineno="1">
+<version/>
+<doc>API for setup/usage of Canoe COM Client interface.
+
+There are 3 ways of control CANoe.
+
+1. Case of does not open canoe application
+| #Open canoe application | 
+| `Open Simulation` | ${cfg file path} |
+| #run BAP SIM |
+| `Start Measurement` |
+| #Set Environment Variables |
+| `Set EnvVar` | P_FSG_77_0_0_13_1_0 | 1 |
+| #stop BAP SIM |
+| `Stop Measurement` |
+| #close canoe application |
+| `Close Simulation` |
+
+2. Case of open canoe application by BAP cfg and does not running BAP
+| #run BAP SIM |
+| `Start Measurement` |
+| #Set Environment Variables |
+| `Set EnvVar` | P_FSG_77_0_0_13_1_0 | 1 |
+| #stop BAP SIM |
+| `Stop Measurement` |
+
+3. Case of open canoe application by BAP cfg and running BAP
+| #Set Environment Variables |
+| `Set EnvVar` | P_FSG_77_0_0_13_1_0 | 1 |</doc>
+<tags>
+</tags>
+<inits>
+</inits>
+<keywords>
+<kw name="Close Simulation">
+<arguments repr="">
+</arguments>
+<doc>Close Simulation (cfg file) and close CANoe applicaton
+
+Examples:
+| `Close Simulation` |</doc>
+<shortdoc>Close Simulation (cfg file) and close CANoe applicaton</shortdoc>
+</kw>
+<kw name="Get EnvVar">
+<arguments repr="var">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="var">
+<name>var</name>
+</arg>
+</arguments>
+<doc>Get environment variable value
+
+argument:
+    - ``var`` : Environment variable name
+
+Examples:
+| ${result} | `Get EnvVar` | P_FSG_77_0_0_13_1_0 |</doc>
+<shortdoc>Get environment variable value</shortdoc>
+</kw>
+<kw name="Get SysVar">
+<arguments repr="ns_name, sysvar_name">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="ns_name">
+<name>ns_name</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="sysvar_name">
+<name>sysvar_name</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Open Simulation">
+<arguments repr="cfgname">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="cfgname">
+<name>cfgname</name>
+</arg>
+</arguments>
+<doc>Open Simulation (cfg file)
+
+argument:
+    - ``cfgname`` : cfg file path
+
+Examples:
+| `Open Simulation` | D:\BAP-SIM_ICAS3_all-in-one_v9.14F\BAP-SIM_ICAS3_all-in-one_CAN_10_0.cfg |</doc>
+<shortdoc>Open Simulation (cfg file)</shortdoc>
+</kw>
+<kw name="Set EnvVar">
+<arguments repr="var, value">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="var">
+<name>var</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="value">
+<name>value</name>
+</arg>
+</arguments>
+<doc>Set environment variable value
+
+argument:
+    - ``var`` : Environment variable name
+    - ``value`` : Environment variable value , type is float
+Examples:
+| `Set EnvVar` | P_FSG_77_0_0_13_1_0 | 1 |</doc>
+<shortdoc>Set environment variable value</shortdoc>
+</kw>
+<kw name="Set SysVar">
+<arguments repr="ns_name, sysvar_name, var">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="ns_name">
+<name>ns_name</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="sysvar_name">
+<name>sysvar_name</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="var">
+<name>var</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Start Measurement">
+<arguments repr="">
+</arguments>
+<doc>Start Measurement
+
+Examples:
+| `Start Measurement` |</doc>
+<shortdoc>Start Measurement</shortdoc>
+</kw>
+<kw name="Stop Measurement">
+<arguments repr="">
+</arguments>
+<doc>Stop Measurement
+
+Examples:
+| `Stop Measurement` |</doc>
+<shortdoc>Stop Measurement</shortdoc>
+</kw>
+</keywords>
+<typedocs>
+</typedocs>
+</keywordspec>

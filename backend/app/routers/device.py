@@ -487,10 +487,13 @@ async def list_modules():
 @router.get("/modules/{module_name}/functions")
 async def module_functions(module_name: str):
     """List functions of a specific lge.auto module."""
+    from ..services.module_service import _load_guides
     functions = get_module_functions(module_name)
     if not functions:
         raise HTTPException(status_code=404, detail=f"Module '{module_name}' not found or has no functions")
-    return {"module": module_name, "functions": functions}
+    guides = _load_guides()
+    mod_guide = guides.get(module_name, {})
+    return {"module": module_name, "functions": functions, "module_description": mod_guide.get("_description", "")}
 
 
 class DltViewerRequest(BaseModel):

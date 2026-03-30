@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<keywordspec name="lge.auto.MLP" type="LIBRARY" format="ROBOT" scope="TEST" generated="2025-12-12T03:19:23+00:00" specversion="6" source="E:\robot_framework_ui\LG_RobotEZ\venv\lib\site-packages\lge\auto\MLP.cp310-win_amd64.pyd" lineno="1">
+<version/>
+<doc>Library for MLP. MLP is MIB Log Protocol
+
+More detail description for MLP and serial2 aplication: http://zeus.lge.com:8060/ats/vw_rbf/-/blob/master/doc/VW_Tool_doc/Serial2_UserManual.pdf
+
+*MLP Protocol*:
+| =Protocol Name= | =IP address= | =Port= | =Supported Model= |  
+| MLP_IVI | 192.168.1.4 | 54321 | ICAS3, MIB3OI |
+| MLP_SAFE | 192.168.1.4 | 54322 | ICAS3 |
+
+MLP class has two threads for MLP_IVI and MLP_SAFE. The purpose of threads is to store mlp in real time.
+
+Threads will keep logging mlp as long as they have a socket connection.
+
+If the connection is lost, it creates a new socket connection and creates a connection until the connection is successful.
+
+*Useage*:
+
+1. Call `Set Configuration`
+    - Set ``model``
+    - Set ``mlp_ivi_file_path``
+    - Set ``mlp_safe_file_path`` (option)
+
+2. Call `Logging Start`
+
+3. Call `Logging Stop`</doc>
+<tags>
+</tags>
+<inits>
+</inits>
+<keywords>
+<kw name="Logging Start">
+<arguments repr="">
+</arguments>
+<doc>Start saving MLP Log.
+
+Examples:
+| `Set Configuration` | ICAS3EU | mlp_ivi_file_path=${Log Path}\${SUITE NAME}.mlp_ivi | mlp_safe_file_path=${Log Path}\${SUITE NAME}.mlp_safe |
+| `Logging Start` |</doc>
+<shortdoc>Start saving MLP Log.</shortdoc>
+</kw>
+<kw name="Logging Stop">
+<arguments repr="">
+</arguments>
+<doc>Stop saving MLP Log.
+
+Examples:
+| `Set Configuration` | ICAS3EU | mlp_ivi_file_path=${Log Path}\${SUITE NAME}.mlp_ivi | mlp_safe_file_path=${Log Path}\${SUITE NAME}.mlp_safe |
+| `Logging Start` |
+| `Logging Stop` |</doc>
+<shortdoc>Stop saving MLP Log.</shortdoc>
+</kw>
+<kw name="Set Configuration">
+<arguments repr="model, mlp_ivi_file_path=None, mlp_safe_file_path=None">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="model">
+<name>model</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="mlp_ivi_file_path=None">
+<name>mlp_ivi_file_path</name>
+<default>None</default>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="mlp_safe_file_path=None">
+<name>mlp_safe_file_path</name>
+<default>None</default>
+</arg>
+</arguments>
+<doc>Set model info, MLP IVI saving path, MLP SAFE saving path
+
+arguments:
+    - ``model`` : ICAS3EU or ICAS3CN or MIB3OI    (required)
+    - ``mlp_ivi_file_path`` : path of saving log  (required)
+    - ``mlp_safe_file_path`` : path of saving log (ICAS3EU or ICAS3CN only)
+
+Examples:
+| `Set Configuration` | ICAS3EU | mlp_ivi_file_path=${Log Path}\${SUITE NAME}.mlp_ivi | mlp_safe_file_path=${Log Path}\${SUITE NAME}.mlp_safe |
+| `Set Configuration` | MIB3OI | D:\git\vw_rbf\script\temp.mlp_ivi |</doc>
+<shortdoc>Set model info, MLP IVI saving path, MLP SAFE saving path</shortdoc>
+</kw>
+</keywords>
+<typedocs>
+</typedocs>
+</keywordspec>

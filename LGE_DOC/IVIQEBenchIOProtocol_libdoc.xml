@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<keywordspec name="lge.auto.IVIQEBenchIOProtocol" type="LIBRARY" format="ROBOT" scope="GLOBAL" generated="2025-12-12T03:19:23+00:00" specversion="6" source="E:\robot_framework_ui\LG_RobotEZ\venv\lib\site-packages\lge\auto\IVIQEBenchIOProtocol.cp310-win_amd64.pyd" lineno="1">
+<version/>
+<doc>Defines for QEBench Plug-in</doc>
+<tags>
+</tags>
+<inits>
+</inits>
+<keywords>
+</keywords>
+<typedocs>
+</typedocs>
+</keywordspec>

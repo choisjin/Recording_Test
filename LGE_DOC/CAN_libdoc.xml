@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<keywordspec name="lge.auto.CAN" type="LIBRARY" format="ROBOT" scope="TEST" generated="2025-12-12T03:19:22+00:00" specversion="6" source="E:\robot_framework_ui\LG_RobotEZ\venv\lib\site-packages\lge\auto\CAN.cp310-win_amd64.pyd" lineno="1">
+<version/>
+<doc>Documentation for library ``lge.auto.CAN``.</doc>
+<tags>
+</tags>
+<inits>
+</inits>
+<keywords>
+<kw name="Connect Device">
+<arguments repr="**kwargs">
+<arg kind="VAR_NAMED" required="false" repr="**kwargs">
+<name>kwargs</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Disconnect Device">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Flush Tx Buffer">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Get Device Number">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Send CAN Message">
+<arguments repr="message_id, cycle_time, can_message, bus_channel, message_type=FD">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="message_id">
+<name>message_id</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="cycle_time">
+<name>cycle_time</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="can_message">
+<name>can_message</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="bus_channel">
+<name>bus_channel</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="message_type=FD">
+<name>message_type</name>
+<default>FD</default>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Start Log Save">
+<arguments repr="logpath">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="logpath">
+<name>logpath</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Status">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Status Is Ok">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Status String">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Stop All CAN Message">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Stop Log Save">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+</keywords>
+<typedocs>
+</typedocs>
+</keywordspec>

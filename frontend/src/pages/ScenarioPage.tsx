@@ -437,8 +437,24 @@ export default function ScenarioPage() {
       message.warning(t('scenario.mergeMinWarning'));
       return;
     }
+    const trimmed = mergeName.trim();
+    if (scenarios.includes(trimmed)) {
+      Modal.confirm({
+        title: t('scenario.mergeOverwriteTitle'),
+        content: t('scenario.mergeOverwriteContent', { name: trimmed }),
+        onOk: async () => {
+          try {
+            await scenarioApi.merge(mergeTargets, trimmed);
+            message.success(t('scenario.mergeSuccess'));
+            setMergeModalVisible(false);
+            fetchScenarios();
+          } catch { message.error(t('scenario.mergeFailed')); }
+        },
+      });
+      return;
+    }
     try {
-      await scenarioApi.merge(mergeTargets, mergeName.trim());
+      await scenarioApi.merge(mergeTargets, trimmed);
       message.success(t('scenario.mergeSuccess'));
       setMergeModalVisible(false);
       fetchScenarios();
@@ -1508,7 +1524,7 @@ export default function ScenarioPage() {
             style={{ width: '100%', marginTop: 4 }}
             value={undefined}
             onChange={(v: string) => { if (v) setMergeTargets((prev) => [...prev, v]); }}
-            options={scenarios.map((n) => ({ label: n, value: n }))}
+            options={scenarios.filter((n) => !mergeTargets.includes(n)).map((n) => ({ label: n, value: n }))}
           />
         </div>
         <Divider />

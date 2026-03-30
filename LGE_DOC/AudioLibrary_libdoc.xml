@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<keywordspec name="lge.auto.AudioLibrary" type="LIBRARY" format="ROBOT" scope="TEST" generated="2025-12-12T03:19:22+00:00" specversion="6" source="E:\robot_framework_ui\LG_RobotEZ\venv\lib\site-packages\lge\auto\AudioLibrary.cp310-win_amd64.pyd" lineno="1">
+<version/>
+<doc>The `AudioLibrary` Class can check if there is muted or not.</doc>
+<tags>
+</tags>
+<inits>
+</inits>
+<keywords>
+<kw name="Close">
+<arguments repr="">
+</arguments>
+<doc>Close
+Terminating AudioLibrary Class
+
+Examples:
+| `Close` |</doc>
+<shortdoc>Close Terminating AudioLibrary Class</shortdoc>
+</kw>
+<kw name="Get Max Value">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Get Min Max Local Maxima">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="IsMute">
+<arguments repr="">
+</arguments>
+<doc>Use case : Music, Radio
+Don't use : Single Tone, White Noise
+
+If max(Signal Amplitude)/min(Noise Amplitude) ratio is under 25dB, it is muted and return value is "TRUE".
+
+"dB scale" vs "scalar scale"
+30db: 31.6, 25dB: 17.8, 21dB: 11.2, 19dB: 8.9, 17dB: 7.1, 15dB : 5.6 , 13dB: 4.5, 11dB: 3.5, 9dB: 2.8, 7dB: 2.2, 5dB: 1.8
+
+Examples:
+| `IsMute` |</doc>
+<shortdoc>Use case : Music, Radio Don't use : Single Tone, White Noise</shortdoc>
+</kw>
+<kw name="Select Channels">
+<arguments repr="audio_device_s=pulse">
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="audio_device_s=pulse">
+<name>audio_device_s</name>
+<default>pulse</default>
+</arg>
+</arguments>
+<doc>Select Channels
+
+argument:
+    - ``audio_device_s`` : String, A part of Audio Device Name  ex)USB PnP pulse ...
+
+Examples:
+| `Select Channels` | audio_device_s="USB" |</doc>
+<shortdoc>Select Channels</shortdoc>
+</kw>
+<kw name="Start Recording">
+<arguments repr="record_seconds=5, rate=44100, chunk=1024, format=8">
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="record_seconds=5">
+<name>record_seconds</name>
+<default>5</default>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="rate=44100">
+<name>rate</name>
+<default>44100</default>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="chunk=1024">
+<name>chunk</name>
+<default>1024</default>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="format=8">
+<name>format</name>
+<default>8</default>
+</arg>
+</arguments>
+<doc>Start Recording
+
+argument:
+    - ``record_seconds`` : Recording Duration [sec]  ex) 0.5 is 500 ms
+
+Examples:
+| `Start Recording` | record_seconds=0.5 |</doc>
+<shortdoc>Start Recording</shortdoc>
+</kw>
+<kw name="Stop Recording">
+<arguments repr="">
+</arguments>
+<doc>Stop Recording
+
+Examples:
+| `Stop Recording` |</doc>
+<shortdoc>Stop Recording</shortdoc>
+</kw>
+</keywords>
+<typedocs>
+</typedocs>
+</keywordspec>

@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<keywordspec name="lge.auto.SoundProcessing" type="LIBRARY" format="ROBOT" scope="TEST" generated="2025-12-12T05:51:27+00:00" specversion="6" source="E:\robot_framework_ui\LG_RobotEZ\venv\Lib\site-packages\lge\auto\SoundProcessing.cp310-win_amd64.pyd" lineno="1">
+<version/>
+<doc>The SoundCompare class is class of sound.
+
+- save audio data in PC's MIC
+- Text to Speech
+- Speech Recognition
+- single tone sine wave compare</doc>
+<tags>
+</tags>
+<inits>
+</inits>
+<keywords>
+<kw name="Detect String in Audio">
+<arguments repr="file_path">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="file_path">
+<name>file_path</name>
+</arg>
+</arguments>
+<doc>Detect sting in audio file.
+Recognize speech using Google Speech Recognition.
+
+:argument
+    - ``file_path`` : the path of audio file   (required)
+
+:return
+    - If you find some string in an audio file, return string
+    - Else retunr -1
+
+Examples:
+| ${str}=   | `Detect String in Audio` | file_path=${Log Path}\${SUITE NAME}.wav |</doc>
+<shortdoc>Detect sting in audio file. Recognize speech using Google Speech Recognition.</shortdoc>
+</kw>
+<kw name="Get Amp">
+<arguments repr="wav_path">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="wav_path">
+<name>wav_path</name>
+</arg>
+</arguments>
+<doc>Return average amplitude of sound file
+:argument
+    - ``wav_path`` : path of wav file
+:return
+    - value of Amplitude
+Examples:
+| ${amp}=  | `Get Amp` | test.wav |</doc>
+<shortdoc>Return average amplitude of sound file :argument     - ``wav_path`` : path of wav file :return     - value of Amplitude Examples: | ${amp}=  | `Get Amp` | test.wav |</shortdoc>
+</kw>
+<kw name="Get Hz">
+<arguments repr="wav_path">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="wav_path">
+<name>wav_path</name>
+</arg>
+</arguments>
+<doc>Return input single tone sine wave frequency
+:argument
+    - ``wav_path`` : path of wav file
+:return
+    - value of Hz
+Examples:
+| ${hz}=  | `Get Hz` | test.wav |</doc>
+<shortdoc>Return input single tone sine wave frequency :argument     - ``wav_path`` : path of wav file :return     - value of Hz Examples: | ${hz}=  | `Get Hz` | test.wav |</shortdoc>
+</kw>
+<kw name="Play wav file">
+<arguments repr="file_path, filename">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="file_path">
+<name>file_path</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="filename">
+<name>filename</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Record Audio By Read">
+<arguments repr="file_path, timeout=5">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="file_path">
+<name>file_path</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="timeout=5">
+<name>timeout</name>
+<default>5</default>
+</arg>
+</arguments>
+<doc>Save PC mic line raw data to audio file
+
+:argument
+    - ``file_path`` : the path of audio file   (required)
+    - ``timeout`` : duration of saving time. default value is 5
+
+Examples:
+| `Save Audio File` | file_path=${Log Path}\${SUITE NAME}.wav | timeout=10 |
+| `Save Audio File` | file_path=${Log Path}\${SUITE NAME}.wav |</doc>
+<shortdoc>Save PC mic line raw data to audio file</shortdoc>
+</kw>
+<kw name="Save Audio File">
+<arguments repr="file_path, timeout=5">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="file_path">
+<name>file_path</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="timeout=5">
+<name>timeout</name>
+<default>5</default>
+</arg>
+</arguments>
+<doc>Save PC mic line raw data to audio file
+
+:argument
+    - ``file_path`` : the path of audio file   (required)
+    - ``timeout`` : duration of saving time. default value is 5
+
+Examples:
+| `Save Audio File` | file_path=${Log Path}\${SUITE NAME}.wav | timeout=10 |
+| `Save Audio File` | file_path=${Log Path}\${SUITE NAME}.wav |</doc>
+<shortdoc>Save PC mic line raw data to audio file</shortdoc>
+</kw>
+<kw name="Search Frequency in Audio">
+<arguments repr="path_acture_wav, path_expect_wav">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="path_acture_wav">
+<name>path_acture_wav</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="path_expect_wav">
+<name>path_expect_wav</name>
+</arg>
+</arguments>
+<doc>Get the frequency in pre-recorded sound file and check if it exits in the record evironment sound file
+:argument
+    - ``path_acture_wav`` : Record evironment sound file.
+    - ``path_expect_wav`` : Pre-recorded sound file
+:return
+    - string Match or No_match
+
+Examples:
+| ${result}=  | `Search Frequency in Audio` | data_test/test.wav | | data_expect/test_1.wav|</doc>
+<shortdoc>Get the frequency in pre-recorded sound file and check if it exits in the record evironment sound file :argument     - ``path_acture_wav`` : Record evironment sound file.     - ``path_expect_wav`` : Pre-recorded sound file :return     - string Match or No_match</shortdoc>
+</kw>
+<kw name="Text to Speech">
+<arguments repr="str_talk, void_gender=female, rate=150, volume=1.0, language=English">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="str_talk">
+<name>str_talk</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="void_gender=female">
+<name>void_gender</name>
+<default>female</default>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="rate=150">
+<name>rate</name>
+<default>150</default>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="volume=1.0">
+<name>volume</name>
+<default>1.0</default>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="language=English">
+<name>language</name>
+<default>English</default>
+</arg>
+</arguments>
+<doc>Text to Speech. Use pyttsx3.
+
+:argument
+    - ``str_talk`` : string that you want to make a speech   (required)
+    - ``rate`` : speaking speed
+    - ``volume`` : volume
+
+Examples:
+| `Text to Speech` | Hello ID |</doc>
+<shortdoc>Text to Speech. Use pyttsx3.</shortdoc>
+</kw>
+</keywords>
+<typedocs>
+</typedocs>
+</keywordspec>

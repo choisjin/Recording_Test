@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<keywordspec name="lge.auto.BENCH" type="LIBRARY" format="ROBOT" scope="TEST" generated="2025-12-12T03:19:22+00:00" specversion="6" source="E:\robot_framework_ui\LG_RobotEZ\venv\lib\site-packages\lge\auto\BENCH.cp310-win_amd64.pyd" lineno="1">
+<version/>
+<doc>Documentation for library ``lge.auto.BENCH``.</doc>
+<tags>
+</tags>
+<inits>
+</inits>
+<keywords>
+<kw name="Check Current">
+<arguments repr="min_current, max_current, meas_time">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="min_current">
+<name>min_current</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="max_current">
+<name>max_current</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="meas_time">
+<name>meas_time</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Close Socket">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Connect Socket">
+<arguments repr="host">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="host">
+<name>host</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Transmit Data">
+<arguments repr="data=Test">
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="data=Test">
+<name>data</name>
+<default>Test</default>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+</keywords>
+<typedocs>
+</typedocs>
+</keywordspec>

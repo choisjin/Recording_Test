@@ -1,0 +1,1148 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<keywordspec name="lge.auto.IVIQEBenchIOClient" type="LIBRARY" format="ROBOT" scope="TEST" generated="2025-12-12T03:19:23+00:00" specversion="6" source="E:\robot_framework_ui\LG_RobotEZ\venv\lib\site-packages\lge\auto\IVIQEBenchIOClient.cp310-win_amd64.pyd" lineno="1">
+<version/>
+<doc>APIs for QE Bench Client</doc>
+<tags>
+</tags>
+<inits>
+</inits>
+<keywords>
+<kw name="Acc Control">
+<arguments repr="nStatus, bench_info">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="bench_info">
+<name>bench_info</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="ACC On Off">
+<arguments repr="state, bench_info=OLD_BENCH">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="state">
+<name>state</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="bench_info=OLD_BENCH">
+<name>bench_info</name>
+<default>OLD_BENCH</default>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="ACC Single Pulse">
+<arguments repr="nVoltage, nDelay, nCnt">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nVoltage">
+<name>nVoltage</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nDelay">
+<name>nDelay</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nCnt">
+<name>nCnt</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Acc Voltage">
+<arguments repr="nState">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nState">
+<name>nState</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Airbag Crash Detection">
+<arguments repr="model, nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="model">
+<name>model</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Alarm Detect Control">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="ALT Control">
+<arguments repr="status">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="status">
+<name>status</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Amp Control">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Announces Auto Test Start Or End">
+<arguments repr="bisStart">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="bisStart">
+<name>bisStart</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="ANT Control">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Autolight Control">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="AUX Control">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="AVNSD Detect">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="BAT Switch SE Tto PC">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="BAT Switch US Bto PC">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Battery Control">
+<arguments repr="nStatus, bench_info">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="bench_info">
+<name>bench_info</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Battery Minus Control">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Battery On Off">
+<arguments repr="nState, bench_info=OLD_BENCH">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nState">
+<name>nState</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="bench_info=OLD_BENCH">
+<name>bench_info</name>
+<default>OLD_BENCH</default>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Battery Single Pulse">
+<arguments repr="nVoltage, nDelay, nCnt">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nVoltage">
+<name>nVoltage</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nDelay">
+<name>nDelay</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nCnt">
+<name>nCnt</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Battery Voltage">
+<arguments repr="nState">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nState">
+<name>nState</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Calc CRC 16">
+<arguments repr="listData, nLen">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="listData">
+<name>listData</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nLen">
+<name>nLen</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Calibration Start Or Stop">
+<arguments repr="sensitivity, threshold">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="sensitivity">
+<name>sensitivity</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="threshold">
+<name>threshold</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Call Relay Func">
+<arguments repr="func_index, data">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="func_index">
+<name>func_index</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="data">
+<name>data</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="CD Control">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Check Current">
+<arguments repr="nMin, nMax">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nMin">
+<name>nMin</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nMax">
+<name>nMax</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Check EXT Current List">
+<arguments repr="nMin, nMax">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nMin">
+<name>nMin</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nMax">
+<name>nMax</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Check Key Out Voltage">
+<arguments repr="nMin, nMax">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nMin">
+<name>nMin</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nMax">
+<name>nMax</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Check LCD">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Check LCD Dimming">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Check Led TCU 4">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Check Light Sensor Result">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Check Sound">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Check Telltale">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Check Voltage">
+<arguments repr="nMin, nMax">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nMin">
+<name>nMin</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nMax">
+<name>nMax</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Clear EXT Current List">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Clear Key Out Voltage List">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Com Enable Control">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Connect">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Detent">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Disconnect">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Door Control">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Door Un Lock Control">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Ext Check Current">
+<arguments repr="fMin, fMax">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="fMin">
+<name>fMin</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="fMax">
+<name>fMax</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="EXT CURRENT">
+<arguments repr="min_current, max_current, check_delay">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="min_current">
+<name>min_current</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="max_current">
+<name>max_current</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="check_delay">
+<name>check_delay</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="File To SD">
+<arguments repr="userFilePath, sdCardFileName">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="userFilePath">
+<name>userFilePath</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="sdCardFileName">
+<name>sdCardFileName</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="FUEL Control">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Get EXT Current">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Get LCD Value">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Get LED Pulse">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Get Light Sensor Data">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="IGN 3 Control">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="IGN Control">
+<arguments repr="status">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="status">
+<name>status</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="ILL Control">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="ILL Control Minus">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Init Sound Update">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="IPOD Control">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Keyless Booting Control">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="LED Pulse">
+<arguments repr="nPeriod">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nPeriod">
+<name>nPeriod</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Led TCU 4">
+<arguments repr="nPeriod">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nPeriod">
+<name>nPeriod</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="MIC Control">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="N Position Control">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="P Positon Control">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Parking Control">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Play Sound">
+<arguments repr="strFileName, nFileNameLen">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="strFileName">
+<name>strFileName</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nFileNameLen">
+<name>nFileNameLen</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Rc In Control">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Read">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Receive Start">
+<arguments repr="bStart, queue=None">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="bStart">
+<name>bStart</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="queue=None">
+<name>queue</name>
+<default>None</default>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Relay 10">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Relay 11">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Relay 12">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Relay 13">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Relay 14">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Relay Initialization">
+<arguments repr="**init_value">
+<arg kind="VAR_NAMED" required="false" repr="**init_value">
+<name>init_value</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Request Audio Frequency">
+<arguments repr="bStart, nMs">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="bStart">
+<name>bStart</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nMs">
+<name>nMs</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Request Audio Status And ADC Value">
+<arguments repr="nMs">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nMs">
+<name>nMs</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Request Audio Status And ADC Value Periodically Noti">
+<arguments repr="bStart, nPeriodMs">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="bStart">
+<name>bStart</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nPeriodMs">
+<name>nPeriodMs</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Request Audio Status Periodically Noti">
+<arguments repr="bStart, nPeriodMs">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="bStart">
+<name>bStart</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nPeriodMs">
+<name>nPeriodMs</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Request Current Periodically Noti">
+<arguments repr="bStart, nPeriodMs">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="bStart">
+<name>bStart</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nPeriodMs">
+<name>nPeriodMs</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Request Ext Current Periodically Noti">
+<arguments repr="bStart, nPeriodMs">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="bStart">
+<name>bStart</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nPeriodMs">
+<name>nPeriodMs</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Request Key Out Voltage Periodically Noti">
+<arguments repr="bStart, nPeriodMs">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="bStart">
+<name>bStart</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nPeriodMs">
+<name>nPeriodMs</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Request LCD Illumi Sensor Value">
+<arguments repr="bStart, nMs">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="bStart">
+<name>bStart</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nMs">
+<name>nMs</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Request LCD Status">
+<arguments repr="bStart, nMs">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="bStart">
+<name>bStart</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nMs">
+<name>nMs</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Request LCD Status And Illumi Sensor Value Periodically Noti">
+<arguments repr="bStart, nPeriodMs">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="bStart">
+<name>bStart</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nPeriodMs">
+<name>nPeriodMs</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Request Light Sensor Control">
+<arguments repr="nStatus, pbData, twData">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="pbData">
+<name>pbData</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="twData">
+<name>twData</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Request Relay Initial Status">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Request Relay Set">
+<arguments repr="nCmdList">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nCmdList">
+<name>nCmdList</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Request Sound File Info">
+<arguments repr="nSoundType">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nSoundType">
+<name>nSoundType</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Request Sound File List">
+<arguments repr="nSoundType">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nSoundType">
+<name>nSoundType</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Request System Version">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Request Voltage Periodically Noti">
+<arguments repr="bStart, nPeriodMs">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="bStart">
+<name>bStart</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nPeriodMs">
+<name>nPeriodMs</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Reverse Active High">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Reverse Active Low">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Reverse Control">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Rf Btn Press">
+<arguments repr="btnNum, delay">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="btnNum">
+<name>btnNum</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="delay">
+<name>delay</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Send">
+<arguments repr="listData, nLen">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="listData">
+<name>listData</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nLen">
+<name>nLen</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Set LCD Value">
+<arguments repr="nLCDValue">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nLCDValue">
+<name>nLCDValue</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Set Relay Config">
+<arguments repr="nRelayCfg">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nRelayCfg">
+<name>nRelayCfg</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Set System Time">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Shield Box Control">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Speed Control">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="System Reset">
+<arguments repr="nMs=1000">
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="nMs=1000">
+<name>nMs</name>
+<default>1000</default>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Telltale">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Telltale LED">
+<arguments repr="nPeriod">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nPeriod">
+<name>nPeriod</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Ten Button">
+<arguments repr="nButton, nDelay">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nButton">
+<name>nButton</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nDelay">
+<name>nDelay</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Three Button">
+<arguments repr="nButton, nDelay">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nButton">
+<name>nButton</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nDelay">
+<name>nDelay</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="ThreeButton Front">
+<arguments repr="nButton, nDelay">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nButton">
+<name>nButton</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nDelay">
+<name>nDelay</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="ThreeButton Rear">
+<arguments repr="nButton, nDelay">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nButton">
+<name>nButton</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nDelay">
+<name>nDelay</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Timer Compare">
+<arguments repr="Time_Init, Time_Check">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="Time_Init">
+<name>Time_Init</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="Time_Check">
+<name>Time_Check</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Trans Detect Control">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Two Button">
+<arguments repr="nButton, nDelay">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nButton">
+<name>nButton</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nDelay">
+<name>nDelay</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="USB 1 Control">
+<arguments repr="Status">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="Status">
+<name>Status</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="USB Front Switch Control">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="USB Rear Switch Control">
+<arguments repr="nStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStatus">
+<name>nStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="USB Selector 10 CH Switch 5 CH">
+<arguments repr="nType, nPortNum, nOnOffStatus">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nType">
+<name>nType</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nPortNum">
+<name>nPortNum</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nOnOffStatus">
+<name>nOnOffStatus</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="USB Selector Control">
+<arguments repr="nOnPortNum">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nOnPortNum">
+<name>nOnPortNum</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Wait Sound Update">
+<arguments repr="timeout">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="timeout">
+<name>timeout</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Write Raw String">
+<arguments repr="string">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="string">
+<name>string</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+</keywords>
+<typedocs>
+</typedocs>
+</keywordspec>

@@ -1,0 +1,311 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<keywordspec name="lge.auto.KeysightPower" type="LIBRARY" format="ROBOT" scope="TEST" generated="2025-12-12T03:19:23+00:00" specversion="6" source="E:\robot_framework_ui\LG_RobotEZ\venv\lib\site-packages\lge\auto\KeysightPower.cp310-win_amd64.pyd" lineno="1">
+<version/>
+<doc>Documentation for library ``lge.auto.KeysightPower``.</doc>
+<tags>
+</tags>
+<inits>
+</inits>
+<keywords>
+<kw name="AddToSeq Exp">
+<arguments repr="step, vStart, vEnd, tStart, tWave, tConst, repeat">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="step">
+<name>step</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="vStart">
+<name>vStart</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="vEnd">
+<name>vEnd</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="tStart">
+<name>tStart</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="tWave">
+<name>tWave</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="tConst">
+<name>tConst</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="repeat">
+<name>repeat</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="AddToSeq Puls">
+<arguments repr="step, vStart, vTop, tStart, tTop, tEnd, repeat">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="step">
+<name>step</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="vStart">
+<name>vStart</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="vTop">
+<name>vTop</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="tStart">
+<name>tStart</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="tTop">
+<name>tTop</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="tEnd">
+<name>tEnd</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="repeat">
+<name>repeat</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="AddToSeq Ramp">
+<arguments repr="step, vStart, vEnd, tStart, tRamp, tEnd, repeat">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="step">
+<name>step</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="vStart">
+<name>vStart</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="vEnd">
+<name>vEnd</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="tStart">
+<name>tStart</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="tRamp">
+<name>tRamp</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="tEnd">
+<name>tEnd</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="repeat">
+<name>repeat</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="AddToSeq Sine">
+<arguments repr="step, ampl, offs, freq, repeat">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="step">
+<name>step</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="ampl">
+<name>ampl</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="offs">
+<name>offs</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="freq">
+<name>freq</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="repeat">
+<name>repeat</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="AddToSeq Stair">
+<arguments repr="step, vStart, vEnd, tStart, tStep, tEnd, nStep, repeat">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="step">
+<name>step</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="vStart">
+<name>vStart</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="vEnd">
+<name>vEnd</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="tStart">
+<name>tStart</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="tStep">
+<name>tStep</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="tEnd">
+<name>tEnd</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="nStep">
+<name>nStep</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="repeat">
+<name>repeat</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="AddToSeq Step">
+<arguments repr="step, vStart, vEnd, tStart, tEnd">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="step">
+<name>step</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="vStart">
+<name>vStart</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="vEnd">
+<name>vEnd</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="tStart">
+<name>tStart</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="tEnd">
+<name>tEnd</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="AddToSeq Trap">
+<arguments repr="step, vStart, vTop, tStart, tRise, tTop, tFall, tEnd, repeat">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="step">
+<name>step</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="vStart">
+<name>vStart</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="vTop">
+<name>vTop</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="tStart">
+<name>tStart</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="tRise">
+<name>tRise</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="tTop">
+<name>tTop</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="tFall">
+<name>tFall</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="tEnd">
+<name>tEnd</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="repeat">
+<name>repeat</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Check Meas Current Less Than">
+<arguments repr="Threshold">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="Threshold">
+<name>Threshold</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Close Power Supply">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="connect Power Supply">
+<arguments repr="eth=None">
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="eth=None">
+<name>eth</name>
+<default>None</default>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Get Current Status">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Get Port">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Is Arb Seq Still Run">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="PowerSupply Ask">
+<arguments repr="cmd">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="cmd">
+<name>cmd</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Run Seq Arb">
+<arguments repr="repeat">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="repeat">
+<name>repeat</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Set Current Range Auto">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Set Interface">
+<arguments repr="inf_sel">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="inf_sel">
+<name>inf_sel</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Set Max Voltage">
+<arguments repr="volt">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="volt">
+<name>volt</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Set Seq Arb">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Set Voltage">
+<arguments repr="volt">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="volt">
+<name>volt</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="turn Off Output">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="turn On Output">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+</keywords>
+<typedocs>
+</typedocs>
+</keywordspec>

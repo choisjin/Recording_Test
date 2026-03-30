@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<keywordspec name="lge.auto.PCANClient" type="LIBRARY" format="ROBOT" scope="TEST" generated="2025-12-12T03:19:23+00:00" specversion="6" source="E:\robot_framework_ui\LG_RobotEZ\venv\lib\site-packages\lge\auto\PCANClient.cp310-win_amd64.pyd" lineno="1">
+<version/>
+<doc>Documentation for library ``lge.auto.PCANClient``.</doc>
+<tags>
+</tags>
+<inits>
+</inits>
+<keywords>
+<kw name="Send CAN Message">
+<arguments repr="channel, msg_id, type, length, cycle_time, msg_data">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="channel">
+<name>channel</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="msg_id">
+<name>msg_id</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="type">
+<name>type</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="length">
+<name>length</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="cycle_time">
+<name>cycle_time</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="msg_data">
+<name>msg_data</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Stop ALL CAN Message">
+<arguments repr="">
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Stop Can Message by ID">
+<arguments repr="channel, msg_id">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="channel">
+<name>channel</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="msg_id">
+<name>msg_id</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+</keywords>
+<typedocs>
+</typedocs>
+</keywordspec>

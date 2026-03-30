@@ -1,0 +1,264 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<keywordspec name="lge.auto.ImageProcessing" type="LIBRARY" format="ROBOT" scope="TEST" generated="2025-12-12T03:19:23+00:00" specversion="6" source="E:\robot_framework_ui\LG_RobotEZ\venv\lib\site-packages\lge\auto\ImageProcessing.cp310-win_amd64.pyd" lineno="1">
+<version/>
+<doc>Documentation for library ``lge.auto.ImageProcessing``.</doc>
+<tags>
+</tags>
+<inits>
+</inits>
+<keywords>
+<kw name="Calculate Coordinate">
+<arguments repr="boxes, height, string">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="boxes">
+<name>boxes</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="height">
+<name>height</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="string">
+<name>string</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Calculate Sentence">
+<arguments repr="boxes, height, string, image">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="boxes">
+<name>boxes</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="height">
+<name>height</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="string">
+<name>string</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="image">
+<name>image</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Check image valid">
+<arguments repr="image">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="image">
+<name>image</name>
+</arg>
+</arguments>
+<doc>Check if the captured image can read by opencv or not (valid or not)
+
+argument:
+    - ``image`` : image(jpg) path to check valid
+
+return:
+    - ``result`` : true or false. type is boolean</doc>
+<shortdoc>Check if the captured image can read by opencv or not (valid or not)</shortdoc>
+</kw>
+<kw name="Compare Images">
+<arguments repr="origin, expected">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="origin">
+<name>origin</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="expected">
+<name>expected</name>
+</arg>
+</arguments>
+<doc>Compare two image files
+
+argument:
+    - ``origin`` : image(jpg) path captured (required)
+    - ``expected`` : image(jpg) path expected (required)
+    
+return:
+    - ``result`` : True or False. type is boolean                
+    - ``matching persentage`` : matching persentage. type is str(float)
+    
+Examples:
+| ${result} | ${percent} | `Compare Images` | ${IMG PATH}\captured.jpg | ${IMG PATH}\expected.jpg |</doc>
+<shortdoc>Compare two image files</shortdoc>
+</kw>
+<kw name="Convert IMG to String">
+<arguments repr="img_path, language=eng, psm=6">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="img_path">
+<name>img_path</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="language=eng">
+<name>language</name>
+<default>eng</default>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="psm=6">
+<name>psm</name>
+<default>6</default>
+</arg>
+</arguments>
+<doc>Optical Character Recognition
+
+Author :  quang2.pham
+
+pre condition
+    - 1. Install Tesseract-OCR : https://github.com/UB-Mannheim/tesseract/wiki to C:\Program Files\Tesseract-OCR
+    - 2. If you want other language what excluded english,  please refernce https://tesseract-ocr.github.io/tessdoc/Data-Files page.
+
+argument:
+    - ``img_path`` : image(jpg) path
+    - ``languge`` : language to detect, default value is english.
+
+return:
+    - string to result of tesseract
+
+Examples:
+| ${result_str}= | `Convert IMG to String` | ${IMG PATH}\captured.jpg |
+| ${result_str}= | `Convert IMG to String` | ${IMG PATH}\captured.jpg | eng |</doc>
+<shortdoc>Optical Character Recognition</shortdoc>
+</kw>
+<kw name="Cut image">
+<arguments repr="origin, cut_img, x1, y1, x2, y2">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="origin">
+<name>origin</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="cut_img">
+<name>cut_img</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="x1">
+<name>x1</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="y1">
+<name>y1</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="x2">
+<name>x2</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="y2">
+<name>y2</name>
+</arg>
+</arguments>
+<doc>Cut image
+
+argument:
+    - ``origin`` : image(jpg) path
+    - ``cut_img`` : cuted image(jpg) path
+    - ``x1`` : left-up X coordinate
+    - ``y1`` : left-up Y coordinate
+    - ``x2`` : righit-bottom X coordinate
+    - ``y2`` : righit-bottom Y coordinate
+    
+return:
+    - ``cut_img`` : cuted image file path
+   
+Examples:
+| ${cut_img} | `Cut image` | ${IMG PATH}\captured.jpg | ${IMG PATH}\cut_img.jpg | 600 | 300  | 700  | 500 |</doc>
+<shortdoc>Cut image</shortdoc>
+</kw>
+<kw name="Find image on screen">
+<arguments repr="origin, expected, threshold=99">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="origin">
+<name>origin</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="expected">
+<name>expected</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="threshold=99">
+<name>threshold</name>
+<default>99</default>
+</arg>
+</arguments>
+<doc>Captures the specified screen, checks if there is the reference image inside the captured image. If the reference image has been found, the function returns its coordinates.
+
+argument:
+    - ``origin`` : image(jpg) path to compare (required)
+    - ``expected`` : image(jpg) path you want to find (required)
+    - ``threshold`` : threshold of matching persentage (type is int 0 ~ 100 )
+    
+return:
+    - ``result`` : pass or fail. type is string
+    - ``x coordinates`` : If pass, return the x-coordinate of the center point. type is str(int) else, return str(-1)                                 
+    - ``y coordinates`` : If pass, return the y-coordinate of the center point. type is str(int) else, return str(-1)                  
+    - ``matching persentage`` : matching persentage. type is str(float)
+    
+Examples:
+| ${result} | ${X} | ${Y} | ${percent} | `Find image on screen` | ${IMG PATH}\captured.jpg | ${IMG PATH}\expected.jpg | 
+| ${result} | ${X} | ${Y} | ${percent} | `Find image on screen` | ${IMG PATH}\captured.jpg | ${IMG PATH}\expected.jpg | threshold=90 |</doc>
+<shortdoc>Captures the specified screen, checks if there is the reference image inside the captured image. If the reference image has been found, the function returns its coordinates.</shortdoc>
+</kw>
+<kw name="Find sentence on screen">
+<arguments repr="img_path, string, output_suffix=, language=eng, rect_size=15, full_screen_check=True">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="img_path">
+<name>img_path</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="string">
+<name>string</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="output_suffix=">
+<name>output_suffix</name>
+<default/>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="language=eng">
+<name>language</name>
+<default>eng</default>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="rect_size=15">
+<name>rect_size</name>
+<default>15</default>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="full_screen_check=True">
+<name>full_screen_check</name>
+<default>True</default>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Find string on screen">
+<arguments repr="img_path, string, language=eng, rect_size=15, full_screen_check=True">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="img_path">
+<name>img_path</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="string">
+<name>string</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="language=eng">
+<name>language</name>
+<default>eng</default>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="rect_size=15">
+<name>rect_size</name>
+<default>15</default>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="full_screen_check=True">
+<name>full_screen_check</name>
+<default>True</default>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Is Similar">
+<arguments repr="text1, text2, tolerance=0">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="text1">
+<name>text1</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="text2">
+<name>text2</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="false" repr="tolerance=0">
+<name>tolerance</name>
+<default>0</default>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+<kw name="Preprocess Image">
+<arguments repr="image">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="image">
+<name>image</name>
+</arg>
+</arguments>
+<doc/>
+<shortdoc/>
+</kw>
+</keywords>
+<typedocs>
+</typedocs>
+</keywordspec>
