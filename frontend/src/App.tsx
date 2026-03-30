@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { App as AntdApp, Button, ConfigProvider, Layout, Menu, Modal, Spin, Tooltip, message, theme } from 'antd';
 import {
   BarChartOutlined,
+  AppstoreOutlined,
   BookOutlined,
   CloudSyncOutlined,
   DatabaseOutlined,
@@ -233,6 +234,15 @@ function AppContent() {
                 onClick={() => window.open(settings.language === 'en' ? '/docs/user-guide-en.html' : '/docs/user-guide.html', '_blank')}
               >
                 {!siderCollapsed && t('server.guide')}
+              </Button>
+            </Tooltip>
+            <Tooltip title={t('server.moduleGuide')} placement="right">
+              <Button
+                block
+                icon={<AppstoreOutlined />}
+                onClick={() => window.open('/docs/module-guide.html', '_blank')}
+              >
+                {!siderCollapsed && t('server.moduleGuide')}
               </Button>
             </Tooltip>
             <Tooltip title="Results 폴더 열기" placement="right">

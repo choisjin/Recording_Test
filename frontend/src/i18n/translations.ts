@@ -53,6 +53,7 @@ const translations = {
     'server.restartConfirm': '서버를 재시작하시겠습니까?',
     'server.restarting': '서버 재시작 중...',
     'server.guide': '사용자 가이드',
+    'server.moduleGuide': '모듈 가이드',
 
     // === Nav ===
     'nav.device': '디바이스',
@@ -638,6 +639,7 @@ const translations = {
     'server.restartConfirm': 'Restart the server?',
     'server.restarting': 'Server restarting...',
     'server.guide': 'User Guide',
+    'server.moduleGuide': 'Module Guide',
 
     // === Nav ===
     'nav.device': 'Devices',
