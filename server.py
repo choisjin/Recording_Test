@@ -418,6 +418,12 @@ class ServerManagerApp:
                     except Exception:
                         pass
 
+            # Git이 PATH에 없을 수 있으므로 기본 설치 경로 추가
+            _git_paths = [r"C:\Program Files\Git\cmd", r"C:\Program Files (x86)\Git\cmd"]
+            for _gp in _git_paths:
+                if os.path.isdir(_gp) and _gp not in os.environ.get("PATH", ""):
+                    os.environ["PATH"] = _gp + ";" + os.environ.get("PATH", "")
+
             # git 명령 사용 가능 여부 먼저 확인
             git_available = _run_cmd(["git", "--version"], timeout=5)[0] == 0
             if git_available:

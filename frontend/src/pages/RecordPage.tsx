@@ -1731,10 +1731,14 @@ export default function RecordPage() {
 
   const createNewWithName = () => {
     promptScenarioName(t('record.createNewScenario'), '', async (name) => {
-      clearEditing();
-      setScenarioName(name);
-      // 콤보 목록에 새 이름 추가
+      setOriginalScenarioName('');
+      setDescription('');
+      setSteps([]);
+      savedStepsRef.current = '[]';
+      setEditingExisting(false);
+      // 콤보 목록에 새 이름 추가 후 선택
       setSavedScenarios(prev => prev.includes(name) ? prev : [...prev, name]);
+      setScenarioName(name);
     });
   };
 
