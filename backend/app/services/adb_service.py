@@ -158,6 +158,10 @@ class ADBService:
         width, height = (int(res_match.group(1)), int(res_match.group(2))) if res_match else (0, 0)
         # 디스플레이 목록 조회
         displays = await self.list_displays(s)
+        # 멀티 디스플레이: 첫 번째 디스플레이의 해상도를 기본 해상도로 사용
+        if displays and displays[0].get("width") and displays[0].get("height"):
+            width = displays[0]["width"]
+            height = displays[0]["height"]
         return {
             "serial": s,
             "model": model.strip(),
