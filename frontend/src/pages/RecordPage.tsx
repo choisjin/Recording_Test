@@ -1733,6 +1733,8 @@ export default function RecordPage() {
     promptScenarioName(t('record.createNewScenario'), '', async (name) => {
       clearEditing();
       setScenarioName(name);
+      // 콤보 목록에 새 이름 추가
+      setSavedScenarios(prev => prev.includes(name) ? prev : [...prev, name]);
     });
   };
 
@@ -2546,7 +2548,7 @@ export default function RecordPage() {
                     placeholder={t('record.loadScenario')}
                     style={{ flex: 1, minWidth: 140 }}
                     onChange={loadScenario}
-                    value={editingExisting ? scenarioName : undefined}
+                    value={scenarioName || undefined}
                     onOpenChange={(open) => { if (open) fetchSavedScenarios(); }}
                   >
                     {savedScenarios.map(n => (
