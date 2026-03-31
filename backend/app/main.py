@@ -634,6 +634,7 @@ async def websocket_playback(websocket: WebSocket):
                         started_at=datetime.now(timezone.utc).isoformat(),
                     )
 
+                    last_completed_iteration = 0
                     for iteration in range(1, repeat + 1):
                         playback_service._monitor_state["current_cycle"] = iteration
                         if repeat > 1:
@@ -676,20 +677,38 @@ async def websocket_playback(websocket: WebSocket):
 
                         if playback_service._should_stop:
                             break
+                        last_completed_iteration = iteration
 
-                    # Determine overall status and save once
-                    result.finished_at = datetime.now(timezone.utc).isoformat()
-                    if result.failed_steps > 0 or result.error_steps > 0:
-                        result.status = "fail"
-                    elif result.warning_steps > 0:
-                        result.status = "warning"
-                    else:
-                        result.status = "pass"
-                    result_path = await playback_service._save_result(result)
-
+                    # 중단 처리
                     if playback_service._should_stop:
-                        await websocket.send_json({"type": "playback_stopped", "result_filename": Path(result_path).name})
+                        if repeat == 1 or last_completed_iteration == 0:
+                            # 1사이클 또는 첫 회차도 미완료: 결과 삭제
+                            await websocket.send_json({"type": "playback_stopped", "result_filename": ""})
+                        else:
+                            # 여러 회 반복: 완료된 회차까지만 결과 보존
+                            total_steps_per_cycle = len(scen.steps)
+                            keep_count = last_completed_iteration * total_steps_per_cycle
+                            result.step_results = result.step_results[:keep_count]
+                            # 카운터 재계산
+                            result.passed_steps = sum(1 for sr in result.step_results if sr.status == "pass")
+                            result.failed_steps = sum(1 for sr in result.step_results if sr.status == "fail")
+                            result.warning_steps = sum(1 for sr in result.step_results if sr.status == "warning")
+                            result.error_steps = sum(1 for sr in result.step_results if sr.status not in ("pass", "fail", "warning"))
+                            result.total_repeat = last_completed_iteration
+                            result.finished_at = datetime.now(timezone.utc).isoformat()
+                            result.status = "fail" if (result.failed_steps > 0 or result.error_steps > 0) else ("warning" if result.warning_steps > 0 else "pass")
+                            result_path = await playback_service._save_result(result)
+                            await websocket.send_json({"type": "playback_stopped", "result_filename": Path(result_path).name})
                     else:
+                        # 정상 완료
+                        result.finished_at = datetime.now(timezone.utc).isoformat()
+                        if result.failed_steps > 0 or result.error_steps > 0:
+                            result.status = "fail"
+                        elif result.warning_steps > 0:
+                            result.status = "warning"
+                        else:
+                            result.status = "pass"
+                        result_path = await playback_service._save_result(result)
                         await websocket.send_json({"type": "playback_complete", "result_filename": Path(result_path).name})
                 except Exception as e:
                     await websocket.send_json({"type": "error", "message": str(e)})

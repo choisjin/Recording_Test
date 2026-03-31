@@ -492,8 +492,16 @@ def _execute_sync(module_name: str, function_name: str, args: dict,
             # Try to cast to the expected type based on annotation
             if p.annotation is not inspect.Parameter.empty:
                 try:
-                    if p.annotation in (int, float, bool, str):
-                        val = p.annotation(val)
+                    ann = p.annotation
+                    # from __future__ import annotations 환경에서는 문자열로 평가됨
+                    type_map = {"int": int, "float": float, "bool": bool, "str": str}
+                    if isinstance(ann, str):
+                        ann = type_map.get(ann, ann)
+                    if ann in (int, float, bool, str):
+                        if ann is bool and isinstance(val, str):
+                            val = val.lower() not in ("0", "false", "no", "")
+                        else:
+                            val = ann(val)
                 except (ValueError, TypeError):
                     pass
             call_args[pname] = val

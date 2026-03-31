@@ -793,8 +793,26 @@ export default function ScenarioPage() {
       } else if (msg.type === 'playback_stopped') {
         if (liveDurationRef.current) { clearInterval(liveDurationRef.current); liveDurationRef.current = null; }
         setPlaying(false); setPaused(false); setCurrentStepId(null);
-        message.info(t('scenario.playStopped')); ws.close();
-        if (doAutoRecord && webcamRecordingActiveRef.current) { webcam.stopRecordingAuto(); webcamRecordingActiveRef.current = false; webcamBlobsRef.current = []; }
+        const resultFilename = msg.result_filename || '';
+        if (resultFilename) {
+          message.info(t('scenario.playStoppedPartial'));
+          // 완료된 회차까지 웹캠 녹화 저장
+          if (doAutoRecord && webcamRecordingActiveRef.current) {
+            webcam.stopRecordingAuto().then(async () => {
+              webcamRecordingActiveRef.current = false;
+              if (webcamBlobsRef.current.length > 0) {
+                for (const item of webcamBlobsRef.current) {
+                  try { await resultsApi.uploadRecording(item.blob, resultFilename, item.repeatIndex); } catch { /* ignore */ }
+                }
+              }
+              webcamBlobsRef.current = [];
+            });
+          }
+        } else {
+          message.info(t('scenario.playStopped'));
+          if (doAutoRecord && webcamRecordingActiveRef.current) { webcam.stopRecordingAuto(); webcamRecordingActiveRef.current = false; webcamBlobsRef.current = []; }
+        }
+        ws.close();
       } else if (msg.type === 'playback_paused') {
         setPaused(true);
         if (liveDurationRef.current) { clearInterval(liveDurationRef.current); liveDurationRef.current = null; }
@@ -969,8 +987,25 @@ export default function ScenarioPage() {
       } else if (msg.type === 'playback_stopped') {
         if (liveDurationRef.current) { clearInterval(liveDurationRef.current); liveDurationRef.current = null; }
         setPlaying(false); setPaused(false); setPlayingGroupName(null); setCurrentStepId(null);
-        message.info(t('scenario.playStopped')); ws.close();
-        if (doAutoRecord && webcamRecordingActiveRef.current) { webcam.stopRecordingAuto(); webcamRecordingActiveRef.current = false; webcamBlobsRef.current = []; }
+        const resultFilename = msg.result_filename || '';
+        if (resultFilename) {
+          message.info(t('scenario.playStoppedPartial'));
+          if (doAutoRecord && webcamRecordingActiveRef.current) {
+            webcam.stopRecordingAuto().then(async () => {
+              webcamRecordingActiveRef.current = false;
+              if (webcamBlobsRef.current.length > 0) {
+                for (const item of webcamBlobsRef.current) {
+                  try { await resultsApi.uploadRecording(item.blob, resultFilename, item.repeatIndex); } catch { /* ignore */ }
+                }
+              }
+              webcamBlobsRef.current = [];
+            });
+          }
+        } else {
+          message.info(t('scenario.playStopped'));
+          if (doAutoRecord && webcamRecordingActiveRef.current) { webcam.stopRecordingAuto(); webcamRecordingActiveRef.current = false; webcamBlobsRef.current = []; }
+        }
+        ws.close();
       } else if (msg.type === 'playback_paused') {
         setPaused(true);
         if (liveDurationRef.current) { clearInterval(liveDurationRef.current); liveDurationRef.current = null; }
