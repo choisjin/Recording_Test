@@ -44,6 +44,9 @@ interface DeviceContextType {
   // 화면 스트리밍 일시정지/재개
   pauseScreenStream: () => void;
   resumeScreenStream: () => void;
+  // 디바이스 폴링 일시정지/재개
+  pauseDevicePolling: () => void;
+  resumeDevicePolling: () => void;
 }
 
 const DeviceContext = createContext<DeviceContextType | null>(null);
@@ -133,11 +136,28 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
     return res.data.result;
   };
 
+  const devicePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startDevicePolling = useCallback(() => {
+    if (devicePollRef.current) return;
+    devicePollRef.current = setInterval(fetchDevices, 10000);
+  }, []);
+
+  const pauseDevicePolling = useCallback(() => {
+    if (devicePollRef.current) {
+      clearInterval(devicePollRef.current);
+      devicePollRef.current = null;
+    }
+  }, []);
+
+  const resumeDevicePolling = useCallback(() => {
+    startDevicePolling();
+  }, [startDevicePolling]);
+
   useEffect(() => {
     fetchDevices();
-    // 디바이스 상태 주기 갱신 (자동 재연결 포함) — 10초 간격
-    const devicePollId = setInterval(fetchDevices, 10000);
-    return () => clearInterval(devicePollId);
+    startDevicePolling();
+    return () => pauseDevicePolling();
   }, []);
 
   // --- 디바이스 변경 시 screenType 자동 설정 ---
@@ -439,6 +459,8 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
       streamFps,
       pauseScreenStream,
       resumeScreenStream,
+      pauseDevicePolling,
+      resumeDevicePolling,
     }}>
       {children}
     </DeviceContext.Provider>

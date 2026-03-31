@@ -33,7 +33,7 @@ interface SerialPort {
 
 export default function DevicePage() {
   const { t } = useTranslation();
-  const { primaryDevices, auxiliaryDevices, loading, fetchDevices, connectDevice, disconnectDevice, updateDeviceLists } = useDevice();
+  const { primaryDevices, auxiliaryDevices, loading, fetchDevices, connectDevice, disconnectDevice, updateDeviceLists, pauseDevicePolling, resumeDevicePolling } = useDevice();
 
   // ADB reconnect state
   const [reconnecting, setReconnecting] = useState(false);
@@ -228,7 +228,13 @@ export default function DevicePage() {
     }
   };
 
+  const closeAddModal = () => {
+    closeAddModal();
+    resumeDevicePolling();
+  };
+
   const openAddModal = (category: 'primary' | 'auxiliary') => {
+    pauseDevicePolling();
     setModalCategory(category);
     setConnectType(category === 'primary' ? 'adb' : 'serial');
     setSelectedModule(undefined);
@@ -281,7 +287,7 @@ export default function DevicePage() {
         message.success(result);
         setConnectAddress('');
         setVcMac('');
-        setModalOpen(false);
+        closeAddModal();
       } catch (e: any) {
         message.error(e.response?.data?.detail || t('device.connectFailed'));
       }
@@ -312,7 +318,7 @@ export default function DevicePage() {
       message.success(result);
       setConnectAddress('');
       setExtraFieldValues({});
-      setModalOpen(false);
+      closeAddModal();
     } catch (e: any) {
       message.error(e.response?.data?.detail || t('device.connectFailed'));
     }
@@ -325,7 +331,7 @@ export default function DevicePage() {
       const scanModuleConnType = getModuleConnectType(scanSelectedModule);
       const result = await connectDevice('serial', port, baudrate, description, modalCategory, scanSelectedModule, scanModuleConnType);
       message.success(result);
-      setModalOpen(false);
+      closeAddModal();
     } catch (e: any) {
       message.error(e.response?.data?.detail || t('device.connectFailed'));
     }
@@ -337,10 +343,10 @@ export default function DevicePage() {
     try {
       const result = await connectDevice('adb', serial);
       message.success(result);
-      setModalOpen(false);
+      closeAddModal();
     } catch (e: any) {
       await fetchDevices();
-      setModalOpen(false);
+      closeAddModal();
     }
     setConnecting(false);
   };
@@ -350,7 +356,7 @@ export default function DevicePage() {
     try {
       const result = await connectDevice('hkmc6th', ip, undefined, '', 'primary', undefined, undefined, undefined, '', port);
       message.success(result);
-      setModalOpen(false);
+      closeAddModal();
     } catch (e: any) {
       message.error(e.response?.data?.detail || t('device.connectFailed'));
     }
@@ -364,7 +370,7 @@ export default function DevicePage() {
       const extra = { udp_port: port };
       const result = await connectDevice('module', ip, undefined, '', 'auxiliary', moduleName, 'socket', extra);
       message.success(result);
-      setModalOpen(false);
+      closeAddModal();
     } catch (e: any) {
       message.error(e.response?.data?.detail || t('device.connectFailed'));
     }
@@ -648,7 +654,7 @@ export default function DevicePage() {
       <Modal
         title={t('device.addModalTitle', { category: modalCategory === 'primary' ? t('device.primary') : t('device.auxiliary') })}
         open={modalOpen}
-        onCancel={() => setModalOpen(false)}
+        onCancel={() => closeAddModal()}
         width={700}
         footer={null}
       >
@@ -862,7 +868,7 @@ export default function DevicePage() {
                                   try {
                                     await connectDevice('module', d.ip, undefined, `DLT_${d.ip}`, 'auxiliary', 'DLTViewer', 'socket', { port: String(d.port) });
                                     message.success(`DLT ${d.ip}:${d.port} ${t('common.connect')}`);
-                                    setModalOpen(false);
+                                    closeAddModal();
                                   } catch (e: any) {
                                     message.error(e.response?.data?.detail || 'Connect failed');
                                   }
