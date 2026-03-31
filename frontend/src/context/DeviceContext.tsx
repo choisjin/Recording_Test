@@ -41,6 +41,9 @@ interface DeviceContextType {
   sendControl: (msg: object) => void;
   // 실시간 FPS
   streamFps: number;
+  // 화면 스트리밍 일시정지/재개
+  pauseScreenStream: () => void;
+  resumeScreenStream: () => void;
 }
 
 const DeviceContext = createContext<DeviceContextType | null>(null);
@@ -400,6 +403,17 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screenshotDeviceId, screenType]);
 
+  const pauseScreenStream = useCallback(() => {
+    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+    closeWs();
+  }, [closeWs]);
+
+  const resumeScreenStream = useCallback(() => {
+    const deviceId = screenshotDeviceIdRef.current;
+    if (!deviceId) return;
+    startWsStream(deviceId, screenTypeRef.current);
+  }, [startWsStream]);
+
   return (
     <DeviceContext.Provider value={{
       primaryDevices,
@@ -423,6 +437,8 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
       videoRef,
       sendControl,
       streamFps,
+      pauseScreenStream,
+      resumeScreenStream,
     }}>
       {children}
     </DeviceContext.Provider>

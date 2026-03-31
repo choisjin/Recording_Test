@@ -10,12 +10,23 @@ interface ResultSummary {
   scenario_name: string;
   status: string;
   total_steps: number;
+  total_repeat: number;
   passed_steps: number;
   failed_steps: number;
   warning_steps: number;
   error_steps: number;
   started_at: string;
   finished_at: string;
+}
+
+// 같은 타임스탬프를 공유하는 결과 묶음 (그룹 재생 또는 반복 실행)
+interface ResultGroup {
+  key: string; // 타임스탬프
+  timestamp: string;
+  items: ResultSummary[];
+  status: string; // 전체 상태 (하나라도 fail이면 fail)
+  scenario_names: string;
+  total_repeat: number;
 }
 
 interface MatchLocation {
@@ -450,15 +461,23 @@ export default function ResultsPage() {
 
   const deleteSelected = () => {
     if (selectedRowKeys.length === 0) return;
+    // 선택된 그룹의 모든 파일명 수집
+    const filesToDelete: string[] = [];
+    for (const key of selectedRowKeys) {
+      const group = groupedResults.find(g => g.key === key);
+      if (group) {
+        filesToDelete.push(...group.items.map(i => i.filename));
+      }
+    }
     Modal.confirm({
       title: t('results.deleteTitle'),
-      content: `${selectedRowKeys.length}${t('results.deleteSelectedConfirm')}`,
+      content: `${selectedRowKeys.length}${t('results.deleteSelectedConfirm')} (${filesToDelete.length} files)`,
       okText: t('common.delete'),
       okType: 'danger',
       cancelText: t('common.cancel'),
       onOk: async () => {
-        for (const key of selectedRowKeys) {
-          try { await resultsApi.delete(key as string); } catch { /* skip */ }
+        for (const fn of filesToDelete) {
+          try { await resultsApi.delete(fn); } catch { /* skip */ }
         }
         message.success(t('common.deleteComplete'));
         setSelectedRowKeys([]);
@@ -475,70 +494,120 @@ export default function ResultsPage() {
   // 시나리오 이름 목록 (필터 드롭다운용)
   const scenarioNames = [...new Set(results.map(r => r.scenario_name))].sort();
 
-  const columns = [
+  // 파일명에서 타임스탬프 추출: ScenarioName_YYYYMMDD_HHMMSS.json → YYYYMMDD_HHMMSS
+  const extractTimestamp = (filename: string): string => {
+    const m = filename.match(/(\d{8}_\d{6})\.json$/);
+    return m ? m[1] : filename;
+  };
+
+  // 같은 타임스탬프의 결과를 묶음으로 그룹화
+  const groupedResults: ResultGroup[] = React.useMemo(() => {
+    const map = new Map<string, ResultSummary[]>();
+    for (const r of filteredResults) {
+      const ts = extractTimestamp(r.filename);
+      if (!map.has(ts)) map.set(ts, []);
+      map.get(ts)!.push(r);
+    }
+    return Array.from(map.entries()).map(([ts, items]) => {
+      const hasAnyFail = items.some(i => i.status === 'fail' || i.status === 'error');
+      const hasWarning = items.some(i => i.status === 'warning');
+      const names = [...new Set(items.map(i => i.scenario_name))];
+      return {
+        key: ts,
+        timestamp: items[0].started_at,
+        items,
+        status: hasAnyFail ? 'fail' : hasWarning ? 'warning' : 'pass',
+        scenario_names: names.join(', '),
+        total_repeat: Math.max(...items.map(i => i.total_repeat || 1)),
+      };
+    });
+  }, [filteredResults]);
+
+  const groupColumns = [
     {
       title: t('results.execTime'),
       key: 'time',
       width: 200,
-      render: (_: any, r: ResultSummary) => <span style={{ whiteSpace: 'nowrap' }}>{formatTime(r.started_at)}</span>,
-      sorter: (a: ResultSummary, b: ResultSummary) => (a.started_at || '').localeCompare(b.started_at || ''),
+      render: (_: any, g: ResultGroup) => <span style={{ whiteSpace: 'nowrap' }}>{formatTime(g.timestamp)}</span>,
+      sorter: (a: ResultGroup, b: ResultGroup) => (a.timestamp || '').localeCompare(b.timestamp || ''),
       defaultSortOrder: 'descend' as const,
     },
     {
       title: t('results.scenario'),
-      dataIndex: 'scenario_name',
       key: 'name',
-      sorter: (a: ResultSummary, b: ResultSummary) => a.scenario_name.localeCompare(b.scenario_name),
-      filters: scenarioNames.map(n => ({ text: n, value: n })),
-      onFilter: (value: any, record: ResultSummary) => record.scenario_name === value,
+      render: (_: any, g: ResultGroup) => (
+        <Space size={4} wrap>
+          <span>{g.scenario_names}</span>
+          {g.items.length > 1 && <Tag color="blue">{g.items.length} {t('results.scenarios')}</Tag>}
+          {g.total_repeat > 1 && <Tag color="purple">{g.total_repeat}x</Tag>}
+        </Space>
+      ),
+      sorter: (a: ResultGroup, b: ResultGroup) => a.scenario_names.localeCompare(b.scenario_names),
     },
     {
       title: t('common.status'),
-      dataIndex: 'status',
       key: 'status',
       width: 90,
+      render: (_: any, g: ResultGroup) => <Tag color={statusColor(g.status)}>{g.status.toUpperCase()}</Tag>,
       filters: [
         { text: 'PASS', value: 'pass' },
         { text: 'FAIL', value: 'fail' },
         { text: 'WARNING', value: 'warning' },
-        { text: 'ERROR', value: 'error' },
       ],
-      onFilter: (value: any, record: ResultSummary) => record.status === value,
-      render: (s: string) => <Tag color={statusColor(s)}>{s.toUpperCase()}</Tag>,
+      onFilter: (value: any, g: ResultGroup) => g.status === value,
     },
     {
       title: t('common.result'),
       key: 'counts',
       width: 180,
-      render: (_: any, r: ResultSummary) => (
-        <Space size={4}>
-          <Tag color="green">{r.passed_steps}P</Tag>
-          <Tag color="red">{r.failed_steps}F</Tag>
-          {r.warning_steps > 0 && <Tag color="orange">{r.warning_steps}W</Tag>}
-          {r.error_steps > 0 && <Tag color="volcano">{r.error_steps}E</Tag>}
-          <span style={{ color: '#888' }}>/ {r.total_steps}</span>
-        </Space>
-      ),
+      render: (_: any, g: ResultGroup) => {
+        const p = g.items.reduce((s, i) => s + i.passed_steps, 0);
+        const f = g.items.reduce((s, i) => s + i.failed_steps, 0);
+        const w = g.items.reduce((s, i) => s + i.warning_steps, 0);
+        const e = g.items.reduce((s, i) => s + i.error_steps, 0);
+        const total = g.items.reduce((s, i) => s + i.total_steps, 0);
+        return (
+          <Space size={4}>
+            <Tag color="green">{p}P</Tag>
+            <Tag color="red">{f}F</Tag>
+            {w > 0 && <Tag color="orange">{w}W</Tag>}
+            {e > 0 && <Tag color="volcano">{e}E</Tag>}
+            <span style={{ color: '#888' }}>/ {total}</span>
+          </Space>
+        );
+      },
     },
     {
       title: t('common.actions'),
       key: 'actions',
-      width: 200,
-      render: (_: any, record: ResultSummary) => (
-        <Space size={4}>
-          <Tooltip title={t('results.viewDetail')}>
-            <Button size="small" icon={<EyeOutlined />} onClick={() => viewDetail(record.filename)}>
-              {t('common.details')}
-            </Button>
-          </Tooltip>
-          <Tooltip title={t('results.exportBundle')}>
-            <Button size="small" icon={<DownloadOutlined />} onClick={() => exportBundle(record.filename)} />
-          </Tooltip>
-          <Tooltip title={t('common.delete')}>
-            <Button size="small" danger icon={<DeleteOutlined />} onClick={() => deleteResult(record.filename)} />
-          </Tooltip>
-        </Space>
-      ),
+      width: 160,
+      render: (_: any, g: ResultGroup) => {
+        if (g.items.length === 1) {
+          const r = g.items[0];
+          return (
+            <Space size={4}>
+              <Button size="small" icon={<EyeOutlined />} onClick={() => viewDetail(r.filename)}>{t('common.details')}</Button>
+              <Button size="small" icon={<DownloadOutlined />} onClick={() => exportBundle(r.filename)} />
+              <Button size="small" danger icon={<DeleteOutlined />} onClick={() => deleteResult(r.filename)} />
+            </Space>
+          );
+        }
+        return (
+          <Space size={4}>
+            <Button size="small" danger icon={<DeleteOutlined />} onClick={() => {
+              Modal.confirm({
+                title: t('results.deleteTitle'),
+                onOk: async () => {
+                  for (const item of g.items) {
+                    try { await resultsApi.delete(item.filename); } catch { /* ignore */ }
+                  }
+                  fetchResults();
+                },
+              });
+            }} />
+          </Space>
+        );
+      },
     },
   ];
 
@@ -685,14 +754,35 @@ export default function ResultsPage() {
         }
       >
         <Table
-          columns={columns}
-          dataSource={filteredResults}
-          rowKey="filename"
+          columns={groupColumns as any}
+          dataSource={groupedResults}
+          rowKey="key"
           size="small"
           pagination={{ pageSize: 15, showSizeChanger: true }}
           rowSelection={{
             selectedRowKeys,
             onChange: (keys) => setSelectedRowKeys(keys),
+          }}
+          expandable={{
+            expandedRowRender: (g: ResultGroup) => g.items.length > 1 ? (
+              <div style={{ padding: '4px 0' }}>
+                {g.items.map((r, idx) => (
+                  <div key={r.filename} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', borderBottom: idx < g.items.length - 1 ? '1px solid #f0f0f0' : undefined }}>
+                    <Tag style={{ margin: 0 }}>{idx + 1}</Tag>
+                    <span style={{ flex: 1 }}>{r.scenario_name}</span>
+                    <Tag color={statusColor(r.status)}>{r.status.toUpperCase()}</Tag>
+                    <Space size={4}>
+                      <Tag color="green">{r.passed_steps}P</Tag>
+                      <Tag color="red">{r.failed_steps}F</Tag>
+                      {r.total_repeat > 1 && <Tag color="purple">{r.total_repeat}x</Tag>}
+                    </Space>
+                    <Button size="small" icon={<EyeOutlined />} onClick={() => viewDetail(r.filename)}>{t('common.details')}</Button>
+                    <Button size="small" icon={<DownloadOutlined />} onClick={() => exportBundle(r.filename)} />
+                  </div>
+                ))}
+              </div>
+            ) : null,
+            rowExpandable: (g: ResultGroup) => g.items.length > 1,
           }}
         />
       </Card>

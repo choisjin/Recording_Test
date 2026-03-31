@@ -9,6 +9,7 @@ import {
   ExportOutlined, ImportOutlined, CheckCircleOutlined, WarningOutlined,
 } from '@ant-design/icons';
 import { scenarioApi, deviceApi, resultsApi } from '../services/api';
+import { useDevice } from '../context/DeviceContext';
 import { useSettings } from '../context/SettingsContext';
 import { useTranslation } from '../i18n';
 import { useWebcamContext } from '../context/WebcamContext';
@@ -141,6 +142,7 @@ export default function ScenarioPage() {
   const { t, lang } = useTranslation();
   const { settings, saveExportZipToDir } = useSettings();
   const { webcam, ensureWebcamOpen } = useWebcamContext();
+  const { pauseScreenStream, resumeScreenStream } = useDevice();
   const [scenarios, setScenarios] = useState<string[]>([]);
   const [selectedScenario, setSelectedScenario] = useState<ScenarioDetail | null>(null);
   const [detailVisible, setDetailVisible] = useState(false);
@@ -669,6 +671,7 @@ export default function ScenarioPage() {
   };
 
   const startPlayback = async (name: string, deviceMap: Record<string, string>) => {
+    pauseScreenStream();
     const repeat = getRepeatCount(name);
     // 웹캠 자동녹화: 웹캠 열기 + 연결 확인
     let doAutoRecord = false;
@@ -753,7 +756,7 @@ export default function ScenarioPage() {
         });
       } else if (msg.type === 'playback_complete') {
         if (liveDurationRef.current) { clearInterval(liveDurationRef.current); liveDurationRef.current = null; }
-        setPlaying(false); setPaused(false); setCurrentStepId(null);
+        setPlaying(false); setPaused(false); setCurrentStepId(null); resumeScreenStream();
         message.success(repeat > 1 ? t('scenario.playCompleteRepeat', { count: String(repeat) }) : t('scenario.playComplete'));
         ws.close();
         // 백그라운드 CMD 결과 폴링 시작
@@ -787,12 +790,12 @@ export default function ScenarioPage() {
         ws.close();
       } else if (msg.type === 'error') {
         if (liveDurationRef.current) { clearInterval(liveDurationRef.current); liveDurationRef.current = null; }
-        setPlaying(false); setCurrentStepId(null);
+        setPlaying(false); setCurrentStepId(null); resumeScreenStream();
         message.error(msg.message); ws.close();
         if (doAutoRecord && webcamRecordingActiveRef.current) { webcam.stopRecordingAuto(); webcamRecordingActiveRef.current = false; webcamBlobsRef.current = []; }
       } else if (msg.type === 'playback_stopped') {
         if (liveDurationRef.current) { clearInterval(liveDurationRef.current); liveDurationRef.current = null; }
-        setPlaying(false); setPaused(false); setCurrentStepId(null);
+        setPlaying(false); setPaused(false); setCurrentStepId(null); resumeScreenStream();
         const resultFilename = msg.result_filename || '';
         if (resultFilename) {
           message.info(t('scenario.playStoppedPartial'));
@@ -864,6 +867,7 @@ export default function ScenarioPage() {
   };
 
   const startGroupPlayback = async (gName: string, deviceMap: Record<string, string>) => {
+    pauseScreenStream();
     const members = groups[gName] || [];
     const repeat = getRepeatCount(gName);
     // 웹캠 자동녹화: 웹캠 열기 + 연결 확인
@@ -948,7 +952,7 @@ export default function ScenarioPage() {
         });
       } else if (msg.type === 'playback_complete') {
         if (liveDurationRef.current) { clearInterval(liveDurationRef.current); liveDurationRef.current = null; }
-        setPlaying(false); setPaused(false); setPlayingGroupName(null); setCurrentStepId(null);
+        setPlaying(false); setPaused(false); setPlayingGroupName(null); setCurrentStepId(null); resumeScreenStream();
         message.success(t('scenario.playComplete'));
         ws.close();
         // 백그라운드 CMD 결과 폴링 시작
@@ -981,12 +985,12 @@ export default function ScenarioPage() {
         ws.close();
       } else if (msg.type === 'error') {
         if (liveDurationRef.current) { clearInterval(liveDurationRef.current); liveDurationRef.current = null; }
-        setPlaying(false); setPlayingGroupName(null); setCurrentStepId(null);
+        setPlaying(false); setPlayingGroupName(null); setCurrentStepId(null); resumeScreenStream();
         message.error(msg.message); ws.close();
         if (doAutoRecord && webcamRecordingActiveRef.current) { webcam.stopRecordingAuto(); webcamRecordingActiveRef.current = false; webcamBlobsRef.current = []; }
       } else if (msg.type === 'playback_stopped') {
         if (liveDurationRef.current) { clearInterval(liveDurationRef.current); liveDurationRef.current = null; }
-        setPlaying(false); setPaused(false); setPlayingGroupName(null); setCurrentStepId(null);
+        setPlaying(false); setPaused(false); setPlayingGroupName(null); setCurrentStepId(null); resumeScreenStream();
         const resultFilename = msg.result_filename || '';
         if (resultFilename) {
           message.info(t('scenario.playStoppedPartial'));

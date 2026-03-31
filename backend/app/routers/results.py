@@ -49,6 +49,7 @@ async def list_results():
             "scenario_name": data.get("scenario_name", ""),
             "status": data.get("status", ""),
             "total_steps": data.get("total_steps", 0),
+            "total_repeat": data.get("total_repeat", 1),
             "passed_steps": data.get("passed_steps", 0),
             "failed_steps": data.get("failed_steps", 0),
             "warning_steps": data.get("warning_steps", 0),

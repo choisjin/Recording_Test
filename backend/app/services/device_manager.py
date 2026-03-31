@@ -728,7 +728,7 @@ class DeviceManager:
                         await self.adb.connect_device(adb_serial)
                     else:
                         # USB ADB — adb reconnect (USB 재인식 유도)
-                        await self.adb._run(f"reconnect {adb_serial}")
+                        await self.adb._run(f"-s {adb_serial} reconnect")
 
                     # 재연결 후 상태 확인
                     check = await self.adb.list_devices()
