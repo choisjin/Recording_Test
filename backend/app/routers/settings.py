@@ -414,7 +414,7 @@ async def git_log(limit: int = 100):
         r = subprocess.run(
             ["git", "log", f"-{limit}", "--pretty=format:%H||%h||%an||%ae||%aI||%s"],
             cwd=str(_PROJECT_ROOT),
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, timeout=10, encoding="utf-8", errors="replace",
         )
         if r.returncode != 0:
             raise HTTPException(status_code=500, detail=f"git log failed: {r.stderr.strip()}")
@@ -438,13 +438,13 @@ async def git_log(limit: int = 100):
         # 현재 브랜치, 태그 정보
         branch_r = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            cwd=str(_PROJECT_ROOT), capture_output=True, text=True, timeout=5,
+            cwd=str(_PROJECT_ROOT), capture_output=True, timeout=5, encoding="utf-8", errors="replace",
         )
         branch = branch_r.stdout.strip() if branch_r.returncode == 0 else "unknown"
 
         tag_r = subprocess.run(
             ["git", "tag", "--sort=-creatordate"],
-            cwd=str(_PROJECT_ROOT), capture_output=True, text=True, timeout=5,
+            cwd=str(_PROJECT_ROOT), capture_output=True, timeout=5, encoding="utf-8", errors="replace",
         )
         tags = [t for t in tag_r.stdout.strip().split("\n") if t] if tag_r.returncode == 0 else []
 
