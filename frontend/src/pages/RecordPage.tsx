@@ -1998,7 +1998,10 @@ export default function RecordPage() {
                       <Tag style={{ margin: 0, cursor: 'pointer', fontSize: 11 }}>{threshPct}%</Tag>
                     </Popover>
                     <CloseCircleOutlined
-                      onClick={() => setSteps((prev) => prev.map((st, i) => i === index ? { ...st, expected_image: null, roi: null, exclude_rois: [], expected_images: [] } : st))}
+                      onClick={() => {
+                        if (scenarioName) scenarioApi.removeExpectedImage(scenarioName, index).catch(() => {});
+                        setSteps((prev) => prev.map((st, i) => i === index ? { ...st, expected_image: null, roi: null, exclude_rois: [], expected_images: [] } : st));
+                      }}
                       style={{ fontSize: 14, color: '#ff4d4f', cursor: 'pointer' }}
                     />
                   </span>

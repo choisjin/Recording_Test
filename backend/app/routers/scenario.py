@@ -327,6 +327,42 @@ async def capture_expected_image(req: CaptureExpectedImageRequest):
     return {"status": "ok", "filename": filename, "step_id": step.id}
 
 
+class RemoveExpectedImageRequest(BaseModel):
+    scenario_name: str
+    step_index: int
+
+
+@router.post("/record/remove-expected-image")
+async def remove_expected_image(req: RemoveExpectedImageRequest):
+    """Remove expected image and crop files from a step."""
+    scenario = await _resolve_scenario(req.scenario_name)
+    if req.step_index < 0 or req.step_index >= len(scenario.steps):
+        raise HTTPException(status_code=400, detail=f"Invalid step index: {req.step_index}")
+
+    step = scenario.steps[req.step_index]
+    save_dir = SCREENSHOTS_DIR / scenario.name
+
+    # 기대이미지 파일 삭제
+    if step.expected_image:
+        f = save_dir / step.expected_image
+        if f.exists():
+            f.unlink(missing_ok=True)
+        step.expected_image = None
+
+    # multi_crop 이미지 파일 삭제
+    for ci in step.expected_images:
+        if ci.image:
+            f = save_dir / ci.image
+            if f.exists():
+                f.unlink(missing_ok=True)
+    step.expected_images.clear()
+    step.exclude_rois.clear()
+    step.roi = None
+
+    await recording_svc.save_scenario(scenario)
+    return {"status": "ok"}
+
+
 class RemoveCropRequest(BaseModel):
     scenario_name: str
     step_index: int
