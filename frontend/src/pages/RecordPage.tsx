@@ -1078,7 +1078,7 @@ export default function RecordPage() {
       const crop = { x: rx, y: ry, width: rw, height: rh };
       try {
         // 현재 화면으로 기대이미지 갱신 (모달 스냅샷과 좌표 일치 보장)
-        const capRes = await scenarioApi.captureExpectedImage(scenarioName, multiCropEditingIndex, screenshotDeviceId, undefined, undefined, undefined, (isScreenHkmc || hasMultiDisplay) ? screenType : undefined);
+        const capRes = await scenarioApi.captureExpectedImage(scenarioName, multiCropEditingIndex, screenshotDeviceId, undefined, undefined, undefined, (isScreenHkmc || hasMultiDisplay) ? screenType : undefined, true);
         setSteps(prev => prev.map((s, i) => i === multiCropEditingIndex ? { ...s, expected_image: capRes.data.filename, screenshot_device_id: screenshotDeviceId, _imageVer: Date.now(), roi: null, exclude_rois: [] } : s));
         const replaceIdx = multiCropSelectedIdx ?? undefined;
         const res = await scenarioApi.cropFromExpected(scenarioName, multiCropEditingIndex, crop, '', replaceIdx);

@@ -226,6 +226,7 @@ class CaptureExpectedImageRequest(BaseModel):
     crop: Optional[dict] = None  # {x, y, width, height} in device pixels
     compare_mode: Optional[str] = None  # "multi_crop" to append
     crop_label: str = ""
+    preserve_crops: bool = False  # True이면 기존 multi_crop 이미지 보존
 
 
 @router.post("/record/capture-expected-image")
@@ -304,14 +305,15 @@ async def capture_expected_image(req: CaptureExpectedImageRequest):
             old_file = save_dir / step.expected_image
             if old_file.exists():
                 old_file.unlink(missing_ok=True)
-        # 이전 multi_crop 이미지 파일 삭제
-        for ci in step.expected_images:
-            if ci.image:
-                old_crop = save_dir / ci.image
-                if old_crop.exists():
-                    old_crop.unlink(missing_ok=True)
-        step.expected_images.clear()
-        step.exclude_rois.clear()
+        if not req.preserve_crops:
+            # 이전 multi_crop 이미지 파일 삭제
+            for ci in step.expected_images:
+                if ci.image:
+                    old_crop = save_dir / ci.image
+                    if old_crop.exists():
+                        old_crop.unlink(missing_ok=True)
+            step.expected_images.clear()
+            step.exclude_rois.clear()
         (save_dir / filename).write_bytes(png_bytes)
         step.expected_image = filename
         if req.crop:
