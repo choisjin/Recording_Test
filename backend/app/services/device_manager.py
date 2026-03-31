@@ -539,7 +539,7 @@ class DeviceManager:
         adb_devices = await self.adb.list_devices()
         adb_status_map = {d.serial: d for d in adb_devices}
 
-        for k, v in self._devices.items():
+        for k, v in list(self._devices.items()):
             if v.type != "adb":
                 continue
             # 사용자가 연결 끊기한 디바이스는 자동 상태 갱신 안 함
@@ -1046,7 +1046,7 @@ class DeviceManager:
     async def open_all_serial_connections(self) -> None:
         """Open persistent serial/HKMC/module connections for all registered devices."""
         loop = asyncio.get_event_loop()
-        for dev in self._devices.values():
+        for dev in list(self._devices.values()):
             if dev.type == "serial":
                 try:
                     await loop.run_in_executor(None, self._get_serial_conn, dev.id)
