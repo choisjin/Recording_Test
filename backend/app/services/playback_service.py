@@ -758,7 +758,7 @@ class PlaybackService:
             return f"hkmc_key {key}"
         return step.type.value
 
-    async def _ensure_device_connected(self, device_id: str, max_retries: int = 3, retry_interval: float = 3.0) -> None:
+    async def _ensure_device_connected(self, device_id: str, max_retries: int = 10, retry_interval: float = 5.0) -> None:
         """특정 디바이스의 연결 상태 확인 + 끊어진 경우 재연결 시도.
 
         Args:
@@ -804,15 +804,43 @@ class PlaybackService:
             dev.status = "disconnected"
 
         elif dev.type == "adb":
+            # 먼저 현재 상태 확인
             try:
                 adb_devices = await self.adb.list_devices()
                 found = next((d for d in adb_devices if d.serial == dev.address), None)
                 if found and found.status == "device":
-                    dev.status = "connected"
-                else:
-                    dev.status = "offline"
+                    dev.status = "device"
+                    self.dm.reset_reconnect_attempts(device_id)
+                    return
             except Exception:
                 pass
+
+            # 연결 안 됨 → 재연결 시도 (전원 껐다 켜진 경우 부팅 대기)
+            adb_serial = dev.address
+            self.dm.reset_reconnect_attempts(device_id)
+            for attempt in range(1, max_retries + 1):
+                if self._should_stop:
+                    return
+                logger.info("Playback: ADB reconnect %s attempt %d/%d", device_id, attempt, max_retries)
+                try:
+                    if ":" in adb_serial:
+                        await self.adb.connect_device(adb_serial)
+                    else:
+                        await self.adb._run(f"-s {adb_serial} reconnect")
+                    await asyncio.sleep(2)
+                    adb_devices = await self.adb.list_devices()
+                    found = next((d for d in adb_devices if d.serial == adb_serial), None)
+                    if found and found.status == "device":
+                        dev.status = "device"
+                        self.dm.reset_reconnect_attempts(device_id)
+                        logger.info("Playback: ADB reconnected %s", device_id)
+                        return
+                except Exception as e:
+                    logger.debug("Playback: ADB reconnect %s failed: %s", device_id, e)
+                if attempt < max_retries:
+                    if await self._interruptible_sleep(retry_interval):
+                        return
+            dev.status = "offline"
 
     def _resolve_real_device_id(self, step: Step) -> Optional[str]:
         """Resolve step's device_id alias to real device ID."""
