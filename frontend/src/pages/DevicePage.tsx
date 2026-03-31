@@ -229,7 +229,7 @@ export default function DevicePage() {
   };
 
   const closeAddModal = () => {
-    closeAddModal();
+    setModalOpen(false);
     resumeDevicePolling();
   };
 
