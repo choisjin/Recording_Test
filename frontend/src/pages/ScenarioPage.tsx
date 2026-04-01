@@ -142,7 +142,7 @@ export default function ScenarioPage() {
   const { t, lang } = useTranslation();
   const { settings, saveExportZipToDir } = useSettings();
   const { webcam, ensureWebcamOpen } = useWebcamContext();
-  const { pauseScreenStream, resumeScreenStream } = useDevice();
+  const { pauseScreenStream, resumeScreenStream, primaryDevices, auxiliaryDevices } = useDevice();
   const [scenarios, setScenarios] = useState<string[]>([]);
   const [selectedScenario, setSelectedScenario] = useState<ScenarioDetail | null>(null);
   const [detailVisible, setDetailVisible] = useState(false);
@@ -640,15 +640,12 @@ export default function ScenarioPage() {
 
     // 재생 확인 모달 표시 (디바이스 매핑 + 웹캠 녹화 설정)
     const dmap = scenarioData.device_map || {};
-    let devices: { id: string; name: string; type: string; status: string; address?: string }[] = [];
-    try {
-      const devRes = await deviceApi.list();
-      devices = [
-        ...(devRes.data.primary || []).map((d: any) => ({ id: d.id, name: d.name || d.id, type: d.type, status: d.status, address: d.address })),
-        ...(devRes.data.auxiliary || []).map((d: any) => ({ id: d.id, name: d.name || d.id, type: d.type, status: d.status, address: d.address })),
-      ];
-      setConnectedDevices(devices);
-    } catch { /* ignore */ }
+    // DeviceContext에서 이미 폴링된 디바이스 목록 사용 (API 재호출 불필요)
+    const devices = [
+      ...primaryDevices.map((d: any) => ({ id: d.id, name: d.name || d.id, type: d.type, status: d.status, address: d.address })),
+      ...auxiliaryDevices.map((d: any) => ({ id: d.id, name: d.name || d.id, type: d.type, status: d.status, address: d.address })),
+    ];
+    setConnectedDevices(devices);
     // 시나리오의 매핑값(이전 환경 ID)을 현재 디바이스 ID로 자동 매칭
     const resolved: Record<string, string> = {};
     for (const [alias, savedId] of Object.entries(dmap)) {

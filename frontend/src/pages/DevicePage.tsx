@@ -1117,7 +1117,14 @@ export default function DevicePage() {
                   allowClear
                   placeholder={t('device.moduleSelectPlaceholder')}
                   value={editModule}
-                  onChange={setEditModule}
+                  onChange={(val) => {
+                    setEditModule(val);
+                    // 모듈 변경 시 Device ID prefix도 갱신
+                    if (val) {
+                      const num = editDeviceId.match(/_(\d+)$/)?.[1] || '1';
+                      setEditDeviceId(`${val}_${num}`);
+                    }
+                  }}
                   style={{ width: '100%' }}
                   options={modules.map(m => ({ label: m.label, value: m.name }))}
                 />

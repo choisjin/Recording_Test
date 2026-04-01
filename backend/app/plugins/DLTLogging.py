@@ -112,8 +112,8 @@ class DLTLogging:
         logger.info("[DLTLogging] Disconnected")
 
     def IsConnected(self) -> bool:
-        """연결 상태 확인."""
-        return self._socket is not None
+        """연결 상태 확인. StartSave 전에도 모듈은 사용 가능 (지연 연결)."""
+        return True
 
     # ------------------------------------------------------------------
     # 로그 저장 시작/중단 (연결 포함)
