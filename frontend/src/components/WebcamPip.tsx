@@ -208,23 +208,48 @@ export default function WebcamPip({ webcam, onClose, isDark }: WebcamPipProps) {
                   />
                 </div>
               )}
-              {/* 타임스탬프 위치 */}
+              {/* 타임스탬프 설정 */}
               <div style={{ marginBottom: 6 }}>
                 <div style={{ fontSize: 11, marginBottom: 2, color: subColor }}>{t('webcam.timestampPosition')}</div>
-                <Select
-                  size="small"
-                  value={timestampPosition}
-                  onChange={setTimestampPosition}
-                  style={{ width: '100%' }}
-                  getPopupContainer={getContainer}
-                  options={[
-                    { value: 'top-left', label: '↖ Top Left' },
-                    { value: 'top-right', label: '↗ Top Right' },
-                    { value: 'bottom-left', label: '↙ Bottom Left' },
-                    { value: 'bottom-right', label: '↘ Bottom Right' },
-                    { value: 'off', label: t('webcam.timestampOff') },
-                  ]}
-                />
+                <div style={{ display: 'flex', gap: 4 }}>
+                  <Select
+                    size="small"
+                    value={timestampPosition}
+                    onChange={setTimestampPosition}
+                    style={{ flex: 1 }}
+                    getPopupContainer={getContainer}
+                    options={[
+                      { value: 'top-left', label: '↖ Top Left' },
+                      { value: 'top-right', label: '↗ Top Right' },
+                      { value: 'bottom-left', label: '↙ Bottom Left' },
+                      { value: 'bottom-right', label: '↘ Bottom Right' },
+                      { value: 'off', label: t('webcam.timestampOff') },
+                    ]}
+                  />
+                  <input
+                    type="color"
+                    value={timestampColor}
+                    onChange={e => setTimestampColor(e.target.value)}
+                    title={t('webcam.timestampColor')}
+                    style={{ width: 28, height: 24, padding: 0, border: `1px solid ${border}`, borderRadius: 4, cursor: 'pointer' }}
+                  />
+                  <Select
+                    size="small"
+                    value={timestampFontSize || 0}
+                    onChange={setTimestampFontSize}
+                    style={{ width: 70 }}
+                    getPopupContainer={getContainer}
+                    options={[
+                      { value: 0, label: 'Auto' },
+                      { value: 10, label: '10px' },
+                      { value: 12, label: '12px' },
+                      { value: 14, label: '14px' },
+                      { value: 16, label: '16px' },
+                      { value: 20, label: '20px' },
+                      { value: 24, label: '24px' },
+                    ]}
+                  />
+                </div>
               </div>
               {Object.keys(webcamCapabilities).length === 0 && webcamResolutions.length === 0 ? (
                 <div style={{ color: subColor, fontSize: 11, textAlign: 'center', padding: 4 }}>{t('webcam.noSettings')}</div>
