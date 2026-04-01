@@ -392,11 +392,23 @@ def _get_instance(module_name: str, constructor_kwargs: Optional[dict] = None,
         if constructor_kwargs:
             sig = inspect.signature(cls.__init__)
             ctor_args = {}
+            type_map = {"int": int, "float": float, "bool": bool, "str": str}
             for pname, p in sig.parameters.items():
                 if pname == "self":
                     continue
                 if pname in constructor_kwargs:
-                    ctor_args[pname] = constructor_kwargs[pname]
+                    val = constructor_kwargs[pname]
+                    # 타입 힌트에 맞게 캐스팅
+                    ann = p.annotation
+                    if ann is not inspect.Parameter.empty:
+                        if isinstance(ann, str):
+                            ann = type_map.get(ann, ann)
+                        if ann in (int, float, str) and not isinstance(val, ann):
+                            try:
+                                val = ann(val)
+                            except (ValueError, TypeError):
+                                pass
+                    ctor_args[pname] = val
             if ctor_args:
                 instance = cls(**ctor_args)
                 if shared_serial_conn and hasattr(instance, "_conn"):

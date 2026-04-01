@@ -905,7 +905,9 @@ export default function DevicePage() {
                     </>
                   )}
 
-                  {scannedDlt.length > 0 && (
+                  {scannedDlt.length > 0 && (() => {
+                    const dltModule = (scanBuiltin.dlt as any)?.module || 'DLTLogging';
+                    return (
                     <>
                       <div style={{ fontWeight: 'bold', marginBottom: 8, marginTop: 8 }}>{t('dlt.detectedDlt')}</div>
                       <List
@@ -920,7 +922,7 @@ export default function DevicePage() {
                                 type="primary"
                                 onClick={async () => {
                                   try {
-                                    await connectDevice('module', d.ip, undefined, `DLT_${d.ip}`, 'auxiliary', 'DLTViewer', 'socket', { port: String(d.port) });
+                                    await connectDevice('module', d.ip, undefined, `${dltModule}_${d.ip}`, 'auxiliary', dltModule, 'socket', { port: d.port });
                                     message.success(`DLT ${d.ip}:${d.port} ${t('common.connect')}`);
                                     closeAddModal();
                                   } catch (e: any) {
@@ -933,12 +935,14 @@ export default function DevicePage() {
                             <div>
                               <Tag color="geekblue">DLT</Tag>
                               <strong>{d.ip}</strong>:{d.port}
+                              <Tag style={{ marginLeft: 8 }}>{dltModule}</Tag>
                             </div>
                           </List.Item>
                         )}
                       />
                     </>
-                  )}
+                    );
+                  })()}
 
                   {scannedSerial.length === 0 && scannedAdb.length === 0 && scannedHkmc.length === 0 && scannedBench.length === 0 && scannedVision.length === 0 && scannedDlt.length === 0 && !scanning && (
                     <div style={{ color: '#666', textAlign: 'center', padding: 24 }}>
