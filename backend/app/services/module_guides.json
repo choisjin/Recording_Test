@@ -1472,6 +1472,59 @@
     }
   },
 
+  "SerialLogging": {
+    "_description": "시리얼 로깅 — 시리얼 포트에 연결하여 로그를 캡처·저장하고 키워드 PASS/FAIL 판정하는 모듈",
+    "functions": {
+      "StartSave": {
+        "description": "시리얼 포트에 연결하고 로그 캡처 + 파일 저장을 시작합니다. (연결 → 캡처 → 저장 한번에 수행)",
+        "params": {
+          "save_path": "저장 파일 경로. 빈 값이면 backend/logs/에 자동 생성"
+        }
+      },
+      "StopSave": {
+        "description": "로그 파일 저장을 중단하고 시리얼 연결을 해제합니다.",
+        "params": {}
+      },
+      "MarkStep": {
+        "description": "현재 로그 위치에 스텝 경계를 표시합니다. SearchRange로 구간 검색할 때 사용합니다.",
+        "params": {
+          "step_index": "스텝 인덱스 번호"
+        }
+      },
+      "SearchAll": {
+        "description": "처음부터 현재까지 전체 로그에서 키워드를 검색하여 PASS/FAIL 판정합니다.",
+        "params": {
+          "keyword": "검색 키워드 (공백 구분 시 AND 조건). 예: 'BootComplete', 'ERROR'",
+          "count": "최대 매칭 결과 수 (기본 5)"
+        }
+      },
+      "SearchRange": {
+        "description": "MarkStep으로 표시된 스텝 구간 내에서 키워드를 검색하여 PASS/FAIL 판정합니다.",
+        "params": {
+          "keyword": "검색 키워드 (공백 구분 시 AND 조건)",
+          "from_step": "시작 스텝 인덱스",
+          "to_step": "종료 스텝 인덱스",
+          "count": "최대 매칭 결과 수 (기본 5)"
+        }
+      },
+      "WaitLog": {
+        "description": "키워드가 포함된 로그가 나타날 때까지 대기합니다 (블로킹). 타임아웃 시 FAIL 반환.",
+        "params": {
+          "keyword": "검색 키워드 (공백 구분 시 AND 조건)",
+          "timeout": "최대 대기 시간 (초, 기본 30)"
+        }
+      },
+      "GetStatus": {
+        "description": "현재 모듈 상태를 조회합니다 (포트, 캡처, 저장, 스텝마크 등).",
+        "params": {}
+      },
+      "ClearLogs": {
+        "description": "로그 버퍼와 스텝 마킹을 초기화합니다.",
+        "params": {}
+      }
+    }
+  },
+
   "MLP": {
     "_description": "MLP 로깅 — MIB Log Protocol로 IVI/SAFE 시스템의 실시간 로그를 수신하여 저장하는 모듈. ICAS3/MIB3OI 지원",
     "functions": {

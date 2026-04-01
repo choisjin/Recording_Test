@@ -171,6 +171,8 @@ def list_available_modules() -> list[dict]:
          "connect_fields": [
              {"name": "port", "label": "DLT Port", "type": "number", "default": "3490"},
          ]},
+        {"name": "SerialLogging", "label": "SerialLogging", "connect_type": "serial",
+         "connect_fields": []},
         {"name": "DLTViewer", "label": "DLTViewer", "connect_type": "socket",
          "connect_fields": [
              {"name": "port", "label": "DLT Port", "type": "number", "default": "3490"},
