@@ -435,10 +435,12 @@ export default function DevicePage() {
   // --- Edit device ---
   const openEditModal = async (dev: ManagedDevice) => {
     // 모듈 목록 먼저 로드 (connect_fields 표시에 필요)
-    if (modules.length === 0) {
+    let mods = modules;
+    if (mods.length === 0) {
       try {
         const res = await deviceApi.listModules();
-        setModules((res.data.modules || []).sort((a: ModuleInfo, b: ModuleInfo) => a.label.localeCompare(b.label)));
+        mods = (res.data.modules || []).sort((a: ModuleInfo, b: ModuleInfo) => a.label.localeCompare(b.label));
+        setModules(mods);
       } catch { /* ignore */ }
     }
     setEditDevice(dev);
@@ -447,11 +449,20 @@ export default function DevicePage() {
     setEditAddress(dev.address);
     setEditBaudrate(dev.info?.baudrate || 115200);
     setEditModule(dev.info?.module);
-    // Collect extra fields from device info
+    // Collect extra fields from device info + module connect_fields 기본값
     const extras: Record<string, any> = {};
     for (const [k, v] of Object.entries(dev.info || {})) {
       if (!['baudrate', 'module', 'connect_type', 'connect_result'].includes(k)) {
         extras[k] = v;
+      }
+    }
+    // 모듈의 connect_fields 기본값 주입 (저장된 값이 없는 필드)
+    const modInfo = mods.find(m => m.name === dev.info?.module);
+    if (modInfo?.connect_fields) {
+      for (const f of modInfo.connect_fields) {
+        if (!(f.name in extras)) {
+          extras[f.name] = dev.info?.[f.name] ?? f.default ?? '';
+        }
       }
     }
     setEditExtraFields(extras);
