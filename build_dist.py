@@ -283,15 +283,23 @@ def step_package():
 
     # 기존 내용 정리 (.git, whl, msi 등 보존)
     DIST_DIR.mkdir(parents=True, exist_ok=True)
-    _preserve_names = {".git", ".gitignore", ".gitattributes"}
-    _preserve_exts = {".whl", ".msi", ".exe"}
+    # 빌드가 새로 생성하는 항목만 삭제, 수동 배치 파일은 보존
+    _preserve_names = {".git", ".gitignore", ".gitattributes", "git_remote.txt",
+                       "scan_settings.json"}
+    _preserve_exts = {".whl", ".msi", ".exe", ".zip"}
+    # 빌드가 관리하는 디렉토리만 삭제 대상 (tools, DltViewerSDK 등 수동 배치 폴더 보존)
+    _rebuild_dirs = {"backend", "frontend", "docs", "python"}
     for item in list(DIST_DIR.iterdir()):
         if item.name in _preserve_names or item.suffix in _preserve_exts:
             continue
         if item.is_dir():
-            shutil.rmtree(item)
+            if item.name in _rebuild_dirs:
+                shutil.rmtree(item)
+            # 그 외 디렉토리는 보존 (Results, 사용자 데이터 등)
         else:
-            item.unlink()
+            # 빌드가 재생성하는 파일만 삭제
+            if item.suffix in {".py", ".bat", ".ico", ".txt"} and item.name != "git_remote.txt":
+                item.unlink()
 
     # ── backend 복사 (.pyd만, .py 소스 제외) ──
     print("  backend 복사 중 (.pyd + 설정 파일)...")
@@ -391,27 +399,36 @@ _mod.main()
         if src.exists():
             shutil.copy2(str(src), str(DIST_DIR / f))
 
-    # ── DLT Viewer SDK 복사 ──
+    # ── DLT Viewer SDK 복사 (소스에 있으면 복사, 배포 폴더에 이미 있으면 유지) ──
     src_dlt = PROJECT_ROOT / "DltViewerSDK_21.1.3_ver"
     dst_dlt = DIST_DIR / "DltViewerSDK_21.1.3_ver"
     if src_dlt.is_dir():
         if dst_dlt.exists():
             shutil.rmtree(str(dst_dlt))
         shutil.copytree(str(src_dlt), str(dst_dlt))
-        print(f"  DltViewerSDK 복사 완료")
+        print(f"  DltViewerSDK 복사 완료 (소스에서)")
+    elif dst_dlt.is_dir():
+        print(f"  DltViewerSDK 유지 (배포 폴더에 이미 존재)")
     else:
-        print(f"  [Note] DltViewerSDK not found - skipped")
+        print(f"  [Note] DltViewerSDK not found")
 
-    # ── tools (ffmpeg 등) 복사 ──
+    # ── tools (ffmpeg 등) 복사 (소스에 있으면 머지, 배포 폴더에 이미 있으면 유지) ──
     src_tools = PROJECT_ROOT / "tools"
     dst_tools = DIST_DIR / "tools"
     if src_tools.is_dir():
-        if dst_tools.exists():
-            shutil.rmtree(str(dst_tools))
-        shutil.copytree(str(src_tools), str(dst_tools))
-        print(f"  tools 복사 완료")
+        # 소스 tools → 배포 tools로 머지 (기존 파일 보존, 새 파일 추가/덮어쓰기)
+        dst_tools.mkdir(parents=True, exist_ok=True)
+        for item in src_tools.rglob("*"):
+            if item.is_file():
+                rel = item.relative_to(src_tools)
+                target = dst_tools / rel
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(str(item), str(target))
+        print(f"  tools 머지 완료 (소스에서)")
+    elif dst_tools.is_dir():
+        print(f"  tools 유지 (배포 폴더에 이미 존재)")
     else:
-        print(f"  [Note] tools/ not found - skipped")
+        print(f"  [Note] tools/ not found")
 
     # ── Git installer 복사 ──
     git_installers = list(PROJECT_ROOT.glob("Git-*.exe"))
