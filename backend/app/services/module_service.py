@@ -173,6 +173,10 @@ def list_available_modules() -> list[dict]:
          ]},
         {"name": "SerialLogging", "label": "SerialLogging", "connect_type": "serial",
          "connect_fields": []},
+        {"name": "SmartBench", "label": "SmartBench", "connect_type": "socket",
+         "connect_fields": [
+             {"name": "port", "label": "TCP Port", "type": "number", "default": "5000"},
+         ]},
         {"name": "DLTViewer", "label": "DLTViewer", "connect_type": "socket",
          "connect_fields": [
              {"name": "port", "label": "DLT Port", "type": "number", "default": "3490"},

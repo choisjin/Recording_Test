@@ -1547,6 +1547,93 @@
     }
   },
 
+  "SmartBench": {
+    "_description": "Smart Bench TCP 제어 — TCP 소켓으로 Smart Bench 장비의 전원, 버튼, 전류, LED를 제어하는 모듈",
+    "functions": {
+      "Connect": {
+        "description": "Smart Bench에 TCP 연결합니다.",
+        "params": {}
+      },
+      "Disconnect": {
+        "description": "Smart Bench 연결을 해제합니다.",
+        "params": {}
+      },
+      "Battery": {
+        "description": "Battery(+B) 릴레이를 제어합니다.",
+        "params": { "status": "'on' 또는 'off'" }
+      },
+      "ACC": {
+        "description": "ACC 릴레이를 제어합니다.",
+        "params": { "status": "'on' 또는 'off'" }
+      },
+      "IGN": {
+        "description": "IGN 릴레이를 제어합니다.",
+        "params": { "status": "'on' 또는 'off'" }
+      },
+      "IGN3": {
+        "description": "IGN3 릴레이를 제어합니다.",
+        "params": { "status": "'on' 또는 'off'" }
+      },
+      "USB": {
+        "description": "USB 릴레이를 제어합니다.",
+        "params": { "status": "'on' 또는 'off'" }
+      },
+      "CheckCurrent": {
+        "description": "전류를 측정하여 범위 내 진입 시 PASS (연속 3회), 타임아웃 시 FAIL.",
+        "params": {
+          "min_current": "최소 전류 (A). 예: 0.5",
+          "max_current": "최대 전류 (A). 예: 2.0",
+          "check_delay": "타임아웃 (ms). 예: 10000"
+        }
+      },
+      "CheckCurrentMoment": {
+        "description": "순간 전류를 측정하여 범위 내이면 PASS, 3회 연속 범위 외이면 FAIL.",
+        "params": {
+          "min_current": "최소 전류 (A)",
+          "max_current": "최대 전류 (A)"
+        }
+      },
+      "CheckCurrentMaintain": {
+        "description": "전류가 지정 시간 동안 범위 내 유지되는지 검증합니다.",
+        "params": {
+          "min_current": "최소 전류 (A)",
+          "max_current": "최대 전류 (A)",
+          "check_delay": "유지 시간 (ms)"
+        }
+      },
+      "ButtonPress": {
+        "description": "버튼을 누릅니다.",
+        "params": {
+          "button_num": "버튼 번호 (0=ECALL 등)",
+          "press_time": "누르는 시간 (ms). 예: 3000"
+        }
+      },
+      "LEDCheck": {
+        "description": "LED 상태를 검증합니다.",
+        "params": {
+          "data": "LED 검증 데이터. 예: 'honda;4.0;GREEN;BLINK;RED;ON'"
+        }
+      },
+      "Relay": {
+        "description": "릴레이를 직접 제어합니다.",
+        "params": {
+          "relay_num": "릴레이 번호",
+          "status": "'on' 또는 'off'"
+        }
+      },
+      "SendRaw": {
+        "description": "원시 텍스트 명령을 직접 전송합니다.",
+        "params": {
+          "command": "전송할 명령어 문자열"
+        }
+      },
+      "GetStatus": {
+        "description": "현재 모듈 상태를 조회합니다.",
+        "params": {}
+      }
+    }
+  },
+
   "MLP": {
     "_description": "MLP 로깅 — MIB Log Protocol로 IVI/SAFE 시스템의 실시간 로그를 수신하여 저장하는 모듈. ICAS3/MIB3OI 지원",
     "functions": {
