@@ -112,7 +112,7 @@ class SmartBench:
 
         try:
             self._sock.sendall(command.encode("utf-8"))
-            self._sock.settimeout(10)
+            self._sock.settimeout(3)
             # 응답 수신 (\\n 또는 데이터 끝까지)
             chunks = []
             while True:
