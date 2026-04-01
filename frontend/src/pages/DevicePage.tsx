@@ -433,7 +433,14 @@ export default function DevicePage() {
   };
 
   // --- Edit device ---
-  const openEditModal = (dev: ManagedDevice) => {
+  const openEditModal = async (dev: ManagedDevice) => {
+    // 모듈 목록 먼저 로드 (connect_fields 표시에 필요)
+    if (modules.length === 0) {
+      try {
+        const res = await deviceApi.listModules();
+        setModules((res.data.modules || []).sort((a: ModuleInfo, b: ModuleInfo) => a.label.localeCompare(b.label)));
+      } catch { /* ignore */ }
+    }
     setEditDevice(dev);
     setEditDeviceId(dev.id);
     setEditName(dev.name);
@@ -449,10 +456,6 @@ export default function DevicePage() {
     }
     setEditExtraFields(extras);
     setEditModalOpen(true);
-    // Ensure modules are loaded
-    if (modules.length === 0) {
-      deviceApi.listModules().then(res => setModules((res.data.modules || []).sort((a: ModuleInfo, b: ModuleInfo) => a.label.localeCompare(b.label)))).catch(() => {});
-    }
   };
 
   const handleSaveEdit = async () => {
