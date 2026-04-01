@@ -334,10 +334,14 @@ async def export_result_bundle(filename: str, export_path: str = ""):
         )
 
 
-@router.post("/open-folder/{filename:path}")
-async def open_result_folder(filename: str):
+@router.post("/open-folder")
+async def open_result_folder(body: dict):
     """결과 폴더를 파일 탐색기로 열기."""
     import os, sys
+    filename = body.get("filename", "")
+    if not filename:
+        raise HTTPException(status_code=400, detail="filename required")
+
     filepath = RESULTS_DIR / filename
     if not filepath.exists():
         raise HTTPException(status_code=404, detail="Result not found")
@@ -355,22 +359,27 @@ async def open_result_folder(filename: str):
     return {"status": "ok", "path": str(target)}
 
 
+def _iter_run_dir_files(source_dir: Path):
+    """런 폴더 내 파일을 순회. junction/symlink 디렉토리는 실제 대상을 따라감."""
+    for item in sorted(source_dir.rglob("*")):
+        if item.is_file():
+            yield item
+
+
 def _zip_directory(source_dir: Path, zip_path: Path) -> None:
-    """디렉토리를 ZIP 파일로 압축. junction/symlink는 실제 파일을 따라감."""
+    """디렉토리를 ZIP 파일로 압축."""
     with zipfile.ZipFile(str(zip_path), "w", zipfile.ZIP_DEFLATED) as zf:
-        for file in sorted(source_dir.rglob("*")):
-            if file.is_file():
-                arcname = str(file.relative_to(source_dir.parent))
-                zf.write(str(file), arcname)
+        for file in _iter_run_dir_files(source_dir):
+            arcname = file.relative_to(source_dir.parent).as_posix()
+            zf.write(str(file), arcname)
 
 
 def _zip_directory_to_buffer(source_dir: Path, buf: io.BytesIO) -> None:
     """디렉토리를 BytesIO 버퍼에 ZIP 압축."""
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for file in sorted(source_dir.rglob("*")):
-            if file.is_file():
-                arcname = str(file.relative_to(source_dir.parent))
-                zf.write(str(file), arcname)
+        for file in _iter_run_dir_files(source_dir):
+            arcname = file.relative_to(source_dir.parent).as_posix()
+            zf.write(str(file), arcname)
 
 
 @router.delete("/{filename:path}")

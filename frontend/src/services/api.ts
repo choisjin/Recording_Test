@@ -129,7 +129,7 @@ export const resultsApi = {
   updateStepResult: (filename: string, stepIndex: number, message: string, status?: string) =>
     api.post(`/results/update-step/${filename}`, { step_index: stepIndex, message, ...(status ? { status } : {}) }),
   openFolder: (filename: string) =>
-    api.post(`/results/open-folder/${filename}`),
+    api.post('/results/open-folder', { filename }),
 };
 
 // Server management APIs
