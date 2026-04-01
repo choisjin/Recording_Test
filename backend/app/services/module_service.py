@@ -167,8 +167,10 @@ def list_available_modules() -> list[dict]:
          "connect_fields": []},
         {"name": "ImageProcessing", "label": "ImageProcessing", "connect_type": "none",
          "connect_fields": []},
-        {"name": "DLTLogging", "label": "DLTLogging", "connect_type": "none",
-         "connect_fields": []},
+        {"name": "DLTLogging", "label": "DLTLogging", "connect_type": "socket",
+         "connect_fields": [
+             {"name": "port", "label": "DLT Port", "type": "number", "default": "3490"},
+         ]},
         {"name": "DLTViewer", "label": "DLTViewer", "connect_type": "socket",
          "connect_fields": [
              {"name": "port", "label": "DLT Port", "type": "number", "default": "3490"},
