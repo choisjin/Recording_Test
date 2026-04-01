@@ -53,7 +53,7 @@ class SmartBench:
     # ------------------------------------------------------------------
 
     def Connect(self) -> str:
-        """Smart Bench에 TCP 연결합니다.
+        """Smart Bench에 TCP 지속 연결합니다.
 
         Returns:
             연결 결과 메시지
@@ -99,24 +99,38 @@ class SmartBench:
     # ------------------------------------------------------------------
 
     def _send(self, command: str, _retry: bool = True) -> str:
-        """TCP 텍스트 명령 전송 후 응답 수신. 연결 끊김 시 1회 재연결."""
+        """TCP 텍스트 명령 전송 후 응답 수신 (지속 연결).
+
+        lge.auto.BENCH.SendData()와 동일한 방식: 개행 없이 전송, \\n 구분 응답.
+        """
         if not self._sock:
             if not self._host:
-                return "ERROR: not connected"
-            # 자동 재연결
+                return "ERROR: host가 설정되지 않았습니다"
             result = self.Connect()
             if result.startswith("ERROR"):
                 return result
 
         try:
-            self._sock.sendall((command + "\n").encode("utf-8"))
-            data = self._sock.recv(4096)
-            resp = data.decode("utf-8", errors="replace").strip()
+            self._sock.sendall(command.encode("utf-8"))
+            self._sock.settimeout(10)
+            # 응답 수신 (\\n 또는 데이터 끝까지)
+            chunks = []
+            while True:
+                try:
+                    data = self._sock.recv(4096)
+                    if not data:
+                        break
+                    chunks.append(data)
+                    # 응답에 \\n이 있으면 완료
+                    if b"\n" in data:
+                        break
+                except socket.timeout:
+                    break
+            resp = b"".join(chunks).decode("utf-8", errors="replace").strip()
             logger.info("[SmartBench] TX: %s → RX: %s", command, resp)
-            return resp
+            return resp if resp else "OK"
         except Exception as e:
             logger.error("[SmartBench] Send failed: %s", e)
-            # 연결 끊김 → 소켓 정리 후 1회 재시도
             try:
                 self._sock.close()
             except Exception:
