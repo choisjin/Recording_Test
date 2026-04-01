@@ -838,12 +838,20 @@ class DeviceManager:
                      reconnect/connect 등 파괴적 명령은 실행하지 않음.
                      디바이스가 스스로 복귀하면 상태를 갱신하여 재생에서 사용 가능.
         """
-        # ADB 상태 일괄 갱신 (adb devices -l 1회 호출)
-        try:
-            adb_devices = await self.adb.list_devices()
-            adb_status_map = {d.serial: d for d in adb_devices}
-        except Exception:
-            adb_status_map = {}
+        # 등록된 디바이스 중 연결된 적 있는 것만 대상
+        targets = [d for d in list(self._devices.values()) if d.id in self._ever_connected]
+        if not targets:
+            return
+
+        # ADB 디바이스가 있을 때만 ADB 호출
+        has_adb = any(d.type == "adb" for d in targets)
+        adb_status_map: dict = {}
+        if has_adb:
+            try:
+                adb_devices = await self.adb.list_devices()
+                adb_status_map = {d.serial: d for d in adb_devices}
+            except Exception:
+                pass
 
         for dev in list(self._devices.values()):
             # 사용자가 명시적으로 연결한 적 없는 디바이스는 자동 재연결 안 함
