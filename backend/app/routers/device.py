@@ -5,7 +5,7 @@ import json as _json
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
 
@@ -131,8 +131,9 @@ async def get_scan_settings():
 
 
 @router.post("/scan-settings")
-async def save_scan_settings(body: dict = Body(...)):
+async def save_scan_settings(request: Request):
     """스캔 설정 저장."""
+    body = await request.json()
     _save_scan_settings(body)
     return {"status": "ok"}
 
