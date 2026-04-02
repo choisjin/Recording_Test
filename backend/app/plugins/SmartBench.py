@@ -111,7 +111,7 @@ class SmartBench:
                 return result
 
         try:
-            self._sock.sendall(command.upper().encode("utf-8"))
+            self._sock.sendall(command.encode("utf-8"))
             self._sock.settimeout(3)
             # 응답 수신 (\\n 또는 데이터 끝까지)
             chunks = []
@@ -154,7 +154,7 @@ class SmartBench:
         Returns:
             결과 메시지
         """
-        cmd = f"relay-{_RELAY['battery']}-{status.lower()}"
+        cmd = f"relay-{_RELAY['battery']}-{status}"
         return self._send(cmd)
 
     def ACC(self, status: str = "on") -> str:
@@ -166,7 +166,7 @@ class SmartBench:
         Returns:
             결과 메시지
         """
-        cmd = f"relay-{_RELAY['acc']}-{status.lower()}"
+        cmd = f"relay-{_RELAY['acc']}-{status}"
         return self._send(cmd)
 
     def IGN(self, status: str = "on") -> str:
@@ -178,7 +178,7 @@ class SmartBench:
         Returns:
             결과 메시지
         """
-        cmd = f"relay-{_RELAY['ign']}-{status.lower()}"
+        cmd = f"relay-{_RELAY['ign']}-{status}"
         return self._send(cmd)
 
     def IGN3(self, status: str = "on") -> str:
@@ -190,7 +190,7 @@ class SmartBench:
         Returns:
             결과 메시지
         """
-        cmd = f"relay-{_RELAY['ign3']}-{status.lower()}"
+        cmd = f"relay-{_RELAY['ign3']}-{status}"
         return self._send(cmd)
 
     def USB(self, status: str = "on") -> str:
@@ -202,7 +202,7 @@ class SmartBench:
         Returns:
             결과 메시지
         """
-        cmd = f"relay-{_RELAY['usb']}-{status.lower()}"
+        cmd = f"relay-{_RELAY['usb']}-{status}"
         return self._send(cmd)
 
     # ------------------------------------------------------------------
@@ -384,7 +384,7 @@ class SmartBench:
         Returns:
             응답 메시지
         """
-        cmd = f"relay-{int(relay_num)}-{status.lower()}"
+        cmd = f"relay-{int(relay_num)}-{status}"
         return self._send(cmd)
 
     def SendRaw(self, command: str) -> str:
