@@ -410,9 +410,13 @@ export default function RecordPage() {
   const hasMultiDisplay = isScreenAdb && adbDisplays.length > 1;
   // 멀티 디스플레이: 선택된 디스플레이 해상도 사용
   const selectedDisplay = hasMultiDisplay ? adbDisplays.find(d => String(d.id) === screenType) : null;
+  // HKMC: screens[screenType]에서 해상도 읽기, ADB 멀티: selectedDisplay, 기본: resolution
+  const hkmcScreen = isScreenHkmc ? screenDevice?.info?.screens?.[screenType] : null;
   const deviceRes = selectedDisplay?.width
     ? { width: selectedDisplay.width, height: selectedDisplay.height }
-    : screenDevice?.info?.resolution ?? { width: 1080, height: 1920 };
+    : hkmcScreen?.width
+      ? { width: hkmcScreen.width, height: hkmcScreen.height }
+      : screenDevice?.info?.resolution ?? { width: 1080, height: 1920 };
 
   // Note: step device selection no longer auto-switches the screenshot.
   // The screenshot device is only changed via the explicit device selector.
