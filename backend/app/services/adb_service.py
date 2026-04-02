@@ -167,8 +167,11 @@ class ADBService:
         brand = await self._run_device(s, "shell getprop ro.product.brand")
         android_ver = await self._run_device(s, "shell getprop ro.build.version.release")
         resolution = await self._run_device(s, "shell wm size")
-        # parse resolution e.g. "Physical size: 1080x1920"
-        res_match = re.search(r"(\d+)x(\d+)", resolution)
+        # "Override size"가 있으면 스크린샷/터치가 이 해상도 기준이므로 우선 사용
+        # 없으면 "Physical size" 사용
+        override_match = re.search(r"Override size:\s*(\d+)x(\d+)", resolution)
+        physical_match = re.search(r"Physical size:\s*(\d+)x(\d+)", resolution)
+        res_match = override_match or physical_match
         width, height = (int(res_match.group(1)), int(res_match.group(2))) if res_match else (0, 0)
         # 디스플레이 목록 조회
         displays = await self.list_displays(s)
