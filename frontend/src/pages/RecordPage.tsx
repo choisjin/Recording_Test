@@ -294,6 +294,7 @@ export default function RecordPage() {
     }));
   }, [screenshotDeviceId, viewCropEnabled, viewCropX, viewCropY]);
 
+  const viewCropContainerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [annotatedPreviewSrc, setAnnotatedPreviewSrc] = useState('');
   const [annotatedPreviewVisible, setAnnotatedPreviewVisible] = useState(false);
@@ -499,16 +500,23 @@ export default function RecordPage() {
 
   // Helper: convert element coords to device coords (canvas 또는 video)
   // 항상 deviceRes(디바이스 실제 해상도) 기준으로 변환
-  // 뷰포트 크롭은 clip-path만 사용 → 요소 크기/위치 불변 → 좌표 보정 불필요
   const toDeviceCoords = (el: HTMLCanvasElement | HTMLVideoElement, clientX: number, clientY: number) => {
+    if (viewCropEnabled && viewCropContainerRef.current) {
+      // 뷰포트 크롭: 컨테이너(보이는 영역) 기준으로 크롭 범위에 매핑
+      const cRect = viewCropContainerRef.current.getBoundingClientRect();
+      const cropW = viewCropX[1] - viewCropX[0];
+      const cropH = viewCropY[1] - viewCropY[0];
+      let x = Math.round((viewCropX[0] + (clientX - cRect.left) / cRect.width * cropW) * deviceRes.width);
+      const y = Math.round((viewCropY[0] + (clientY - cRect.top) / cRect.height * cropH) * deviceRes.height);
+      if (isScreenHkmc && hkmcDisplayMode === 'integrated') return { x: x + 1920, y };
+      return { x, y };
+    }
     const rect = el.getBoundingClientRect();
     const scaleX = deviceRes.width / rect.width;
     const scaleY = deviceRes.height / rect.height;
     let x = Math.round((clientX - rect.left) * scaleX);
     const y = Math.round((clientY - rect.top) * scaleY);
-    if (isScreenHkmc && hkmcDisplayMode === 'integrated') {
-      x += 1920;
-    }
+    if (isScreenHkmc && hkmcDisplayMode === 'integrated') x += 1920;
     return { x, y };
   };
 
@@ -2233,17 +2241,22 @@ export default function RecordPage() {
           >
             {screenshotDeviceId && (h264Mode || screenshot) ? (
               <>
-              <div style={{
+              <div ref={viewCropContainerRef} style={{
                 position: 'relative', display: 'inline-block', maxWidth: '100%', maxHeight: '100%',
+                overflow: 'hidden',
               }}>
                 {(() => {
-                  // 뷰포트 크롭: clip-path로 영역만 잘라서 표시 (확대/축소 없음)
-                  // 요소 크기·위치 불변 → 스트리밍 정상, 좌표 보정 불필요
+                  // 뷰포트 크롭: 잘린 영역을 컨테이너에 꽉 차게 확대
+                  // 1) clip-path: 보이는 영역 제한 + 포인터 이벤트 차단
+                  // 2) transform: 잘린 영역이 원래 크기만큼 확대
+                  // 좌표 계산: 컨테이너 ref 기준 (overflow:hidden → 보이는 영역 = 컨테이너 크기)
                   const vc = viewCropEnabled;
                   const cx0 = viewCropX[0], cy0 = viewCropY[0];
                   const cx1 = viewCropX[1], cy1 = viewCropY[1];
-                  const vcStyle: React.CSSProperties = vc ? {
-                    clipPath: `inset(${cy0 * 100}% ${(1 - cx1) * 100}% ${(1 - cy1) * 100}% ${cx0 * 100}%)`,
+                  const cropW = cx1 - cx0, cropH = cy1 - cy0;
+                  const vcStyle: React.CSSProperties = vc && cropW > 0.01 && cropH > 0.01 ? {
+                    transformOrigin: '0 0',
+                    transform: `scale(${1 / cropW}, ${1 / cropH}) translate(${-cx0 * 100}%, ${-cy0 * 100}%)`,
                   } : {};
                   const commonStyle: React.CSSProperties = {
                     maxWidth: '100%',
