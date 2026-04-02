@@ -1,11 +1,12 @@
-"""SmartBench — Smart Bench HTTP 제어 플러그인.
+"""SmartBench — Smart Bench TCP 제어 플러그인.
 
-HTTP API로 Smart Bench 장비에 명령어를 전송하여
+TCP 소켓으로 Smart Bench 장비에 텍스트 명령어를 전송하여
 전원(Battery/ACC/IGN), 버튼, 전류 측정, LED 검증 등을 수행합니다.
 
-통신 프로토콜: POST /exec-command-multi → 응답
-  예: "relay-17-on" → "OK"
-      "current-1000" → "OK;1234"
+통신 프로토콜 (ATS SmartBenchClient 호환):
+  Connect: "CONNECT\\n" → "CONNECTED"
+  Send:    "command\\n"  → "OK" 또는 "OK;data"
+  Disconnect: "DISCONNECT\\n" → "DISCONNECTED"
 
 사용 예 (시나리오 스텝):
   SmartBench.Connect()
@@ -19,9 +20,9 @@ HTTP API로 Smart Bench 장비에 명령어를 전송하여
 """
 
 import logging
+import socket
 import time
-import urllib.request
-import urllib.error
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -36,87 +37,110 @@ _RELAY = {
 
 
 class SmartBench:
-    """Smart Bench HTTP 제어 모듈.
+    """Smart Bench TCP 제어 모듈.
 
     생성자:
-        host: Smart Bench IP 주소 (기본 192.168.0.5)
-        port: HTTP 포트 (기본 8000)
+        host: Smart Bench IP 주소
+        port: TCP 포트 (기본 8000)
     """
 
     def __init__(self, host: str = "", port: int = 8000):
         self._host = host
         self._port = int(port)
-        self._connected = False
+        self._sock: Optional[socket.socket] = None
 
     # ------------------------------------------------------------------
     # 연결
     # ------------------------------------------------------------------
 
     def Connect(self) -> str:
-        """Smart Bench 연결을 확인합니다 (TCP 포트 도달 가능 여부).
+        """Smart Bench에 TCP 연결 후 CONNECT 핸드셰이크.
 
         Returns:
             연결 결과 메시지
         """
         if not self._host:
             return "ERROR: host가 설정되지 않았습니다"
-        if self._connected:
+        if self._sock:
             return f"이미 연결됨: {self._host}:{self._port}"
         try:
-            import socket
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(5)
             sock.connect((self._host, self._port))
-            sock.close()
-            self._connected = True
-            logger.info("[SmartBench] Connected to %s:%d", self._host, self._port)
-            return f"Connected to {self._host}:{self._port}"
+            # CONNECT 핸드셰이크
+            sock.send(("CONNECT\n").encode("utf-8"))
+            rc = sock.recv(1024).decode("utf-8").replace("\n", "").replace(" ", "").strip()
+            if rc == "CONNECTED":
+                sock.settimeout(10)
+                self._sock = sock
+                logger.info("[SmartBench] Connected to %s:%d", self._host, self._port)
+                return f"Connected to {self._host}:{self._port}"
+            else:
+                sock.close()
+                logger.error("[SmartBench] Handshake failed: %s", rc)
+                return f"ERROR: unexpected response: {rc}"
         except Exception as e:
-            self._connected = False
+            self._sock = None
             logger.error("[SmartBench] Connection failed: %s", e)
             return f"ERROR: {e}"
 
     def Disconnect(self) -> str:
-        """Smart Bench 연결을 해제합니다.
+        """Smart Bench DISCONNECT 핸드셰이크 후 연결 해제.
 
         Returns:
             결과 메시지
         """
-        self._connected = False
+        if self._sock:
+            try:
+                self._sock.send(("DISCONNECT\n").encode("utf-8"))
+                self._sock.recv(1024)
+                self._sock.close()
+            except Exception:
+                try:
+                    self._sock.close()
+                except Exception:
+                    pass
+            self._sock = None
         logger.info("[SmartBench] Disconnected")
         return "Disconnected"
 
     def IsConnected(self) -> bool:
         """연결 상태 확인."""
-        return self._connected
+        return self._sock is not None
 
     # ------------------------------------------------------------------
     # 내부 통신
     # ------------------------------------------------------------------
 
-    def _send(self, command: str) -> str:
-        """HTTP POST로 명령 전송 후 응답 수신.
+    def _send(self, command: str, _retry: bool = True) -> str:
+        """TCP 텍스트 명령 전송 후 응답 수신 (개행 종료).
 
-        ATS와 동일한 방식: POST /exec-command-multi
+        ATS SmartBenchClient.Send()와 동일한 프로토콜:
+          TX: "command\\n"
+          RX: "OK" 또는 "OK;data"
         """
-        if not self._host:
-            return "ERROR: host가 설정되지 않았습니다"
-        if not self._connected:
+        if not self._sock:
+            if not self._host:
+                return "ERROR: host가 설정되지 않았습니다"
             result = self.Connect()
             if result.startswith("ERROR"):
                 return result
 
-        url = f"http://{self._host}:{self._port}/exec-command-multi"
         try:
-            data = command.encode("utf-8")
-            req = urllib.request.Request(url, data=data, method="POST")
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                result = resp.read().decode("utf-8", errors="replace").strip()
-            logger.info("[SmartBench] TX: %s → RX: %s", command, result)
-            return result if result else "OK"
+            self._sock.sendall((command + "\n").encode("utf-8"))
+            data = self._sock.recv(4096).decode("utf-8", errors="replace").strip()
+            logger.info("[SmartBench] TX: %s → RX: %s", command, data)
+            return data if data else "OK"
         except Exception as e:
             logger.error("[SmartBench] Send failed: %s", e)
-            self._connected = False
+            try:
+                self._sock.close()
+            except Exception:
+                pass
+            self._sock = None
+            if _retry:
+                logger.info("[SmartBench] Reconnecting...")
+                return self._send(command, _retry=False)
             return f"ERROR: {e}"
 
     # ------------------------------------------------------------------
