@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { Button, Card, Col, Image, Input, Modal, Radio, Row, Select, Space, InputNumber, message, List, Tag, Popover, Tooltip, Splitter } from 'antd';
+import { Button, Card, Col, Image, Input, Modal, Radio, Row, Select, Slider, Space, InputNumber, message, List, Tag, Popover, Tooltip, Splitter } from 'antd';
 import { PlayCircleOutlined, PauseOutlined, PlusOutlined, SwapOutlined, FolderOpenOutlined, SaveOutlined, DeleteOutlined, ArrowUpOutlined, ArrowDownOutlined, BranchesOutlined, ScissorOutlined, CameraOutlined, ThunderboltOutlined, CheckCircleOutlined, CloseCircleOutlined, WarningOutlined, EditOutlined, CopyOutlined } from '@ant-design/icons';
 import { deviceApi, scenarioApi, customKeysApi } from '../services/api';
 import { useDevice } from '../context/DeviceContext';
@@ -262,6 +262,12 @@ export default function RecordPage() {
   // HKMC 디스플레이 모드: standard(기본형) / integrated(일체형 — 클러스터+AVN)
   const [hkmcDisplayMode, setHkmcDisplayMode] = useState<'standard' | 'integrated'>('standard');
 
+  // 뷰포트 크롭: 넓은 화면에서 원하는 영역만 확대 표시 (좌표는 원본 유지)
+  // 값은 0~1 비율 (0=시작, 1=끝)
+  const [viewCropEnabled, setViewCropEnabled] = useState(false);
+  const [viewCropX, setViewCropX] = useState<[number, number]>([0, 1]);  // 가로 범위
+  const [viewCropY, setViewCropY] = useState<[number, number]>([0, 1]);  // 세로 범위
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [annotatedPreviewSrc, setAnnotatedPreviewSrc] = useState('');
   const [annotatedPreviewVisible, setAnnotatedPreviewVisible] = useState(false);
@@ -468,6 +474,8 @@ export default function RecordPage() {
   // Helper: convert element coords to device coords (canvas 또는 video)
   // 항상 deviceRes(디바이스 실제 해상도) 기준으로 변환
   // → 스크린샷 해상도가 디바이스 해상도와 다르더라도 터치 좌표가 정확
+  // 뷰포트 크롭 시: 요소가 확대되어 getBoundingClientRect()가 전체(확대된) 크기 반환
+  //   → scaleX/Y가 자동으로 디바이스 해상도와 매핑되므로 별도 보정 불필요
   const toDeviceCoords = (el: HTMLCanvasElement | HTMLVideoElement, clientX: number, clientY: number) => {
     const rect = el.getBoundingClientRect();
     const scaleX = deviceRes.width / rect.width;
@@ -2180,6 +2188,17 @@ export default function RecordPage() {
                       ))}
                     </Select>
                   )}
+                  <Tooltip title={t('record.viewCrop')}>
+                    <Button
+                      size="small"
+                      type={viewCropEnabled ? 'primary' : 'default'}
+                      icon={<ScissorOutlined />}
+                      onClick={() => {
+                        setViewCropEnabled(v => !v);
+                        if (viewCropEnabled) { setViewCropX([0, 1]); setViewCropY([0, 1]); }
+                      }}
+                    />
+                  </Tooltip>
                 </Space>
               )
             }
@@ -2191,46 +2210,94 @@ export default function RecordPage() {
           >
             {screenshotDeviceId && (h264Mode || screenshot) ? (
               <>
-              <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%', maxHeight: '100%' }}>
-                {h264Mode ? (
-                  <video
-                    ref={videoRef as React.RefObject<HTMLVideoElement>}
-                    autoPlay
-                    muted
-                    playsInline
-                    onMouseDown={testingStepIndex == null ? handleMouseDown : undefined}
-                    onMouseMove={testingStepIndex == null ? handleMouseMove : undefined}
-                    onMouseUp={testingStepIndex == null ? handleMouseUp : undefined}
-                    style={{
-                      maxWidth: '100%',
-                      maxHeight: '100%',
-                      border: isDark ? '1px solid #333' : '1px solid #d9d9d9',
-                      borderRadius: 4,
-                      cursor: testingStepIndex != null ? 'wait' : 'crosshair',
-                      userSelect: 'none',
-                    }}
-                  />
-                ) : (
-                  <canvas
-                    ref={canvasRef}
-                    onMouseDown={testingStepIndex == null ? handleMouseDown : undefined}
-                    onMouseUp={testingStepIndex == null ? handleMouseUp : undefined}
-                    style={{
-                      maxWidth: '100%',
-                      maxHeight: '100%',
-                      border: isDark ? '1px solid #333' : '1px solid #d9d9d9',
-                      borderRadius: 4,
-                      cursor: testingStepIndex != null ? 'wait' : 'crosshair',
-                      userSelect: 'none',
-                    }}
-                  />
-                )}
+              <div style={{
+                position: 'relative', display: 'inline-block', maxWidth: '100%', maxHeight: '100%',
+                overflow: 'hidden',
+              }}>
+                {(() => {
+                  // 뷰포트 크롭: overflow:hidden 컨테이너 안에서 요소를 확대+이동
+                  // 마우스 이벤트는 보이는 영역에서만 발생, getBoundingClientRect도 보이는 크기 반환
+                  const vc = viewCropEnabled;
+                  const cx0 = viewCropX[0], cy0 = viewCropY[0];
+                  const cropW = viewCropX[1] - cx0, cropH = viewCropY[1] - cy0;
+                  const vcStyle: React.CSSProperties = vc && cropW > 0 && cropH > 0 ? {
+                    // 1/cropW배 확대 후, 크롭 시작점만큼 이동 → overflow:hidden으로 잘림
+                    width: `${100 / cropW}%`,
+                    height: `${100 / cropH}%`,
+                    maxWidth: 'none',
+                    maxHeight: 'none',
+                    marginLeft: `${-cx0 / cropW * 100}%`,
+                    marginTop: `${-cy0 / cropH * 100}%`,
+                  } : {};
+                  const commonStyle: React.CSSProperties = {
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    border: isDark ? '1px solid #333' : '1px solid #d9d9d9',
+                    borderRadius: 4,
+                    cursor: testingStepIndex != null ? 'wait' : 'crosshair',
+                    userSelect: 'none' as const,
+                    ...vcStyle,
+                  };
+                  return h264Mode ? (
+                    <video
+                      ref={videoRef as React.RefObject<HTMLVideoElement>}
+                      autoPlay
+                      muted
+                      playsInline
+                      onMouseDown={testingStepIndex == null ? handleMouseDown : undefined}
+                      onMouseMove={testingStepIndex == null ? handleMouseMove : undefined}
+                      onMouseUp={testingStepIndex == null ? handleMouseUp : undefined}
+                      style={commonStyle}
+                    />
+                  ) : (
+                    <canvas
+                      ref={canvasRef}
+                      onMouseDown={testingStepIndex == null ? handleMouseDown : undefined}
+                      onMouseUp={testingStepIndex == null ? handleMouseUp : undefined}
+                      style={commonStyle}
+                    />
+                  );
+                })()}
                 {testingStepIndex != null && (
                   <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', borderRadius: 4, pointerEvents: 'none' }}>
                     <Tag color="processing" style={{ fontSize: 14, padding: '4px 12px' }}>{t('record.stepTesting')}</Tag>
                   </div>
                 )}
                 </div>
+                {viewCropEnabled && (
+                  <div style={{ width: '100%', padding: '4px 0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: subTextColor }}>
+                      <span style={{ minWidth: 16 }}>X</span>
+                      <Slider
+                        range
+                        min={0} max={1} step={0.01}
+                        value={viewCropX}
+                        onChange={(v) => setViewCropX(v as [number, number])}
+                        style={{ flex: 1 }}
+                        tooltip={{ formatter: (v) => `${Math.round((v ?? 0) * 100)}%` }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: subTextColor }}>
+                      <span style={{ minWidth: 16 }}>Y</span>
+                      <Slider
+                        range
+                        min={0} max={1} step={0.01}
+                        value={viewCropY}
+                        onChange={(v) => setViewCropY(v as [number, number])}
+                        style={{ flex: 1 }}
+                        tooltip={{ formatter: (v) => `${Math.round((v ?? 0) * 100)}%` }}
+                      />
+                    </div>
+                    <div style={{ fontSize: 10, color: subTextColor, textAlign: 'center' }}>
+                      {t('record.viewCropRange', {
+                        x1: String(Math.round(viewCropX[0] * deviceRes.width)),
+                        x2: String(Math.round(viewCropX[1] * deviceRes.width)),
+                        y1: String(Math.round(viewCropY[0] * deviceRes.height)),
+                        y2: String(Math.round(viewCropY[1] * deviceRes.height)),
+                      })}
+                    </div>
+                  </div>
+                )}
                 <div style={{ marginTop: 4, color: subTextColor, fontSize: 11 }}>
                   {lastGesture
                     ? `${lastGesture} → ${recording ? t('record.gestureRecord') : t('record.directExec')}`
