@@ -131,10 +131,14 @@ class RecordingService:
         # Ensure device_id is recorded in device_map (maps to real address)
         mapped_id = self._ensure_device_mapped(device_id) if device_id else None
 
+        # params에 screen_type이 있으면 Step 최상위 필드에도 저장
+        step_screen_type = params.get("screen_type") if params else None
+
         step = Step(
             id=step_id,
             type=step_type,
             device_id=mapped_id,
+            screen_type=step_screen_type,
             params=params,
             delay_after_ms=delay_after_ms,
             expected_image=None,

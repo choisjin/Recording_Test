@@ -263,10 +263,36 @@ export default function RecordPage() {
   const [hkmcDisplayMode, setHkmcDisplayMode] = useState<'standard' | 'integrated'>('standard');
 
   // 뷰포트 크롭: 넓은 화면에서 원하는 영역만 확대 표시 (좌표는 원본 유지)
-  // 값은 0~1 비율 (0=시작, 1=끝)
+  // 값은 0~1 비율 (0=시작, 1=끝). localStorage에 디바이스별 저장
   const [viewCropEnabled, setViewCropEnabled] = useState(false);
-  const [viewCropX, setViewCropX] = useState<[number, number]>([0, 1]);  // 가로 범위
-  const [viewCropY, setViewCropY] = useState<[number, number]>([0, 1]);  // 세로 범위
+  const [viewCropX, setViewCropX] = useState<[number, number]>([0, 1]);
+  const [viewCropY, setViewCropY] = useState<[number, number]>([0, 1]);
+
+  // 뷰포트 크롭 상태 localStorage 로드 (디바이스 변경 시)
+  useEffect(() => {
+    if (!screenshotDeviceId) return;
+    try {
+      const raw = localStorage.getItem(`viewCrop_${screenshotDeviceId}`);
+      if (raw) {
+        const saved = JSON.parse(raw);
+        setViewCropEnabled(saved.enabled ?? false);
+        setViewCropX(saved.x ?? [0, 1]);
+        setViewCropY(saved.y ?? [0, 1]);
+      } else {
+        setViewCropEnabled(false);
+        setViewCropX([0, 1]);
+        setViewCropY([0, 1]);
+      }
+    } catch { /* ignore */ }
+  }, [screenshotDeviceId]);
+
+  // 뷰포트 크롭 상태 localStorage 저장
+  useEffect(() => {
+    if (!screenshotDeviceId) return;
+    localStorage.setItem(`viewCrop_${screenshotDeviceId}`, JSON.stringify({
+      enabled: viewCropEnabled, x: viewCropX, y: viewCropY,
+    }));
+  }, [screenshotDeviceId, viewCropEnabled, viewCropX, viewCropY]);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [annotatedPreviewSrc, setAnnotatedPreviewSrc] = useState('');
@@ -2215,19 +2241,15 @@ export default function RecordPage() {
                 overflow: 'hidden',
               }}>
                 {(() => {
-                  // 뷰포트 크롭: overflow:hidden 컨테이너 안에서 요소를 확대+이동
-                  // 마우스 이벤트는 보이는 영역에서만 발생, getBoundingClientRect도 보이는 크기 반환
+                  // 뷰포트 크롭: CSS transform으로 확대 (레이아웃 불변 → 스트리밍 정상 유지)
+                  // transform은 시각적 변환만, getBoundingClientRect()는 변환 후 크기 반환
+                  // → toDeviceCoords가 별도 보정 없이 정확한 좌표 계산
                   const vc = viewCropEnabled;
                   const cx0 = viewCropX[0], cy0 = viewCropY[0];
                   const cropW = viewCropX[1] - cx0, cropH = viewCropY[1] - cy0;
-                  const vcStyle: React.CSSProperties = vc && cropW > 0 && cropH > 0 ? {
-                    // 1/cropW배 확대 후, 크롭 시작점만큼 이동 → overflow:hidden으로 잘림
-                    width: `${100 / cropW}%`,
-                    height: `${100 / cropH}%`,
-                    maxWidth: 'none',
-                    maxHeight: 'none',
-                    marginLeft: `${-cx0 / cropW * 100}%`,
-                    marginTop: `${-cy0 / cropH * 100}%`,
+                  const vcStyle: React.CSSProperties = vc && cropW > 0.01 && cropH > 0.01 ? {
+                    transformOrigin: `${(cx0 + cropW / 2) * 100}% ${(cy0 + cropH / 2) * 100}%`,
+                    transform: `scale(${1 / cropW}, ${1 / cropH})`,
                   } : {};
                   const commonStyle: React.CSSProperties = {
                     maxWidth: '100%',

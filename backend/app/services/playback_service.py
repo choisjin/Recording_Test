@@ -895,14 +895,15 @@ class PlaybackService:
             ss_dev = self.dm.get_device(resolved_ss_id)
             if ss_dev:
                 if ss_dev.type == "hkmc6th":
-                    screen_type = step.screen_type or "front_center"
+                    screen_type = step.screen_type or step.params.get("screen_type", "front_center")
                     return {"type": "hkmc6th", "id": ss_dev.id, "screen_type": screen_type}
                 if ss_dev.type == "vision_camera":
                     return {"type": "vision_camera", "id": ss_dev.id}
                 if ss_dev.type == "adb":
                     result = {"type": "adb", "id": ss_dev.id, "serial": ss_dev.address}
-                    if step.screen_type:
-                        result["screen_type"] = step.screen_type
+                    adb_screen = step.screen_type or step.params.get("screen_type")
+                    if adb_screen:
+                        result["screen_type"] = adb_screen
                     return result
 
         real_id = self._resolve_real_device_id(step)
