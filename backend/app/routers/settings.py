@@ -27,6 +27,7 @@ _DEFAULTS = {
     "scenario_export_dir": "",
     "language": "ko",
     "monitor_server_url": "",
+    "admin_server_url": "",
     "threshold_full": 0.95,
     "threshold_single_crop": 0.90,
     "threshold_full_exclude": 0.93,
@@ -60,6 +61,7 @@ class UpdateSettingsRequest(BaseModel):
     scenario_export_dir: Optional[str] = None
     language: Optional[str] = None
     monitor_server_url: Optional[str] = None
+    admin_server_url: Optional[str] = None
     threshold_full: Optional[float] = None
     threshold_single_crop: Optional[float] = None
     threshold_full_exclude: Optional[float] = None
@@ -81,6 +83,8 @@ async def update_settings(req: UpdateSettingsRequest):
         current["language"] = req.language
     if req.monitor_server_url is not None:
         current["monitor_server_url"] = req.monitor_server_url
+    if req.admin_server_url is not None:
+        current["admin_server_url"] = req.admin_server_url
     if req.threshold_full is not None:
         current["threshold_full"] = req.threshold_full
     if req.threshold_single_crop is not None:

@@ -28,6 +28,8 @@ import ResultsPage from './pages/ResultsPage';
 import SettingsPage from './pages/SettingsPage';
 import ChangelogPage from './pages/ChangelogPage';
 import WebcamPip from './components/WebcamPip';
+import AnnouncementBanner from './components/AnnouncementBanner';
+import ChatWidget from './components/ChatWidget';
 import { WebcamProvider } from './context/WebcamContext';
 
 const { Sider, Content } = Layout;
@@ -286,6 +288,7 @@ function AppContent() {
         </Sider>
         <Layout style={layoutBg ? { background: layoutBg } : undefined}>
           <Content style={{ margin: 8, padding: 12, background: contentBg, borderRadius: 8 }}>
+            <AnnouncementBanner />
             {backendReady ? (
               pages.map(({ key, component }) => (
                 <div key={key} style={{ display: activeKey === key ? 'block' : 'none' }}>
@@ -311,6 +314,8 @@ function AppContent() {
       {webcamVisible && (
         <WebcamPip webcam={webcam} onClose={toggleWebcam} isDark={isDark} />
       )}
+
+      <ChatWidget />
 
       <style>{`@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }`}</style>
     </ConfigProvider>

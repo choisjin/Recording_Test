@@ -612,6 +612,25 @@ const translations = {
     'webcam.trimSuccess': '구간 저장 완료',
     'webcam.deleteConfirm': '이 녹화를 삭제하시겠습니까?',
     'webcam.deleteSuccess': '녹화 삭제 완료',
+
+    // === Chat ===
+    'chat.title': '문의하기',
+    'chat.enterInfo': '채팅 문의를 시작하려면 정보를 입력해주세요',
+    'chat.name': '이름',
+    'chat.nameRequired': '이름을 입력하세요',
+    'chat.namePlaceholder': '이름을 입력하세요',
+    'chat.department': '부서',
+    'chat.deptRequired': '부서를 입력하세요',
+    'chat.deptPlaceholder': '부서명을 입력하세요',
+    'chat.startChat': '채팅 시작',
+    'chat.admin': '관리자',
+    'chat.adminTyping': '관리자가 입력 중...',
+    'chat.inputPlaceholder': '메시지를 입력하세요...',
+    'chat.newChat': '새 문의하기',
+
+    // === Settings ===
+    'settings.adminServerUrl': '관리자 서버 주소',
+    'settings.adminServerUrlDesc': '공지사항/채팅 서비스 서버 주소 (예: http://192.168.0.10:9000)',
   },
   en: {
     // === Common ===
@@ -1226,6 +1245,25 @@ const translations = {
     'webcam.trimSuccess': 'Trim saved',
     'webcam.deleteConfirm': 'Delete this recording?',
     'webcam.deleteSuccess': 'Recording deleted',
+
+    // === Chat ===
+    'chat.title': 'Support Chat',
+    'chat.enterInfo': 'Please enter your information to start a chat',
+    'chat.name': 'Name',
+    'chat.nameRequired': 'Please enter your name',
+    'chat.namePlaceholder': 'Enter your name',
+    'chat.department': 'Department',
+    'chat.deptRequired': 'Please enter your department',
+    'chat.deptPlaceholder': 'Enter department name',
+    'chat.startChat': 'Start Chat',
+    'chat.admin': 'Admin',
+    'chat.adminTyping': 'Admin is typing...',
+    'chat.inputPlaceholder': 'Type a message...',
+    'chat.newChat': 'New Chat',
+
+    // === Settings ===
+    'settings.adminServerUrl': 'Admin Server URL',
+    'settings.adminServerUrlDesc': 'Announcements/Chat server URL (e.g. http://192.168.0.10:9000)',
   },
 } as const;
 
