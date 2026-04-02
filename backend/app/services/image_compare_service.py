@@ -48,6 +48,8 @@ except (ImportError, OSError):
         np = None  # type: ignore
         ssim = None  # type: ignore
 
+from ..utils.cv_io import safe_imread, safe_imwrite
+
 logger = logging.getLogger(__name__)
 
 
@@ -80,8 +82,8 @@ class ImageCompareService:
             roi: optional dict with x, y, width, height to crop before comparing
         """
         self._require_cv2()
-        img_exp = cv2.imread(expected_path)
-        img_act = cv2.imread(actual_path)
+        img_exp = safe_imread(expected_path)
+        img_act = safe_imread(actual_path)
         if img_exp is None or img_act is None:
             return {"score": 0.0, "error": "Could not read one or both images"}
 
@@ -163,8 +165,8 @@ class ImageCompareService:
         only the unmasked pixels for the final score.
         """
         self._require_cv2()
-        img_exp = cv2.imread(expected_path)
-        img_act = cv2.imread(actual_path)
+        img_exp = safe_imread(expected_path)
+        img_act = safe_imread(actual_path)
         if img_exp is None or img_act is None:
             return {"score": 0.0, "error": "Could not read one or both images"}
 
@@ -222,14 +224,14 @@ class ImageCompareService:
         Returns per-crop sub-results. Overall status is fail if any crop fails.
         """
         self._require_cv2()
-        img_act = cv2.imread(actual_path)
+        img_act = safe_imread(actual_path)
         if img_act is None:
             return {"error": "Could not read actual image", "sub_results": []}
 
         sub_results = []
 
         for item in crop_items:
-            img_exp = cv2.imread(item["image"])
+            img_exp = safe_imread(item["image"])
             if img_exp is None:
                 sub_results.append({
                     "label": item.get("label", ""),
@@ -298,8 +300,8 @@ class ImageCompareService:
         Returns location and confidence score.
         """
         self._require_cv2()
-        img = cv2.imread(screenshot_path)
-        tmpl = cv2.imread(template_path)
+        img = safe_imread(screenshot_path)
+        tmpl = safe_imread(template_path)
         if img is None or tmpl is None:
             return {"found": False, "error": "Could not read one or both images"}
 
@@ -349,7 +351,7 @@ class ImageCompareService:
                 heatmap[ry:ry + rh, rx:rx + rw] = (128, 128, 128)
 
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-        cv2.imwrite(output_path, heatmap)
+        safe_imwrite(output_path, heatmap)
         return output_path
 
     def generate_multi_crop_annotated(
@@ -359,7 +361,7 @@ class ImageCompareService:
         output_path: str,
     ) -> str:
         """Draw match boxes for each crop on the actual screenshot."""
-        img = cv2.imread(actual_path)
+        img = safe_imread(actual_path)
         if img is None:
             raise RuntimeError("Could not read actual image")
 
@@ -376,7 +378,7 @@ class ImageCompareService:
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
 
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-        cv2.imwrite(output_path, img)
+        safe_imwrite(output_path, img)
         return output_path
 
     # ------------------------------------------------------------------

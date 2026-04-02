@@ -12,15 +12,13 @@ export default function SettingsPage() {
   const [excelDir, setExcelDir] = useState(settings.excel_export_dir);
   const [exportDir, setExportDir] = useState(settings.scenario_export_dir);
   const [monitorUrl, setMonitorUrl] = useState(settings.monitor_server_url);
-  const [adminUrl, setAdminUrl] = useState(settings.admin_server_url);
 
   // Sync local state when settings load
   useEffect(() => {
     setExcelDir(settings.excel_export_dir);
     setExportDir(settings.scenario_export_dir);
     setMonitorUrl(settings.monitor_server_url);
-    setAdminUrl(settings.admin_server_url);
-  }, [settings.excel_export_dir, settings.scenario_export_dir, settings.monitor_server_url, settings.admin_server_url]);
+  }, [settings.excel_export_dir, settings.scenario_export_dir, settings.monitor_server_url]);
 
   const handleThemeToggle = async (checked: boolean) => {
     try {
@@ -176,46 +174,6 @@ export default function SettingsPage() {
           </Space.Compact>
           <Text type="secondary" style={{ fontSize: 12, marginTop: 4, display: 'block' }}>
             {t('settings.monitorServerDesc')}
-          </Text>
-        </Card>
-
-        <Card
-          title={
-            <Space>
-              <ApiOutlined />
-              {t('settings.adminServerUrl')}
-              {adminUrl ? <Badge status="processing" text="" /> : null}
-            </Space>
-          }
-          size="small"
-        >
-          <Space.Compact style={{ width: '100%' }}>
-            <Input
-              placeholder="http://192.168.0.10:9000"
-              value={adminUrl}
-              onChange={(e) => setAdminUrl(e.target.value)}
-              onPressEnter={async () => {
-                try {
-                  await updateSettings({ admin_server_url: adminUrl.trim() });
-                  message.success(t('common.saved'));
-                } catch { message.error(t('common.saveFailed')); }
-              }}
-              style={{ flex: 1 }}
-            />
-            <Button
-              type="primary"
-              onClick={async () => {
-                try {
-                  await updateSettings({ admin_server_url: adminUrl.trim() });
-                  message.success(t('common.saved'));
-                } catch { message.error(t('common.saveFailed')); }
-              }}
-            >
-              {t('common.save')}
-            </Button>
-          </Space.Compact>
-          <Text type="secondary" style={{ fontSize: 12, marginTop: 4, display: 'block' }}>
-            {t('settings.adminServerUrlDesc')}
           </Text>
         </Card>
 

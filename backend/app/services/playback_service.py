@@ -17,6 +17,8 @@ from .device_manager import DeviceManager
 from .image_compare_service import ImageCompareService
 from .module_service import execute_module_function
 
+from ..utils.cv_io import safe_imread, safe_imwrite
+
 logger = logging.getLogger(__name__)
 
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
@@ -553,7 +555,7 @@ class PlaybackService:
                             if expected_path:
                                 try:
                                     import cv2
-                                    img_exp = cv2.imread(expected_path)
+                                    img_exp = safe_imread(expected_path)
                                     if img_exp is not None:
                                         dark = (img_exp * 0.2).astype("uint8")
                                         for ci in step.expected_images:
@@ -562,7 +564,7 @@ class PlaybackService:
                                                 dark[r.y:r.y + r.height, r.x:r.x + r.width] = img_exp[r.y:r.y + r.height, r.x:r.x + r.width]
                                                 cv2.rectangle(dark, (r.x, r.y), (r.x + r.width, r.y + r.height), (0, 255, 0), 2)
                                         exp_ann_path = str(actual_dir / f"{file_prefix}_expected_annotated.png")
-                                        cv2.imwrite(exp_ann_path, dark)
+                                        safe_imwrite(exp_ann_path, dark)
                                         step_result.expected_annotated_image = f"{scenario_name}/{actual_subdir}/{file_prefix}_expected_annotated.png"
                                 except Exception as e:
                                     logger.warning("Failed to generate multi-crop expected annotated: %s", e)
@@ -591,7 +593,7 @@ class PlaybackService:
                             # Generate annotated image with excluded regions
                             try:
                                 import cv2
-                                img_annotated = cv2.imread(actual_path)
+                                img_annotated = safe_imread(actual_path)
                                 if img_annotated is not None:
                                     overlay = img_annotated.copy()
                                     for r in step.exclude_rois:
@@ -600,7 +602,7 @@ class PlaybackService:
                                     for r in step.exclude_rois:
                                         cv2.rectangle(img_annotated, (r.x, r.y), (r.x + r.width, r.y + r.height), (0, 0, 255), 2)
                                     annotated_path = str(actual_dir / f"{file_prefix}_annotated.png")
-                                    cv2.imwrite(annotated_path, img_annotated)
+                                    safe_imwrite(annotated_path, img_annotated)
                                     step_result.actual_annotated_image = f"{scenario_name}/{actual_subdir}/{file_prefix}_annotated.png"
                             except Exception as e:
                                 logger.warning("Failed to generate exclude annotated image: %s", e)
@@ -621,7 +623,7 @@ class PlaybackService:
                             if expected_path:
                                 try:
                                     import cv2
-                                    img_exp = cv2.imread(expected_path)
+                                    img_exp = safe_imread(expected_path)
                                     if img_exp is not None:
                                         overlay = img_exp.copy()
                                         for r in step.exclude_rois:
@@ -630,7 +632,7 @@ class PlaybackService:
                                         for r in step.exclude_rois:
                                             cv2.rectangle(overlay, (r.x, r.y), (r.x + r.width, r.y + r.height), (0, 0, 255), 2)
                                         exp_ann_path = str(actual_dir / f"{file_prefix}_expected_annotated.png")
-                                        cv2.imwrite(exp_ann_path, overlay)
+                                        safe_imwrite(exp_ann_path, overlay)
                                         step_result.expected_annotated_image = f"{scenario_name}/{actual_subdir}/{file_prefix}_expected_annotated.png"
                                 except Exception as e:
                                     logger.warning("Failed to generate exclude expected annotated: %s", e)
@@ -642,12 +644,12 @@ class PlaybackService:
                         compare_actual = actual_path
                         if step.roi:
                             import cv2
-                            img_act = cv2.imread(actual_path)
+                            img_act = safe_imread(actual_path)
                             if img_act is not None:
                                 r = step.roi
                                 cropped = img_act[r.y:r.y + r.height, r.x:r.x + r.width]
                                 cropped_path = str(actual_dir / f"{file_prefix}_roi.png")
-                                cv2.imwrite(cropped_path, cropped)
+                                safe_imwrite(cropped_path, cropped)
                                 compare_actual = cropped_path
 
                         judgement = self.image_compare.judge(
@@ -668,25 +670,25 @@ class PlaybackService:
                                 step_result.match_location = match_loc
                                 try:
                                     import cv2
-                                    img_annotated = cv2.imread(actual_path)
+                                    img_annotated = safe_imread(actual_path)
                                     if img_annotated is not None:
                                         x, y = match_loc["x"], match_loc["y"]
                                         w, h = match_loc["width"], match_loc["height"]
                                         cv2.rectangle(img_annotated, (x, y), (x + w, y + h), (0, 0, 255), 3)
                                         annotated_path = str(actual_dir / f"{file_prefix}_annotated.png")
-                                        cv2.imwrite(annotated_path, img_annotated)
+                                        safe_imwrite(annotated_path, img_annotated)
                                         step_result.actual_annotated_image = f"{scenario_name}/{actual_subdir}/{file_prefix}_annotated.png"
                                 except Exception as e:
                                     logger.warning("Failed to generate annotated image: %s", e)
                             elif step.roi:
                                 try:
                                     import cv2
-                                    img_annotated = cv2.imread(actual_path)
+                                    img_annotated = safe_imread(actual_path)
                                     if img_annotated is not None:
                                         r = step.roi
                                         cv2.rectangle(img_annotated, (r.x, r.y), (r.x + r.width, r.y + r.height), (0, 0, 255), 3)
                                         annotated_path = str(actual_dir / f"{file_prefix}_annotated.png")
-                                        cv2.imwrite(annotated_path, img_annotated)
+                                        safe_imwrite(annotated_path, img_annotated)
                                         step_result.actual_annotated_image = f"{scenario_name}/{actual_subdir}/{file_prefix}_annotated.png"
                                         step_result.match_location = {"x": r.x, "y": r.y, "width": r.width, "height": r.height}
                                 except Exception as e:

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Badge, Button, Modal, Space, Tag, Typography } from 'antd';
 import { NotificationOutlined, ExpandOutlined } from '@ant-design/icons';
-import { useSettings } from '../context/SettingsContext';
+
+const ADMIN_URL = 'http://10.176.144.70:9000';
 
 interface Announcement {
   id: number;
@@ -13,13 +14,12 @@ interface Announcement {
 }
 
 export default function AnnouncementBanner() {
-  const { settings } = useSettings();
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [detailOpen, setDetailOpen] = useState(false);
   const [dismissed, setDismissed] = useState<Set<number>>(new Set());
   const wsRef = useRef<WebSocket | null>(null);
 
-  const adminUrl = settings.admin_server_url;
+  const adminUrl = ADMIN_URL;
 
   useEffect(() => {
     if (!adminUrl) return;

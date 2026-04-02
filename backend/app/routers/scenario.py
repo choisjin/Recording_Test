@@ -416,11 +416,12 @@ async def crop_from_expected(req: CropFromExpectedRequest):
     if not step.expected_image:
         raise HTTPException(status_code=400, detail="Step has no expected image to crop from")
 
-    # Read the expected image
+    # Read the expected image (한글 경로 대응)
+    from ..utils.cv_io import safe_imread
     img_path = SCREENSHOTS_DIR / req.scenario_name / step.expected_image
-    img = cv2.imread(str(img_path))
+    img = safe_imread(img_path)
     if img is None:
-        raise HTTPException(status_code=400, detail="Cannot read expected image")
+        raise HTTPException(status_code=400, detail=f"기대이미지를 읽을 수 없음: {step.expected_image} (exists={img_path.exists()})")
 
     img_h, img_w = img.shape[:2]
     x, y = int(req.crop["x"]), int(req.crop["y"])
@@ -444,16 +445,18 @@ async def crop_from_expected(req: CropFromExpectedRequest):
         if req.replace_index < 0 or req.replace_index >= len(step.expected_images):
             raise HTTPException(status_code=400, detail=f"Invalid replace index: {req.replace_index}")
         old = step.expected_images[req.replace_index]
+        from ..utils.cv_io import safe_imwrite
         filename = old.image  # reuse same filename
-        cv2.imwrite(str(save_dir / filename), cropped)
+        safe_imwrite(save_dir / filename, cropped)
         step.expected_images[req.replace_index] = CropItem(
             image=filename, label=req.crop_label or old.label, roi=roi,
         )
     else:
         # Append new crop
+        from ..utils.cv_io import safe_imwrite
         crop_idx = len(step.expected_images)
         filename = f"{req.scenario_name}_step_{step.id:03d}_crop_{crop_idx:02d}.png"
-        cv2.imwrite(str(save_dir / filename), cropped)
+        safe_imwrite(save_dir / filename, cropped)
         step.expected_images.append(CropItem(image=filename, label=req.crop_label, roi=roi))
 
     await recording_svc.save_scenario(scenario)

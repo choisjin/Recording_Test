@@ -4,6 +4,8 @@ import { MessageOutlined, SendOutlined, CloseOutlined } from '@ant-design/icons'
 import { useSettings } from '../context/SettingsContext';
 import { useTranslation } from '../i18n';
 
+const ADMIN_URL = 'http://10.176.144.70:9000';
+
 interface ChatMessage {
   id: number;
   from: string;
@@ -16,7 +18,7 @@ type ChatState = 'idle' | 'joining' | 'connected' | 'closed';
 export default function ChatWidget() {
   const { settings } = useSettings();
   const { t } = useTranslation();
-  const adminUrl = settings.admin_server_url;
+  const adminUrl = ADMIN_URL;
 
   const [open, setOpen] = useState(false);
   const [chatState, setChatState] = useState<ChatState>('idle');
