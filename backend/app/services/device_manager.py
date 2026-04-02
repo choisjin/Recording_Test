@@ -1013,6 +1013,7 @@ class DeviceManager:
                         dev.status = "connected"
                         dev.info["agent_version"] = svc.agent_version
                         dev.info["screens"] = svc.get_info()["screens"]
+                        dev.info["resolution"] = dev.info["screens"].get("front_center", {"width": 1920, "height": 720})
                         logger.info("HKMC auto-reconnect success: %s (after %d attempts)", dev.id, attempts)
                     else:
                         self._hkmc_reconnect_attempts[dev.id] = attempts + 1
@@ -1297,6 +1298,7 @@ class DeviceManager:
                         dev.status = "connected"
                         dev.info["agent_version"] = svc.agent_version
                         dev.info["screens"] = svc.get_info()["screens"]
+                        dev.info["resolution"] = dev.info["screens"].get("front_center", {"width": 1920, "height": 720})
                         logger.info("HKMC connection opened: %s (%s:%d)", dev.id, dev.address, port)
                     else:
                         dev.status = "disconnected"
@@ -1417,6 +1419,7 @@ class DeviceManager:
                     _mark_connected()
                     dev.info["agent_version"] = svc.agent_version
                     dev.info["screens"] = svc.get_info()["screens"]
+                    dev.info["resolution"] = dev.info["screens"].get("front_center", {"width": 1920, "height": 720})
                     return f"HKMC connected: {dev.id} ({dev.address}:{port})"
                 else:
                     dev.status = "disconnected"
