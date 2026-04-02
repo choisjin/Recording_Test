@@ -43,7 +43,7 @@ class SmartBench:
         port: TCP 포트 (기본 5000)
     """
 
-    def __init__(self, host: str = "", port: int = 5000):
+    def __init__(self, host: str = "", port: int = 8000):
         self._host = host
         self._port = int(port)
         self._sock: Optional[socket.socket] = None
@@ -111,7 +111,7 @@ class SmartBench:
                 return result
 
         try:
-            self._sock.sendall(command.encode("utf-8"))
+            self._sock.sendall(command.upper().encode("utf-8"))
             self._sock.settimeout(3)
             # 응답 수신 (\\n 또는 데이터 끝까지)
             chunks = []
