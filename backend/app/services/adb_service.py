@@ -198,13 +198,14 @@ class ADBService:
         displays: list[dict] = []
         seen_sf_ids: set[str] = set()
 
-        # 1) mViewports에서 논리 크기(회전 적용) 추출
-        viewport_map: dict[str, dict] = {}  # uniqueId → {deviceWidth, deviceHeight}
+        # 1) mViewports에서 논리 크기 추출 (logicalFrame = 실제 터치/screencap 좌표계)
+        # deviceWidth/Height는 물리 해상도이므로 Override와 다를 수 있음
+        viewport_map: dict[str, dict] = {}  # uniqueId → {width, height}
         for line in disp_output.split("\n"):
             if "DisplayViewport{" not in line:
                 continue
             for vp_m in re.finditer(
-                r"DisplayViewport\{[^}]*uniqueId='local:(\d+)'[^}]*deviceWidth=(\d+)[^}]*deviceHeight=(\d+)",
+                r"DisplayViewport\{[^}]*uniqueId='local:(\d+)'[^}]*logicalFrame=Rect\(\d+,\s*\d+\s*-\s*(\d+),\s*(\d+)\)",
                 line
             ):
                 viewport_map[vp_m.group(1)] = {
