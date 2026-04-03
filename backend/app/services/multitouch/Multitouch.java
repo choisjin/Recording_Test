@@ -49,9 +49,11 @@ public class Multitouch {
         }
     }
 
+    private static final int INJECT_MODE_WAIT_FOR_FINISH = 2;
+
     private static boolean inject(MotionEvent ev) {
         try {
-            return (Boolean) sInjectMethod.invoke(sInputManager, ev, 0);
+            return (Boolean) sInjectMethod.invoke(sInputManager, ev, INJECT_MODE_WAIT_FOR_FINISH);
         } catch (Exception e) {
             System.err.println("inject failed: " + e);
             return false;
