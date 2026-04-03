@@ -161,6 +161,10 @@ const AnnotatedThumbnail = React.memo(({ src, regions, color, height = 48 }: {
 const LONG_PRESS_THRESHOLD_MS = 500;
 const SWIPE_DISTANCE_THRESHOLD = 20;
 
+// HKMC key sub commands
+const HKMC_SHORT_KEY = 0x43;
+const HKMC_LONG_KEY = 0x44;
+
 export default function RecordPage() {
   const { t } = useTranslation();
   const {
@@ -2464,12 +2468,23 @@ export default function RecordPage() {
                           <details key={group} style={{ marginBottom: 2 }}>
                             <summary style={{ fontSize: 11, color: subTextColor, cursor: 'pointer', userSelect: 'none' }}>{group}</summary>
                             <div style={{ padding: '2px 0 2px 4px' }}>
-                              {keys.map(k => (
+                              {keys.map(k => {
+                                let downTs = 0;
+                                return (
                                 <Button key={k.name} size="small"
                                   style={{ fontSize: 10, padding: '0 6px', height: 22, margin: '0 2px 2px 0' }}
-                                  onClick={() => executeAction('hkmc_key', { key_name: k.name, screen_type: screenType }, k.name)}
+                                  onMouseDown={() => { downTs = Date.now(); }}
+                                  onMouseUp={() => {
+                                    const held = Date.now() - downTs;
+                                    const isLong = held >= LONG_PRESS_THRESHOLD_MS;
+                                    const sub = isLong ? HKMC_LONG_KEY : HKMC_SHORT_KEY;
+                                    const label = k.name + (isLong ? ' (Long)' : '');
+                                    executeAction('hkmc_key', { key_name: k.name, sub_cmd: sub, screen_type: screenType }, label);
+                                  }}
+                                  onMouseLeave={() => { downTs = 0; }}
                                 >{k.name.replace(`${group}_`, '')}</Button>
-                              ))}
+                                );
+                              })}
                             </div>
                           </details>
                         );
@@ -2478,13 +2493,24 @@ export default function RecordPage() {
                         <details key={group} style={{ marginBottom: 2 }}>
                           <summary style={{ fontSize: 11, color: '#d4a017', cursor: 'pointer', userSelect: 'none' }}>{group}</summary>
                           <div style={{ padding: '2px 0 2px 4px' }}>
-                            {keys.map(k => (
+                            {keys.map(k => {
+                              let downTs = 0;
+                              return (
                               <Tag key={k.name} closable
                                 onClose={async (e) => { e.preventDefault(); try { await customKeysApi.remove(k.name); const r = await deviceApi.listHkmcKeys(); setHkmcKeys(r.data.keys || []); } catch {} }}
                                 style={{ fontSize: 10, cursor: 'pointer', margin: '0 2px 2px 0' }}
-                                onClick={() => executeAction('hkmc_key', { key_name: k.name, screen_type: screenType }, k.name)}
+                                onMouseDown={() => { downTs = Date.now(); }}
+                                onMouseUp={() => {
+                                  const held = Date.now() - downTs;
+                                  const isLong = held >= LONG_PRESS_THRESHOLD_MS;
+                                  const sub = isLong ? HKMC_LONG_KEY : HKMC_SHORT_KEY;
+                                  const label = k.name + (isLong ? ' (Long)' : '');
+                                  executeAction('hkmc_key', { key_name: k.name, sub_cmd: sub, screen_type: screenType }, label);
+                                }}
+                                onMouseLeave={() => { downTs = 0; }}
                               >{k.name.replace(`${group}_`, '')}</Tag>
-                            ))}
+                              );
+                            })}
                           </div>
                         </details>
                       ))}
