@@ -1,16 +1,23 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Form, Input, Modal, Typography } from 'antd';
 import { SendOutlined, CloseOutlined } from '@ant-design/icons';
 import { useSettings } from '../context/SettingsContext';
 import { useTranslation } from '../i18n';
 
 const ADMIN_URL = 'http://10.176.144.70:9000';
+const STORAGE_KEY = 'chat_session';
 
 interface ChatMessage {
   id: number;
   from: string;
   content: string;
   created_at: string;
+}
+
+interface ChatSession {
+  name: string;
+  department: string;
+  messages: ChatMessage[];
 }
 
 type ChatState = 'idle' | 'joining' | 'connected' | 'closed';
@@ -20,41 +27,63 @@ interface ChatWidgetProps {
   onClose: () => void;
 }
 
+function loadSession(): ChatSession | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function saveSession(session: ChatSession | null) {
+  if (session) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+  } else {
+    localStorage.removeItem(STORAGE_KEY);
+  }
+}
+
 export default function ChatWidget({ open, onClose }: ChatWidgetProps) {
   const { settings } = useSettings();
   const { t } = useTranslation();
   const adminUrl = ADMIN_URL;
 
-  const [chatState, setChatState] = useState<ChatState>('idle');
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const saved = useRef(loadSession());
+  const [chatState, setChatState] = useState<ChatState>(saved.current ? 'joining' : 'idle');
+  const [messages, setMessages] = useState<ChatMessage[]>(saved.current?.messages || []);
   const [inputVal, setInputVal] = useState('');
   const [adminTyping, setAdminTyping] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const sessionRef = useRef<{ name: string; department: string } | null>(
+    saved.current ? { name: saved.current.name, department: saved.current.department } : null
+  );
   const [form] = Form.useForm();
 
   const isDark = settings.theme === 'dark';
+
+  // 메시지 변경 시 localStorage 저장
+  useEffect(() => {
+    if (sessionRef.current) {
+      saveSession({ ...sessionRef.current, messages });
+    }
+  }, [messages]);
 
   // 메시지 스크롤
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleJoin = async () => {
-    const values = await form.validateFields();
+  const connectWs = useCallback((name: string, department: string) => {
     setChatState('joining');
+    sessionRef.current = { name, department };
 
     const wsUrl = adminUrl.replace(/^http/, 'ws') + '/ws/chat';
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
-      ws.send(JSON.stringify({
-        type: 'join',
-        name: values.name,
-        department: values.department,
-      }));
+      ws.send(JSON.stringify({ type: 'join', name, department }));
     };
 
     ws.onmessage = (ev) => {
@@ -92,10 +121,22 @@ export default function ChatWidget({ open, onClose }: ChatWidgetProps) {
     };
 
     ws.onclose = () => {
-      if (chatState !== 'closed') {
-        setChatState('closed');
-      }
+      setChatState(prev => prev === 'closed' ? 'closed' : 'idle');
     };
+  }, [adminUrl]);
+
+  // 저장된 세션이 있으면 자동 재접속
+  useEffect(() => {
+    if (saved.current) {
+      connectWs(saved.current.name, saved.current.department);
+      saved.current = null;
+    }
+    return () => { wsRef.current?.close(); };
+  }, [connectWs]);
+
+  const handleJoin = async () => {
+    const values = await form.validateFields();
+    connectWs(values.name, values.department);
   };
 
   const handleSend = () => {
@@ -113,18 +154,13 @@ export default function ChatWidget({ open, onClose }: ChatWidgetProps) {
   const handleReset = () => {
     wsRef.current?.close();
     wsRef.current = null;
+    sessionRef.current = null;
     setChatState('idle');
     setMessages([]);
     setInputVal('');
     form.resetFields();
+    saveSession(null);
   };
-
-  // cleanup on unmount
-  useEffect(() => {
-    return () => {
-      wsRef.current?.close();
-    };
-  }, []);
 
   if (!adminUrl) return null;
 
