@@ -5,14 +5,8 @@ if exist ".git" (
     where git.exe >nul 2>nul
     if not errorlevel 1 (
         echo [UPDATE] Fetching latest...
-        git remote get-url deploy >nul 2>nul
-        if not errorlevel 1 (
-            git fetch deploy main
-            git reset --hard deploy/main
-        ) else (
-            git fetch origin main
-            git reset --hard origin/main
-        )
+        git fetch origin main
+        git reset --hard origin/main
         echo [UPDATE] Done.
     )
 )
