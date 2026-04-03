@@ -417,14 +417,33 @@ async def git_log(limit: int = 100, fetch: bool = False):
     try:
         no_window = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
         if fetch:
-            subprocess.run(
+            fetch_r = subprocess.run(
                 ["git", "fetch", "deploy"],
                 cwd=str(_PROJECT_ROOT), capture_output=True, timeout=15,
-                creationflags=no_window,
+                encoding="utf-8", errors="replace", creationflags=no_window,
             )
-        # deploy 원격의 main 브랜치 커밋 내역 조회
+            if fetch_r.returncode != 0:
+                raise HTTPException(status_code=502, detail=f"사내망 연결 실패: {fetch_r.stderr.strip()}")
+        # deploy 원격 브랜치 탐색
+        ref_r = subprocess.run(
+            ["git", "branch", "-r", "--list", "deploy/*"],
+            cwd=str(_PROJECT_ROOT), capture_output=True, timeout=5,
+            encoding="utf-8", errors="replace", creationflags=no_window,
+        )
+        deploy_branch = None
+        if ref_r.returncode == 0 and ref_r.stdout.strip():
+            branches = [b.strip() for b in ref_r.stdout.strip().split("\n") if b.strip() and "HEAD" not in b]
+            for pref in ("deploy/main", "deploy/master"):
+                if pref in branches:
+                    deploy_branch = pref
+                    break
+            if not deploy_branch and branches:
+                deploy_branch = branches[0]
+        if not deploy_branch:
+            raise HTTPException(status_code=502, detail="deploy 원격 브랜치를 찾을 수 없습니다. 사내망 연결을 확인하세요.")
+
         r = subprocess.run(
-            ["git", "log", "deploy/main", f"-{limit}", "--pretty=format:%H||%h||%an||%ae||%aI||%s"],
+            ["git", "log", deploy_branch, f"-{limit}", "--pretty=format:%H||%h||%an||%ae||%aI||%s"],
             cwd=str(_PROJECT_ROOT),
             capture_output=True, timeout=10, encoding="utf-8", errors="replace",
             creationflags=no_window,
