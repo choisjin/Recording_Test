@@ -429,23 +429,24 @@ async def upload_webcam_recording(
     repeat_index: int = Query(1),
 ):
     """Upload a webcam recording linked to a test result."""
-    RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
     base = result_filename.replace(".json", "").replace("/result", "")
-    filename = f"{base}_webcam_r{repeat_index}.webm"
+    filename = f"webcam_r{repeat_index}.webm"
     content = await file.read()
 
-    # 기존 위치에 저장 (정적 파일 서빙용)
-    filepath = RECORDINGS_DIR / filename
-    filepath.write_bytes(content)
-
-    # 런 폴더가 있으면 recordings/ 하위에도 복사
+    # 시나리오 결과 폴더의 recordings/ 에 저장
     run_dir = RESULTS_DIR / base
     if run_dir.is_dir():
         rec_dir = run_dir / "recordings"
         rec_dir.mkdir(exist_ok=True)
-        (rec_dir / f"webcam_r{repeat_index}.webm").write_bytes(content)
+        filepath = rec_dir / filename
+        filepath.write_bytes(content)
+    else:
+        # 결과 폴더가 없으면 기존 위치에 저장 (폴백)
+        RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
+        filepath = RECORDINGS_DIR / f"{base}_webcam_r{repeat_index}.webm"
+        filepath.write_bytes(content)
 
-    return {"filename": filename, "url": f"/recordings/{filename}"}
+    return {"filename": filename, "path": str(filepath)}
 
 
 @router.get("/recordings-for/{result_filename:path}")

@@ -278,6 +278,10 @@ export function useWebcam() {
       if (webcamRecorderRef.current && webcamRecorderRef.current.state !== 'inactive') {
         webcamRecorderRef.current.stop();
         webcamRecorderRef.current = null;
+      } else {
+        // recorder가 없거나 이미 inactive → 빈 blob으로 즉시 resolve
+        resolve(new Blob([], { type: 'video/webm' }));
+        autoRecordResolveRef.current = null;
       }
       setWebcamRecording(false);
     });

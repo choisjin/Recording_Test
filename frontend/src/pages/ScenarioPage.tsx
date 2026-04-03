@@ -766,6 +766,7 @@ export default function ScenarioPage() {
             webcamRecordingActiveRef.current = false;
             if (resultFilename) {
               for (const item of allBlobs) {
+                if (item.blob.size < 100) continue;
                 try { await resultsApi.uploadRecording(item.blob, resultFilename, item.repeatIndex); } catch { message.error(t('webcam.uploadFailed')); }
               }
             }
@@ -965,6 +966,7 @@ export default function ScenarioPage() {
             webcamRecordingActiveRef.current = false;
             if (resultFilename) {
               for (const item of allBlobs) {
+                if (item.blob.size < 100) continue;
                 try { await resultsApi.uploadRecording(item.blob, resultFilename, item.repeatIndex); } catch { message.error(t('webcam.uploadFailed')); }
               }
             }
