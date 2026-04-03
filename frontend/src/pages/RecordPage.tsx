@@ -1208,28 +1208,37 @@ export default function RecordPage() {
     const dist = Math.sqrt((endX - startX) ** 2 + (endY - startY) ** 2);
     const elapsed = Date.now() - startTime;
 
-    // 줌인/줌아웃 모드: 클릭 지점 기준 핀치 제스처
+    // 줌인/줌아웃 모드: 스와이프한 방향과 거리만큼 핀치 제스처
     if (gestureMode !== 'normal') {
-      const spread = 50;
-      const gap = 5; // 손가락이 완전히 겹치지 않도록 최소 간격
+      const dx = endX - startX;
+      const dy = endY - startY;
+      const spread = Math.max(10, Math.sqrt(dx * dx + dy * dy));
+      const gap = 5;
+      // 드래그 방향 단위벡터 (드래그 안 했으면 수평 기본)
+      const len = Math.sqrt(dx * dx + dy * dy);
+      const ux = len > 3 ? dx / len : 1;
+      const uy = len > 3 ? dy / len : 0;
+      const cx = Math.round((startX + endX) / 2);
+      const cy = Math.round((startY + endY) / 2);
       let fingers;
       if (gestureMode === 'zoom_in') {
-        // 줌인: 중심에서 바깥으로 벌어짐
+        // 줌인: 중심에서 드래그 방향으로 벌어짐
         fingers = [
-          { x1: startX - gap, y1: startY, x2: startX - spread, y2: startY },
-          { x1: startX + gap, y1: startY, x2: startX + spread, y2: startY },
+          { x1: Math.round(cx - ux * gap), y1: Math.round(cy - uy * gap), x2: Math.round(cx - ux * spread), y2: Math.round(cy - uy * spread) },
+          { x1: Math.round(cx + ux * gap), y1: Math.round(cy + uy * gap), x2: Math.round(cx + ux * spread), y2: Math.round(cy + uy * spread) },
         ];
       } else {
-        // 줌아웃: 바깥에서 중심으로 오므려짐
+        // 줌아웃: 드래그 방향 바깥에서 중심으로 오므려짐
         fingers = [
-          { x1: startX - spread, y1: startY, x2: startX - gap, y2: startY },
-          { x1: startX + spread, y1: startY, x2: startX + gap, y2: startY },
+          { x1: Math.round(cx - ux * spread), y1: Math.round(cy - uy * spread), x2: Math.round(cx - ux * gap), y2: Math.round(cy - uy * gap) },
+          { x1: Math.round(cx + ux * spread), y1: Math.round(cy + uy * spread), x2: Math.round(cx + ux * gap), y2: Math.round(cy + uy * gap) },
         ];
       }
+      const durationMs = Math.max(200, Math.min(elapsed, 2000));
       const label = gestureMode === 'zoom_in' ? t('record.zoomIn') : t('record.zoomOut');
-      const params = { fingers, duration_ms: 300 };
-      executeAction('multi_touch', params, `${label} (${startX},${startY})`);
-      setLastGesture(`${label} (${startX},${startY})`);
+      const params = { fingers, duration_ms: durationMs };
+      executeAction('multi_touch', params, `${label} (${startX},${startY})→(${endX},${endY})`);
+      setLastGesture(`${label} (${startX},${startY})→(${endX},${endY})`);
       return;
     }
 
