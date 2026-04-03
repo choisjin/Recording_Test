@@ -2432,6 +2432,7 @@ export default function RecordPage() {
                           'CCP_VOLUME_ANTI_CLOCK', 'CCP_VOLUME_CLOCK',
                           'CCP_TUNE_ANTI_CLOCK', 'CCP_TUNE_CLOCK',
                           'CCP_JOGDIAL_ANTI_CLOCK', 'CCP_JOGDIAL_CLOCK',
+                          'CCP_JOGDIAL_CLOCK_Right', 'CCP_JOGDIAL_CLOCK_Left',
                           'CCP_RIGHT', 'CCP_LEFT', 'CCP_UP', 'CCP_DOWN', 'CCP_ENTER', 'CCP_TUNE_PUSH'],
                     SWRC: ['SWRC_MUTE', 'SWRC_VOLUME_ANTI_CLOCK', 'SWRC_VOLUME_CLOCK',
                            'SWRC_PTT', 'SWRC_CUSTOM', 'SWRC_SEND', 'SWRC_END'],

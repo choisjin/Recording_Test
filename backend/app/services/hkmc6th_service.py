@@ -90,6 +90,8 @@ HKMC_KEYS = {
     "CCP_POWER": {"cmd": CMD_CCP, "key": 0x19},
     "CCP_TUNE_PUSH": {"cmd": CMD_CCP, "key": 0x1E},
     "CCP_JOGDIAL": {"cmd": CMD_CCP, "key": 0x00, "dial": True},
+    "CCP_JOGDIAL_CLOCK_Right": {"cmd": CMD_CCP, "key": 0x00, "dial": True, "direction": 0x00},
+    "CCP_JOGDIAL_CLOCK_Left": {"cmd": CMD_CCP, "key": 0x00, "dial": True, "direction": 0x01},
     "CCP_VOLUME": {"cmd": CMD_CCP, "key": 0x01, "dial": True},
     "CCP_TUNE": {"cmd": CMD_CCP, "key": 0x04, "dial": True},
     # RRC keys
@@ -709,7 +711,8 @@ class HKMC6thService:
             # Agent가 이전 이미지 응답 전송을 마칠 시간 확보
             time.sleep(0.3)
             if key_info.get("dial"):
-                self.send_key(cmd, DIAL_ACTION, key_data, monitor, direction)
+                dir_val = direction if direction is not None else key_info.get("direction")
+                self.send_key(cmd, DIAL_ACTION, key_data, monitor, dir_val)
             elif sub_cmd == SHORT_KEY:
                 # 일반 키: PRESS → SHORT → RELEASE 3단계 시퀀스
                 self.send_key(cmd, PRESS_KEY, key_data, monitor, direction)
