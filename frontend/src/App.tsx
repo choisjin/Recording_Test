@@ -14,6 +14,7 @@ import {
   PlayCircleOutlined,
   SettingOutlined,
   VideoCameraOutlined,
+  MessageOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
 import { deviceApi, serverApi } from './services/api';
@@ -46,6 +47,7 @@ const pageKeys = [
 function AppContent() {
   const [activeKey, setActiveKey] = useState('/');
   const [siderCollapsed, setSiderCollapsed] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const [diskInfoList, setDiskInfoList] = useState<{ drive: string; free_gb: number; total_gb: number; used_percent: number }[]>([]);
   const { settings, uploadWebcamRecording, fetchSettings } = useSettings();
   const { t } = useTranslation();
@@ -265,6 +267,15 @@ function AppContent() {
                 {!siderCollapsed && 'Results 폴더'}
               </Button>
             </Tooltip>
+            <Tooltip title={t('chat.title')} placement="right">
+              <Button
+                block
+                icon={<MessageOutlined />}
+                onClick={() => setChatOpen(true)}
+              >
+                {!siderCollapsed && t('chat.title')}
+              </Button>
+            </Tooltip>
           </div>
           {diskInfoList.length > 0 && (
             <div style={{ padding: siderCollapsed ? '8px 4px' : '8px 16px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
@@ -315,7 +326,7 @@ function AppContent() {
         <WebcamPip webcam={webcam} onClose={toggleWebcam} isDark={isDark} />
       )}
 
-      <ChatWidget />
+      <ChatWidget open={chatOpen} onClose={() => setChatOpen(false)} />
 
       <style>{`@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }`}</style>
     </ConfigProvider>
