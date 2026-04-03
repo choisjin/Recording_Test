@@ -2328,22 +2328,7 @@ export default function RecordPage() {
                       ]}
                     />
                   </Tooltip>
-                  <Tooltip title={t('record.zoomIn')}>
-                    <Button
-                      size="small"
-                      type={gestureMode === 'zoom_in' ? 'primary' : 'default'}
-                      icon={<ZoomInOutlined />}
-                      onClick={() => { setGestureMode(g => g === 'zoom_in' ? 'normal' : 'zoom_in'); setFingerCount(1); }}
-                    />
-                  </Tooltip>
-                  <Tooltip title={t('record.zoomOut')}>
-                    <Button
-                      size="small"
-                      type={gestureMode === 'zoom_out' ? 'primary' : 'default'}
-                      icon={<ZoomOutOutlined />}
-                      onClick={() => { setGestureMode(g => g === 'zoom_out' ? 'normal' : 'zoom_out'); setFingerCount(1); }}
-                    />
-                  </Tooltip>
+                  {/* 줌인/아웃 버튼 — 임시 비활성 */}
                   {fingerCount > 1 && (
                     <Tooltip title={t('record.fingerSpread')}>
                       <InputNumber
