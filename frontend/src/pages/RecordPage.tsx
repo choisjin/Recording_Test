@@ -186,6 +186,9 @@ export default function RecordPage() {
   const [editingExisting, setEditingExisting] = useState(false);
   const [originalScenarioName, setOriginalScenarioName] = useState('');
 
+  // 시나리오 메타데이터 보존 (device_map, created_at 등 프론트엔드에서 편집하지 않는 필드)
+  const scenarioMetaRef = useRef<Record<string, any>>({});
+
   // 변경사항 추적 (저장된 스텝과 비교)
   const savedStepsRef = useRef<string>('[]');
   const saveScenarioRef = useRef<() => Promise<void>>(async () => {});
@@ -688,6 +691,7 @@ export default function RecordPage() {
   // --- Expected image capture (server-side screenshot, no large base64 transfer) ---
   const saveExpectedFull = useCallback(async (stepIdx: number) => {
     if (!scenarioName || !screenshotDeviceId) return;
+    await ensureSavedForImageOp();
     try {
       const res = await scenarioApi.captureExpectedImage(scenarioName, stepIdx, screenshotDeviceId, undefined, undefined, undefined, (isScreenHkmc || hasMultiDisplay) ? screenType : undefined);
       setSteps(prev => prev.map((s, i) => i === stepIdx ? { ...s, expected_image: res.data.filename, screenshot_device_id: screenshotDeviceId, _imageVer: Date.now(), roi: null, exclude_rois: [], expected_images: [] } : s));
@@ -818,6 +822,7 @@ export default function RecordPage() {
     const rh = Math.abs(curY - startY);
     if (rw > 10 && rh > 10 && captureStepIndex != null && scenarioName && screenshotDeviceId) {
       const crop = { x: rx, y: ry, width: rw, height: rh };
+      await ensureSavedForImageOp();
       try {
         const res = await scenarioApi.captureExpectedImage(
           scenarioName, captureStepIndex, screenshotDeviceId, crop, undefined, undefined, (isScreenHkmc || hasMultiDisplay) ? screenType : undefined,
@@ -996,6 +1001,7 @@ export default function RecordPage() {
       // 기대 이미지가 없으면 자동 캡처
       const step = steps[excludeRoiEditingIndex];
       if (!step?.expected_image && scenarioName && screenshotDeviceId) {
+        await ensureSavedForImageOp();
         try {
           const capRes = await scenarioApi.captureExpectedImage(scenarioName, excludeRoiEditingIndex, screenshotDeviceId, undefined, undefined, undefined, (isScreenHkmc || hasMultiDisplay) ? screenType : undefined);
           setSteps(prev => prev.map((s, i) => i === excludeRoiEditingIndex ? { ...s, expected_image: capRes.data.filename, screenshot_device_id: screenshotDeviceId, _imageVer: Date.now(), roi: null, expected_images: [] } : s));
@@ -1137,6 +1143,7 @@ export default function RecordPage() {
     if (rw > 10 && rh > 10 && multiCropEditingIndex != null && scenarioName && screenshotDeviceId) {
       // 캔버스 ↔ deviceRes 비율 변환 (H.264 다운스케일 대응)
       const crop = { x: rx, y: ry, width: rw, height: rh };
+      await ensureSavedForImageOp();
       try {
         // 현재 화면으로 기대이미지 갱신 (모달 스냅샷과 좌표 일치 보장)
         const capRes = await scenarioApi.captureExpectedImage(scenarioName, multiCropEditingIndex, screenshotDeviceId, undefined, undefined, undefined, (isScreenHkmc || hasMultiDisplay) ? screenType : undefined, true);
@@ -1455,6 +1462,9 @@ export default function RecordPage() {
       const loadedSteps = res.data.steps || [];
       setSteps(loadedSteps);
       savedStepsRef.current = JSON.stringify(loadedSteps.map(({ _imageVer, ...rest }: any) => rest));
+      // 프론트엔드에서 편집하지 않는 시나리오 메타데이터 보존
+      const { name: _n, description: _d, steps: _s, ...meta } = res.data;
+      scenarioMetaRef.current = meta;
       setEditingExisting(true);
       message.success(t('record.scenarioLoaded', { name, count: res.data.steps?.length || 0 }));
     } catch {
@@ -1481,6 +1491,7 @@ export default function RecordPage() {
         return { ...rest, id: i + 1 };
       });
       await scenarioApi.update(newName, {
+        ...scenarioMetaRef.current,
         name: newName,
         description,
         steps: reindexed,
@@ -1497,6 +1508,33 @@ export default function RecordPage() {
     }
   };
   saveScenarioRef.current = saveScenario;
+
+  // 기대이미지 백엔드 API 호출 전 미저장 변경사항 동기화
+  // 백엔드의 _resolve_scenario가 디스크에서 시나리오를 로드하므로,
+  // 프론트엔드에서 스텝을 삭제/이동한 후 저장하지 않으면 인덱스가 불일치함
+  const ensureSavedForImageOp = async (): Promise<boolean> => {
+    if (!scenarioName.trim() || !editingExisting) return true;
+    if (!isDirty()) return true;
+    try {
+      const newName = scenarioName.trim();
+      const reindexed = steps.map((s, i) => {
+        const { _imageVer, ...rest } = s;
+        return { ...rest, id: i + 1 };
+      });
+      await scenarioApi.update(newName, {
+        ...scenarioMetaRef.current,
+        name: newName,
+        description,
+        steps: reindexed,
+      });
+      const savedSteps = reindexed.map((s, i) => ({ ...s, _imageVer: steps[i]?._imageVer }));
+      setSteps(savedSteps);
+      savedStepsRef.current = JSON.stringify(reindexed);
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
   // Helper: remap goto references after step reorder/delete
   const remapGoto = (val: number | null | undefined, mapping: Map<number, number>): number | null | undefined => {
@@ -2124,8 +2162,11 @@ export default function RecordPage() {
                       <Tag style={{ margin: 0, cursor: 'pointer', fontSize: 11 }}>{threshPct}%</Tag>
                     </Popover>
                     <CloseCircleOutlined
-                      onClick={() => {
-                        if (scenarioName) scenarioApi.removeExpectedImage(scenarioName, index).catch(() => {});
+                      onClick={async () => {
+                        if (scenarioName) {
+                          await ensureSavedForImageOp();
+                          scenarioApi.removeExpectedImage(scenarioName, index).catch(() => {});
+                        }
                         setSteps((prev) => prev.map((st, i) => i === index ? { ...st, expected_image: null, roi: null, exclude_rois: [], expected_images: [] } : st));
                       }}
                       style={{ fontSize: 14, color: '#ff4d4f', cursor: 'pointer' }}
