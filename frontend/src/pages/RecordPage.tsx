@@ -1217,7 +1217,7 @@ export default function RecordPage() {
     if (gestureMode !== 'normal') {
       const dx = endX - startX;
       const dy = endY - startY;
-      const spread = Math.max(10, Math.sqrt(dx * dx + dy * dy) * 0.5);
+      const spread = Math.max(10, Math.sqrt(dx * dx + dy * dy));
       const gap = 5;
       // 드래그 방향 단위벡터 (드래그 안 했으면 수평 기본)
       const len = Math.sqrt(dx * dx + dy * dy);
