@@ -164,6 +164,7 @@ const SWIPE_DISTANCE_THRESHOLD = 20;
 // HKMC key sub commands
 const HKMC_SHORT_KEY = 0x43;
 const HKMC_LONG_KEY = 0x44;
+const HKMC_LONG_PRESS_MS = 3000;
 
 export default function RecordPage() {
   const { t } = useTranslation();
@@ -2476,7 +2477,7 @@ export default function RecordPage() {
                                   onMouseDown={() => { downTs = Date.now(); }}
                                   onMouseUp={() => {
                                     const held = Date.now() - downTs;
-                                    const isLong = held >= LONG_PRESS_THRESHOLD_MS;
+                                    const isLong = held >= HKMC_LONG_PRESS_MS;
                                     const sub = isLong ? HKMC_LONG_KEY : HKMC_SHORT_KEY;
                                     const label = k.name + (isLong ? ' (Long)' : '');
                                     executeAction('hkmc_key', { key_name: k.name, sub_cmd: sub, screen_type: screenType }, label);
@@ -2502,7 +2503,7 @@ export default function RecordPage() {
                                 onMouseDown={() => { downTs = Date.now(); }}
                                 onMouseUp={() => {
                                   const held = Date.now() - downTs;
-                                  const isLong = held >= LONG_PRESS_THRESHOLD_MS;
+                                  const isLong = held >= HKMC_LONG_PRESS_MS;
                                   const sub = isLong ? HKMC_LONG_KEY : HKMC_SHORT_KEY;
                                   const label = k.name + (isLong ? ' (Long)' : '');
                                   executeAction('hkmc_key', { key_name: k.name, sub_cmd: sub, screen_type: screenType }, label);
