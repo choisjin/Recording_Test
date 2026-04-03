@@ -412,10 +412,16 @@ async def disk_usage():
 
 
 @router.get("/git-log")
-async def git_log(limit: int = 100):
-    """Git 커밋 내역 조회."""
+async def git_log(limit: int = 100, fetch: bool = False):
+    """Git 커밋 내역 조회. fetch=true면 원격에서 최신 커밋 가져온 후 조회."""
     try:
         no_window = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+        if fetch:
+            subprocess.run(
+                ["git", "fetch", "--all"],
+                cwd=str(_PROJECT_ROOT), capture_output=True, timeout=15,
+                creationflags=no_window,
+            )
         r = subprocess.run(
             ["git", "log", f"-{limit}", "--pretty=format:%H||%h||%an||%ae||%aI||%s"],
             cwd=str(_PROJECT_ROOT),

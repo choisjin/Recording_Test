@@ -140,7 +140,7 @@ export const serverApi = {
   updateAndRestart: () => api.post('/settings/update-and-restart'),
   diskUsage: () => api.get('/settings/disk-usage'),
   openResultsFolder: () => api.post('/settings/open-results-folder'),
-  gitLog: (limit?: number) => api.get('/settings/git-log', { params: { limit: limit || 100 } }),
+  gitLog: (limit?: number, fetch?: boolean) => api.get('/settings/git-log', { params: { limit: limit || 100, fetch: fetch || false } }),
 };
 
 // Custom HKMC keys APIs

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Card, Input, Space, Spin, Table, Tag, Typography, message } from 'antd';
-import { BranchesOutlined, TagOutlined } from '@ant-design/icons';
+import { Button, Card, Input, Space, Spin, Table, Tag, Typography, message } from 'antd';
+import { BranchesOutlined, ReloadOutlined, TagOutlined } from '@ant-design/icons';
 import { serverApi } from '../services/api';
 import { useSettings } from '../context/SettingsContext';
 import { useTranslation } from '../i18n';
@@ -25,24 +25,25 @@ export default function ChangelogPage() {
   const [tags, setTags] = useState<string[]>([]);
   const [search, setSearch] = useState('');
 
+  const load = async (fetch = false) => {
+    setLoading(true);
+    try {
+      const res = await serverApi.gitLog(200, fetch);
+      setCommits(res.data.commits || []);
+      setBranch(res.data.branch || '');
+      setTags(res.data.tags || []);
+    } catch {
+      message.error(t('changelog.loadFailed'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      try {
-        const res = await serverApi.gitLog(200);
-        setCommits(res.data.commits || []);
-        setBranch(res.data.branch || '');
-        setTags(res.data.tags || []);
-      } catch {
-        message.error(t('changelog.loadFailed'));
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
+    load(true);
 
     const handler = (e: Event) => {
-      if ((e as CustomEvent).detail === '/changelog') load();
+      if ((e as CustomEvent).detail === '/changelog') load(true);
     };
     window.addEventListener('tab-change', handler);
     return () => window.removeEventListener('tab-change', handler);
@@ -122,6 +123,9 @@ export default function ChangelogPage() {
       <Typography.Title level={4} style={{ marginBottom: 16 }}>{t('changelog.title')}</Typography.Title>
 
       <Space style={{ marginBottom: 16 }} wrap>
+        <Button size="small" icon={<ReloadOutlined />} loading={loading} onClick={() => load(true)}>
+          {t('changelog.refresh')}
+        </Button>
         <Tag icon={<BranchesOutlined />} color="processing">{branch}</Tag>
         <span style={{ color: '#888', fontSize: 12 }}>{t('changelog.totalCommits')}: {commits.length}</span>
         {tags.length > 0 && (
