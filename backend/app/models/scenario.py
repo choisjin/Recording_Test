@@ -126,7 +126,7 @@ class StepResult(BaseModel):
     device_id: str = ""  # which device executed this step
     command: str = ""  # human-readable action description
     description: str = ""  # user remark for the step
-    status: str  # "pass", "fail", "warning", "error"
+    status: str  # "pass", "fail", "error"
     similarity_score: Optional[float] = None
     expected_image: Optional[str] = None
     expected_annotated_image: Optional[str] = None  # expected with regions drawn

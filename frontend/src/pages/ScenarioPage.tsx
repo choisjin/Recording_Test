@@ -1069,7 +1069,6 @@ export default function ScenarioPage() {
   const playbackSteps = playbackScenario?.steps || [];
   const passCount = stepResults.filter((r) => r.status === 'pass').length;
   const failCount = stepResults.filter((r) => r.status === 'fail').length;
-  const warnCount = stepResults.filter((r) => r.status === 'warning').length;
   const errorCount = stepResults.filter((r) => r.status === 'error').length;
 
   const makeStepResultColumns = (totalRepeat: number) => [
@@ -1285,7 +1284,7 @@ export default function ScenarioPage() {
                 {totalIterations > 1 && <Tag color="purple">{currentIteration} / {totalIterations}{t('scenario.times')}</Tag>}
                 {playing && !paused && <Tag color="processing">{t('scenario.inProgress')}</Tag>}
                 {paused && <Tag color="warning">PAUSED</Tag>}
-                {!playing && stepResults.length > 0 && <Tag color={failCount + errorCount > 0 ? 'red' : warnCount > 0 ? 'orange' : 'green'}>{t('scenario.complete')}</Tag>}
+                {!playing && stepResults.length > 0 && <Tag color={failCount + errorCount > 0 ? 'red' : 'green'}>{t('scenario.complete')}</Tag>}
               </Space>
             ) : (
               <Space size={4} wrap>
@@ -1314,7 +1313,7 @@ export default function ScenarioPage() {
                 {playing && !paused && <Button size="small" icon={<PauseOutlined />} onClick={pausePlayback}>일시정지</Button>}
                 {playing && paused && <Button type="primary" size="small" icon={<PlayCircleOutlined />} onClick={resumePlayback}>재개</Button>}
                 {playing && <Button danger size="small" icon={<StopOutlined />} onClick={stopPlayback}>{t('scenario.stop')}</Button>}
-                <span>Pass: {passCount}</span><span>Fail: {failCount}</span><span>Warning: {warnCount}</span><span>Error: {errorCount}</span><span>/ {playbackSteps.length} {t('scenario.steps')}</span>
+                <span>Pass: {passCount}</span><span>Fail: {failCount}</span><span>Error: {errorCount}</span><span>/ {playbackSteps.length} {t('scenario.steps')}</span>
               </Space>
             ) : undefined
           }

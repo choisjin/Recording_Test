@@ -254,14 +254,12 @@ class PlaybackService:
                     result.passed_steps += 1
                 elif step_result.status == "fail":
                     result.failed_steps += 1
-                elif step_result.status == "warning":
-                    result.warning_steps += 1
                 else:
                     result.error_steps += 1
 
                 # Conditional jump
                 next_idx = idx + 1
-                if step_result.status in ("pass", "warning") and step.on_pass_goto is not None:
+                if step_result.status == "pass" and step.on_pass_goto is not None:
                     if step.on_pass_goto == -1:
                         break
                     target = step_by_id.get(step.on_pass_goto)
@@ -285,8 +283,6 @@ class PlaybackService:
         # Determine overall status
         if result.failed_steps > 0 or result.error_steps > 0:
             result.status = "fail"
-        elif result.warning_steps > 0:
-            result.status = "warning"
         else:
             result.status = "pass"
 
@@ -343,7 +339,7 @@ class PlaybackService:
 
                 # Determine next step based on conditional jump
                 next_idx = idx + 1
-                if step_result.status in ("pass", "warning") and step.on_pass_goto is not None:
+                if step_result.status == "pass" and step.on_pass_goto is not None:
                     if step.on_pass_goto == -1:
                         break  # END
                     target = step_by_id.get(step.on_pass_goto)
@@ -531,7 +527,6 @@ class PlaybackService:
                             expected_path="",
                             actual_path=actual_path,
                             threshold_pass=step.similarity_threshold,
-                            threshold_warning=step.similarity_threshold - 0.10,
                             compare_mode="multi_crop",
                             crop_items=crop_items,
                         )
@@ -580,7 +575,6 @@ class PlaybackService:
                             expected_path,
                             actual_path,
                             threshold_pass=step.similarity_threshold,
-                            threshold_warning=step.similarity_threshold - 0.10,
                             compare_mode="full_exclude",
                             exclude_rois=exclude_rois_dicts,
                         )
@@ -656,7 +650,6 @@ class PlaybackService:
                             expected_path,
                             compare_actual,
                             threshold_pass=step.similarity_threshold,
-                            threshold_warning=step.similarity_threshold - 0.10,
                         )
                         step_result.status = judgement["status"]
                         step_result.similarity_score = judgement["score"]

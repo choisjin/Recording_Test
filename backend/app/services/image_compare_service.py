@@ -217,7 +217,6 @@ class ImageCompareService:
         actual_path: str,
         crop_items: list[dict],
         threshold_pass: float = 0.95,
-        threshold_warning: float = 0.85,
     ) -> dict:
         """Compare multiple cropped expected images against a single actual screenshot.
 
@@ -245,12 +244,7 @@ class ImageCompareService:
             result = self._compare_cropped(img_exp, img_act)
             score = result["score"]
 
-            if score >= threshold_pass:
-                status = "pass"
-            elif score >= threshold_warning:
-                status = "warning"
-            else:
-                status = "fail"
+            status = "pass" if score >= threshold_pass else "fail"
 
             sub_results.append({
                 "label": item.get("label", ""),
@@ -390,33 +384,25 @@ class ImageCompareService:
         expected_path: str,
         actual_path: str,
         threshold_pass: float = 0.95,
-        threshold_warning: float = 0.85,
         roi: Optional[dict] = None,
         compare_mode: str = "full",
         exclude_rois: Optional[list[dict]] = None,
         crop_items: Optional[list[dict]] = None,
     ) -> dict:
-        """Return pass/fail/warning judgement with mode-aware dispatch."""
+        """Return pass/fail judgement with mode-aware dispatch."""
 
         # --- Multi-crop mode ---
         if compare_mode == "multi_crop" and crop_items:
             mc_result = self.compare_multi_crop(
                 actual_path, crop_items,
                 threshold_pass=threshold_pass,
-                threshold_warning=threshold_warning,
             )
             if "error" in mc_result:
                 return {"status": "error", "score": 0.0, "message": mc_result["error"], "sub_results": []}
 
             sub_results = mc_result["sub_results"]
-            # Overall: fail if any fail, warning if any warning, else pass
             statuses = [sr["status"] for sr in sub_results]
-            if "fail" in statuses or "error" in statuses:
-                status = "fail"
-            elif "warning" in statuses:
-                status = "warning"
-            else:
-                status = "pass"
+            status = "fail" if ("fail" in statuses or "error" in statuses) else "pass"
             return {
                 "status": status,
                 "sub_results": sub_results,
@@ -428,12 +414,7 @@ class ImageCompareService:
             if "error" in result:
                 return {"status": "error", "score": 0.0, "message": result["error"]}
             score = result["score"]
-            if score >= threshold_pass:
-                status = "pass"
-            elif score >= threshold_warning:
-                status = "warning"
-            else:
-                status = "fail"
+            status = "pass" if score >= threshold_pass else "fail"
             return {"status": status, "score": score}
 
         # --- Full / Single-crop mode (existing behavior) ---
@@ -442,12 +423,7 @@ class ImageCompareService:
             return {"status": "error", "score": 0.0, "message": result["error"]}
 
         score = result["score"]
-        if score >= threshold_pass:
-            status = "pass"
-        elif score >= threshold_warning:
-            status = "warning"
-        else:
-            status = "fail"
+        status = "pass" if score >= threshold_pass else "fail"
 
         out: dict = {"status": status, "score": score}
         if "match_location" in result:

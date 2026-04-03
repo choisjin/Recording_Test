@@ -192,9 +192,6 @@ async def _remote_play(scenario_name: str, repeat: int, verify: bool):
                     elif step_result.status == "fail":
                         result.failed_steps += 1
                         playback_service._monitor_state["failed"] += 1
-                    elif step_result.status == "warning":
-                        result.warning_steps += 1
-                        playback_service._monitor_state["warning"] += 1
                     else:
                         result.error_steps += 1
                         playback_service._monitor_state["error"] += 1
@@ -205,8 +202,6 @@ async def _remote_play(scenario_name: str, repeat: int, verify: bool):
         result.finished_at = datetime.now(timezone.utc).isoformat()
         if result.failed_steps > 0 or result.error_steps > 0:
             result.status = "fail"
-        elif result.warning_steps > 0:
-            result.status = "warning"
         else:
             result.status = "pass"
         await playback_service._save_result(result)
@@ -586,9 +581,6 @@ async def websocket_playback(websocket: WebSocket):
                                 elif step_result.status == "fail":
                                     result.failed_steps += 1
                                     playback_service._monitor_state["failed"] += 1
-                                elif step_result.status == "warning":
-                                    result.warning_steps += 1
-                                    playback_service._monitor_state["warning"] += 1
                                 else:
                                     result.error_steps += 1
                                     playback_service._monitor_state["error"] += 1
@@ -615,11 +607,10 @@ async def websocket_playback(websocket: WebSocket):
                             # 카운터 재계산
                             result.passed_steps = sum(1 for sr in result.step_results if sr.status == "pass")
                             result.failed_steps = sum(1 for sr in result.step_results if sr.status == "fail")
-                            result.warning_steps = sum(1 for sr in result.step_results if sr.status == "warning")
-                            result.error_steps = sum(1 for sr in result.step_results if sr.status not in ("pass", "fail", "warning"))
+                            result.error_steps = sum(1 for sr in result.step_results if sr.status not in ("pass", "fail"))
                             result.total_repeat = last_completed_iteration
                             result.finished_at = datetime.now(timezone.utc).isoformat()
-                            result.status = "fail" if (result.failed_steps > 0 or result.error_steps > 0) else ("warning" if result.warning_steps > 0 else "pass")
+                            result.status = "fail" if (result.failed_steps > 0 or result.error_steps > 0) else "pass"
                             result_path = await playback_service._save_result(result)
                             await websocket.send_json({"type": "playback_stopped", "result_filename": _result_filename(result_path)})
                     else:
@@ -627,8 +618,6 @@ async def websocket_playback(websocket: WebSocket):
                         result.finished_at = datetime.now(timezone.utc).isoformat()
                         if result.failed_steps > 0 or result.error_steps > 0:
                             result.status = "fail"
-                        elif result.warning_steps > 0:
-                            result.status = "warning"
                         else:
                             result.status = "pass"
                         result_path = await playback_service._save_result(result)
@@ -745,8 +734,6 @@ async def websocket_playback(websocket: WebSocket):
                                     result.passed_steps += 1
                                 elif step_result.status == "fail":
                                     result.failed_steps += 1
-                                elif step_result.status == "warning":
-                                    result.warning_steps += 1
                                 else:
                                     result.error_steps += 1
                                 await websocket.send_json({
@@ -758,7 +745,7 @@ async def websocket_playback(websocket: WebSocket):
 
                                 sj = step_jumps.get(str(step_result.step_id))
                                 if sj:
-                                    if step_result.status in ("pass", "warning"):
+                                    if step_result.status == "pass":
                                         sj_jump = sj.get("on_pass_goto")
                                     else:
                                         sj_jump = sj.get("on_fail_goto")
@@ -778,7 +765,7 @@ async def websocket_playback(websocket: WebSocket):
                                 jump = step_jump_target
                             else:
                                 last_status = result.step_results[-1].status if result.step_results else "pass"
-                                if last_status in ("pass", "warning"):
+                                if last_status == "pass":
                                     jump = entry.get("on_pass_goto")
                                 else:
                                     jump = entry.get("on_fail_goto")
@@ -802,8 +789,6 @@ async def websocket_playback(websocket: WebSocket):
                         result.finished_at = datetime.now(timezone.utc).isoformat()
                         if result.failed_steps > 0 or result.error_steps > 0:
                             result.status = "fail"
-                        elif result.warning_steps > 0:
-                            result.status = "warning"
                         else:
                             result.status = "pass"
                         result_path = await playback_service._save_result(result)

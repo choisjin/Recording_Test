@@ -974,7 +974,6 @@ export default function ResultsPage() {
                 <Space size={4}>
                   <Tag color="green">{detail.passed_steps} Pass</Tag>
                   <Tag color="red">{detail.failed_steps} Fail</Tag>
-                  {detail.warning_steps > 0 && <Tag color="orange">{detail.warning_steps} Warning</Tag>}
                   {detail.error_steps > 0 && <Tag color="volcano">{detail.error_steps} Error</Tag>}
                 </Space>
               </Descriptions.Item>
