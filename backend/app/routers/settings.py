@@ -418,12 +418,13 @@ async def git_log(limit: int = 100, fetch: bool = False):
         no_window = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
         if fetch:
             subprocess.run(
-                ["git", "fetch", "--all"],
+                ["git", "fetch", "deploy"],
                 cwd=str(_PROJECT_ROOT), capture_output=True, timeout=15,
                 creationflags=no_window,
             )
+        # deploy 원격의 main 브랜치 커밋 내역 조회
         r = subprocess.run(
-            ["git", "log", f"-{limit}", "--pretty=format:%H||%h||%an||%ae||%aI||%s"],
+            ["git", "log", "deploy/main", f"-{limit}", "--pretty=format:%H||%h||%an||%ae||%aI||%s"],
             cwd=str(_PROJECT_ROOT),
             capture_output=True, timeout=10, encoding="utf-8", errors="replace",
             creationflags=no_window,
