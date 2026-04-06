@@ -282,6 +282,12 @@ export default function RecordPage() {
   const [fingerSpread, setFingerSpread] = useState(100);
   // 줌 제스처 모드: 'normal' | 'zoom_in' | 'zoom_out'
   const [gestureMode, setGestureMode] = useState<'normal' | 'zoom_in' | 'zoom_out'>('normal');
+  // 연속터치 모드
+  const [repeatTapMode, setRepeatTapMode] = useState(false);
+  const [repeatTapModalOpen, setRepeatTapModalOpen] = useState(false);
+  const [repeatTapCount, setRepeatTapCount] = useState(5);
+  const [repeatTapInterval, setRepeatTapInterval] = useState(100);
+  const repeatTapCoordsRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   // 뷰포트 크롭 상태 localStorage 로드 (디바이스 변경 시)
   useEffect(() => {
@@ -568,7 +574,7 @@ export default function RecordPage() {
   // Execute or record an action
   const executeAction = useCallback(async (action: string, params: Record<string, any>, desc: string) => {
     // 화면 제스처/HKMC키는 항상 화면 디바이스로, 나머지는 스텝 디바이스로
-    const isScreenAction = ['tap', 'swipe', 'long_press', 'multi_touch', 'hkmc_touch', 'hkmc_swipe', 'hkmc_key'].includes(action);
+    const isScreenAction = ['tap', 'swipe', 'long_press', 'multi_touch', 'repeat_tap', 'hkmc_touch', 'hkmc_swipe', 'hkmc_key'].includes(action);
     const effectiveStepDevice = stepDeviceId && stepDeviceId !== '__common__' ? stepDeviceId : '';
     const targetDevice = recording
       ? (isScreenAction ? screenshotDeviceId : (effectiveStepDevice || screenshotDeviceId))
@@ -1297,12 +1303,25 @@ export default function RecordPage() {
       const params = { x: startX, y: startY, duration_ms: elapsed };
       executeAction('long_press', params, `long_press (${startX},${startY}) ${elapsed}ms`);
       setLastGesture(`${t('record.gestureLongPress')} (${startX},${startY}) ${elapsed}ms`);
+    } else if (repeatTapMode) {
+      // 연속터치 모드: 좌표 저장 후 모달 열기
+      repeatTapCoordsRef.current = { x: startX, y: startY };
+      setRepeatTapModalOpen(true);
     } else {
       const params = { x: startX, y: startY };
       executeAction('tap', params, `tap (${startX},${startY})`);
       setLastGesture(`${t('record.gestureTap')} (${startX},${startY})`);
     }
-  }, [screenshotDeviceId, executeAction, deviceRes, hkmcDisplayMode, isScreenHkmc, viewCropEnabled, viewCropX, viewCropY, fingerCount, fingerSpread, gestureMode]);
+  }, [screenshotDeviceId, executeAction, deviceRes, hkmcDisplayMode, isScreenHkmc, viewCropEnabled, viewCropX, viewCropY, fingerCount, fingerSpread, gestureMode, repeatTapMode]);
+
+  const executeRepeatTap = useCallback(() => {
+    const { x, y } = repeatTapCoordsRef.current;
+    const params = { x, y, count: repeatTapCount, interval_ms: repeatTapInterval };
+    executeAction('repeat_tap', params, `repeat_tap (${x},${y}) ×${repeatTapCount} @${repeatTapInterval}ms`);
+    setLastGesture(`${t('record.repeatTap')} (${x},${y}) ×${repeatTapCount}`);
+    setRepeatTapModalOpen(false);
+    setRepeatTapMode(false);
+  }, [executeAction, repeatTapCount, repeatTapInterval]);
 
   const startRecording = async () => {
     if (!scenarioName.trim()) {
@@ -2369,6 +2388,16 @@ export default function RecordPage() {
                       ]}
                     />
                   </Tooltip>
+                  <Tooltip title={t('record.repeatTap')}>
+                    <Button
+                      size="small"
+                      type={repeatTapMode ? 'primary' : 'default'}
+                      onClick={() => setRepeatTapMode(v => !v)}
+                      style={{ fontWeight: repeatTapMode ? 700 : 400 }}
+                    >
+                      {t('record.repeatTapShort')}
+                    </Button>
+                  </Tooltip>
                   {/* 줌인/아웃 버튼 — 임시 비활성 */}
                   {fingerCount > 1 && (
                     <Tooltip title={t('record.fingerSpread')}>
@@ -3338,6 +3367,27 @@ export default function RecordPage() {
 
           return <div style={{ color: subTextColor }}>{t('record.editNotSupported')}</div>;
         })()}
+      </Modal>
+
+      {/* 연속터치 모달 */}
+      <Modal
+        title={`${t('record.repeatTap')} (${repeatTapCoordsRef.current.x}, ${repeatTapCoordsRef.current.y})`}
+        open={repeatTapModalOpen}
+        onCancel={() => { setRepeatTapModalOpen(false); setRepeatTapMode(false); }}
+        onOk={executeRepeatTap}
+        okText={t('common.execute')}
+        width={360}
+      >
+        <Space direction="vertical" style={{ width: '100%', marginTop: 12 }} size={12}>
+          <div>
+            <div style={{ marginBottom: 4, fontSize: 13 }}>{t('record.repeatTapCount')}</div>
+            <InputNumber min={2} max={200} value={repeatTapCount} onChange={v => setRepeatTapCount(v ?? 5)} style={{ width: '100%' }} />
+          </div>
+          <div>
+            <div style={{ marginBottom: 4, fontSize: 13 }}>{t('record.repeatTapInterval')}</div>
+            <InputNumber min={10} max={5000} step={10} value={repeatTapInterval} onChange={v => setRepeatTapInterval(v ?? 100)} style={{ width: '100%' }} addonAfter="ms" />
+          </div>
+        </Space>
       </Modal>
 
       {/* Step test result modal */}

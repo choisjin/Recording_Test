@@ -459,6 +459,14 @@ async def device_input(req: InputRequest):
         p = req.params
         if req.action == "tap":
             await adb.tap(p["x"], p["y"], serial=adb_serial, display_id=display_id)
+        elif req.action == "repeat_tap":
+            import asyncio
+            count = int(p.get("count", 5))
+            interval_ms = int(p.get("interval_ms", 100))
+            for _ in range(count):
+                await adb.tap(p["x"], p["y"], serial=adb_serial, display_id=display_id)
+                if interval_ms > 0:
+                    await asyncio.sleep(interval_ms / 1000.0)
         elif req.action == "long_press":
             await adb.long_press(p["x"], p["y"], p.get("duration_ms", 1000), serial=adb_serial, display_id=display_id)
         elif req.action == "swipe":

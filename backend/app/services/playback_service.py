@@ -736,6 +736,8 @@ class PlaybackService:
         p = step.params
         if step.type == StepType.TAP:
             return f"tap ({p.get('x', 0)}, {p.get('y', 0)})"
+        elif step.type == StepType.REPEAT_TAP:
+            return f"repeat_tap ({p.get('x', 0)}, {p.get('y', 0)}) ×{p.get('count', 5)} @{p.get('interval_ms', 100)}ms"
         elif step.type == StepType.LONG_PRESS:
             return f"long_press ({p.get('x', 0)}, {p.get('y', 0)}) {p.get('duration_ms', 1000)}ms"
         elif step.type == StepType.SWIPE:
@@ -1062,6 +1064,14 @@ class PlaybackService:
 
             if step.type == StepType.TAP:
                 await self.adb.tap(params["x"], params["y"], serial=adb_serial, display_id=adb_display_id)
+            elif step.type == StepType.REPEAT_TAP:
+                import asyncio as _asyncio
+                count = int(params.get("count", 5))
+                interval_ms = int(params.get("interval_ms", 100))
+                for _ in range(count):
+                    await self.adb.tap(params["x"], params["y"], serial=adb_serial, display_id=adb_display_id)
+                    if interval_ms > 0:
+                        await _asyncio.sleep(interval_ms / 1000.0)
             elif step.type == StepType.LONG_PRESS:
                 await self.adb.long_press(params["x"], params["y"], params.get("duration_ms", 1000), serial=adb_serial, display_id=adb_display_id)
             elif step.type == StepType.SWIPE:
