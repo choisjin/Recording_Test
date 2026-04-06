@@ -358,6 +358,8 @@ class PlaybackService:
 
     async def execute_single_step(self, step: Step, scenario_name: str, device_map: Optional[dict[str, str]] = None) -> StepResult:
         """Execute a single step with verification (for testing individual steps)."""
+        self._should_stop = False  # 이전 재생 중단 플래그 초기화
+        self._paused = False
         self._device_map = device_map or {}
         self._current_iteration = 0  # 단일 테스트는 항상 0번째
         return await self._execute_step(step, scenario_name, verify=True)
