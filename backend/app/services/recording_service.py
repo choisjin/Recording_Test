@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import re
 import shutil
 import time
 import zipfile
@@ -179,7 +180,37 @@ class RecordingService:
         if not filepath.exists():
             raise FileNotFoundError(f"Scenario not found: {name}")
         data = json.loads(filepath.read_text(encoding="utf-8"))
-        return Scenario(**data)
+        scenario = Scenario(**data)
+        # 이미지 참조 자동 수리: 파일이 없으면 폴더 내에서 같은 step ID 파일 탐색
+        if self._repair_image_refs(name, scenario):
+            await self.save_scenario(scenario)
+        return scenario
+
+    def _repair_image_refs(self, name: str, scenario: "Scenario") -> bool:
+        """expected_image가 실제 파일과 불일치하면 자동 수리. 변경 시 True 반환."""
+        ss_dir = SCREENSHOTS_DIR / name
+        if not ss_dir.exists():
+            return False
+        changed = False
+        for step in scenario.steps:
+            if step.expected_image:
+                if not (ss_dir / step.expected_image).exists():
+                    # step ID로 매칭되는 파일 탐색
+                    pattern = f"*_step_{step.id:03d}_*"
+                    candidates = [f for f in ss_dir.glob(pattern) if "crop" not in f.name and "annotated" not in f.name and "actual" not in f.stem]
+                    if candidates:
+                        step.expected_image = candidates[0].name
+                        changed = True
+                    else:
+                        step.expected_image = None
+                        changed = True
+            for ci in step.expected_images:
+                if ci.image and not (ss_dir / ci.image).exists():
+                    ci.image = None
+                    changed = True
+            # None이 된 crop 항목 제거
+            step.expected_images = [ci for ci in step.expected_images if ci.image]
+        return changed
 
     async def list_scenarios(self) -> list[str]:
         """List all saved scenario names."""
@@ -215,13 +246,26 @@ class RecordingService:
         # Load, update name, save to new path
         data = json.loads(old_path.read_text(encoding="utf-8"))
         data["name"] = new_name
-        new_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        old_path.unlink()
         # Rename screenshots directory
         old_ss = SCREENSHOTS_DIR / old_name
         new_ss = SCREENSHOTS_DIR / new_name
         if old_ss.exists() and not new_ss.exists():
             old_ss.rename(new_ss)
+        # 이미지 파일명과 expected_image 필드도 새 이름으로 갱신
+        ss_dir = new_ss if new_ss.exists() else old_ss
+        if ss_dir.exists():
+            for step_data in data.get("steps", []):
+                ei = step_data.get("expected_image")
+                if ei:
+                    new_ei = self._rename_image_file(ss_dir, ei, new_name, step_data.get("id", 0))
+                    step_data["expected_image"] = new_ei
+                for ci in step_data.get("expected_images", []):
+                    ci_img = ci.get("image")
+                    if ci_img:
+                        new_ci = self._rename_image_file(ss_dir, ci_img, new_name, step_data.get("id", 0), crop=True)
+                        ci["image"] = new_ci
+        new_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        old_path.unlink()
         # Update group references
         groups = self._load_groups()
         changed = False
@@ -233,6 +277,25 @@ class RecordingService:
         if changed:
             self._save_groups(groups)
         return True
+
+    @staticmethod
+    def _rename_image_file(ss_dir: Path, old_filename: str, new_name: str, step_id: int, crop: bool = False) -> str:
+        """이미지 파일을 새 시나리오 이름 기반으로 리네임하고 새 파일명을 반환."""
+        old_path = ss_dir / old_filename
+        if not old_path.exists():
+            return old_filename
+        # 기존 파일 확장자 및 타임스탬프/crop 인덱스 보존
+        stem = Path(old_filename).stem
+        ext = Path(old_filename).suffix or ".png"
+        # _step_NNN 이후의 suffix 추출 (타임스탬프, crop 인덱스 등)
+        m = re.search(r'_step_\d+(.*)', stem)
+        suffix = m.group(1) if m else ""
+        new_filename = f"{new_name}_step_{step_id:03d}{suffix}{ext}"
+        if new_filename == old_filename:
+            return old_filename
+        new_path = ss_dir / new_filename
+        old_path.rename(new_path)
+        return new_filename
 
     # ------------------------------------------------------------------
     # Groups
@@ -431,16 +494,21 @@ class RecordingService:
         for step in source.steps:
             if step.expected_image:
                 old_file = src_ss_dir / step.expected_image
-                new_filename = step.expected_image.replace(source_name, target_name, 1)
+                # 새 파일명 생성 (replace 대신 step ID 기반으로 안전하게)
+                stem = Path(step.expected_image).stem
+                ext = Path(step.expected_image).suffix or ".png"
+                m = re.search(r'_step_\d+(.*)', stem)
+                suffix = m.group(1) if m else ""
+                new_filename = f"{target_name}_step_{step.id:03d}{suffix}{ext}"
                 new_file = tgt_ss_dir / new_filename
                 if old_file.exists():
                     shutil.copy2(str(old_file), str(new_file))
                 step.expected_image = new_filename
             # multi_crop 이미지도 복사
-            for ci in step.expected_images:
+            for ci_idx, ci in enumerate(step.expected_images):
                 if ci.image:
                     old_ci = src_ss_dir / ci.image
-                    new_ci_name = ci.image.replace(source_name, target_name, 1)
+                    new_ci_name = f"{target_name}_step_{step.id:03d}_crop_{ci_idx:02d}.png"
                     new_ci = tgt_ss_dir / new_ci_name
                     if old_ci.exists():
                         shutil.copy2(str(old_ci), str(new_ci))
