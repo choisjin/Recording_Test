@@ -278,9 +278,15 @@ class ADBService:
         if not s:
             raise ValueError("No device selected")
         dflag = self._display_flag(display_id)
-        # shell 내부 for 루프로 한 번에 실행
+        # 세미콜론으로 명령 나열 (Windows cmd.exe 호환)
         sleep_sec = interval_ms / 1000.0
-        cmd = f"shell 'for i in $(seq 1 {count}); do input {dflag}tap {x} {y}; sleep {sleep_sec:.3f}; done'"
+        tap_cmd = f"input {dflag}tap {x} {y}"
+        parts = []
+        for i in range(count):
+            parts.append(tap_cmd)
+            if i < count - 1 and sleep_sec > 0:
+                parts.append(f"sleep {sleep_sec:.3f}")
+        cmd = "shell " + " && ".join(parts)
         return await self._run_device(s, cmd, timeout=max(10, count * (sleep_sec + 1)))
 
     async def swipe(

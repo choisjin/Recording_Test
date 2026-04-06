@@ -1,6 +1,9 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Button, Card, Col, Image, Input, Modal, Radio, Row, Select, Slider, Space, InputNumber, message, List, Tag, Popover, Tooltip, Splitter } from 'antd';
-import { PlayCircleOutlined, PauseOutlined, PlusOutlined, SwapOutlined, FolderOpenOutlined, SaveOutlined, DeleteOutlined, ArrowUpOutlined, ArrowDownOutlined, BranchesOutlined, ScissorOutlined, CameraOutlined, ThunderboltOutlined, CheckCircleOutlined, CloseCircleOutlined, WarningOutlined, EditOutlined, CopyOutlined, ZoomInOutlined, ZoomOutOutlined } from '@ant-design/icons';
+import { PlayCircleOutlined, PauseOutlined, PlusOutlined, SwapOutlined, FolderOpenOutlined, SaveOutlined, DeleteOutlined, ArrowUpOutlined, ArrowDownOutlined, BranchesOutlined, ScissorOutlined, CameraOutlined, ThunderboltOutlined, CheckCircleOutlined, CloseCircleOutlined, WarningOutlined, EditOutlined, CopyOutlined, ZoomInOutlined, ZoomOutOutlined, HolderOutlined } from '@ant-design/icons';
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { deviceApi, scenarioApi, customKeysApi } from '../services/api';
 import { useDevice } from '../context/DeviceContext';
 import { useSettings } from '../context/SettingsContext';
@@ -9,6 +12,29 @@ import type { TranslationKey } from '../i18n/translations';
 
 const { Option } = Select;
 const { TextArea } = Input;
+
+// 드래그 가능한 스텝 아이템 래퍼
+const SortableStepItem = ({ id, index, isDark, children }: { id: string; index: number; isDark: boolean; children: React.ReactNode }) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    display: 'flex',
+    padding: '4px 8px',
+    gap: 8,
+    background: index % 2 === 0 ? undefined : 'rgba(255,255,255,0.04)',
+    borderBottom: isDark ? '1px solid #303030' : '1px solid #f0f0f0',
+  };
+  return (
+    <div ref={setNodeRef} style={style}>
+      <div {...attributes} {...listeners} style={{ cursor: 'grab', display: 'flex', alignItems: 'center', color: '#999', flexShrink: 0 }}>
+        <HolderOutlined />
+      </div>
+      {children}
+    </div>
+  );
+};
 
 // Extracted outside to prevent re-creation on every render
 const JumpEditorInner = React.memo(({ step, index, steps, onUpdate, t }: {
@@ -1615,6 +1641,91 @@ export default function RecordPage() {
     });
   };
 
+  const moveStepDnD = (oldIndex: number, newIndex: number) => {
+    if (oldIndex === newIndex) return;
+    setSteps((prev) => {
+      const arr = [...prev];
+      const [moved] = arr.splice(oldIndex, 1);
+      arr.splice(newIndex, 0, moved);
+      // Build old 1-based → new 1-based mapping
+      const mapping = new Map<number, number>();
+      const oldIds = prev.map((_, i) => i + 1);
+      const newIds = [...oldIds];
+      newIds.splice(oldIndex, 1);
+      newIds.splice(newIndex, 0, oldIds[oldIndex]);
+      for (let i = 0; i < oldIds.length; i++) {
+        mapping.set(oldIds[i], i + 1);
+      }
+      // Correct mapping: old position → new position
+      const posMapping = new Map<number, number>();
+      for (let i = 0; i < prev.length; i++) {
+        posMapping.set(i + 1, newIds.indexOf(i + 1) + 1);
+      }
+      return arr.map((s, i) => ({
+        ...s,
+        id: i + 1,
+        on_pass_goto: remapGoto(s.on_pass_goto, posMapping),
+        on_fail_goto: remapGoto(s.on_fail_goto, posMapping),
+      }));
+    });
+  };
+
+  // 스텝 가져오기 모달 상태
+  const [importStepModalOpen, setImportStepModalOpen] = useState(false);
+  const [importInsertIndex, setImportInsertIndex] = useState(0); // 삽입 위치 (해당 인덱스 뒤에 삽입)
+  const [importSourceName, setImportSourceName] = useState('__current__');
+  const [importSourceSteps, setImportSourceSteps] = useState<Step[]>([]);
+  const [importChecked, setImportChecked] = useState<Set<number>>(new Set());
+  const [importLoading, setImportLoading] = useState(false);
+
+  const openImportStepModal = (afterIndex: number) => {
+    setImportInsertIndex(afterIndex);
+    setImportSourceName('__current__');
+    setImportSourceSteps(steps);
+    setImportChecked(new Set());
+    setImportStepModalOpen(true);
+  };
+
+  const loadImportSource = async (name: string) => {
+    setImportSourceName(name);
+    setImportChecked(new Set());
+    if (name === '__current__') {
+      setImportSourceSteps(steps);
+      return;
+    }
+    try {
+      const res = await scenarioApi.get(name);
+      setImportSourceSteps(res.data.steps || []);
+    } catch {
+      message.error(t('common.loadFailed'));
+      setImportSourceSteps([]);
+    }
+  };
+
+  const executeImportSteps = async () => {
+    if (importChecked.size === 0) return;
+    setImportLoading(true);
+    try {
+      const sourceName = importSourceName === '__current__' ? scenarioName : importSourceName;
+      // 체크된 스텝을 원래 순서대로 가져오기
+      const sortedIndices = Array.from(importChecked).sort((a, b) => a - b);
+      const res = await scenarioApi.importSteps(scenarioName, sourceName, sortedIndices);
+      const imported: Step[] = res.data.steps || [];
+      // 삽입 위치 뒤에 추가
+      setSteps(prev => {
+        const arr = [...prev];
+        arr.splice(importInsertIndex + 1, 0, ...imported.map(s => ({ ...s, _imageVer: Date.now() })));
+        return arr.map((s, i) => ({ ...s, id: i + 1 }));
+      });
+      setImportStepModalOpen(false);
+      message.success(t('record.stepsImported', { count: imported.length }));
+    } catch (e: any) {
+      message.error(e.response?.data?.detail || t('common.saveFailed'));
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
   const [waitPopoverIndex, setWaitPopoverIndex] = useState<number | null | 'end'>(null);
 
   const addWaitStepWithMode = async (mode: 'basic' | 'cycle' | 'random', opts: { duration_ms?: number; start_ms?: number; interval_ms?: number; min_ms?: number; max_ms?: number }, afterIndex?: number) => {
@@ -2081,15 +2192,25 @@ export default function RecordPage() {
     return <Tag color={color}>{dev.id}</Tag>;
   };
 
+  const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = steps.findIndex((_, i) => `step-${i}` === active.id);
+    const newIndex = steps.findIndex((_, i) => `step-${i}` === over.id);
+    if (oldIndex >= 0 && newIndex >= 0) moveStepDnD(oldIndex, newIndex);
+  }, [steps, moveStepDnD]);
+
   // Memoize the step list so screenshot polling doesn't re-render it
   // (which would close Popovers and reset Select states)
   const stepListMemo = useMemo(() => (
-    <List
-      size="small"
-      dataSource={steps}
-      renderItem={(s, index) => (
-        <List.Item style={{ display: 'flex', padding: '4px 8px', gap: 8, background: index % 2 === 0 ? undefined : 'rgba(255,255,255,0.04)' }}>
-          {/* 좌측: 스텝 정보 (1행: 설명+함수+delay) + (2행: 나머지) */}
+    <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+    <SortableContext items={steps.map((_, i) => `step-${i}`)} strategy={verticalListSortingStrategy}>
+    <div className="ant-list ant-list-sm">
+      {steps.length === 0 && <div style={{ padding: 16, textAlign: 'center', color: '#888' }}>{t('record.noSteps')}</div>}
+      {steps.map((s, index) => (
+        <SortableStepItem key={`step-${index}`} id={`step-${index}`} index={index} isDark={isDark}>
+          {/* 좌측: 스텝 정보 */}
           <div style={{ flex: 1, minWidth: 0 }}>
             {/* 1행: 설명, 함수(인자), delay(우측정렬) */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -2208,6 +2329,7 @@ export default function RecordPage() {
                   <Button size="small" type="text" icon={<ThunderboltOutlined />} title={devConnected ? t('record.testStep') : t('record.deviceNotConnected')} loading={testingStepIndex === index} disabled={!devConnected} onClick={() => testStep(index)} style={{ color: devConnected ? '#faad14' : undefined, width: 28 }} />
                 );
               })()}
+              <Button size="small" type="text" icon={<PlusOutlined />} title={t('record.importSteps')} onClick={() => openImportStepModal(index)} style={{ width: 28 }} />
               <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={() => Modal.confirm({ title: t('record.confirmDeleteStep', { index: index + 1 }), okText: t('common.delete'), okType: 'danger', cancelText: t('common.cancel'), onOk: () => deleteStep(index) })} style={{ width: 28 }} />
             </div>
             {/* 2행: 편집 + 조건부이동 + W + 카메라 */}
@@ -2257,11 +2379,12 @@ export default function RecordPage() {
               )}
             </div>
           </div>
-        </List.Item>
-      )}
-      locale={{ emptyText: t('record.noSteps') }}
-    />
-  ), [steps, recording, updateStepJump, updateStepDescription, openEditStepModal, openRoiModal, screenshotDeviceId, scenarioName, saveExpectedFull, openCaptureModal, testStep, testingStepIndex, updateCompareMode, openExcludeRoiModal, openMultiCropModal, showAnnotatedPreview, selectCompareMode, compareModePopoverIndex, waitPopoverIndex, wMode, wDuration, wStart, wInterval, wMin, wMax, allDevices, t]);
+        </SortableStepItem>
+      ))}
+    </div>
+    </SortableContext>
+    </DndContext>
+  ), [steps, recording, updateStepJump, updateStepDescription, openEditStepModal, openRoiModal, screenshotDeviceId, scenarioName, saveExpectedFull, openCaptureModal, testStep, testingStepIndex, updateCompareMode, openExcludeRoiModal, openMultiCropModal, showAnnotatedPreview, selectCompareMode, compareModePopoverIndex, waitPopoverIndex, wMode, wDuration, wStart, wInterval, wMin, wMax, allDevices, t, dndSensors, handleDragEnd, openImportStepModal]);
 
   return (
     <div className="record-page" style={{ height: 'calc(100vh - 80px)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
@@ -3367,6 +3490,64 @@ export default function RecordPage() {
 
           return <div style={{ color: subTextColor }}>{t('record.editNotSupported')}</div>;
         })()}
+      </Modal>
+
+      {/* 스텝 가져오기 모달 */}
+      <Modal
+        title={t('record.importSteps')}
+        open={importStepModalOpen}
+        onCancel={() => setImportStepModalOpen(false)}
+        onOk={executeImportSteps}
+        okText={`${t('record.importSteps')} (${importChecked.size})`}
+        okButtonProps={{ disabled: importChecked.size === 0, loading: importLoading }}
+        width={600}
+      >
+        <Space direction="vertical" style={{ width: '100%' }} size={12}>
+          <div>
+            <div style={{ marginBottom: 4, fontSize: 13 }}>{t('record.importSource')}</div>
+            <Select
+              style={{ width: '100%' }}
+              value={importSourceName}
+              onChange={loadImportSource}
+            >
+              <Option value="__current__">{t('record.currentScenario')}</Option>
+              {savedScenarios.filter(n => n !== scenarioName).map(n => (
+                <Option key={n} value={n}>{n}</Option>
+              ))}
+            </Select>
+          </div>
+          <div style={{ fontSize: 12, color: '#888' }}>
+            {t('record.importInsertAt', { index: importInsertIndex + 1 })}
+            {' · '}{t('record.importSelectHint')}
+          </div>
+          <div style={{ maxHeight: 400, overflow: 'auto', border: '1px solid #303030', borderRadius: 4 }}>
+            {importSourceSteps.length === 0 ? (
+              <div style={{ padding: 16, textAlign: 'center', color: '#888' }}>{t('record.noSteps')}</div>
+            ) : importSourceSteps.map((s, i) => (
+              <div
+                key={i}
+                onClick={() => setImportChecked(prev => {
+                  const next = new Set(prev);
+                  next.has(i) ? next.delete(i) : next.add(i);
+                  return next;
+                })}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', cursor: 'pointer',
+                  background: importChecked.has(i) ? 'rgba(22,119,255,0.15)' : (i % 2 ? 'rgba(255,255,255,0.02)' : undefined),
+                  borderBottom: '1px solid rgba(255,255,255,0.06)',
+                }}
+              >
+                <input type="checkbox" checked={importChecked.has(i)} readOnly style={{ flexShrink: 0 }} />
+                <Tag style={{ margin: 0, minWidth: 28, textAlign: 'center' }}>{i + 1}</Tag>
+                <span style={{ flex: 1, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <Tag color="blue" style={{ margin: 0, marginRight: 4 }}>{s.type}</Tag>
+                  {s.description || JSON.stringify(s.params).slice(0, 60)}
+                </span>
+                {s.expected_image && <CameraOutlined style={{ color: '#52c41a', flexShrink: 0 }} />}
+              </div>
+            ))}
+          </div>
+        </Space>
       </Modal>
 
       {/* 연속터치 모달 */}

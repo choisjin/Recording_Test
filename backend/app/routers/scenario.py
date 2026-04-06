@@ -365,6 +365,63 @@ async def remove_expected_image(req: RemoveExpectedImageRequest):
     return {"status": "ok"}
 
 
+class ImportStepsRequest(BaseModel):
+    target_name: str
+    source_name: str
+    step_indices: list[int]  # 0-based indices
+
+
+@router.post("/record/import-steps")
+async def import_steps(req: ImportStepsRequest):
+    """소스 시나리오에서 선택된 스텝들을 복사해온다 (기대이미지 포함)."""
+    import shutil, time as _time, re as _re
+    source = await recording_svc.load_scenario(req.source_name)
+    tgt_ss_dir = SCREENSHOTS_DIR / req.target_name
+    tgt_ss_dir.mkdir(parents=True, exist_ok=True)
+    src_ss_dir = SCREENSHOTS_DIR / req.source_name
+
+    imported = []
+    for idx in req.step_indices:
+        if idx < 0 or idx >= len(source.steps):
+            continue
+        from ..models.scenario import Step, CropItem
+        orig = source.steps[idx]
+        step_data = orig.model_dump()
+        # 새 타임스탬프 기반 ID (충돌 방지)
+        ts = int(_time.time() * 1000) % 1000000
+        new_id = 900 + len(imported)  # 프론트에서 재인덱싱하므로 임시값
+
+        # 기대이미지 복사
+        if step_data.get("expected_image"):
+            old_file = src_ss_dir / step_data["expected_image"]
+            new_filename = f"{req.target_name}_step_{new_id:03d}_{ts}.png"
+            new_file = tgt_ss_dir / new_filename
+            if old_file.exists():
+                shutil.copy2(str(old_file), str(new_file))
+            step_data["expected_image"] = new_filename
+            ts += 1
+
+        # multi_crop 이미지 복사
+        new_crops = []
+        for ci_idx, ci in enumerate(step_data.get("expected_images", [])):
+            if ci.get("image"):
+                old_ci = src_ss_dir / ci["image"]
+                new_ci_name = f"{req.target_name}_step_{new_id:03d}_crop_{ci_idx:02d}.png"
+                new_ci = tgt_ss_dir / new_ci_name
+                if old_ci.exists():
+                    shutil.copy2(str(old_ci), str(new_ci))
+                ci["image"] = new_ci_name
+            new_crops.append(ci)
+        step_data["expected_images"] = new_crops
+        step_data["id"] = new_id
+        # goto는 초기화 (다른 시나리오에서 온 경우 의미 없음)
+        step_data["on_pass_goto"] = None
+        step_data["on_fail_goto"] = None
+        imported.append(step_data)
+
+    return {"steps": imported}
+
+
 class RemoveCropRequest(BaseModel):
     scenario_name: str
     step_index: int
