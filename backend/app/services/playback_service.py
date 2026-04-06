@@ -992,13 +992,9 @@ class PlaybackService:
                 try:
                     screen_type = step.screen_type or params.get("screen_type", "front_center")
                     if step.type == StepType.REPEAT_TAP:
-                        import asyncio as _asyncio
-                        count = int(params.get("count", 5))
-                        interval_ms = int(params.get("interval_ms", 100))
-                        for _ in range(count):
-                            await hkmc.async_tap(params["x"], params["y"], screen_type)
-                            if interval_ms > 0:
-                                await _asyncio.sleep(interval_ms / 1000.0)
+                        await hkmc.async_repeat_tap(params["x"], params["y"],
+                                                     int(params.get("count", 5)),
+                                                     int(params.get("interval_ms", 100)), screen_type)
                     elif step.type == StepType.HKMC_TOUCH:
                         await hkmc.async_tap(params["x"], params["y"], screen_type)
                     elif step.type == StepType.HKMC_SWIPE:
@@ -1080,13 +1076,9 @@ class PlaybackService:
             if step.type == StepType.TAP:
                 await self.adb.tap(params["x"], params["y"], serial=adb_serial, display_id=adb_display_id)
             elif step.type == StepType.REPEAT_TAP:
-                import asyncio as _asyncio
-                count = int(params.get("count", 5))
-                interval_ms = int(params.get("interval_ms", 100))
-                for _ in range(count):
-                    await self.adb.tap(params["x"], params["y"], serial=adb_serial, display_id=adb_display_id)
-                    if interval_ms > 0:
-                        await _asyncio.sleep(interval_ms / 1000.0)
+                await self.adb.repeat_tap(params["x"], params["y"], int(params.get("count", 5)),
+                                          int(params.get("interval_ms", 100)),
+                                          serial=adb_serial, display_id=adb_display_id)
             elif step.type == StepType.LONG_PRESS:
                 await self.adb.long_press(params["x"], params["y"], params.get("duration_ms", 1000), serial=adb_serial, display_id=adb_display_id)
             elif step.type == StepType.SWIPE:

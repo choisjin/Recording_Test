@@ -428,14 +428,8 @@ async def device_input(req: InputRequest):
             p = req.params
             screen_type = p.get("screen_type", "front_center")
             if req.action == "repeat_tap":
-                import asyncio
-                count = int(p.get("count", 5))
-                interval_ms = int(p.get("interval_ms", 100))
-                for _ in range(count):
-                    await hkmc.async_tap(p["x"], p["y"], screen_type)
-                    if interval_ms > 0:
-                        await asyncio.sleep(interval_ms / 1000.0)
-                logger.info("[HKMC INPUT] repeat_tap: x=%s y=%s ×%d @%dms", p["x"], p["y"], count, interval_ms)
+                await hkmc.async_repeat_tap(p["x"], p["y"], int(p.get("count", 5)),
+                                            int(p.get("interval_ms", 100)), screen_type)
             elif req.action == "hkmc_touch":
                 await hkmc.async_tap(p["x"], p["y"], screen_type)
                 logger.info("[HKMC INPUT] tap sent: x=%s y=%s screen=%s", p["x"], p["y"], screen_type)
@@ -467,13 +461,8 @@ async def device_input(req: InputRequest):
         if req.action == "tap":
             await adb.tap(p["x"], p["y"], serial=adb_serial, display_id=display_id)
         elif req.action == "repeat_tap":
-            import asyncio
-            count = int(p.get("count", 5))
-            interval_ms = int(p.get("interval_ms", 100))
-            for _ in range(count):
-                await adb.tap(p["x"], p["y"], serial=adb_serial, display_id=display_id)
-                if interval_ms > 0:
-                    await asyncio.sleep(interval_ms / 1000.0)
+            await adb.repeat_tap(p["x"], p["y"], int(p.get("count", 5)), int(p.get("interval_ms", 100)),
+                                 serial=adb_serial, display_id=display_id)
         elif req.action == "long_press":
             await adb.long_press(p["x"], p["y"], p.get("duration_ms", 1000), serial=adb_serial, display_id=display_id)
         elif req.action == "swipe":

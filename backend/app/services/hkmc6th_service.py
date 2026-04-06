@@ -589,6 +589,20 @@ class HKMC6thService:
                 logger.info("[TAP] (%d,%d) screen=%s", x, y, screen_type)
             time.sleep(0.05)
 
+    def repeat_tap(self, x: int, y: int, count: int = 5, interval_ms: int = 100,
+                   screen_type: str = "front_center") -> None:
+        """연속 터치 — lock/sleep 오버헤드를 최소화하여 빠르게 실행."""
+        x, y = int(x), int(y)
+        interval_sec = interval_ms / 1000.0
+        with self._capture_lock:
+            with self._send_lock:
+                for i in range(count):
+                    self._lcd_touch(x, y)
+                    if i < count - 1 and interval_sec > 0:
+                        time.sleep(interval_sec)
+                logger.info("[REPEAT_TAP] (%d,%d) ×%d @%dms screen=%s", x, y, count, interval_ms, screen_type)
+            time.sleep(0.05)
+
     def long_press(self, x: int, y: int, duration_ms: int = 3000,
                    screen_type: str = "front_center") -> None:
         """Long press at (x, y) — press, hold, release."""
@@ -759,6 +773,11 @@ class HKMC6thService:
     async def async_tap(self, x: int, y: int, screen_type: str = "front_center") -> None:
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, self.tap, x, y, screen_type)
+
+    async def async_repeat_tap(self, x: int, y: int, count: int = 5, interval_ms: int = 100,
+                               screen_type: str = "front_center") -> None:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, self.repeat_tap, x, y, count, interval_ms, screen_type)
 
     async def async_long_press(self, x: int, y: int, duration_ms: int = 3000,
                                screen_type: str = "front_center") -> None:

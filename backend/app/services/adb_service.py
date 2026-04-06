@@ -271,6 +271,18 @@ class ADBService:
         dflag = self._display_flag(display_id)
         return await self._run_device(s, f"shell input {dflag}tap {x} {y}")
 
+    async def repeat_tap(self, x: int, y: int, count: int = 5, interval_ms: int = 100,
+                         serial: Optional[str] = None, display_id: Optional[int] = None) -> str:
+        """단일 shell 세션에서 연속 탭 — 프로세스 생성 오버헤드 없음."""
+        s = serial or self._active_serial
+        if not s:
+            raise ValueError("No device selected")
+        dflag = self._display_flag(display_id)
+        # shell 내부 for 루프로 한 번에 실행
+        sleep_sec = interval_ms / 1000.0
+        cmd = f"shell 'for i in $(seq 1 {count}); do input {dflag}tap {x} {y}; sleep {sleep_sec:.3f}; done'"
+        return await self._run_device(s, cmd, timeout=max(10, count * (sleep_sec + 1)))
+
     async def swipe(
         self, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 300,
         serial: Optional[str] = None, display_id: Optional[int] = None,
@@ -690,7 +702,7 @@ class ADBService:
                 return f'{prefix}"lxc-attach -n {container} -- {inner}"'
         return args
 
-    async def _run_device(self, serial: str, args: str) -> str:
+    async def _run_device(self, serial: str, args: str, timeout: int = 10) -> str:
         # GVM 컨테이너 감지 (shell/exec-out 명령만 래핑)
         if args.startswith("shell ") or args.startswith("exec-out "):
             container = await self._detect_gvm_container(serial)
@@ -698,7 +710,7 @@ class ADBService:
         cmd = f"{ADB_PATH} -s {serial} {args}"
         logger.debug("ADB cmd: %s", cmd)
         loop = asyncio.get_event_loop()
-        stdout, stderr, rc = await loop.run_in_executor(None, functools.partial(_run_sync, cmd))
+        stdout, stderr, rc = await loop.run_in_executor(None, functools.partial(_run_sync, cmd, timeout))
         if rc != 0:
             logger.error("ADB error (device %s): %s", serial, stderr)
         return stdout
