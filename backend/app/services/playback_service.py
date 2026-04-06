@@ -400,7 +400,7 @@ class PlaybackService:
             # 1) 액션 실행 전: 해당 스텝의 디바이스 연결 확인
             if self._should_stop:
                 step_result.status = "error"
-                step_result.error_message = "Stopped by user"
+                step_result.message = "Stopped by user"
                 return step_result
             t0 = time.time()
             action_device_id = self._resolve_real_device_id(step)
@@ -411,7 +411,7 @@ class PlaybackService:
             # Execute the action
             if self._should_stop:
                 step_result.status = "error"
-                step_result.error_message = "Stopped by user"
+                step_result.message = "Stopped by user"
                 return step_result
             await self._run_action(step)
             t2 = time.time()
@@ -448,7 +448,7 @@ class PlaybackService:
             # Wait (중단 가능)
             if await self._interruptible_sleep(step.delay_after_ms / 1000.0):
                 step_result.status = "error"
-                step_result.error_message = "Stopped by user"
+                step_result.message = "Stopped by user"
                 return step_result
             t3 = time.time()
 
