@@ -1650,10 +1650,13 @@ class PlaybackService:
                     elif step.type == StepType.HKMC_KEY:
                         key_name = params.get("key_name")
                         direction = params.get("direction")
+                        # CCRC source override (UI 토글로 저장됨) — 정수 또는 None
+                        key_source = params.get("key_source")
                         if key_name:
                             sub_cmd = params.get("sub_cmd", 0x43)
                             if is_isap:
-                                await svc.async_send_key_by_name(key_name, sub_cmd, screen_type, direction)
+                                await svc.async_send_key_by_name(key_name, sub_cmd, screen_type, direction,
+                                                                  key_source=key_source)
                             else:
                                 # screen_type 반드시 전달 — send_key_by_name 의 자동 monitor
                                 # 보정(rear_left→CCRC_MONITOR_LEFT) 이 동작해야 리어 모니터로
@@ -1661,7 +1664,8 @@ class PlaybackService:
                                 # 회귀가 있었음. RRC_RADIO/MEDIA 는 IVI Type 제약이라 UI 에서
                                 # rear 외 비활성화로 별도 차단.
                                 monitor = params.get("monitor", 0x00)
-                                await svc.async_send_key_by_name(key_name, sub_cmd, monitor, direction, screen_type)
+                                await svc.async_send_key_by_name(key_name, sub_cmd, monitor, direction, screen_type,
+                                                                  key_source=key_source)
                         else:
                             if is_isap:
                                 await svc.async_send_key(

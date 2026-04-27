@@ -751,7 +751,8 @@ async def device_input(req: InputRequest):
                 key_name = p.get("key_name")
                 if key_name:
                     await isap.async_send_key_by_name(
-                        key_name, p.get("sub_cmd", 0x43), screen_type, p.get("direction")
+                        key_name, p.get("sub_cmd", 0x43), screen_type, p.get("direction"),
+                        key_source=p.get("key_source"),
                     )
                 else:
                     await isap.async_send_key(
@@ -810,8 +811,9 @@ async def device_input(req: InputRequest):
                     await hkmc.async_send_key_by_name(
                         key_name, p.get("sub_cmd", 0x43), p.get("monitor", 0x00),
                         p.get("direction"), screen_type,
+                        key_source=p.get("key_source"),
                     )
-                    logger.info("[HKMC INPUT] key sent: %s", key_name)
+                    logger.info("[HKMC INPUT] key sent: %s (source=%s)", key_name, p.get("key_source"))
                 else:
                     await hkmc.async_send_key(
                         p["cmd"], p["sub_cmd"], p["key_data"], p.get("monitor", 0x00), p.get("direction")

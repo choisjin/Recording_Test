@@ -916,7 +916,8 @@ class HKMC6thService:
 
     def send_key_by_name(self, key_name: str, sub_cmd: int = SHORT_KEY,
                          monitor: int = 0x00, direction: Optional[int] = None,
-                         screen_type: Optional[str] = None) -> None:
+                         screen_type: Optional[str] = None,
+                         key_source: Optional[int] = None) -> None:
         """Send a hardware key by its name (e.g. 'CCP_ENTER', 'MKBD_MAP').
 
         Args:
@@ -926,6 +927,14 @@ class HKMC6thService:
             direction: Direction for dial events
             screen_type: CCRC 전용 — monitor 미지정 시 'rear_left'/'rear_right'에서
                 CCRC monitor 값 자동 유도.
+            key_source: rear-source 강제값 (CCRC_SRC_RRC=0x02 / CCRC_SRC_BRRC=0x07 /
+                CCRC_SRC_REAR_LEFT_MONITOR=0x0B / CCRC_SRC_REAR_RIGHT_MONITOR=0x0C).
+                지정 시:
+                - CCRC 키(ccrc=true): hardcoded BRRC 대신 이 값을 source로 사용
+                - RRC 키(cmd=CMD_RRC): 같은 keycode를 CMD_CCRC(0x93)로 라우팅 + 이 source 적용
+                  (RRC 명령(0x90)은 source 필드가 없는 프로토콜이므로 source가 의미 있는
+                  CCRC 명령으로 자동 전환)
+                None이면 기본 동작 — RRC는 0x90 그대로, CCRC는 정의된 source(보통 BRRC).
         """
         key_info = self.resolve_key(key_name)
         if not key_info:
@@ -934,6 +943,13 @@ class HKMC6thService:
         cmd = key_info["cmd"]
         key_data = key_info["key"]
         is_ccrc = bool(key_info.get("ccrc"))
+
+        # key_source가 명시되었고 RRC 명령이면 CCRC 명령(0x93) 경로로 자동 전환.
+        # RRC keycode들과 CCRC keycode들은 핵심 키(UP/DOWN/LEFT/RIGHT/ENTER/BACK/HOME/
+        # VOLUME_*/POWER_*)가 모두 동일한 hex 값이라 같은 keycode를 그대로 재사용 가능.
+        if key_source is not None and cmd == CMD_RRC:
+            cmd = CMD_CCRC
+            is_ccrc = True
 
         # monitor 미지정(0x00 NONE) + rear_left/rear_right 화면이면 자동으로 LEFT/RIGHT 유도.
         # CCRC·일반 하드키 공통 — 일반 키도 monitor 필드가 rear 모니터 라우팅에 사용됨.
@@ -950,7 +966,11 @@ class HKMC6thService:
             if is_ccrc:
                 # CCRC: cmd=0x93, data=[source, key, status, monitor]
                 # PRESS/SHORT/LONG/RELEASE 값이 일반 KEY와 다름 (0x01~0x03, 0x00).
-                source = key_info.get("source", CCRC_SRC_BRRC)
+                # 호출자 override(key_source) > 키 정의 default > BRRC fallback
+                if key_source is not None:
+                    source = key_source
+                else:
+                    source = key_info.get("source", CCRC_SRC_BRRC)
                 # monitor 0x00(NONE)이면 Right 모니터 기본값으로 보정 (레거시 CCRC_HK 기본).
                 mon = monitor if monitor in (CCRC_MONITOR_LEFT, CCRC_MONITOR_RIGHT) else CCRC_MONITOR_RIGHT
                 if sub_cmd == LONG_KEY:
@@ -1044,10 +1064,11 @@ class HKMC6thService:
 
     async def async_send_key_by_name(self, key_name: str, sub_cmd: int = SHORT_KEY,
                                      monitor: int = 0x00, direction: Optional[int] = None,
-                                     screen_type: Optional[str] = None) -> None:
+                                     screen_type: Optional[str] = None,
+                                     key_source: Optional[int] = None) -> None:
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(
-            None, self.send_key_by_name, key_name, sub_cmd, monitor, direction, screen_type
+            None, self.send_key_by_name, key_name, sub_cmd, monitor, direction, screen_type, key_source
         )
 
     # ------------------------------------------------------------------

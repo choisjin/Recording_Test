@@ -759,7 +759,10 @@ class ISAPAgentService:
 
     def send_key_by_name(self, key_name: str, sub_cmd: int = SHORT_KEY,
                          screen_type: str = "front_center",
-                         direction: Optional[int] = None) -> None:
+                         direction: Optional[int] = None,
+                         key_source: Optional[int] = None) -> None:
+        # key_source는 HKMC CCRC 전용 — iSAP에선 무시 (시그니처 통일)
+        _ = key_source
         info = self.resolve_key(key_name)
         if not info:
             raise ValueError(f"Unknown iSAP key: {key_name}")
@@ -839,9 +842,10 @@ class ISAPAgentService:
 
     async def async_send_key_by_name(self, key_name: str, sub_cmd: int = SHORT_KEY,
                                      screen_type: str = "front_center",
-                                     direction: Optional[int] = None) -> None:
+                                     direction: Optional[int] = None,
+                                     key_source: Optional[int] = None) -> None:
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, self.send_key_by_name, key_name, sub_cmd, screen_type, direction)
+        await loop.run_in_executor(None, self.send_key_by_name, key_name, sub_cmd, screen_type, direction, key_source)
 
     # ------------------------------------------------------------------
 

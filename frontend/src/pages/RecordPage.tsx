@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Button, Card, Col, Image, Input, Modal, Radio, Row, Select, Slider, Space, InputNumber, message, List, Tag, Popover, Tooltip, Splitter } from 'antd';
-import { PlayCircleOutlined, PauseOutlined, PlusOutlined, SwapOutlined, FolderOpenOutlined, SaveOutlined, DeleteOutlined, BranchesOutlined, ScissorOutlined, CameraOutlined, ThunderboltOutlined, CheckCircleOutlined, CloseCircleOutlined, WarningOutlined, EditOutlined, CopyOutlined, ZoomInOutlined, ZoomOutOutlined, HolderOutlined, SettingOutlined, StopOutlined } from '@ant-design/icons';
+import { PlayCircleOutlined, PauseOutlined, PlusOutlined, SwapOutlined, FolderOpenOutlined, SaveOutlined, DeleteOutlined, BranchesOutlined, ScissorOutlined, CameraOutlined, ThunderboltOutlined, CheckCircleOutlined, CloseCircleOutlined, WarningOutlined, EditOutlined, CopyOutlined, ZoomInOutlined, ZoomOutOutlined, HolderOutlined, SettingOutlined, StopOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -301,6 +301,10 @@ export default function RecordPage() {
 
   // HKMC hardware keys
   const [hkmcKeys, setHkmcKeys] = useState<HkmcKeyInfo[]>([]);
+  // CCRC 명령(0x93) source 토글 — RRC/CCRC rear 그룹 키 발사 시 적용
+  // null = 기본(RRC는 0x90, CCRC는 BRRC), 그 외는 명시적 source 강제
+  // 0x02=RRC(유선), 0x07=BRRC(Bluetooth), 0x0B=RL_Monitor, 0x0C=RR_Monitor
+  const [rearKeySource, setRearKeySource] = useState<number | null>(null);
   // iSAP 키 설정 모달
   const [isapKeysModalOpen, setIsapKeysModalOpen] = useState(false);
   const [isapKeysDraft, setIsapKeysDraft] = useState<HkmcKeyInfo[]>([]);
@@ -969,8 +973,11 @@ export default function RecordPage() {
     const isLong = Math.random() < 0.2; // 20% 확률 Long press
     const sub = isLong ? HKMC_LONG_KEY : HKMC_SHORT_KEY;
     const label = `RAND HK: ${k.name}${isLong ? ' (Long)' : ''}`;
-    executeAction('hkmc_key', { key_name: k.name, sub_cmd: sub, screen_type: screenType }, label);
-  }, [hkmcKeys, randHkKeysConfig, screenType, executeAction]);
+    // rear-only 그룹(RRC/CCRC)에서만 source 토글값 첨부
+    const params: Record<string, any> = { key_name: k.name, sub_cmd: sub, screen_type: screenType };
+    if ((k.group === 'RRC' || k.group === 'CCRC') && rearKeySource !== null) params.key_source = rearKeySource;
+    executeAction('hkmc_key', params, label);
+  }, [hkmcKeys, randHkKeysConfig, screenType, executeAction, rearKeySource]);
 
   const randSK = useCallback(() => {
     let { x, y } = _pickRandInRegion(randSkRegion);
@@ -3414,8 +3421,31 @@ export default function RecordPage() {
                   const isIsap = devType === 'isap_agent';
                   const isHkmc = devType === 'hkmc_agent';
                   const canConfigKeys = isIsap || isHkmc;
+                  // rear 그룹(RRC/CCRC)이 하나라도 보이면 source 토글 노출
+                  const hasRearGroup = groups.some(g => g === 'RRC' || g === 'CCRC');
                   return (
                     <div style={{ marginTop: 3, width: '100%' }}>
+                      {hasRearGroup && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4, padding: '2px 4px', background: isDark ? '#1f1f1f' : '#fafafa', borderRadius: 3 }}>
+                          <span style={{ fontSize: 10, color: subTextColor }}>Rear Source:</span>
+                          <Select
+                            size="small"
+                            value={rearKeySource}
+                            onChange={(v) => setRearKeySource(v)}
+                            style={{ width: 160, fontSize: 10 }}
+                            options={[
+                              { value: null, label: 'Auto (기본)' },
+                              { value: 0x02, label: 'RRC (유선, 0x02)' },
+                              { value: 0x07, label: 'BRRC (BT, 0x07)' },
+                              { value: 0x0B, label: 'RL Monitor (0x0B)' },
+                              { value: 0x0C, label: 'RR Monitor (0x0C)' },
+                            ]}
+                          />
+                          <Tooltip title="RRC/CCRC 그룹 키 발사 시 패킷의 key_source(data[0])로 사용됩니다. Auto 선택 시 RRC=CMD_RRC(0x90), CCRC=BRRC. 명시 선택 시 RRC도 CMD_CCRC(0x93)로 자동 라우팅되어 source가 적용됩니다.">
+                            <QuestionCircleOutlined style={{ fontSize: 11, color: subTextColor, cursor: 'help' }} />
+                          </Tooltip>
+                        </div>
+                      )}
                       {groups.map((group) => {
                         const keys = byGroup[group];
                         if (!keys || keys.length === 0) return null;
@@ -3461,7 +3491,10 @@ export default function RecordPage() {
                                       const isLong = held >= HKMC_LONG_PRESS_MS;
                                       const sub = isLong ? HKMC_LONG_KEY : HKMC_SHORT_KEY;
                                       const label = k.name + (isLong ? ' (Long)' : '');
-                                      executeAction('hkmc_key', { key_name: k.name, sub_cmd: sub, screen_type: screenType }, label);
+                                      // rear-only 그룹(RRC/CCRC)에서만 source 토글값 첨부
+                                      const params: Record<string, any> = { key_name: k.name, sub_cmd: sub, screen_type: screenType };
+                                      if (isRearOnly && rearKeySource !== null) params.key_source = rearKeySource;
+                                      executeAction('hkmc_key', params, label);
                                     }
                                     hkTimerRef.current.delete(k.name);
                                     e.currentTarget.classList.remove('pressing', 'long-done');
