@@ -755,7 +755,10 @@ async def _run_play_job(data: dict):
     이벤트는 playback_service.publish_event를 통해 broadcaster에 전달되고,
     연결된 모든 WebSocket 구독자가 forward 태스크로 받아 전송한다.
     """
-    from .services.playback_service import publish_event, clear_event_buffer, mark_playback_active
+    from .services.playback_service import (
+        publish_event, clear_event_buffer, mark_playback_active,
+        mark_runtime_fail_active, consume_runtime_fails,
+    )
     scenario_name = data.get("scenario")
     verify = data.get("verify", True)
     repeat = data.get("repeat", 1)
@@ -772,6 +775,7 @@ async def _run_play_job(data: dict):
         playback_service._pause_event.set()
         clear_event_buffer()
         mark_playback_active(True)
+        mark_runtime_fail_active(True)  # SerialLogging/DLTLogging assert_keyword fail 누적 활성화
         publish_event({"type": "playback_reset", "scenario": scenario_name})
         # 웹캠 녹화 시작 (열려 있을 때만)
         webcam_session = await _webcam_session_start(iteration=1)
@@ -884,6 +888,12 @@ async def _run_play_job(data: dict):
                 )
                 await playback_service._save_result(_interim, interim=True)
 
+        # 시나리오 동안 모듈이 보고한 runtime fail(예: SerialLogging.assert_keyword 미일치)을 흡수
+        runtime_fails = consume_runtime_fails()
+        if runtime_fails:
+            result.step_results.extend(runtime_fails)
+            result.failed_steps += len(runtime_fails)
+
         # 중단 처리
         if playback_service._should_stop:
             if last_completed_iteration == 0:
@@ -894,7 +904,10 @@ async def _run_play_job(data: dict):
                 else:
                     total_steps_per_cycle = len(scen.steps)
                     keep_count = last_completed_iteration * total_steps_per_cycle
-                    result.step_results = result.step_results[:keep_count]
+                    # runtime_fails는 _runtime_fail_id_seq(9000+)이라 일반 step과 구분 — keep_count 슬라이싱 후 다시 추가
+                    extras = [sr for sr in result.step_results if sr.step_id >= 9000]
+                    base = [sr for sr in result.step_results if sr.step_id < 9000]
+                    result.step_results = base[:keep_count] + extras
                 result.passed_steps = sum(1 for sr in result.step_results if sr.status == "pass")
                 result.failed_steps = sum(1 for sr in result.step_results if sr.status == "fail")
                 result.error_steps = sum(1 for sr in result.step_results if sr.status not in ("pass", "fail"))
@@ -923,6 +936,7 @@ async def _run_play_job(data: dict):
             playback_service._cleanup_run_output_dir()
             playback_service._running = False
         mark_playback_active(False)
+        mark_runtime_fail_active(False)
         # 모든 리소스 정리가 끝난 뒤에야 프론트에 종료 이벤트 전파
         # (이전 순서에선 publish가 먼저 나가 프론트가 결과 상세에 진입 → 파일이 아직 없어 404 발생)
         if terminal_event is not None:
@@ -931,7 +945,10 @@ async def _run_play_job(data: dict):
 
 async def _run_play_group_job(data: dict):
     """백그라운드 태스크로 실행되는 play_group 로직."""
-    from .services.playback_service import publish_event, clear_event_buffer, mark_playback_active
+    from .services.playback_service import (
+        publish_event, clear_event_buffer, mark_playback_active,
+        mark_runtime_fail_active, consume_runtime_fails,
+    )
     group_members = data.get("scenarios", [])
     verify = data.get("verify", True)
     repeat = data.get("repeat", 1)
@@ -953,6 +970,7 @@ async def _run_play_group_job(data: dict):
         playback_service._pause_event.set()
         clear_event_buffer()
         mark_playback_active(True)
+        mark_runtime_fail_active(True)
         publish_event({"type": "playback_reset", "group": True})
         webcam_session = await _webcam_session_start(iteration=1)
 
@@ -1119,6 +1137,12 @@ async def _run_play_group_job(data: dict):
                 )
                 await playback_service._save_result(_interim, interim=True)
 
+        # runtime fail (assert_keyword) 흡수
+        runtime_fails = consume_runtime_fails()
+        if runtime_fails:
+            unified_result.step_results.extend(runtime_fails)
+            unified_result.failed_steps += len(runtime_fails)
+
         unified_result.finished_at = datetime.now(timezone.utc).isoformat()
         unified_result.total_steps = global_step_seq
         if unified_result.failed_steps > 0 or unified_result.error_steps > 0:
@@ -1143,6 +1167,7 @@ async def _run_play_group_job(data: dict):
         playback_service._cleanup_run_output_dir()
         playback_service._running = False
         mark_playback_active(False)
+        mark_runtime_fail_active(False)
         # 리소스 정리 완료 후에 프론트에 알림 — 결과 상세 진입 시 파일이 모두 제자리에 있도록
         if terminal_event is not None:
             publish_event(terminal_event)

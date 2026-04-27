@@ -198,6 +198,9 @@ class DLTLogging:
         self._counters: dict[str, dict] = {}
         self._counter_lock = threading.Lock()
 
+        # 키워드 단언(assert): 미일치 라인 fail 누적 보고용
+        self._asserts: dict[str, dict] = {}
+
     # ------------------------------------------------------------------
     # 연결 관리 (내부)
     # ------------------------------------------------------------------
@@ -221,6 +224,7 @@ class DLTLogging:
             self._step_marks.clear()
             with self._counter_lock:
                 self._counters.clear()  # 새 세션마다 키워드 카운터 자동 리셋
+                self._asserts.clear()
             self._start_capture()
             logger.info("[DLTLogging] Connected to %s:%d", self._host, self._port)
             return ""
@@ -658,6 +662,54 @@ class DLTLogging:
             return {**v, "timestamps": list(v["timestamps"])}
 
     # ------------------------------------------------------------------
+    # 키워드 단언(assert) — 일치하지 않는 라인을 시나리오 fail로 누적 보고
+    # ------------------------------------------------------------------
+
+    def assert_keyword(self, keyword: str, name: str = "") -> str:
+        """캡처되는 모든 라인이 keyword를 포함해야 함을 단언.
+        keyword 미포함 라인이 들어오면 시나리오 재생 중일 때 한해 fail step row 자동 추가.
+        SerialLogging.assert_keyword와 동일 인터페이스.
+        """
+        key = name.strip() if name else f"assert_{keyword}"
+        with self._counter_lock:
+            existing = self._asserts.get(key)
+            if existing is None:
+                self._asserts[key] = {
+                    "keyword": keyword,
+                    "miss_count": 0,
+                    "miss_timestamps": [],
+                    "started_at": time.time(),
+                }
+                logger.info("[DLTLogging] assert_keyword started: name='%s' keyword='%s'", key, keyword)
+                return f"Asserting all lines contain '{keyword}' (name='{key}')"
+            cnt = existing["miss_count"]
+            ts_list = list(existing["miss_timestamps"])
+            started_at = existing["started_at"]
+            kw = existing["keyword"]
+
+        def _fmt(t: float) -> str:
+            return time.strftime("%H:%M:%S", time.localtime(t))
+
+        if cnt == 0:
+            return f"ASSERT '{kw}' (name='{key}'): 0 misses (since {_fmt(started_at)})"
+        return f"ASSERT '{kw}' (name='{key}'): {cnt} miss lines | first: {_fmt(ts_list[0])} | last: {_fmt(ts_list[-1])}"
+
+    def reset_assert_keyword(self, name: str = "") -> str:
+        """assert 카운터 리셋. name 빈 값이면 모든 단언 제거."""
+        with self._counter_lock:
+            if not name:
+                n = len(self._asserts)
+                self._asserts.clear()
+                return f"Reset all assertions ({n})"
+            existing = self._asserts.get(name)
+            if existing is None:
+                return f"Assertion '{name}' not found"
+            existing["miss_count"] = 0
+            existing["miss_timestamps"].clear()
+            existing["started_at"] = time.time()
+            return f"Reset assertion '{name}'"
+
+    # ------------------------------------------------------------------
     # 키워드 검색 — PASS/FAIL 판정
     # ------------------------------------------------------------------
 
@@ -966,14 +1018,27 @@ class DLTLogging:
                     except Exception:
                         pass
 
-                # 키워드 카운터 업데이트 (활성 카운터에 한해)
-                if self._counters:
+                # 키워드 카운터 + 단언 검사
+                if self._counters or self._asserts:
                     now_ts = time.time()
+                    miss_reports: list[tuple[str, str]] = []
                     with self._counter_lock:
                         for c in self._counters.values():
                             if c["keyword"] in line:
                                 c["count"] += 1
                                 c["timestamps"].append(now_ts)
+                        for a in self._asserts.values():
+                            if a["keyword"] not in line:
+                                a["miss_count"] += 1
+                                a["miss_timestamps"].append(now_ts)
+                                miss_reports.append((a["keyword"], line))
+                    if miss_reports:
+                        try:
+                            from backend.app.services.playback_service import report_runtime_fail
+                            for kw, ln in miss_reports:
+                                report_runtime_fail("DLTLogging", kw, now_ts, ln)
+                        except Exception:
+                            pass
 
                 # 뷰어 구독자에게 스트리밍 (Hub에 세션 등록된 경우만 비용 발생)
                 DLT_HUB.emit_log(self._session_id(), line)

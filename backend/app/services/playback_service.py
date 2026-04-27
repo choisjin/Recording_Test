@@ -178,6 +178,61 @@ def get_run_output_dir() -> Optional[Path]:
     return _current_run_output_dir
 
 
+# ==========================================================================
+# Runtime fail buffer — 모듈(SerialLogging/DLTLogging)이 캡처 중 발견한
+# 비정상 라인을 step_result로 누적하기 위한 hook.
+# 재생 중일 때만 buffer에 쌓이고, _run_play_job/group_job 종료 시
+# consume_runtime_fails()로 흡수되어 ScenarioResult.step_results에 추가됨.
+# ==========================================================================
+
+import threading as _rt_threading
+_runtime_fail_buf: list[StepResult] = []
+_runtime_fail_lock = _rt_threading.Lock()
+_runtime_fail_active = False
+_runtime_fail_id_seq = 9000  # 일반 step_id와 충돌 방지용 시리즈
+
+
+def mark_runtime_fail_active(active: bool) -> None:
+    """재생 시작/종료 시 호출. False면 보고가 무시됨."""
+    global _runtime_fail_active
+    _runtime_fail_active = active
+
+
+def report_runtime_fail(source: str, keyword: str, ts: float,
+                        line: str = "", repeat_index: int = 1) -> None:
+    """모듈이 실시간 캡처 중 비정상 라인을 발견했을 때 호출.
+
+    재생이 active일 때만 buffer에 쌓이며, 시나리오 종료 시 step_results로 흡수.
+    """
+    if not _runtime_fail_active:
+        return
+    global _runtime_fail_id_seq
+    iso = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+    snippet = (line or "").strip()
+    if len(snippet) > 200:
+        snippet = snippet[:197] + "…"
+    with _runtime_fail_lock:
+        _runtime_fail_id_seq += 1
+        sr = StepResult(
+            step_id=_runtime_fail_id_seq,
+            repeat_index=repeat_index,
+            timestamp=iso,
+            command=f"[{source}] assert '{keyword}'",
+            description=f"keyword '{keyword}' missing",
+            status="fail",
+            message=snippet,
+        )
+        _runtime_fail_buf.append(sr)
+
+
+def consume_runtime_fails() -> list[StepResult]:
+    """버퍼 비우고 누적된 fail step_results 반환. 재생 종료 시 호출."""
+    with _runtime_fail_lock:
+        out = list(_runtime_fail_buf)
+        _runtime_fail_buf.clear()
+    return out
+
+
 class PlaybackService:
     """Execute scenarios and verify results."""
 
