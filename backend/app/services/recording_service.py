@@ -139,23 +139,13 @@ class RecordingService:
         return self._current_scenario
 
     def _ensure_device_mapped(self, device_id: str) -> str:
-        """Ensure the device_id is recorded in device_map (id → real address).
-
-        Since device IDs are now human-readable aliases (Android_1, Serial_1, etc.),
-        we store them directly and map to their real address for portability.
+        """device_id를 그대로 반환. (이전엔 device_map에 alias→address 매핑을 자동
+        기록했으나, 시나리오를 다른 PC에서 사용할 때 사용자가 디바이스 페이지에서
+        ID/순서를 직접 시나리오에 맞춰 조정하는 운영 방식이라 자동 매핑이 잉여 정보로
+        누적되는 문제가 있었음 — 자동 채우기 비활성화. device_map 필드는 모델/재생
+        경로에 그대로 남아 있어 export/import 호환성과 frontend override는 유지된다.)
         """
-        if not device_id or self._current_scenario is None:
-            return device_id
-
-        dmap = self._current_scenario.device_map
-        if device_id not in dmap:
-            # Store mapping: device_id → real address
-            dev = self.dm.get_device(device_id)
-            if dev:
-                dmap[device_id] = dev.address
-            else:
-                dmap[device_id] = device_id
-        return device_id
+        return device_id or ""
 
     async def add_step(
         self,
