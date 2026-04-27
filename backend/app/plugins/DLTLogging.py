@@ -193,6 +193,11 @@ class DLTLogging:
         # 스텝 마킹: {step_index: log_buffer_index}
         self._step_marks: dict[int, int] = {}
 
+        # 키워드 실시간 카운터 — SerialLogging과 동일 패턴
+        # {name: {"keyword", "count", "timestamps", "started_at"}}
+        self._counters: dict[str, dict] = {}
+        self._counter_lock = threading.Lock()
+
     # ------------------------------------------------------------------
     # 연결 관리 (내부)
     # ------------------------------------------------------------------
@@ -214,6 +219,8 @@ class DLTLogging:
             self._logs.clear()
             self._msg_counter = 0
             self._step_marks.clear()
+            with self._counter_lock:
+                self._counters.clear()  # 새 세션마다 키워드 카운터 자동 리셋
             self._start_capture()
             logger.info("[DLTLogging] Connected to %s:%d", self._host, self._port)
             return ""
@@ -588,6 +595,69 @@ class DLTLogging:
         return f"Step {step_index} marked at log index {pos}"
 
     # ------------------------------------------------------------------
+    # 실시간 키워드 카운터 — 호출 시점부터 활성, 매 라인 검사
+    # ------------------------------------------------------------------
+
+    def count_keyword(self, keyword: str, name: str = "") -> str:
+        """캡처 로그에서 keyword가 등장할 때마다 카운트하고 발생 시간을 누적합니다.
+
+        - 같은 name(또는 keyword)으로 첫 호출: 카운터 시작 (count=0)
+        - 같은 name 재호출: 현재까지의 결과 반환
+        SerialLogging.count_keyword와 동일 인터페이스.
+        """
+        key = name.strip() if name else keyword
+        with self._counter_lock:
+            existing = self._counters.get(key)
+            if existing is None:
+                self._counters[key] = {
+                    "keyword": keyword,
+                    "count": 0,
+                    "timestamps": [],
+                    "started_at": time.time(),
+                }
+                logger.info("[DLTLogging] count_keyword started: name='%s' keyword='%s'", key, keyword)
+                return f"Started counting '{keyword}' (name='{key}')"
+            cnt = existing["count"]
+            ts_list = list(existing["timestamps"])
+            started_at = existing["started_at"]
+            kw = existing["keyword"]
+
+        def _fmt(t: float) -> str:
+            return time.strftime("%H:%M:%S", time.localtime(t))
+
+        if cnt == 0:
+            return f"COUNT '{kw}' (name='{key}'): 0 occurrences (since {_fmt(started_at)})"
+        first_s = _fmt(ts_list[0])
+        last_s = _fmt(ts_list[-1])
+        logger.info("[DLTLogging] count_keyword query: name='%s' count=%d", key, cnt)
+        return f"COUNT '{kw}' (name='{key}'): {cnt} occurrences | first: {first_s} | last: {last_s}"
+
+    def reset_count_keyword(self, name: str = "") -> str:
+        """키워드 카운터를 리셋합니다. name 빈 값이면 모든 카운터 제거."""
+        with self._counter_lock:
+            if not name:
+                n = len(self._counters)
+                self._counters.clear()
+                return f"Reset all counters ({n})"
+            existing = self._counters.get(name)
+            if existing is None:
+                return f"Counter '{name}' not found"
+            existing["count"] = 0
+            existing["timestamps"].clear()
+            existing["started_at"] = time.time()
+            return f"Reset counter '{name}'"
+
+    def get_count_details(self, name: str = "") -> dict:
+        """raw 카운터 dict 반환. timestamps는 epoch float."""
+        with self._counter_lock:
+            if not name:
+                return {k: {**v, "timestamps": list(v["timestamps"])} for k, v in self._counters.items()}
+            v = self._counters.get(name)
+            if v is None:
+                return {}
+            return {**v, "timestamps": list(v["timestamps"])}
+
+    # ------------------------------------------------------------------
     # 키워드 검색 — PASS/FAIL 판정
     # ------------------------------------------------------------------
 
@@ -895,6 +965,15 @@ class DLTLogging:
                         self._save_file.flush()
                     except Exception:
                         pass
+
+                # 키워드 카운터 업데이트 (활성 카운터에 한해)
+                if self._counters:
+                    now_ts = time.time()
+                    with self._counter_lock:
+                        for c in self._counters.values():
+                            if c["keyword"] in line:
+                                c["count"] += 1
+                                c["timestamps"].append(now_ts)
 
                 # 뷰어 구독자에게 스트리밍 (Hub에 세션 등록된 경우만 비용 발생)
                 DLT_HUB.emit_log(self._session_id(), line)
