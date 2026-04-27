@@ -11,6 +11,7 @@ import inspect
 import functools
 import json
 import logging
+import sys
 from pathlib import Path
 from typing import Any, Optional
 
@@ -58,14 +59,43 @@ def _load_guides() -> dict:
 
 
 def _load_plugin_from_file(py_file: Path):
-    """Load a plugin module directly from file path (no package dependency)."""
+    """Load a plugin module directly from file path (no package dependency).
+
+    중요: 같은 파일이 ``backend.app.plugins.<name>`` 경로로 정식 import 되어 있을 수도 있다
+    (예: ``dlt.py``가 ``from ..plugins.DLTLogging import DLT_HUB``로 사용). 이 경우 새 모듈로
+    재로드하면 module-level 싱글톤(``DLT_HUB`` 등)이 분리되어 emit/subscribe가 따로 놀게
+    된다. 따라서:
+      1) 이미 ``backend.app.plugins.<name>``로 sys.modules에 있으면 **그 객체를 재사용**
+      2) 없으면 ``importlib.import_module``로 정식 패키지 경로 import 시도
+      3) 그래도 안 되면(파일이 패키지 외부 등) 마지막 수단으로 file-based 로드
+    또한 file-based 로드 결과는 sys.modules에 등록해 두 번 이상 생성되는 것을 막는다.
+    """
     # .pyd: "CCIC_BENCH.cp310-win_amd64.pyd" → module_name "CCIC_BENCH"
     module_name = py_file.stem.split(".")[0] if py_file.suffix == ".pyd" else py_file.stem
-    spec = importlib.util.spec_from_file_location(f"plugins.{module_name}", str(py_file))
+    full_name = f"backend.app.plugins.{module_name}"
+
+    # 1) 이미 정식 패키지 경로로 import된 모듈이 있으면 재사용 (싱글톤 보존의 핵심)
+    cached = sys.modules.get(full_name)
+    if cached is not None:
+        return cached
+
+    # 2) 정식 패키지 경로로 import 시도
+    try:
+        return importlib.import_module(full_name)
+    except Exception:
+        pass
+
+    # 3) 폴백: file-based 로드. sys.modules에 등록해 향후 호출에서 재사용되도록 한다.
+    spec = importlib.util.spec_from_file_location(full_name, str(py_file))
     if spec is None or spec.loader is None:
         return None
     mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    sys.modules[full_name] = mod
+    try:
+        spec.loader.exec_module(mod)
+    except Exception:
+        sys.modules.pop(full_name, None)
+        raise
     return mod
 
 
