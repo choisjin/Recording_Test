@@ -717,6 +717,46 @@ class SerialLogging:
         logger.info("[SerialLogging] SendHex: %d bytes", len(raw))
         return f"Sent {len(raw)} bytes"
 
+    def SendPacket(self, data: str) -> str:
+        """공백으로 구분된 hex 토큰을 패킷 단위로 전송합니다.
+
+        SendHex가 'FF01A0'/'FF 01 A0' 모두 받는 반면, SendPacket은 토큰 단위로
+        ``int(x, 16)``으로 파싱하여 '0x'/'0X' 접두사가 섞여도 허용합니다.
+        write 후 flush까지 수행하므로 짧은 컨트롤 패킷의 즉시 송출에 적합합니다.
+
+        Args:
+            data: 공백 구분 hex 문자열. 예) "01 0A FF", "0x01 0x0A 0xFF"
+
+        Returns:
+            "OK: sent N bytes — 0x1 0xa 0xff" 또는 ERROR 메시지
+        """
+        if not self._serial or not self._serial.is_open:
+            return "ERROR: 시리얼 포트가 연결되어 있지 않습니다. StartSave() 먼저 호출하세요."
+
+        tokens = (data or "").split()
+        if not tokens:
+            return "ERROR: 빈 패킷입니다"
+
+        try:
+            byte_list = [int(x, 16) for x in tokens]
+        except ValueError as e:
+            return f"ERROR: hex 파싱 실패 — {e}"
+
+        for b in byte_list:
+            if not 0 <= b <= 0xFF:
+                return f"ERROR: 바이트 범위 초과 — {hex(b)}"
+
+        packet = bytes(byte_list)
+        try:
+            self._serial.write(packet)
+            self._serial.flush()
+        except Exception as e:
+            return f"ERROR: 전송 실패 — {e}"
+
+        hex_repr = " ".join(hex(b) for b in byte_list)
+        logger.info("[SerialLogging] SendPacket send : %s", hex_repr)
+        return f"OK: sent {len(packet)} bytes — {hex_repr}"
+
     def SendAndWait(self, command: str, keyword: str, timeout: int = 10) -> str:
         """명령어를 전송하고 키워드가 포함된 응답을 대기합니다 (블로킹).
 

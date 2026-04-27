@@ -1622,6 +1622,12 @@
           "hex_string": "전송할 HEX 문자열. 예: 'FF 01 A0'"
         }
       },
+      "SendPacket": {
+        "description": "공백 구분 hex 토큰을 패킷으로 전송합니다 (write+flush). '0x' 접두사 허용. 예: '01 0A FF' 또는 '0x01 0x0A 0xFF'",
+        "params": {
+          "data": "공백으로 구분된 hex 토큰 문자열. 예: '01 0A FF'"
+        }
+      },
       "SendAndWait": {
         "description": "명령어를 전송하고 키워드가 포함된 응답을 대기합니다 (블로킹).",
         "params": {
