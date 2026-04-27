@@ -1229,7 +1229,8 @@ class DeviceManager:
                         if hkmc:
                             hkmc.disconnect()
                         svc = HKMC6thService(dev.address, port, device_id=dev.id,
-                                         key_overrides=dev.info.get("hkmc_keys"))
+                                         key_overrides=dev.info.get("hkmc_keys"),
+                                         device_model=dev.info.get("device_model", ""))
                         ok = await svc.async_connect()
                         if ok:
                             self._hkmc_conns[dev.id] = svc
@@ -1780,7 +1781,8 @@ class DeviceManager:
                     continue
                 try:
                     svc = HKMC6thService(dev.address, port, device_id=dev.id,
-                                         key_overrides=dev.info.get("hkmc_keys"))
+                                         key_overrides=dev.info.get("hkmc_keys"),
+                                         device_model=dev.info.get("device_model", ""))
                     ok = await svc.async_connect()
                     if ok:
                         self._hkmc_conns[dev.id] = svc
@@ -1951,7 +1953,8 @@ class DeviceManager:
             try:
                 from .hkmc6th_service import HKMC6thService
                 svc = HKMC6thService(dev.address, port, device_id=dev.id,
-                                         key_overrides=dev.info.get("hkmc_keys"))
+                                         key_overrides=dev.info.get("hkmc_keys"),
+                                         device_model=dev.info.get("device_model", ""))
                 ok = await svc.async_connect()
                 if ok:
                     self._hkmc_conns[dev.id] = svc

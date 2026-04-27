@@ -275,17 +275,24 @@ class HKMC6thService:
     """
 
     def __init__(self, host: str, port: int, device_id: str = "",
-                 key_overrides: Optional[dict[str, dict]] = None):
+                 key_overrides: Optional[dict[str, dict]] = None,
+                 device_model: str = ""):
         """
         Args:
             key_overrides: 디바이스별 키 오버라이드.
                 {name: {"cmd": int, "key": int, "dial": bool, "visible": bool}}
                 visible=False면 UI 표시 제외. cmd/key/dial은 spec default를 덮어쓴다.
                 차종별로 키 값이 다를 때 사용 (Non-Navi/Navi 차이 등).
+            device_model: 디바이스 모델명. 'ccRC'인 경우 monitor 매핑이 일반 HKMC 6th와
+                반대(legacy ccIC_Agent: monitor=1=RIGHT, 2=LEFT)이므로 SCREEN_TOUCH_MAP을
+                swap한 결과로 라우팅한다.
         """
         self.host = host
         self.port = port
         self.device_id = device_id
+        self.device_model = device_model
+        # CCRC 디바이스는 ccIC_Agent legacy 매핑 사용 (REAR_R=1, REAR_L=2)
+        self._is_ccrc_legacy_monitor = device_model == "ccRC"
         self._key_overrides: dict[str, dict] = dict(key_overrides or {})
 
         self._socket: Optional[socket.socket] = None
@@ -750,10 +757,17 @@ class HKMC6thService:
     def _touch_screen_bits(self, screen_type: str) -> Optional[int]:
         """rear_left/rear_right일 때만 LCD 패킷에 monitor 바이트 포함.
         front_center는 None 반환 → 레거시 agent와의 호환성 유지.
+
+        CCRC 디바이스(ccIC_Agent)는 monitor 매핑이 정반대(REAR_R=1, REAR_L=2)이므로
+        SCREEN_TOUCH_MAP의 결과를 swap하여 송신한다.
         """
-        if screen_type in ("rear_left", "rear_right"):
-            return SCREEN_TOUCH_MAP.get(screen_type)
-        return None
+        if screen_type not in ("rear_left", "rear_right"):
+            return None
+        v = SCREEN_TOUCH_MAP.get(screen_type)
+        if self._is_ccrc_legacy_monitor and v is not None:
+            # 1↔2 swap (LEFT↔RIGHT)
+            return CCRC_MONITOR_RIGHT if v == CCRC_MONITOR_LEFT else CCRC_MONITOR_LEFT
+        return v
 
     def tap(self, x: int, y: int, screen_type: str = "front_center") -> None:
         """Tap at (x, y) using lcdTouch."""
@@ -953,11 +967,12 @@ class HKMC6thService:
 
         # monitor 미지정(0x00 NONE) + rear_left/rear_right 화면이면 자동으로 LEFT/RIGHT 유도.
         # CCRC·일반 하드키 공통 — 일반 키도 monitor 필드가 rear 모니터 라우팅에 사용됨.
+        # CCRC 디바이스는 ccIC_Agent legacy 매핑이라 LEFT↔RIGHT 스왑.
         if monitor not in (CCRC_MONITOR_LEFT, CCRC_MONITOR_RIGHT):
             if screen_type == "rear_left":
-                monitor = CCRC_MONITOR_LEFT
+                monitor = CCRC_MONITOR_RIGHT if self._is_ccrc_legacy_monitor else CCRC_MONITOR_LEFT
             elif screen_type == "rear_right":
-                monitor = CCRC_MONITOR_RIGHT
+                monitor = CCRC_MONITOR_LEFT if self._is_ccrc_legacy_monitor else CCRC_MONITOR_RIGHT
 
         # _capture_lock: 키 시퀀스 중 스크린샷 CMD_GETIMG 차단
         with self._capture_lock:
