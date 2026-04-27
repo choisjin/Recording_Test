@@ -102,6 +102,24 @@ class DeleteStepRequest(BaseModel):
     step_index: int  # 0-based
 
 
+def _prune_device_map(scenario) -> None:
+    """현재 steps에서 더 이상 참조되지 않는 device_id를 device_map에서 제거.
+
+    스텝의 device_id와 screenshot_device_id를 모두 used set으로 모은 뒤
+    device_map의 키 중 used에 없는 것들을 제거한다. 호출 시 in-place 수정.
+    """
+    if not getattr(scenario, "device_map", None):
+        return
+    used: set[str] = set()
+    for s in scenario.steps:
+        if getattr(s, "device_id", None):
+            used.add(s.device_id)
+        sd = getattr(s, "screenshot_device_id", None)
+        if sd:
+            used.add(sd)
+    scenario.device_map = {k: v for k, v in scenario.device_map.items() if k in used}
+
+
 @router.post("/record/delete-step")
 async def delete_step(req: DeleteStepRequest):
     """Delete a step from the current recording session."""
@@ -114,6 +132,8 @@ async def delete_step(req: DeleteStepRequest):
     # Re-number step IDs sequentially
     for i, step in enumerate(scenario.steps):
         step.id = i + 1
+    # device_map에서 사라진 디바이스 정리
+    _prune_device_map(scenario)
     await recording_svc.save_scenario(scenario)
     return {"status": "ok", "removed_step_id": removed.id, "remaining": len(scenario.steps)}
 
@@ -134,6 +154,8 @@ async def update_step(req: UpdateStepRequest):
     for k, v in req.updates.items():
         if hasattr(step, k):
             setattr(step, k, v)
+    # device_id/screenshot_device_id 변경 시 잔존 매핑 정리
+    _prune_device_map(scenario)
     await recording_svc.save_scenario(scenario)
     return {"status": "ok"}
 
@@ -178,6 +200,8 @@ async def sync_steps(req: SyncStepsRequest):
     cur.steps = new_steps
     # step_counter도 맞춰 다음 addStep이 올바른 id를 가지도록 보정
     recording_svc._step_counter = len(new_steps)
+    # 사용되지 않는 device_map 항목 정리 (스텝 이동·삭제 후 잔존 매핑 제거)
+    _prune_device_map(cur)
     return {"status": "ok", "count": len(new_steps)}
 
 
@@ -546,6 +570,8 @@ async def import_steps(req: ImportStepsRequest):
             })
             new_steps.append(s_copy)
         source.steps = new_steps
+        # 이동(move)으로 소스에서 스텝이 빠지면 device_map도 정리
+        _prune_device_map(source)
         await recording_svc.save_scenario(source)
 
         # 원본 이미지 파일 제거
