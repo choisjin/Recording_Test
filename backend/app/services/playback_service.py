@@ -199,8 +199,12 @@ def mark_runtime_fail_active(active: bool) -> None:
 
 
 def report_runtime_fail(source: str, keyword: str, ts: float,
-                        line: str = "", repeat_index: int = 1) -> None:
+                        line: str = "", repeat_index: int = 1,
+                        reason: str = "missing") -> None:
     """모듈이 실시간 캡처 중 비정상 라인을 발견했을 때 호출.
+
+    Args:
+        reason: "missing" (assert_keyword 미일치) | "matched" (fail_on_keyword 검출)
 
     재생이 active일 때만 buffer에 쌓이며, 시나리오 종료 시 step_results로 흡수.
     """
@@ -211,14 +215,20 @@ def report_runtime_fail(source: str, keyword: str, ts: float,
     snippet = (line or "").strip()
     if len(snippet) > 200:
         snippet = snippet[:197] + "…"
+    if reason == "matched":
+        cmd = f"[{source}] fail_on '{keyword}'"
+        desc = f"keyword '{keyword}' detected"
+    else:
+        cmd = f"[{source}] assert '{keyword}'"
+        desc = f"keyword '{keyword}' missing"
     with _runtime_fail_lock:
         _runtime_fail_id_seq += 1
         sr = StepResult(
             step_id=_runtime_fail_id_seq,
             repeat_index=repeat_index,
             timestamp=iso,
-            command=f"[{source}] assert '{keyword}'",
-            description=f"keyword '{keyword}' missing",
+            command=cmd,
+            description=desc,
             status="fail",
             message=snippet,
         )

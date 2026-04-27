@@ -201,6 +201,9 @@ class DLTLogging:
         # 키워드 단언(assert): 미일치 라인 fail 누적 보고용
         self._asserts: dict[str, dict] = {}
 
+        # fail_on_keyword: keyword가 라인에 포함되면 fail 보고 (assert의 반대)
+        self._fail_keywords: dict[str, dict] = {}
+
     # ------------------------------------------------------------------
     # 연결 관리 (내부)
     # ------------------------------------------------------------------
@@ -225,6 +228,7 @@ class DLTLogging:
             with self._counter_lock:
                 self._counters.clear()  # 새 세션마다 키워드 카운터 자동 리셋
                 self._asserts.clear()
+                self._fail_keywords.clear()
             self._start_capture()
             logger.info("[DLTLogging] Connected to %s:%d", self._host, self._port)
             return ""
@@ -710,6 +714,53 @@ class DLTLogging:
             return f"Reset assertion '{name}'"
 
     # ------------------------------------------------------------------
+    # 키워드 검출 모드 — 키워드가 들어오면 fail로 보고
+    # ------------------------------------------------------------------
+
+    def fail_on_keyword(self, keyword: str, name: str = "") -> str:
+        """캡처되는 라인에 keyword가 **포함되면** 시나리오 결과에 fail row 자동 누적.
+        SerialLogging.fail_on_keyword와 동일 인터페이스. 'ERROR'/'crash' 등 검출용.
+        """
+        key = name.strip() if name else f"fail_{keyword}"
+        with self._counter_lock:
+            existing = self._fail_keywords.get(key)
+            if existing is None:
+                self._fail_keywords[key] = {
+                    "keyword": keyword,
+                    "hit_count": 0,
+                    "hit_timestamps": [],
+                    "started_at": time.time(),
+                }
+                logger.info("[DLTLogging] fail_on_keyword started: name='%s' keyword='%s'", key, keyword)
+                return f"Failing on keyword '{keyword}' (name='{key}')"
+            cnt = existing["hit_count"]
+            ts_list = list(existing["hit_timestamps"])
+            started_at = existing["started_at"]
+            kw = existing["keyword"]
+
+        def _fmt(t: float) -> str:
+            return time.strftime("%H:%M:%S", time.localtime(t))
+
+        if cnt == 0:
+            return f"FAIL_ON '{kw}' (name='{key}'): 0 hits (since {_fmt(started_at)})"
+        return f"FAIL_ON '{kw}' (name='{key}'): {cnt} hit lines | first: {_fmt(ts_list[0])} | last: {_fmt(ts_list[-1])}"
+
+    def reset_fail_on_keyword(self, name: str = "") -> str:
+        """fail_on_keyword 검출 리셋."""
+        with self._counter_lock:
+            if not name:
+                n = len(self._fail_keywords)
+                self._fail_keywords.clear()
+                return f"Reset all fail-on detectors ({n})"
+            existing = self._fail_keywords.get(name)
+            if existing is None:
+                return f"Detector '{name}' not found"
+            existing["hit_count"] = 0
+            existing["hit_timestamps"].clear()
+            existing["started_at"] = time.time()
+            return f"Reset detector '{name}'"
+
+    # ------------------------------------------------------------------
     # 키워드 검색 — PASS/FAIL 판정
     # ------------------------------------------------------------------
 
@@ -1018,10 +1069,10 @@ class DLTLogging:
                     except Exception:
                         pass
 
-                # 키워드 카운터 + 단언 검사
-                if self._counters or self._asserts:
+                # 키워드 카운터/단언/검출 검사
+                if self._counters or self._asserts or self._fail_keywords:
                     now_ts = time.time()
-                    miss_reports: list[tuple[str, str]] = []
+                    fail_reports: list[tuple[str, str, str]] = []
                     with self._counter_lock:
                         for c in self._counters.values():
                             if c["keyword"] in line:
@@ -1031,12 +1082,17 @@ class DLTLogging:
                             if a["keyword"] not in line:
                                 a["miss_count"] += 1
                                 a["miss_timestamps"].append(now_ts)
-                                miss_reports.append((a["keyword"], line))
-                    if miss_reports:
+                                fail_reports.append((a["keyword"], line, "missing"))
+                        for f in self._fail_keywords.values():
+                            if f["keyword"] in line:
+                                f["hit_count"] += 1
+                                f["hit_timestamps"].append(now_ts)
+                                fail_reports.append((f["keyword"], line, "matched"))
+                    if fail_reports:
                         try:
                             from backend.app.services.playback_service import report_runtime_fail
-                            for kw, ln in miss_reports:
-                                report_runtime_fail("DLTLogging", kw, now_ts, ln)
+                            for kw, ln, reason in fail_reports:
+                                report_runtime_fail("DLTLogging", kw, now_ts, ln, reason=reason)
                         except Exception:
                             pass
 

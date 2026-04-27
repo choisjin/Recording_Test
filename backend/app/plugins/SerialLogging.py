@@ -182,6 +182,10 @@ class SerialLogging:
         # 결과의 step_results에 fail row로 누적됨. {name: {"keyword","miss_count","miss_timestamps","started_at"}}
         self._asserts: dict[str, dict] = {}
 
+        # fail_on_keyword: assert_keyword의 반대 — keyword가 라인에 **포함되면** fail로 보고.
+        # 직관적: 'ERROR'/'Fail' 같은 비정상 단어 검출에 사용.
+        self._fail_keywords: dict[str, dict] = {}
+
     # ------------------------------------------------------------------
     # 연결 관리 (내부)
     # ------------------------------------------------------------------
@@ -202,6 +206,7 @@ class SerialLogging:
             with self._counter_lock:
                 self._counters.clear()  # 새 세션마다 키워드 카운터 자동 리셋
                 self._asserts.clear()    # assert 카운터도 함께 리셋
+                self._fail_keywords.clear()
             self._start_capture()
             logger.info("[SerialLogging] Connected to %s @ %d", self._port, self._bps)
             return ""
@@ -562,6 +567,59 @@ class SerialLogging:
             return f"Reset assertion '{name}'"
 
     # ------------------------------------------------------------------
+    # 키워드 검출 모드 — 키워드가 들어오면 fail로 보고 (assert_keyword의 반대)
+    # ------------------------------------------------------------------
+
+    def fail_on_keyword(self, keyword: str, name: str = "") -> str:
+        """캡처되는 라인에 keyword가 **포함되면** 시나리오 결과에 fail row 자동 누적.
+
+        직관적 사용 — 'ERROR'/'Fail'/'crash' 등 비정상 단어 검출용.
+        시나리오 재생 중일 때만 fail 보고됨. 결과 페이지에서 row 클릭 시 영상 점프 가능.
+
+        호출 흐름:
+          - 첫 호출: 검출 시작
+          - 같은 name 재호출: 현재까지 hit count + first/last timestamp 반환
+        """
+        key = name.strip() if name else f"fail_{keyword}"
+        with self._counter_lock:
+            existing = self._fail_keywords.get(key)
+            if existing is None:
+                self._fail_keywords[key] = {
+                    "keyword": keyword,
+                    "hit_count": 0,
+                    "hit_timestamps": [],
+                    "started_at": time.time(),
+                }
+                logger.info("[SerialLogging] fail_on_keyword started: name='%s' keyword='%s'", key, keyword)
+                return f"Failing on keyword '{keyword}' (name='{key}')"
+            cnt = existing["hit_count"]
+            ts_list = list(existing["hit_timestamps"])
+            started_at = existing["started_at"]
+            kw = existing["keyword"]
+
+        def _fmt(t: float) -> str:
+            return time.strftime("%H:%M:%S", time.localtime(t))
+
+        if cnt == 0:
+            return f"FAIL_ON '{kw}' (name='{key}'): 0 hits (since {_fmt(started_at)})"
+        return f"FAIL_ON '{kw}' (name='{key}'): {cnt} hit lines | first: {_fmt(ts_list[0])} | last: {_fmt(ts_list[-1])}"
+
+    def reset_fail_on_keyword(self, name: str = "") -> str:
+        """fail_on_keyword 검출 리셋. name 빈 값이면 모두 제거."""
+        with self._counter_lock:
+            if not name:
+                n = len(self._fail_keywords)
+                self._fail_keywords.clear()
+                return f"Reset all fail-on detectors ({n})"
+            existing = self._fail_keywords.get(name)
+            if existing is None:
+                return f"Detector '{name}' not found"
+            existing["hit_count"] = 0
+            existing["hit_timestamps"].clear()
+            existing["started_at"] = time.time()
+            return f"Reset detector '{name}'"
+
+    # ------------------------------------------------------------------
     # 키워드 검색 — PASS/FAIL 판정
     # ------------------------------------------------------------------
 
@@ -856,28 +914,33 @@ class SerialLogging:
                     except Exception:
                         pass
 
-                # 키워드 카운터 업데이트 (활성 카운터에 한해)
-                # 부하: 활성 카운터 N개당 substring 1회 — 무시 가능한 수준
-                if self._counters or self._asserts:
+                # 키워드 카운터/단언/검출 검사
+                if self._counters or self._asserts or self._fail_keywords:
                     now_ts = time.time()
-                    miss_reports: list[tuple[str, str]] = []  # (keyword, line) — fail 보고 대상
+                    fail_reports: list[tuple[str, str, str]] = []  # (keyword, line, reason) — fail 보고
                     with self._counter_lock:
                         for c in self._counters.values():
                             if c["keyword"] in stamped:
                                 c["count"] += 1
                                 c["timestamps"].append(now_ts)
-                        # assert: 미일치 라인 보고 (필요 시 lock 밖에서 import 호출)
+                        # assert_keyword: 미포함 라인 → fail
                         for a in self._asserts.values():
                             if a["keyword"] not in stamped:
                                 a["miss_count"] += 1
                                 a["miss_timestamps"].append(now_ts)
-                                miss_reports.append((a["keyword"], stamped))
+                                fail_reports.append((a["keyword"], stamped, "missing"))
+                        # fail_on_keyword: 포함 라인 → fail
+                        for f in self._fail_keywords.values():
+                            if f["keyword"] in stamped:
+                                f["hit_count"] += 1
+                                f["hit_timestamps"].append(now_ts)
+                                fail_reports.append((f["keyword"], stamped, "matched"))
                     # playback_service에 fail 보고 (재생 active일 때만 효과)
-                    if miss_reports:
+                    if fail_reports:
                         try:
                             from backend.app.services.playback_service import report_runtime_fail
-                            for kw, ln in miss_reports:
-                                report_runtime_fail("SerialLogging", kw, now_ts, ln)
+                            for kw, ln, reason in fail_reports:
+                                report_runtime_fail("SerialLogging", kw, now_ts, ln, reason=reason)
                         except Exception:
                             pass
 
