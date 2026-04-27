@@ -215,12 +215,20 @@ class RecordingService:
 
         저장 직전 device_map을 정리한다. 어떤 경로(녹화 add_step, PUT update_scenario,
         sync-steps, copy 등)로 들어와도 현재 steps에서 참조하지 않는 device_map 항목이
-        잔존하지 않도록 일괄 보장.
+        잔존하지 않도록 일괄 보장. 또한 device_map이 비어있으면 JSON 출력에서 아예
+        키를 생략한다 (가독성).
         """
         self._prune_unused_device_map(scenario)
         SCENARIOS_DIR.mkdir(parents=True, exist_ok=True)
         filepath = SCENARIOS_DIR / f"{scenario.name}.json"
-        filepath.write_text(scenario.model_dump_json(indent=2), encoding="utf-8")
+        data = scenario.model_dump()
+        # 빈 device_map은 직렬화 결과에서 제외 — 사용자가 매핑을 명시적으로 활용할 때만 노출
+        if not data.get("device_map"):
+            data.pop("device_map", None)
+        filepath.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
         return str(filepath)
 
     @staticmethod
