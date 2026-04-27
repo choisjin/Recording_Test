@@ -80,6 +80,14 @@
           "value": "CDC_STD",
           "enabled": true,
           "agent": "ADB"
+        },
+        {
+          "value": "CCS2_DA2",
+          "enabled": true
+        },
+        {
+          "value": "Europe_New",
+          "enabled": true
         }
       ]
     },
