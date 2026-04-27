@@ -18,12 +18,102 @@
 
 import logging
 import os
+import queue
 import threading
 import time
 from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+
+# ==========================================================================
+# Serial 뷰어용 Pub/Sub 허브 — DLT_HUB와 동일 패턴.
+# ==========================================================================
+
+class _SerialHub:
+    """Serial 로깅 세션 + 로그 스트림 구독자 관리 (thread-safe)."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._sessions: dict[str, dict] = {}
+        self._lifecycle_subs: list[queue.Queue] = []
+        self._log_subs: dict[str, list[queue.Queue]] = {}
+
+    def list_sessions(self) -> list[dict]:
+        with self._lock:
+            return [{"session_id": sid, **info} for sid, info in self._sessions.items()]
+
+    def emit_lifecycle(self, event: dict) -> None:
+        sid = event.get("session_id", "")
+        etype = event.get("type", "")
+        with self._lock:
+            if etype == "session_started" and sid:
+                self._sessions[sid] = {k: v for k, v in event.items() if k not in ("type",)}
+            elif etype == "session_stopped" and sid:
+                self._sessions.pop(sid, None)
+            subs = list(self._lifecycle_subs)
+        logger.info("[SERIAL_HUB] emit_lifecycle type=%s sid=%s subscribers=%d",
+                    etype, sid, len(subs))
+        for q in subs:
+            try:
+                q.put_nowait(event)
+            except queue.Full:
+                pass
+
+    def register_lifecycle(self) -> queue.Queue:
+        q: queue.Queue = queue.Queue(maxsize=1000)
+        with self._lock:
+            self._lifecycle_subs.append(q)
+            for sid, info in self._sessions.items():
+                try:
+                    q.put_nowait({"type": "session_started", "session_id": sid, **info})
+                except queue.Full:
+                    break
+        return q
+
+    def unregister_lifecycle(self, q: queue.Queue) -> None:
+        with self._lock:
+            if q in self._lifecycle_subs:
+                self._lifecycle_subs.remove(q)
+
+    def register_log(self, session_id: str) -> queue.Queue:
+        q: queue.Queue = queue.Queue(maxsize=10000)
+        with self._lock:
+            self._log_subs.setdefault(session_id, []).append(q)
+        return q
+
+    def unregister_log(self, session_id: str, q: queue.Queue) -> None:
+        with self._lock:
+            lst = self._log_subs.get(session_id, [])
+            if q in lst:
+                lst.remove(q)
+
+    def emit_log(self, session_id: str, line: str) -> None:
+        with self._lock:
+            subs = list(self._log_subs.get(session_id, []))
+        for q in subs:
+            try:
+                q.put_nowait(line)
+            except queue.Full:
+                pass
+
+
+SERIAL_HUB = _SerialHub()
+
+
+def get_active_session(session_id: str) -> Optional["SerialLogging"]:
+    """session_id(port@bps)에 대응하는 현재 활성 SerialLogging 인스턴스 반환."""
+    try:
+        from backend.app.services.module_service import _instances
+    except Exception:
+        return None
+    inst = _instances.get("SerialLogging")
+    if not inst:
+        return None
+    if f"{getattr(inst, '_port', '')}@{getattr(inst, '_bps', 0)}" == session_id:
+        return inst
+    return None
 
 
 def _get_run_output_dir() -> Optional[Path]:
@@ -121,6 +211,124 @@ class SerialLogging:
     def IsConnected(self) -> bool:
         """연결 상태 확인. StartSave 전에도 모듈은 사용 가능 (지연 연결)."""
         return True
+
+    def _session_id(self) -> str:
+        return f"{self._port}@{self._bps}"
+
+    # ------------------------------------------------------------------
+    # 뷰어 연동: StartLogging / StopLogging (DLTLogging과 동일 시그니처)
+    # ------------------------------------------------------------------
+
+    def StartLogging(self) -> str:
+        """뷰어 연동용: 시리얼 연결 + 로그 캡처 시작 (메모리만, 파일 저장 없음).
+
+        SERIAL_HUB에 session_started 이벤트를 emit하여 뷰어가 자동 오픈된다.
+        """
+        err = self._connect()
+        if err:
+            return err
+        SERIAL_HUB.emit_lifecycle({
+            "type": "session_started",
+            "session_id": self._session_id(),
+            "port": self._port,
+            "bps": self._bps,
+            "save_path": "",
+            "started_at": time.time(),
+        })
+        return f"Logging started: {self._port} @ {self._bps}"
+
+    def StopLogging(self, save_path: str = "") -> str:
+        """뷰어 연동용: 시리얼 연결 종료 + 메모리 버퍼를 파일로 일괄 저장.
+
+        Args:
+            save_path: 저장할 파일 경로. 빈 값이면 컨텍스트별 자동 저장:
+                - 재생 중: {run_dir}/logs/serial_{timestamp}.log
+                - 스텝 테스트: backend/results/Temp_logs/serial_{timestamp}.log
+        """
+        sid = self._session_id()
+        with self._lock:
+            logs_snapshot = list(self._logs)
+
+        if not save_path:
+            save_path = _auto_save_path("serial")
+        elif not os.path.dirname(save_path):
+            base_dir = Path(_auto_save_path("serial")).parent
+            save_path = str(base_dir / save_path)
+
+        saved_path = ""
+        try:
+            os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+            with open(save_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(logs_snapshot))
+                if logs_snapshot:
+                    f.write("\n")
+            saved_path = save_path
+            logger.info("[SerialLogging] Saved %d lines to %s", len(logs_snapshot), save_path)
+        except Exception as e:
+            logger.error("[SerialLogging] Save failed: %s", e)
+            self._disconnect()
+            SERIAL_HUB.emit_lifecycle({
+                "type": "session_stopped",
+                "session_id": sid,
+                "save_path": "",
+                "stopped_at": time.time(),
+            })
+            return f"ERROR: 저장 실패 — {e}"
+
+        self._disconnect()
+        SERIAL_HUB.emit_lifecycle({
+            "type": "session_stopped",
+            "session_id": sid,
+            "save_path": saved_path,
+            "stopped_at": time.time(),
+        })
+        return f"Logging stopped. Saved {len(logs_snapshot)} lines to: {saved_path}"
+
+    # ------------------------------------------------------------------
+    # 뷰어용 조회 (DLT와 동일 인터페이스)
+    # ------------------------------------------------------------------
+
+    def GetRecentLogs(self, limit: int = 1000) -> list[str]:
+        with self._lock:
+            return list(self._logs[-int(limit):]) if self._logs else []
+
+    def GetStepMarks(self) -> dict[int, int]:
+        return dict(self._step_marks)
+
+    def SearchAllDetailed(self, keyword: str, max_results: int = 500) -> list[str]:
+        keywords = keyword.split()
+        with self._lock:
+            logs = list(self._logs)
+        out: list[str] = []
+        for line in logs:
+            if all(k in line for k in keywords):
+                out.append(line)
+                if len(out) >= int(max_results):
+                    break
+        return out
+
+    def SearchSectionDetailed(self, keyword: str, from_step: int,
+                               to_step: int, max_results: int = 500) -> list[str]:
+        from_step = int(from_step)
+        to_step = int(to_step)
+        if from_step not in self._step_marks:
+            return []
+        start_idx = self._step_marks[from_step]
+        if to_step in self._step_marks:
+            end_idx = self._step_marks[to_step]
+        else:
+            with self._lock:
+                end_idx = len(self._logs)
+        with self._lock:
+            logs_slice = self._logs[start_idx:end_idx]
+        keywords = keyword.split()
+        out: list[str] = []
+        for line in logs_slice:
+            if all(k in line for k in keywords):
+                out.append(line)
+                if len(out) >= int(max_results):
+                    break
+        return out
 
     # ------------------------------------------------------------------
     # 로그 저장 시작/중단 (연결 포함)
@@ -456,6 +664,12 @@ class SerialLogging:
                         self._save_file.flush()
                     except Exception:
                         pass
+
+                # 뷰어용 실시간 스트림으로 emit
+                try:
+                    SERIAL_HUB.emit_log(self._session_id(), stamped)
+                except Exception:
+                    pass
 
             except Exception as e:
                 if self._capturing:

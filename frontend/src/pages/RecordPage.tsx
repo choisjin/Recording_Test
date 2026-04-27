@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { Button, Card, Col, Image, Input, Modal, Radio, Row, Segmented, Select, Slider, Space, InputNumber, message, List, Tag, Popover, Tooltip, Splitter } from 'antd';
+import { Button, Card, Col, Image, Input, Modal, Radio, Row, Segmented, Select, Slider, Space, InputNumber, message, List, Tabs, Tag, Popover, Tooltip, Splitter } from 'antd';
 import { PlayCircleOutlined, PauseOutlined, PlusOutlined, SwapOutlined, FolderOpenOutlined, SaveOutlined, DeleteOutlined, BranchesOutlined, ScissorOutlined, CameraOutlined, ThunderboltOutlined, CheckCircleOutlined, CloseCircleOutlined, WarningOutlined, EditOutlined, CopyOutlined, ZoomInOutlined, ZoomOutOutlined, HolderOutlined, SettingOutlined, StopOutlined, QuestionCircleOutlined, FundProjectionScreenOutlined } from '@ant-design/icons';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -10,7 +10,9 @@ import { useSettings } from '../context/SettingsContext';
 import { useTranslation } from '../i18n';
 import type { TranslationKey } from '../i18n/translations';
 import DLTViewer from '../components/DLTViewer';
+import SerialViewer from '../components/SerialViewer';
 import { useDLTSessions } from '../hooks/useDLTSessions';
+import { useSerialSessions } from '../hooks/useSerialSessions';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -274,14 +276,23 @@ export default function RecordPage() {
   const subTextColor = isDark ? '#aaa' : '#888';
   const mutedTextColor = isDark ? '#999' : '#666';
 
-  // DLT 뷰어 (스텝 테스트 시 모달) — 세션 시작 시 자동 오픈
+  // DLT/Serial 뷰어 — 세션 시작 시 자동 오픈, 모달 안에서 탭으로 구분
   const dltSessionHook = useDLTSessions();
+  const serialSessionHook = useSerialSessions();
   const [dltModalOpen, setDltModalOpen] = useState(false);
+  const [logViewerTab, setLogViewerTab] = useState<'dlt' | 'serial'>('dlt');
   useEffect(() => {
     if (dltSessionHook.lastEvent?.type === 'session_started') {
+      setLogViewerTab('dlt');
       setDltModalOpen(true);
     }
   }, [dltSessionHook.lastEvent]);
+  useEffect(() => {
+    if (serialSessionHook.lastEvent?.type === 'session_started') {
+      setLogViewerTab('serial');
+      setDltModalOpen(true);
+    }
+  }, [serialSessionHook.lastEvent]);
 
   // Wait step insertion
   const [waitDurationMs, setWaitDurationMs] = useState(1000);
@@ -4773,26 +4784,53 @@ export default function RecordPage() {
         }}
       />
 
-      {/* DLT 로그 뷰어 모달 — StartLogging 시 자동 오픈, 닫아도 세션은 백엔드에서 유지됨 */}
+      {/* DLT / Serial 로그 뷰어 모달 — 탭으로 두 종류 세션을 한 모달에 통합 */}
       <Modal
-        title={t('dltViewer.title') || 'DLT 로그 뷰어'}
+        title="로그 뷰어"
         open={dltModalOpen}
         onCancel={() => setDltModalOpen(false)}
         footer={null}
         width={1000}
-        styles={{ body: { height: '70vh', padding: 0, overflow: 'hidden' } }}
+        styles={{ body: { height: '70vh', padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' } }}
         destroyOnClose={false}
       >
-        <DLTViewer
-          sessions={dltSessionHook.sessions}
-          mode="modal"
-          theme={settings.theme}
-          onClose={() => setDltModalOpen(false)}
+        <Tabs
+          size="small"
+          activeKey={logViewerTab}
+          onChange={(k) => setLogViewerTab(k as 'dlt' | 'serial')}
+          tabBarStyle={{ padding: '0 12px', margin: 0 }}
+          items={[
+            {
+              key: 'dlt',
+              label: <span>DLT <Tag style={{ marginLeft: 4 }} color={dltSessionHook.sessions.length > 0 ? 'processing' : 'default'}>{dltSessionHook.sessions.length}</Tag></span>,
+            },
+            {
+              key: 'serial',
+              label: <span>Serial <Tag style={{ marginLeft: 4 }} color={serialSessionHook.sessions.length > 0 ? 'processing' : 'default'}>{serialSessionHook.sessions.length}</Tag></span>,
+            },
+          ]}
         />
+        <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+          {logViewerTab === 'dlt' ? (
+            <DLTViewer
+              sessions={dltSessionHook.sessions}
+              mode="modal"
+              theme={settings.theme}
+              onClose={() => setDltModalOpen(false)}
+            />
+          ) : (
+            <SerialViewer
+              sessions={serialSessionHook.sessions}
+              mode="modal"
+              theme={settings.theme}
+              onClose={() => setDltModalOpen(false)}
+            />
+          )}
+        </div>
       </Modal>
 
-      {/* 모달 닫혔지만 백엔드에 활성 DLT 세션이 있으면 floating 버튼으로 재오픈 가능하게 */}
-      {!dltModalOpen && dltSessionHook.sessions.length > 0 && (
+      {/* 모달 닫혔지만 활성 세션이 있으면 floating 버튼으로 재오픈 */}
+      {!dltModalOpen && (dltSessionHook.sessions.length > 0 || serialSessionHook.sessions.length > 0) && (
         <Button
           type="primary"
           size="small"
@@ -4807,7 +4845,7 @@ export default function RecordPage() {
             paddingInline: 12,
           }}
         >
-          DLT Viewer · {dltSessionHook.sessions.length} active
+          Log Viewer · DLT {dltSessionHook.sessions.length} / Serial {serialSessionHook.sessions.length}
         </Button>
       )}
     </div>

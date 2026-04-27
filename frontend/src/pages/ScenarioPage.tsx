@@ -18,7 +18,9 @@ import { VideoCameraOutlined } from '@ant-design/icons';
 import { Resizable } from 'react-resizable';
 import 'react-resizable/css/styles.css';
 import DLTViewer from '../components/DLTViewer';
+import SerialViewer from '../components/SerialViewer';
 import { useDLTSessions } from '../hooks/useDLTSessions';
+import { useSerialSessions } from '../hooks/useSerialSessions';
 
 const ResizableTitle = (props: any) => {
   const { onResize, width, ...restProps } = props;
@@ -169,6 +171,8 @@ export default function ScenarioPage() {
   const { t, lang } = useTranslation();
   const { settings, saveExportZipToDir } = useSettings();
   const dltSessionHook = useDLTSessions();
+  const serialSessionHook = useSerialSessions();
+  const [scenarioLogTab, setScenarioLogTab] = useState<'dlt' | 'serial'>('dlt');
   const { webcam, ensureWebcamOpen } = useWebcamContext();
   const { pauseScreenStream, resumeScreenStream, primaryDevices, auxiliaryDevices } = useDevice();
   const [scenarios, setScenarios] = useState<string[]>([]);
@@ -1361,14 +1365,33 @@ export default function ScenarioPage() {
       </div>
       <Splitter style={{ flex: 1, minHeight: 0 }}>
       <Splitter.Panel defaultSize="40%" min="20%" max="60%" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      {playing && dltSessionHook.sessions.length > 0 ? (
-        // DLT 활성 시 시나리오 카드를 완전 대체 — 단, 패널 상단 50%만 차지하여 아래 50%는 웹캠 PiP 자리로 비워둠
+      {playing && (dltSessionHook.sessions.length > 0 || serialSessionHook.sessions.length > 0) ? (
+        // 로그 활성 시 시나리오 카드를 완전 대체 — 패널 상단 50%만 차지(아래 50%는 웹캠 PiP 자리)
+        // DLT/Serial 탭으로 구분하여 두 종류 세션을 한 영역에서 전환
         <div style={{ height: '50%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-          <DLTViewer
-            sessions={dltSessionHook.sessions}
-            mode="card"
-            theme={settings.theme}
+          <Tabs
+            size="small"
+            activeKey={scenarioLogTab}
+            onChange={(k) => setScenarioLogTab(k as 'dlt' | 'serial')}
+            tabBarStyle={{ padding: '0 8px', margin: 0, flexShrink: 0 }}
+            items={[
+              {
+                key: 'dlt',
+                label: <span>DLT <Tag style={{ marginLeft: 4 }} color={dltSessionHook.sessions.length > 0 ? 'processing' : 'default'}>{dltSessionHook.sessions.length}</Tag></span>,
+              },
+              {
+                key: 'serial',
+                label: <span>Serial <Tag style={{ marginLeft: 4 }} color={serialSessionHook.sessions.length > 0 ? 'processing' : 'default'}>{serialSessionHook.sessions.length}</Tag></span>,
+              },
+            ]}
           />
+          <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+            {scenarioLogTab === 'dlt' ? (
+              <DLTViewer sessions={dltSessionHook.sessions} mode="card" theme={settings.theme} />
+            ) : (
+              <SerialViewer sessions={serialSessionHook.sessions} mode="card" theme={settings.theme} />
+            )}
+          </div>
         </div>
       ) : (
       <Card
