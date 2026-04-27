@@ -1428,6 +1428,42 @@
   "DLTLogging": {
     "_description": "DLT 로깅 — DLT 데몬에 TCP 직접 연결하여 로그를 캡처·저장하고 키워드 PASS/FAIL 판정하는 모듈 (GUI 불필요)",
     "functions": {
+      "StartLogging": {
+        "description": "DLT 연결 + 캡처 시작 (메모리만, 파일 저장 없음). 뷰어 모달이 자동 오픈됩니다. 종료 시 StopLogging으로 일괄 저장.",
+        "params": {}
+      },
+      "StopLogging": {
+        "description": "DLT 캡처 종료 + 메모리 버퍼를 파일로 일괄 저장. 자동 경로 또는 지정 경로.",
+        "params": {
+          "save_path": "저장 파일 경로. 빈 값이면 자동 (재생 중: run_dir/logs/dlt_*.log, 스텝 테스트: backend/results/Temp_logs/dlt_*.log)"
+        }
+      },
+      "count_keyword": {
+        "description": "로그에서 keyword가 등장할 때마다 실시간 카운트하고 발생 시간을 누적. 같은 name으로 첫 호출=시작, 재호출=결과 반환. 통계 용도 (시나리오 fail에 영향 없음).",
+        "params": {
+          "keyword": "찾을 부분 문자열. 예: 'Pass', 'BootComplete'",
+          "name": "카운터 식별자. 빈 값이면 keyword 자체. 같은 name 재호출 시 결과 조회"
+        }
+      },
+      "reset_count_keyword": {
+        "description": "count_keyword 카운터를 리셋합니다. name 빈 값이면 모든 카운터 제거.",
+        "params": {
+          "name": "리셋할 카운터 이름. 빈 값이면 전체"
+        }
+      },
+      "assert_keyword": {
+        "description": "캡처되는 모든 라인이 keyword를 포함해야 함을 단언. **미포함 라인이 들어오면 시나리오 결과에 fail step row가 자동 누적**되며 결과 페이지에서 영상 점프로 시점 확인 가능. 시나리오 재생 중일 때만 fail 보고됨.",
+        "params": {
+          "keyword": "라인에 반드시 포함되어야 하는 부분 문자열",
+          "name": "단언 식별자. 빈 값이면 'assert_<keyword>'. 같은 name 재호출 시 miss 통계 반환"
+        }
+      },
+      "reset_assert_keyword": {
+        "description": "assert_keyword 단언을 리셋합니다. name 빈 값이면 모든 단언 제거.",
+        "params": {
+          "name": "리셋할 단언 이름. 빈 값이면 전체"
+        }
+      },
       "StartSave": {
         "description": "DLT 데몬에 연결하고 로그 캡처 + 파일 저장을 시작합니다. (연결 → 캡처 → 저장 한번에 수행)",
         "params": {
@@ -1497,6 +1533,42 @@
   "SerialLogging": {
     "_description": "시리얼 로깅 — 시리얼 포트에 연결하여 로그를 캡처·저장하고 키워드 PASS/FAIL 판정하는 모듈",
     "functions": {
+      "StartLogging": {
+        "description": "시리얼 연결 + 캡처 시작 (메모리만, 파일 저장 없음). 뷰어 모달이 자동 오픈됩니다. 종료 시 StopLogging으로 일괄 저장.",
+        "params": {}
+      },
+      "StopLogging": {
+        "description": "시리얼 캡처 종료 + 메모리 버퍼를 파일로 일괄 저장. 자동 경로 또는 지정 경로.",
+        "params": {
+          "save_path": "저장 파일 경로. 빈 값이면 자동 (재생 중: run_dir/logs/serial_*.log, 스텝 테스트: backend/results/Temp_logs/serial_*.log)"
+        }
+      },
+      "count_keyword": {
+        "description": "로그에서 keyword가 등장할 때마다 실시간 카운트하고 발생 시간을 누적. 같은 name으로 첫 호출=시작, 재호출=결과 반환. 통계 용도 (시나리오 fail에 영향 없음).",
+        "params": {
+          "keyword": "찾을 부분 문자열. 예: 'Pass', 'OK'",
+          "name": "카운터 식별자. 빈 값이면 keyword 자체. 같은 name 재호출 시 결과 조회"
+        }
+      },
+      "reset_count_keyword": {
+        "description": "count_keyword 카운터를 리셋합니다. name 빈 값이면 모든 카운터 제거.",
+        "params": {
+          "name": "리셋할 카운터 이름. 빈 값이면 전체"
+        }
+      },
+      "assert_keyword": {
+        "description": "캡처되는 모든 라인이 keyword를 포함해야 함을 단언. **미포함 라인이 들어오면 시나리오 결과에 fail step row가 자동 누적**되며 결과 페이지에서 영상 점프로 시점 확인 가능. 시나리오 재생 중일 때만 fail 보고됨.",
+        "params": {
+          "keyword": "라인에 반드시 포함되어야 하는 부분 문자열. 예: 'Pass'",
+          "name": "단언 식별자. 빈 값이면 'assert_<keyword>'. 같은 name 재호출 시 miss 통계 반환"
+        }
+      },
+      "reset_assert_keyword": {
+        "description": "assert_keyword 단언을 리셋합니다. name 빈 값이면 모든 단언 제거.",
+        "params": {
+          "name": "리셋할 단언 이름. 빈 값이면 전체"
+        }
+      },
       "StartSave": {
         "description": "시리얼 포트에 연결하고 로그 캡처 + 파일 저장을 시작합니다. (연결 → 캡처 → 저장 한번에 수행)",
         "params": {
