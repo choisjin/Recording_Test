@@ -211,11 +211,31 @@ class RecordingService:
         return scenario
 
     async def save_scenario(self, scenario: Scenario) -> str:
-        """Save scenario to JSON file."""
+        """Save scenario to JSON file.
+
+        저장 직전 device_map을 정리한다. 어떤 경로(녹화 add_step, PUT update_scenario,
+        sync-steps, copy 등)로 들어와도 현재 steps에서 참조하지 않는 device_map 항목이
+        잔존하지 않도록 일괄 보장.
+        """
+        self._prune_unused_device_map(scenario)
         SCENARIOS_DIR.mkdir(parents=True, exist_ok=True)
         filepath = SCENARIOS_DIR / f"{scenario.name}.json"
         filepath.write_text(scenario.model_dump_json(indent=2), encoding="utf-8")
         return str(filepath)
+
+    @staticmethod
+    def _prune_unused_device_map(scenario: Scenario) -> None:
+        """현재 steps에서 참조되지 않는 device_map 항목을 in-place 제거."""
+        if not getattr(scenario, "device_map", None):
+            return
+        used: set[str] = set()
+        for s in scenario.steps:
+            if getattr(s, "device_id", None):
+                used.add(s.device_id)
+            sd = getattr(s, "screenshot_device_id", None)
+            if sd:
+                used.add(sd)
+        scenario.device_map = {k: v for k, v in scenario.device_map.items() if k in used}
 
     async def load_scenario(self, name: str) -> Scenario:
         """Load scenario from JSON file."""
