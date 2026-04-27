@@ -39,7 +39,9 @@ export default function WebcamPip({ webcam, onClose, isDark }: WebcamPipProps) {
   } = webcam as any;
 
   const [minimized, setMinimized] = useState(false);
-  const [now, setNow] = useState('');
+  // 타임스탬프는 백엔드 webcam_service._apply_overlay()가 영상 프레임에 직접 그려서 송신.
+  // 프론트에서 같은 정보를 또 오버레이하면 두 겹으로 겹쳐 보이므로 여기선 추가 렌더하지 않음.
+  // 백엔드 그리기는 녹화 MP4에도 포함되므로 정합성 있는 동작.
   // 백엔드 WebSocket 프리뷰 — JPEG binary frame 수신 → blob URL
   const [previewUrl, setPreviewUrl] = useState<string>('');
   const previewWsRef = useRef<WebSocket | null>(null);
@@ -73,16 +75,6 @@ export default function WebcamPip({ webcam, onClose, isDark }: WebcamPipProps) {
     };
   }, [webcamOpen]);
 
-  // 프리뷰용 1초 타이머
-  useEffect(() => {
-    const tick = () => {
-      const d = new Date();
-      setNow(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`);
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, []);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Dragging
@@ -180,21 +172,7 @@ export default function WebcamPip({ webcam, onClose, isDark }: WebcamPipProps) {
                 animation: 'blink 1s infinite',
               }}>● REC</span>
             )}
-            {timestampPosition !== 'off' && now && (
-              <span style={{
-                position: 'absolute',
-                ...(timestampPosition.includes('top') ? { top: 4 } : { bottom: 4 }),
-                ...(timestampPosition.includes('left') ? { left: 4 } : { right: 4 }),
-                background: 'rgba(0,0,0,0.5)',
-                color: timestampColor || '#fff',
-                padding: '1px 5px',
-                borderRadius: 3,
-                fontSize: timestampFontSize || 11,
-                fontFamily: 'monospace',
-                fontWeight: 'bold',
-                pointerEvents: 'none',
-              }}>{now}</span>
-            )}
+            {/* 타임스탬프는 백엔드(영상 프레임)에서 그려져 들어오므로 별도 오버레이 안 함 */}
           </div>
 
           {/* Controls */}
