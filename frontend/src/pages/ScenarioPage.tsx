@@ -1362,7 +1362,8 @@ export default function ScenarioPage() {
       <Splitter style={{ flex: 1, minHeight: 0 }}>
       <Splitter.Panel defaultSize="40%" min="20%" max="60%" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {playing && dltSessionHook.sessions.length > 0 ? (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        // DLT 활성 시 시나리오 카드를 완전 대체 — 단, 패널 상단 50%만 차지하여 아래 50%는 웹캠 PiP 자리로 비워둠
+        <div style={{ height: '50%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <DLTViewer
             sessions={dltSessionHook.sessions}
             mode="card"
