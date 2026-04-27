@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Button, Card, Col, Image, Input, Modal, Radio, Row, Segmented, Select, Slider, Space, InputNumber, message, List, Tag, Popover, Tooltip, Splitter } from 'antd';
-import { PlayCircleOutlined, PauseOutlined, PlusOutlined, SwapOutlined, FolderOpenOutlined, SaveOutlined, DeleteOutlined, BranchesOutlined, ScissorOutlined, CameraOutlined, ThunderboltOutlined, CheckCircleOutlined, CloseCircleOutlined, WarningOutlined, EditOutlined, CopyOutlined, ZoomInOutlined, ZoomOutOutlined, HolderOutlined, SettingOutlined, StopOutlined, QuestionCircleOutlined } from '@ant-design/icons';
+import { PlayCircleOutlined, PauseOutlined, PlusOutlined, SwapOutlined, FolderOpenOutlined, SaveOutlined, DeleteOutlined, BranchesOutlined, ScissorOutlined, CameraOutlined, ThunderboltOutlined, CheckCircleOutlined, CloseCircleOutlined, WarningOutlined, EditOutlined, CopyOutlined, ZoomInOutlined, ZoomOutOutlined, HolderOutlined, SettingOutlined, StopOutlined, QuestionCircleOutlined, FundProjectionScreenOutlined } from '@ant-design/icons';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -4773,7 +4773,7 @@ export default function RecordPage() {
         }}
       />
 
-      {/* DLT 로그 뷰어 모달 — StartLogging 시 자동 오픈 */}
+      {/* DLT 로그 뷰어 모달 — StartLogging 시 자동 오픈, 닫아도 세션은 백엔드에서 유지됨 */}
       <Modal
         title={t('dltViewer.title') || 'DLT 로그 뷰어'}
         open={dltModalOpen}
@@ -4790,6 +4790,26 @@ export default function RecordPage() {
           onClose={() => setDltModalOpen(false)}
         />
       </Modal>
+
+      {/* 모달 닫혔지만 백엔드에 활성 DLT 세션이 있으면 floating 버튼으로 재오픈 가능하게 */}
+      {!dltModalOpen && dltSessionHook.sessions.length > 0 && (
+        <Button
+          type="primary"
+          size="small"
+          icon={<FundProjectionScreenOutlined />}
+          onClick={() => setDltModalOpen(true)}
+          style={{
+            position: 'fixed',
+            bottom: 24,
+            right: 24,
+            zIndex: 1000,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.35)',
+            paddingInline: 12,
+          }}
+        >
+          DLT Viewer · {dltSessionHook.sessions.length} active
+        </Button>
+      )}
     </div>
   );
 }
