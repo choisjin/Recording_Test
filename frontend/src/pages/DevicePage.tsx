@@ -663,17 +663,15 @@ export default function DevicePage() {
         extra.password = sshPass || '';
         extra.resolution = (mibResolution || MIB_DEFAULT_RESOLUTION).trim();
       }
-      // HKMC Agent: SSH 자격증명을 입력하면 클러스터 캡처가 SSH+screenshot+SCP로 동작 (legacy CLU_IMG_GET 호환).
-      // 입력하지 않으면 기존 TCP CMD_GETIMG 그대로 사용.
+      // HKMC Agent: 클러스터 캡처는 항상 QNX SSH+screenshot+SCP (legacy CLU_IMG_GET 호환).
+      // 자격증명을 비워두면 ICAS QNX 패턴(root/빈 패스워드) 자동 사용. SSH 실패 시 backend가 TCP CMD_GETIMG로 폴백.
       if (devType === 'hkmc_agent') {
-        if (sshUser && sshUser.trim()) {
-          extra = extra || {};
-          extra.ssh_username = sshUser.trim();
-          extra.ssh_password = sshPass || '';
-          extra.ssh_port = sshPort || 22;
-          extra.cluster_resolution = '2720x720';
-          extra.cluster_display = '1';
-        }
+        extra = extra || {};
+        extra.ssh_username = (sshUser && sshUser.trim()) || 'root';
+        extra.ssh_password = sshPass || '';
+        extra.ssh_port = sshPort || 22;
+        extra.cluster_resolution = '2720x720';
+        extra.cluster_display = '1';
       }
       const result = await connectDevice(devType, connectAddress.trim(), baudrate, '', modalCategory, selectedModule, moduleConnType, extra, '', tcpPort, model);
       message.success(result);
@@ -1848,20 +1846,20 @@ export default function DevicePage() {
                           />
                         </div>
                         <div style={{ marginTop: 6, fontSize: 11, color: '#888' }}>
-                          클러스터 캡처용 SSH 자격증명 (선택 — 입력 시 cluster screen은 SSH+screenshot+SCP로 캡처)
+                          클러스터 캡처용 SSH (cluster screen은 QNX SSH+screenshot+SCP). 비워두면 기본값 <b>root / 빈 패스워드 / 22</b> 사용 (ICAS QNX 패턴).
                         </div>
                         <Space wrap>
                           <Input
-                            placeholder="SSH user (예: root)"
+                            placeholder="SSH user (default: root)"
                             value={sshUser}
                             onChange={(e) => setSshUser(e.target.value)}
-                            style={{ width: 140 }}
+                            style={{ width: 160 }}
                           />
                           <Input.Password
-                            placeholder="SSH password"
+                            placeholder="SSH password (default: empty)"
                             value={sshPass}
                             onChange={(e) => setSshPass(e.target.value)}
-                            style={{ width: 160 }}
+                            style={{ width: 180 }}
                           />
                           <span style={{ fontSize: 11, color: '#888' }}>SSH Port:</span>
                           <InputNumber

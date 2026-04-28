@@ -277,7 +277,7 @@ class HKMC6thService:
     def __init__(self, host: str, port: int, device_id: str = "",
                  key_overrides: Optional[dict[str, dict]] = None,
                  device_model: str = "",
-                 ssh_username: str = "", ssh_password: str = "",
+                 ssh_username: str = "root", ssh_password: str = "",
                  ssh_port: int = 22, cluster_resolution: str = "2720x720",
                  cluster_display: str = "1"):
         """
@@ -290,8 +290,9 @@ class HKMC6thService:
                 반대(legacy ccIC_Agent: monitor=1=RIGHT, 2=LEFT)이므로 SCREEN_TOUCH_MAP을
                 swap한 결과로 라우팅한다.
             ssh_username/ssh_password/ssh_port: 클러스터 캡처용 QNX SSH 자격증명.
-                지정되면 cluster screen_type 캡처 시 `screenshot -size=WxH -display=N`을
-                SSH로 실행하고 SCP로 BMP를 가져온다. 미지정이면 TCP CMD_GETIMG 폴백.
+                기본값은 ICAS QNX와 동일한 `root` / 빈 패스워드 / 22.
+                cluster screen_type 캡처 시 `screenshot -size=WxH -display=N`을
+                SSH로 실행하고 SCP로 BMP를 가져온다. SSH 실패 시 TCP CMD_GETIMG 자동 폴백.
             cluster_resolution: "WxH" 형식 (legacy CLU_IMG_GET 기본 2720x720).
             cluster_display: QNX `screenshot -display=N`의 N (legacy default 1).
         """
@@ -303,9 +304,11 @@ class HKMC6thService:
         self._is_ccrc_legacy_monitor = device_model == "ccRC"
         self._key_overrides: dict[str, dict] = dict(key_overrides or {})
 
-        # 클러스터 SSH 캡처 설정 (legacy CLU_IMG_GET 호환)
-        self.ssh_username = ssh_username or ""
-        self.ssh_password = ssh_password or ""
+        # 클러스터 SSH 캡처 설정 (legacy CLU_IMG_GET 호환). 기본 root/빈 패스워드(ICAS QNX 패턴).
+        self.ssh_username = ssh_username if ssh_username is not None else "root"
+        if not self.ssh_username:
+            self.ssh_username = "root"
+        self.ssh_password = ssh_password if ssh_password is not None else ""
         self.ssh_port = int(ssh_port) if ssh_port else 22
         try:
             cw_s, ch_s = str(cluster_resolution).lower().split("x")

@@ -507,12 +507,12 @@ async def connect_device(req: ConnectRequest):
                 req.address, req.port, device_id=custom_id,
                 name=req.name or "",
                 device_model=req.device_model or "",
-                # 클러스터 SSH 캡처용 자격증명 (legacy CLU_IMG_GET 호환). 비어있으면 TCP CMD_GETIMG 사용.
-                ssh_username=ef.get("ssh_username", "") or "",
-                ssh_password=ef.get("ssh_password", "") or "",
-                ssh_port=int(ef.get("ssh_port", 22) or 22),
-                cluster_resolution=str(ef.get("cluster_resolution", "2720x720") or "2720x720"),
-                cluster_display=str(ef.get("cluster_display", "1") or "1"),
+                # 클러스터 SSH 캡처용 자격증명. 미입력 시 ICAS QNX 패턴(root/빈 패스워드) fallback.
+                ssh_username=(ef.get("ssh_username") or "root"),
+                ssh_password=(ef.get("ssh_password") or ""),
+                ssh_port=int(ef.get("ssh_port") or 22),
+                cluster_resolution=str(ef.get("cluster_resolution") or "2720x720"),
+                cluster_display=str(ef.get("cluster_display") or "1"),
             )
             return {
                 "result": f"HKMC connected: {dev.name} (ID: {dev.id})",

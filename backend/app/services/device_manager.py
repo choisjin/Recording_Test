@@ -799,27 +799,26 @@ class DeviceManager:
         return dev
 
     async def add_hkmc6th_device(self, host: str, port: int, device_id: str = "", name: str = "", device_model: str = "",
-                                 ssh_username: str = "", ssh_password: str = "",
+                                 ssh_username: str = "root", ssh_password: str = "",
                                  ssh_port: int = 22,
                                  cluster_resolution: str = "2720x720",
                                  cluster_display: str = "1") -> ManagedDevice:
         """HKMC 디바이스 등록만 (연결은 connect_device_by_id로 별도 수행).
 
-        ssh_username이 지정되면 클러스터 캡처 시 legacy CLU_IMG_GET와 동일한
-        SSH+screenshot+SCP 경로를 사용한다.
+        클러스터 캡처는 legacy CLU_IMG_GET와 동일한 SSH+screenshot+SCP 경로를 사용한다.
+        ssh_username 기본값은 ICAS QNX와 동일한 `root`(빈 패스워드). SSH 실패 시 TCP CMD_GETIMG 폴백.
         """
         final_id = device_id or self._generate_device_id("hkmc_agent", device_model=device_model)
         display_name = name or f"HKMC ({host}:{port})"
         info: dict = {"port": port}
         if device_model:
             info["device_model"] = device_model
-        # 클러스터 SSH 캡처 설정 (선택)
-        if ssh_username:
-            info["ssh_username"] = ssh_username
-            info["ssh_password"] = ssh_password
-            info["ssh_port"] = int(ssh_port) if ssh_port else 22
-            info["cluster_resolution"] = cluster_resolution or "2720x720"
-            info["cluster_display"] = str(cluster_display) if cluster_display is not None else "1"
+        # 클러스터 SSH 캡처 설정 — 항상 저장(기본 root/빈 패스워드).
+        info["ssh_username"] = ssh_username if ssh_username else "root"
+        info["ssh_password"] = ssh_password if ssh_password is not None else ""
+        info["ssh_port"] = int(ssh_port) if ssh_port else 22
+        info["cluster_resolution"] = cluster_resolution or "2720x720"
+        info["cluster_display"] = str(cluster_display) if cluster_display is not None else "1"
 
         dev = ManagedDevice(
             id=final_id,
