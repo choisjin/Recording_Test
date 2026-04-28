@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import os
 import threading
 import time
 from typing import Optional, Callable
@@ -67,6 +68,30 @@ def _encode_image(pil_image, fmt: str) -> bytes:
     else:
         pil_image.save(buf, format="PNG")
     return buf.getvalue()
+
+
+def _validate_png_file(path: str) -> bool:
+    """PNG 파일이 시그니처 + IEND chunk를 모두 갖춘 완전한 파일인지 빠르게 검증.
+
+    PIL.Image.open의 lazy load는 IEND 부재 등 일부 손상에 무관심하지만, .convert('RGBA')에서
+    실제 디코딩이 일어나며 chunk 경계 깨짐을 만나면 실패. SCP 결과를 사용 전 미리 거르기 위함.
+    """
+    try:
+        size = os.path.getsize(path)
+        if size < 16:
+            return False
+        with open(path, "rb") as f:
+            sig = f.read(8)
+            if sig != b"\x89PNG\r\n\x1a\n":
+                return False
+            # 마지막 12 bytes는 IEND chunk: 4byte length(0) + 'IEND' + 4byte CRC
+            f.seek(-12, 2)
+            tail = f.read(12)
+            if len(tail) < 12 or tail[4:8] != b"IEND":
+                return False
+        return True
+    except Exception:
+        return False
 
 
 def _rm_tree(path: str) -> None:
@@ -390,6 +415,50 @@ class ICASAgentService:
             logger.error("ICAS connect failed %s:%d: %s", self.host, self.port, e)
             self._connected = False
             return False
+
+    def _wait_remote_files_stable(self, ssh, items: list[tuple[int, str]],
+                                  max_wait_s: float = 1.0,
+                                  poll_interval_s: float = 0.05,
+                                  stable_iters: int = 2) -> None:
+        """디바이스 쪽 파일 크기가 stable_iters회 연속 동일할 때까지 폴링.
+
+        LayerManagerControl이 비동기로 PNG를 쓰는 환경에서 SCP가 partial 파일을 가져가는
+        race를 막기 위함. items: [(idx, remote_path), ...]. 실패해도 silent — 안정성은
+        PNG 무결성 검증(_validate_png_file)에서 한 번 더 거름.
+        """
+        if not items:
+            return
+        deadline = time.monotonic() + max_wait_s
+        # 단일 SSH 명령으로 모든 파일 크기를 한 번에 조회 (왕복 비용 절감).
+        size_cmd = " ; ".join([f"wc -c < {rp} 2>/dev/null || echo 0" for _, rp in items])
+        prev_sizes: Optional[list[int]] = None
+        stable_streak = 0
+        while time.monotonic() < deadline:
+            try:
+                stdin, stdout, stderr = ssh.exec_command(size_cmd, timeout=2)
+                try:
+                    stdin.close()
+                except Exception:
+                    pass
+                out = stdout.read().decode("utf-8", errors="replace")
+                lines = [l.strip() for l in out.splitlines() if l.strip()]
+                sizes: list[int] = []
+                for l in lines:
+                    try:
+                        sizes.append(int(l.split()[0]))
+                    except Exception:
+                        sizes.append(0)
+                # 모든 파일이 양수 + 직전과 동일하면 stable streak 증가
+                if sizes and all(s > 0 for s in sizes) and sizes == prev_sizes:
+                    stable_streak += 1
+                    if stable_streak >= stable_iters:
+                        return
+                else:
+                    stable_streak = 0
+                prev_sizes = sizes
+            except Exception:
+                pass
+            time.sleep(poll_interval_s)
 
     def _maybe_disable_screen(self, idx: int) -> None:
         """연속 실패가 임계치를 넘으면 해당 screen 인덱스를 비활성화 (이후 dump 시도 안 함)."""
@@ -768,13 +837,20 @@ class ICASAgentService:
                     active_indices = [0]
                 # 인덱스 → 로컬 파일명 매핑 (사람 가독 위해 1-base)
                 file_map = [(idx, f"screen_idx{idx}.png") for idx in active_indices]
+                # 매 프레임 시작 시 stale 파일을 제거해야 SCP가 이전 프레임의 partial 파일을 가져오지 않음.
+                # LayerManagerControl dump는 IVI 그래픽 파이프라인을 통해 비동기로 PNG를 쓰는 구현체가
+                # 있어 exec_command가 끝나도 파일이 완성 전일 수 있음 → rm + dump + sync 순으로 처리.
+                rm_parts = [f"rm -f /tmp/{fname}" for _, fname in file_map]
                 dump_parts = [
                     f"LayerManagerControl dump screen {idx} to /tmp/{fname} 2>/tmp/lmc_idx{idx}.err"
                     for idx, fname in file_map
                 ]
                 dump_cmd = (
                     "export XDG_RUNTIME_DIR=/run/platform/weston ; "
+                    + " ; ".join(rm_parts)
+                    + " ; "
                     + " ; ".join(dump_parts)
+                    + " ; sync"
                 )
                 stdin, stdout, stderr = ssh.exec_command(dump_cmd, timeout=20)
                 try:
@@ -812,6 +888,10 @@ class ICASAgentService:
                     snippet = err_text.strip().replace("\r", " ").replace("\n", " | ")[:200]
                     logger.warning("ICAS HU dump exit=%d stderr=%r", exit_status, snippet)
 
+                # LayerManagerControl이 비동기 처리하는 경우 dump_cmd 종료 후에도 파일 쓰기가 진행 중일 수 있음.
+                # SCP 전 짧은 wait + 디바이스 측 파일 크기 폴링으로 안정화 확인 (최대 1초).
+                self._wait_remote_files_stable(ssh, [(idx, f"/tmp/{fname}") for idx, fname in file_map])
+
                 files: list[str] = []
                 try:
                     with SCPClient(ssh.get_transport()) as scp:
@@ -820,11 +900,19 @@ class ICASAgentService:
                             local = os.path.join(tmp_dir, fname)
                             try:
                                 scp.get(remote, local)
+                                ok = False
                                 if os.path.exists(local) and os.path.getsize(local) > 0:
-                                    files.append(local)
-                                    # 성공 시 실패 카운터 리셋
-                                    self._screen_fail_count[idx] = 0
-                                else:
+                                    # PNG 무결성 1차 검증 — 시그니처 + IEND chunk 존재 여부
+                                    if _validate_png_file(local):
+                                        files.append(local)
+                                        self._screen_fail_count[idx] = 0
+                                        ok = True
+                                    else:
+                                        logger.warning(
+                                            "ICAS HU scp %s: PNG truncated/corrupt (size=%d)",
+                                            remote, os.path.getsize(local),
+                                        )
+                                if not ok:
                                     self._screen_fail_count[idx] = self._screen_fail_count.get(idx, 0) + 1
                                     self._maybe_disable_screen(idx)
                             except Exception as ee:
@@ -870,14 +958,24 @@ class ICASAgentService:
                     f"check 'ICAS HU dump' / 'ICAS HU scp' / 'ICAS HU SCPClient' warnings above)"
                 )
 
-            try:
-                images = [Image.open(p).convert("RGBA") for p in local_files]
-            except Exception as ie:
-                # PNG 파일이 partial/corrupt할 때 PIL.UnidentifiedImageError 등이 발생할 수 있음
-                sizes = [(p, os.path.getsize(p) if os.path.exists(p) else -1) for p in local_files]
+            # _validate_png_file이 1차로 거르지만, IDAT 내부 손상은 .convert에서야 드러남.
+            # 손상된 파일은 무시하고 정상 파일만 사용. 모두 실패 시 RuntimeError로 외부 재시도.
+            images: list[Image.Image] = []
+            corrupt_paths: list[tuple[str, int, str]] = []
+            for p in local_files:
+                try:
+                    img = Image.open(p)
+                    img = img.convert("RGBA")
+                    images.append(img)
+                except Exception as ie:
+                    sz = os.path.getsize(p) if os.path.exists(p) else -1
+                    corrupt_paths.append((p, sz, f"{type(ie).__name__}: {ie!r}"))
+            if not images:
                 raise RuntimeError(
-                    f"PIL Image.open failed: type={type(ie).__name__} repr={ie!r} sizes={sizes}"
-                ) from ie
+                    f"PIL Image.open failed for all captures (likely truncated PNG): {corrupt_paths}"
+                )
+            if corrupt_paths:
+                logger.debug("ICAS HU partial composite — corrupt skipped: %s", corrupt_paths)
             base = images[0]
             for over in images[1:]:
                 if over.size != base.size:
