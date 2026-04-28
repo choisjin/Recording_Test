@@ -501,8 +501,19 @@ async def connect_device(req: ConnectRequest):
     elif req.type == "hkmc_agent":
         if not req.address or not req.port:
             raise HTTPException(status_code=400, detail="HKMC6th requires address (IP) and port (TCP port)")
+        ef = req.extra_fields or {}
         try:
-            dev = await dm.add_hkmc6th_device(req.address, req.port, device_id=custom_id, name=req.name or "", device_model=req.device_model or "")
+            dev = await dm.add_hkmc6th_device(
+                req.address, req.port, device_id=custom_id,
+                name=req.name or "",
+                device_model=req.device_model or "",
+                # 클러스터 SSH 캡처용 자격증명 (legacy CLU_IMG_GET 호환). 비어있으면 TCP CMD_GETIMG 사용.
+                ssh_username=ef.get("ssh_username", "") or "",
+                ssh_password=ef.get("ssh_password", "") or "",
+                ssh_port=int(ef.get("ssh_port", 22) or 22),
+                cluster_resolution=str(ef.get("cluster_resolution", "2720x720") or "2720x720"),
+                cluster_display=str(ef.get("cluster_display", "1") or "1"),
+            )
             return {
                 "result": f"HKMC connected: {dev.name} (ID: {dev.id})",
                 "primary": _with_protected_flag(dm.list_primary()),

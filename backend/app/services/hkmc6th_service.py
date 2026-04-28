@@ -276,7 +276,10 @@ class HKMC6thService:
 
     def __init__(self, host: str, port: int, device_id: str = "",
                  key_overrides: Optional[dict[str, dict]] = None,
-                 device_model: str = ""):
+                 device_model: str = "",
+                 ssh_username: str = "", ssh_password: str = "",
+                 ssh_port: int = 22, cluster_resolution: str = "2720x720",
+                 cluster_display: str = "1"):
         """
         Args:
             key_overrides: 디바이스별 키 오버라이드.
@@ -286,6 +289,11 @@ class HKMC6thService:
             device_model: 디바이스 모델명. 'ccRC'인 경우 monitor 매핑이 일반 HKMC 6th와
                 반대(legacy ccIC_Agent: monitor=1=RIGHT, 2=LEFT)이므로 SCREEN_TOUCH_MAP을
                 swap한 결과로 라우팅한다.
+            ssh_username/ssh_password/ssh_port: 클러스터 캡처용 QNX SSH 자격증명.
+                지정되면 cluster screen_type 캡처 시 `screenshot -size=WxH -display=N`을
+                SSH로 실행하고 SCP로 BMP를 가져온다. 미지정이면 TCP CMD_GETIMG 폴백.
+            cluster_resolution: "WxH" 형식 (legacy CLU_IMG_GET 기본 2720x720).
+            cluster_display: QNX `screenshot -display=N`의 N (legacy default 1).
         """
         self.host = host
         self.port = port
@@ -294,6 +302,20 @@ class HKMC6thService:
         # CCRC 디바이스는 ccIC_Agent legacy 매핑 사용 (REAR_R=1, REAR_L=2)
         self._is_ccrc_legacy_monitor = device_model == "ccRC"
         self._key_overrides: dict[str, dict] = dict(key_overrides or {})
+
+        # 클러스터 SSH 캡처 설정 (legacy CLU_IMG_GET 호환)
+        self.ssh_username = ssh_username or ""
+        self.ssh_password = ssh_password or ""
+        self.ssh_port = int(ssh_port) if ssh_port else 22
+        try:
+            cw_s, ch_s = str(cluster_resolution).lower().split("x")
+            self.cluster_width = int(cw_s)
+            self.cluster_height = int(ch_s)
+        except Exception:
+            self.cluster_width, self.cluster_height = 2720, 720
+        self.cluster_display = str(cluster_display) if cluster_display is not None else "1"
+        self._cluster_ssh = None  # paramiko.SSHClient (lazy)
+        self._cluster_ssh_lock = threading.Lock()
 
         self._socket: Optional[socket.socket] = None
         self._connected = False
@@ -434,6 +456,14 @@ class HKMC6thService:
         if self._recv_thread and self._recv_thread.is_alive():
             self._recv_thread.join(timeout=3)
         self._recv_thread = None
+        # 클러스터 SSH 세션도 함께 종료
+        with self._cluster_ssh_lock:
+            if self._cluster_ssh is not None:
+                try:
+                    self._cluster_ssh.close()
+                except Exception:
+                    pass
+                self._cluster_ssh = None
         logger.info("HKMC disconnected: %s:%d", self.host, self.port)
 
     @property
@@ -671,10 +701,25 @@ class HKMC6thService:
 
     def screencap(self, output_path: str, screen_type: str = "front_center",
                   timeout: float = 10.0) -> str:
-        """Capture a screenshot and save to output_path (BMP from agent).
+        """Capture a screenshot and save to output_path.
+
+        cluster + SSH 자격증명이 있으면 SSH 경로로 캡처 후 파일에 저장.
+        그 외는 TCP CMD_GETIMG (BMP).
 
         Returns the output path on success, raises on failure.
         """
+        if screen_type == "cluster" and self.ssh_username:
+            # SSH 경로: bytes를 받아 파일로 저장
+            ext = os.path.splitext(output_path)[1].lower().lstrip(".") or "png"
+            fmt = "jpeg" if ext in ("jpg", "jpeg") else "png"
+            try:
+                data = self._screencap_cluster_via_ssh(fmt=fmt, timeout=timeout)
+                with open(output_path, "wb") as f:
+                    f.write(data)
+                return output_path
+            except Exception as e:
+                logger.warning("HKMC cluster SSH screencap failed, falling back to TCP: %s", e)
+
         w, h = self.get_screen_size(screen_type)
         screen_bits = SCREEN_CAPTURE_MAP.get(screen_type)
 
@@ -693,9 +738,17 @@ class HKMC6thService:
                         fmt: str = "png", timeout: float = 10.0) -> bytes:
         """Capture screenshot and return as PNG/JPEG bytes.
 
+        cluster screen_type + SSH 자격증명이 설정되어 있으면 legacy CLU_IMG_GET와
+        동일한 SSH+screenshot+SCP 경로로 캡처. 그 외는 TCP CMD_GETIMG.
         The agent sends BMP format. We convert to the requested format.
         _capture_lock으로 동시 호출을 직렬화하여 _img_event 경쟁 방지.
         """
+        if screen_type == "cluster" and self.ssh_username:
+            try:
+                return self._screencap_cluster_via_ssh(fmt=fmt, timeout=timeout)
+            except Exception as e:
+                logger.warning("HKMC cluster SSH capture failed, falling back to TCP: %s", e)
+
         with self._capture_lock:
             w, h = self.get_screen_size(screen_type)
             screen_bits = SCREEN_CAPTURE_MAP.get(screen_type)
@@ -749,6 +802,148 @@ class HKMC6thService:
             pass
 
         return bmp_bytes
+
+    # ------------------------------------------------------------------
+    # Cluster screenshot via SSH+SCP (legacy CLU_IMG_GET 호환)
+    # ------------------------------------------------------------------
+    def _get_cluster_ssh(self):
+        """Lazy paramiko SSHClient — keepalive로 재인증 방지. 죽었으면 재연결."""
+        import paramiko
+
+        with self._cluster_ssh_lock:
+            ssh = self._cluster_ssh
+            if ssh is not None:
+                try:
+                    t = ssh.get_transport()
+                    if t is not None and t.is_active():
+                        return ssh
+                except Exception:
+                    pass
+                try:
+                    ssh.close()
+                except Exception:
+                    pass
+                self._cluster_ssh = None
+
+            ssh = paramiko.SSHClient()
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh.connect(
+                hostname=self.host,
+                port=self.ssh_port,
+                username=self.ssh_username,
+                password=self.ssh_password,
+                timeout=10,
+                allow_agent=False,
+                look_for_keys=False,
+            )
+            try:
+                t = ssh.get_transport()
+                if t is not None:
+                    t.set_keepalive(30)
+            except Exception:
+                pass
+            self._cluster_ssh = ssh
+            logger.info("HKMC cluster SSH connected: %s@%s:%d",
+                        self.ssh_username, self.host, self.ssh_port)
+            return ssh
+
+    def _screencap_cluster_via_ssh(self, fmt: str = "png", timeout: float = 10.0) -> bytes:
+        """Legacy CLU_IMG_GET와 동일한 흐름:
+          1) `mount -o remount -rw /` (이미 rw면 no-op)
+          2) `screenshot -size=WxH -display=N -file=/CLU_IMAGE.png`
+          3) SCP로 /CLU_IMAGE.png 받기
+          4) `rm /CLU_IMAGE.png`
+          5) BMP/PNG → 요청 fmt로 변환
+        """
+        try:
+            from scp import SCPClient
+        except ImportError as e:
+            raise RuntimeError("scp module required: pip install scp") from e
+
+        with self._capture_lock:
+            ssh = self._get_cluster_ssh()
+            remote_path = "/CLU_IMAGE.png"
+            cmd = (
+                "mount -o remount -rw / 2>/dev/null; "
+                f"rm -f {remote_path}; "
+                f"screenshot -size={self.cluster_width}x{self.cluster_height} "
+                f"-display={self.cluster_display} -file={remote_path}"
+            )
+            stdin, stdout, stderr = ssh.exec_command(cmd, timeout=timeout)
+            try:
+                stdin.close()
+            except Exception:
+                pass
+            try:
+                exit_status = stdout.channel.recv_exit_status()
+            except Exception:
+                exit_status = -1
+            if exit_status != 0:
+                err = ""
+                try:
+                    err = stderr.read().decode("utf-8", errors="replace")[:200]
+                except Exception:
+                    pass
+                logger.warning("HKMC cluster screenshot exit=%d stderr=%r",
+                               exit_status, err)
+
+            buf = io.BytesIO()
+            try:
+                with SCPClient(ssh.get_transport(), socket_timeout=timeout) as scp:
+                    scp.get(remote_path, local_path=buf)
+            except TypeError:
+                import tempfile, os
+                tmp_dir = tempfile.mkdtemp(prefix="hkmc_cluster_")
+                local = os.path.join(tmp_dir, "CLU_IMAGE.png")
+                try:
+                    with SCPClient(ssh.get_transport(), socket_timeout=timeout) as scp:
+                        scp.get(remote_path, local)
+                    with open(local, "rb") as f:
+                        buf = io.BytesIO(f.read())
+                finally:
+                    try:
+                        os.remove(local)
+                    except Exception:
+                        pass
+                    try:
+                        os.rmdir(tmp_dir)
+                    except Exception:
+                        pass
+
+            try:
+                ssh.exec_command(f"rm -f {remote_path}")
+            except Exception:
+                pass
+
+        raw = buf.getvalue()
+        if not raw:
+            raise RuntimeError("Empty cluster screenshot from QNX")
+
+        # 원본 파일이 PNG로 저장되지만, 형식 변환은 항상 통과시켜 fmt 일관성 유지.
+        try:
+            import cv2
+            import numpy as np
+            arr = np.frombuffer(raw, dtype=np.uint8)
+            img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+            if img is not None:
+                if fmt == "jpeg":
+                    _, b = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 60])
+                else:
+                    _, b = cv2.imencode(".png", img)
+                return b.tobytes()
+        except Exception:
+            pass
+
+        try:
+            from PIL import Image
+            pil = Image.open(io.BytesIO(raw))
+            bio = io.BytesIO()
+            pil.save(bio, format="PNG" if fmt == "png" else "JPEG", quality=60)
+            return bio.getvalue()
+        except Exception:
+            pass
+
+        return raw
 
     # ------------------------------------------------------------------
     # Touch input
