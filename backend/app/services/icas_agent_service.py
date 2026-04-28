@@ -491,12 +491,22 @@ class ICASAgentService:
     def _probe_ksend(self) -> None:
         """ksend 입력 경로의 가용성을 진단. 입력 전용 SSH 세션에서 실행.
 
-        1) ksend 바이너리 존재/권한 확인 (`ls -la /lge/app_ro/bin/ksend`)
-        2) help/usage 출력 확인 — 인자 형식이 다른 ksend 변종인지 식별
-        3) 가능한 다른 입력 메커니즘 탐색 (uinput/evtouch/input* 노드)
+        진단 내용:
+          1) ksend 바이너리 존재/권한 확인
+          2) help/usage 출력 확인 — 인자 형식이 다른 ksend 변종인지 식별
+          3) 다른 입력 메커니즘 탐색 (uinput/evtouch/input* 노드)
+          4) KIPC listener 진단 — 실행 중인 touch/input handler 후보 프로세스 식별
+          5) 더미 ksend 송신 1회 — verbose(-v) 옵션으로 실제 송신 결과 확인
         """
         with self._input_ssh_lock:
             ssh = self._get_input_ssh()
+            # 더미 송신: 현재 src/dst로 짧은 binary 메시지 1회. -v로 verbose 출력 활성.
+            # 실제 touch frame 형식과 동일한 16바이트 + end byte 0xFF(release) 형태이지만
+            # 좌표를 0,0으로 설정해 실 영향 최소화.
+            dummy_data = (
+                "0x83 0x50 0x20 0x0b 0x00 0x00 0x00 0x00 0x00 0xa0 0x01 0x11 "
+                "0x10 0x00 0x00 0xff"
+            )
             cmd = (
                 "echo '--ksend bin--' ; "
                 "ls -la /lge/app_ro/bin/ksend 2>&1 ; "
@@ -506,18 +516,29 @@ class ICASAgentService:
                 "ls -la /dev/input/ 2>&1 | head -n 30 ; "
                 "echo '--uinput--' ; "
                 "ls -la /dev/uinput 2>&1 ; "
+                "echo '--KIPC procs--' ; "
+                "(ps -ef 2>/dev/null || ps 2>/dev/null) | "
+                "grep -iE '(touch|input|hmi|kipc|hardkey|remote)' | "
+                "grep -v grep | head -n 20 ; "
+                "echo '--KIPC proc table--' ; "
+                "ls /proc/lge_kipc/ 2>&1 | head -n 20 ; "
+                "cat /proc/lge_kipc/list 2>/dev/null | head -n 30 ; "
                 "echo '--addr defaults--' ; "
-                f"echo 'src={self.src_addr} dst={self.dst_addr} market={self.market}'"
+                f"echo 'src={self.src_addr} dst={self.dst_addr} market={self.market}' ; "
+                "echo '--ksend -v dummy send--' ; "
+                f"/lge/app_ro/bin/ksend -v -s {self.src_addr} -d {self.dst_addr} "
+                f'-b "{dummy_data}" 2>&1 | head -n 20 ; '
+                'echo "exit=$?"'
             )
             try:
-                stdin, stdout, stderr = ssh.exec_command(cmd, timeout=5)
+                stdin, stdout, stderr = ssh.exec_command(cmd, timeout=10)
                 try:
                     stdin.close()
                 except Exception:
                     pass
                 out = stdout.read().decode("utf-8", errors="replace")
                 err = stderr.read().decode("utf-8", errors="replace")
-                snippet = (out + ("\n[stderr] " + err if err.strip() else "")).strip().replace("\r", " ").replace("\n", " | ")[:1500]
+                snippet = (out + ("\n[stderr] " + err if err.strip() else "")).strip().replace("\r", " ").replace("\n", " | ")[:2500]
                 logger.info("ICAS ksend probe → %s", snippet or "(empty)")
             except Exception as e:
                 logger.debug("ICAS ksend probe exec failed: %s", e)
@@ -762,21 +783,25 @@ class ICASAgentService:
         """ksend 명령 1회 송신.
 
         기본 모드(invoke_shell): 빠르지만 stderr/exit를 알 수 없어 silent fail 가능.
-        ICAS_KSEND_VERBOSE=1 환경변수: exec_command 모드 + 결과 로깅 (디버깅 시 사용).
+        ICAS_KSEND_VERBOSE=1 환경변수: exec_command 모드 + ksend -v 옵션 + 결과 로깅.
         """
-        cmd = f'/lge/app_ro/bin/ksend -s {self.src_addr} -d {self.dst_addr} -b "{data_bytes}"'
-        if os.environ.get("ICAS_KSEND_VERBOSE", "").strip() in ("1", "true", "yes"):
+        verbose = os.environ.get("ICAS_KSEND_VERBOSE", "").strip() in ("1", "true", "yes")
+        v_flag = " -v " if verbose else " "
+        cmd = f'/lge/app_ro/bin/ksend{v_flag}-s {self.src_addr} -d {self.dst_addr} -b "{data_bytes}"'
+        if verbose:
             self._ksend_exec_verbose(cmd)
         else:
             self._shell_run([cmd])
 
     def _ksend_many(self, data_list: list[str], interval_s: float = 0.1) -> None:
         """ksend 명령 여러 개를 공유 shell 채널에서 순차 송신."""
+        verbose = os.environ.get("ICAS_KSEND_VERBOSE", "").strip() in ("1", "true", "yes")
+        v_flag = " -v " if verbose else " "
         cmds = [
-            f'/lge/app_ro/bin/ksend -s {self.src_addr} -d {self.dst_addr} -b "{data}"'
+            f'/lge/app_ro/bin/ksend{v_flag}-s {self.src_addr} -d {self.dst_addr} -b "{data}"'
             for data in data_list
         ]
-        if os.environ.get("ICAS_KSEND_VERBOSE", "").strip() in ("1", "true", "yes"):
+        if verbose:
             for c in cmds:
                 self._ksend_exec_verbose(c)
                 if interval_s > 0:
