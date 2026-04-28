@@ -191,9 +191,13 @@ export default function ResultsPage() {
   const [activeRecUrl, setActiveRecUrl] = useState('');
   const [activeRecRepeat, setActiveRecRepeat] = useState(1);
   const detailVideoRef = useRef<HTMLVideoElement>(null);
-  // URL 변경 시 비디오 로드 완료 전에 React re-render로 0초 리셋되는 race 방지용.
-  // seekToStep이 여기에 값을 쓰고, <video onCanPlay>에서 읽어 적용한다.
-  const pendingSeekRef = useRef<{ offset: number; applied: boolean } | null>(null);
+  // 보류 중인 seek 요청. seekToStep이 항상 여기에 기록하고,
+  // (1) 비디오 onCanPlay/onLoadedMetadata 핸들러, (2) useEffect 후속 처리에서 적용.
+  // URL 전환·패널 마운트·readyState 지연 등의 race를 모두 흡수한다.
+  // recUrl: 이 seek가 어떤 녹화에 속하는지 — 다른 비디오에 잘못 적용되는 것을 방지.
+  const pendingSeekRef = useRef<{ offset: number; recUrl: string; applied: boolean } | null>(null);
+  // 새 seek 요청이 발생할 때마다 증가시켜 useEffect를 트리거한다.
+  const [pendingSeekTick, setPendingSeekTick] = useState(0);
   const [currentPlayingStepId, setCurrentPlayingStepId] = useState<number | null>(null);
   const [trimFile, setTrimFile] = useState<string | null>(null);
   const [trimStart, setTrimStart] = useState(0);
@@ -259,6 +263,30 @@ export default function ResultsPage() {
     return Math.max(0, (stepTime - firstTime) / 1000);
   }, [getAllStepsForRepeat]);
 
+  // seek 실제 적용 — 비디오와 보류 중인 seek가 같은 녹화에 속하고 readyState가 충분할 때만.
+  const tryApplyPendingSeek = useCallback(() => {
+    const pending = pendingSeekRef.current;
+    if (!pending || pending.applied) return;
+    const video = detailVideoRef.current;
+    if (!video) return;
+    // 비디오 src가 아직 보류 중인 녹화로 전환되지 않았으면 대기 (이후 effect 또는 onCanPlay에서 재시도).
+    const currentSrc = video.currentSrc || video.src || '';
+    if (pending.recUrl && currentSrc.indexOf(pending.recUrl) === -1) return;
+    // 메타데이터조차 없으면 대기.
+    if (video.readyState < 1) return;
+
+    const videoDuration = video.duration;
+    const hasDuration = Number.isFinite(videoDuration) && videoDuration > 0;
+    const seekTime = hasDuration
+      ? Math.min(pending.offset, Math.max(0, videoDuration - 0.05))
+      : pending.offset;
+    if (Number.isFinite(seekTime) && seekTime >= 0) {
+      try { video.currentTime = seekTime; } catch { /* ignore */ }
+    }
+    pending.applied = true;
+    pendingSeekRef.current = null;
+  }, []);
+
   const seekToStep = (step: StepResultDetail) => {
     if ((!detail && !groupDetail) || recordings.length === 0) {
       message.info('녹화 영상이 없습니다');
@@ -278,54 +306,30 @@ export default function ResultsPage() {
     const offsetSec = computeSeekOffsetSec(step, rec, targetRepeat);
     if (offsetSec == null) return;
 
-    // 실제 seek 적용 — duration이 유효하면 클램프, 무한이면 그대로.
-    const applySeek = (video: HTMLVideoElement) => {
-      const videoDuration = video.duration;
-      const hasDuration = Number.isFinite(videoDuration) && videoDuration > 0;
-      const seekTime = hasDuration ? Math.min(offsetSec, Math.max(0, videoDuration - 0.05)) : offsetSec;
-      if (Number.isFinite(seekTime) && seekTime >= 0) {
-        try { video.currentTime = seekTime; } catch { /* ignore */ }
-      }
-      pendingSeekRef.current = null;
-    };
-
-    const urlChanged = rec.url !== activeRecUrl;
+    // 항상 pendingSeekRef에 기록. URL 변경/패널 마운트/readyState 지연 등의 race를
+    // useEffect와 비디오 이벤트 핸들러가 모두 흡수한다.
+    pendingSeekRef.current = { offset: offsetSec, recUrl: rec.url, applied: false };
     setActiveRecUrl(rec.url);
     setActiveRecRepeat(targetRepeat);
+    // pendingSeekTick 갱신 → useEffect에서 React 커밋 후 시도.
+    setPendingSeekTick(t => t + 1);
 
-    if (urlChanged) {
-      // URL 변경 → React re-render로 <video src> 교체 → loadedmetadata/canplay 후 적용 필요.
-      pendingSeekRef.current = { offset: offsetSec, applied: false };
-    } else {
-      // 같은 URL → 즉시 seek 가능 여부 확인. 메타데이터(>=1)만 있어도 currentTime 설정은 가능.
-      const video = detailVideoRef.current;
-      if (video && video.readyState >= 1) {
-        applySeek(video);
-      } else if (video) {
-        pendingSeekRef.current = { offset: offsetSec, applied: false };
-        // onCanPlay 핸들러가 일관되게 처리하므로 별도 리스너는 추가하지 않는다.
-      }
+    // 같은 URL이고 비디오가 이미 준비되었다면 즉시 시도(저지연). 실패해도 effect/onCanPlay가 재시도.
+    if (rec.url === activeRecUrl) {
+      tryApplyPendingSeek();
     }
   };
 
-  // <video onCanPlay> 콜백 — URL 변경 후 비디오 로드 완료 시 pending seek 적용.
-  // pendingSeekRef.offset은 seekToStep에서 이미 "비디오 내 절대 시간(초)"으로 계산되어 있으므로
-  // 여기서는 추가 스케일링 없이 currentTime에 그대로 적용한다.
-  const handleVideoCanPlay = useCallback(() => {
-    const pending = pendingSeekRef.current;
-    if (!pending || pending.applied) return;
-    pending.applied = true;
-    const video = detailVideoRef.current;
-    if (!video) return;
+  // React 커밋 후 보류 중인 seek 적용 시도. 패널 마운트/URL 변경/리렌더 모두 커버.
+  useEffect(() => {
+    tryApplyPendingSeek();
+  }, [pendingSeekTick, activeRecUrl, webcamPanelOpen, tryApplyPendingSeek]);
 
-    const videoDuration = video.duration;
-    const hasDuration = Number.isFinite(videoDuration) && videoDuration > 0;
-    const seekTime = hasDuration ? Math.min(pending.offset, Math.max(0, videoDuration - 0.05)) : pending.offset;
-    if (Number.isFinite(seekTime) && seekTime >= 0) {
-      try { video.currentTime = seekTime; } catch { /* ignore */ }
-    }
-    pendingSeekRef.current = null;
-  }, []);
+  // <video onCanPlay> / <video onLoadedMetadata> 콜백 — URL 변경 후 비디오 로드 완료 시 pending seek 적용.
+  // pendingSeekRef.offset은 seekToStep에서 이미 "비디오 내 절대 시간(초)"으로 계산되어 있다.
+  const handleVideoCanPlay = useCallback(() => {
+    tryApplyPendingSeek();
+  }, [tryApplyPendingSeek]);
 
   // 비디오 재생 시 현재 스텝 실시간 하이라이트.
   // started_at 사이드카가 있으면 video time → wall-clock으로 직접 변환하여 정확히 매칭.
@@ -1070,7 +1074,7 @@ export default function ResultsPage() {
                             );
                           })}
                         </Space>
-                        {activeRecUrl && <video ref={detailVideoRef} src={activeRecUrl} controls onCanPlay={handleVideoCanPlay} onTimeUpdate={handleVideoTimeUpdate} onPause={handleVideoPauseOrEnd} onEnded={handleVideoPauseOrEnd} style={{ width: '100%', maxHeight: 400 }} />}
+                        {activeRecUrl && <video ref={detailVideoRef} src={activeRecUrl} controls onLoadedMetadata={handleVideoCanPlay} onCanPlay={handleVideoCanPlay} onTimeUpdate={handleVideoTimeUpdate} onPause={handleVideoPauseOrEnd} onEnded={handleVideoPauseOrEnd} style={{ width: '100%', maxHeight: 400 }} />}
                       </div>
                     ),
                   }]}
@@ -1145,6 +1149,7 @@ export default function ResultsPage() {
                         ref={detailVideoRef}
                         src={activeRecUrl}
                         controls
+                        onLoadedMetadata={handleVideoCanPlay}
                         onCanPlay={handleVideoCanPlay}
                         onTimeUpdate={handleVideoTimeUpdate}
                         onPause={handleVideoPauseOrEnd}
