@@ -756,10 +756,22 @@ class ICASAgentService:
                                 scp.get(remote, local)
                                 if os.path.exists(local) and os.path.getsize(local) > 0:
                                     files.append(local)
+                                else:
+                                    logger.warning(
+                                        "ICAS HU scp %s: file missing or empty (exit=%d, stderr=%r)",
+                                        remote, exit_status,
+                                        err_text.strip().replace("\r", " ").replace("\n", " | ")[:200],
+                                    )
                             except Exception as ee:
-                                logger.debug("ICAS HU scp %s failed: %s", remote, ee)
+                                logger.warning(
+                                    "ICAS HU scp %s failed: type=%s repr=%r",
+                                    remote, type(ee).__name__, ee,
+                                )
                 except Exception as ee:
-                    logger.warning("ICAS HU SCPClient failed: %s", ee)
+                    logger.warning(
+                        "ICAS HU SCPClient failed: type=%s repr=%r",
+                        type(ee).__name__, ee, exc_info=True,
+                    )
                 return files
 
             local_files: list[str] = []
@@ -768,7 +780,10 @@ class ICASAgentService:
                     ssh = self._get_shared_ssh()
                     local_files = _do_capture(ssh)
                 except Exception as e:
-                    logger.warning("ICAS HU capture failed on shared SSH, retrying: %s", e)
+                    logger.warning(
+                        "ICAS HU capture failed on shared SSH, retrying: type=%s repr=%r",
+                        type(e).__name__, e,
+                    )
                     if self._ssh_client is not None:
                         try:
                             self._ssh_client.close()
@@ -779,9 +794,19 @@ class ICASAgentService:
                     local_files = _do_capture(ssh)
 
             if not local_files:
-                raise RuntimeError("No HU screenshot captured")
+                raise RuntimeError(
+                    f"No HU screenshot captured (LayerManagerControl dump may have failed; "
+                    f"check 'ICAS HU dump' / 'ICAS HU scp' / 'ICAS HU SCPClient' warnings above)"
+                )
 
-            images = [Image.open(p).convert("RGBA") for p in local_files]
+            try:
+                images = [Image.open(p).convert("RGBA") for p in local_files]
+            except Exception as ie:
+                # PNG 파일이 partial/corrupt할 때 PIL.UnidentifiedImageError 등이 발생할 수 있음
+                sizes = [(p, os.path.getsize(p) if os.path.exists(p) else -1) for p in local_files]
+                raise RuntimeError(
+                    f"PIL Image.open failed: type={type(ie).__name__} repr={ie!r} sizes={sizes}"
+                ) from ie
             base = images[0]
             for over in images[1:]:
                 if over.size != base.size:
