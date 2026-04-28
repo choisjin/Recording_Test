@@ -217,6 +217,7 @@ export default function DevicePage() {
   const [scannedHkmc, setScannedHkmc] = useState<{ ip: string; port: number; raw: string }[]>([]);
   const [scannedIsap, setScannedIsap] = useState<{ ip: string; port: number }[]>([]);
   const [scannedIcas, setScannedIcas] = useState<{ ip: string; port: number }[]>([]);
+  const [scannedMib, setScannedMib] = useState<{ ip: string; port: number }[]>([]);
   const [scannedBench, setScannedBench] = useState<{ ip: string; port: number; verified?: boolean }[]>([]);
   const [scannedVision, setScannedVision] = useState<{ id: string; mac: string; model: string; serial: string; vendor: string; tl_type: string; ip: string; subnet?: string; gateway?: string }[]>([]);
   const [scannedWebcams, setScannedWebcams] = useState<{ index: number; label: string; width: number; height: number; already_registered?: boolean; in_use_by_recording?: boolean }[]>([]);
@@ -509,6 +510,7 @@ export default function DevicePage() {
     setScannedHkmc([]);
     setScannedIsap([]);
     setScannedIcas([]);
+    setScannedMib([]);
     setScannedBench([]);
     setScannedVision([]);
     setScannedWebcams([]);
@@ -531,6 +533,7 @@ export default function DevicePage() {
       setScannedHkmc(res.data.hkmc_devices || []);
       setScannedIsap(res.data.isap_hosts || []);
       setScannedIcas(res.data.icas_hosts || []);
+      setScannedMib(res.data.mib_hosts || []);
       setScannedBench(res.data.bench_devices || []);
       setScannedVision(res.data.vision_cameras || []);
       setScannedWebcams(res.data.webcams || []);
@@ -1312,6 +1315,35 @@ export default function DevicePage() {
                                 }}>{t('common.connect')}</Button>
                               ]}>
                                 <Tag color="purple">ICAS</Tag> <Tag color="blue">{h.ip}</Tag> <span style={{ color: '#888' }}>SSH: {h.port}</span>
+                              </List.Item>
+                            )}
+                          />
+                        ),
+                      });
+                    }
+
+                    if (scanItemCategory('mib') === modalCategory && scannedMib.length > 0) {
+                      scanTabs.push({
+                        key: 'mib',
+                        label: <span>MIB Agent <Tag style={{ marginLeft: 3 }}>{scannedMib.length}</Tag></span>,
+                        children: (
+                          <List
+                            size="small"
+                            dataSource={scannedMib}
+                            pagination={scannedMib.length > PAGE_SIZE ? { pageSize: PAGE_SIZE, size: 'small' } : false}
+                            renderItem={(h) => (
+                              <List.Item actions={[
+                                <Button size="small" type="primary" onClick={() => {
+                                  setConnectType('mib_agent');
+                                  setConnectAddress(h.ip);
+                                  setHkmcPort(h.port);
+                                  if (modalCategory === 'primary') {
+                                    setDeviceProject('VW');
+                                  }
+                                  setModalTabKey('manual');
+                                }}>{t('common.connect')}</Button>
+                              ]}>
+                                <Tag color="geekblue">MIB</Tag> <Tag color="blue">{h.ip}</Tag> <span style={{ color: '#888' }}>SSH: {h.port}</span>
                               </List.Item>
                             )}
                           />
@@ -2241,6 +2273,7 @@ export default function DevicePage() {
             { key: 'hkmc',           label: 'HKMC',           proto: 'TCP',      editablePorts: false },
             { key: 'isap',           label: 'iSAP Agent',     proto: 'TCP',      editablePorts: false },
             { key: 'icas',           label: 'ICAS Agent',     proto: 'SSH',      editablePorts: false },
+            { key: 'mib',            label: 'MIB Agent',      proto: 'SSH',      editablePorts: false },
             { key: 'dlt',            label: 'DLT',            proto: 'TCP',      editablePorts: false },
             { key: 'bench',          label: 'WoohyunBench',   proto: 'UDP',      editablePorts: false },
             { key: 'vision_camera',  label: 'Vision Camera',  proto: 'GigE',     editablePorts: false },

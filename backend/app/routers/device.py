@@ -35,6 +35,7 @@ _DEFAULT_SCAN_SETTINGS = {
         "hkmc":           {"enabled": True,  "module": "",             "category": "primary",   "ports": [6655, 5000]},
         "isap":           {"enabled": False, "module": "",             "category": "primary",   "ports": [20000]},
         "icas":           {"enabled": True,  "module": "",             "category": "primary",   "port": 22},
+        "mib":            {"enabled": True,  "module": "",             "category": "primary",   "port": 22},
         "dlt":            {"enabled": True,  "module": "DLTLogging",   "category": "auxiliary", "ports": [3490]},
         "bench":          {"enabled": True,  "module": "WoohyunBench", "category": "auxiliary", "ports": [25000]},
         "vision_camera":  {"enabled": False, "module": "VisionCamera", "category": "primary"},
@@ -102,6 +103,13 @@ _DEFAULT_DEVICE_CATALOG: dict = {
             ],
         },
         {
+            "name": "VW",
+            "enabled": True,
+            "models": [
+                {"value": "MIB", "enabled": True, "agent": "MIB Agent"},
+            ],
+        },
+        {
             "name": "General",
             "enabled": True,
             "models": [
@@ -128,7 +136,7 @@ _DEFAULT_DEVICE_CATALOG: dict = {
 
 
 def _load_device_catalog() -> dict:
-    """카탈로그 로드. 레거시 필드 자동 마이그레이션 포함."""
+    """카탈로그 로드. 레거시 필드 자동 마이그레이션 + 새 기본값 누락 보충."""
     if _DEVICE_CATALOG_FILE.exists():
         try:
             data = _json.loads(_DEVICE_CATALOG_FILE.read_text(encoding="utf-8"))
@@ -141,6 +149,16 @@ def _load_device_catalog() -> dict:
             for a in data.get("agents", []) or []:
                 if a.get("type") == "hkmc6th":
                     a["type"] = "hkmc_agent"
+            # 새 기본값 누락 보충 — 기본 카탈로그의 project/agent가 사용자 카탈로그에 없으면 추가.
+            # 사용자가 enabled 토글한 기존 항목은 그대로 유지 (이름 매칭으로 식별).
+            existing_proj_names = {p.get("name") for p in (data.get("projects") or []) if p.get("name")}
+            for default_proj in _DEFAULT_DEVICE_CATALOG["projects"]:
+                if default_proj["name"] not in existing_proj_names:
+                    data.setdefault("projects", []).append(_json.loads(_json.dumps(default_proj)))
+            existing_agent_types = {a.get("type") for a in (data.get("agents") or []) if a.get("type")}
+            for default_agent in _DEFAULT_DEVICE_CATALOG.get("agents", []):
+                if default_agent["type"] not in existing_agent_types:
+                    data.setdefault("agents", []).append(dict(default_agent))
             return data
         except Exception:
             pass
@@ -350,6 +368,15 @@ async def scan_ports():
         except (TypeError, ValueError):
             icas_port = 22
         tasks["icas_hosts"] = asyncio.ensure_future(dm.scan_icas(icas_port))
+    if _enabled("mib"):
+        # MIB도 SSH 22 기반이라 ICAS와 동일한 scan 함수 재사용. 결과 호스트는
+        # 등록 시 사용자가 ICAS/MIB Agent 중 선택.
+        mib_entry = builtin.get("mib", {}) if isinstance(builtin.get("mib"), dict) else {}
+        try:
+            mib_port = int(mib_entry.get("port", 22))
+        except (TypeError, ValueError):
+            mib_port = 22
+        tasks["mib_hosts"] = asyncio.ensure_future(dm.scan_icas(mib_port))
 
     # 커스텀 TCP/UDP 포트 스캔
     custom_tasks: list[tuple[str, asyncio.Task]] = []
@@ -381,6 +408,7 @@ async def scan_ports():
         "webcams": [],
         "isap_hosts": [],
         "icas_hosts": [],
+        "mib_hosts": [],
         "dlt_devices": [],
         "smartbench_devices": [],
         "ssh_hosts": [],
