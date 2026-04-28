@@ -379,6 +379,7 @@ export default function AdminPage() {
                   {a.type === 'hkmc_agent' && '— HKMC 차량 IVI TCP 프로토콜'}
                   {a.type === 'isap_agent' && '— iSAP Agent TCP 프로토콜'}
                   {a.type === 'icas_agent' && '— VW ICAS SSH 프로토콜'}
+                  {a.type === 'mib_agent' && '— VW MIB SSH+ksend 프로토콜'}
                   {a.type === 'vision_camera' && '— GigE 비전 카메라 (스크린샷 전용)'}
                   {a.type === 'webcam' && '— USB 웹캠 (관찰 전용)'}
                 </Typography.Text>

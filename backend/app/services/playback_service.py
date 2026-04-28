@@ -717,6 +717,15 @@ class PlaybackService:
                         Path(actual_path).write_bytes(img_bytes)
                     else:
                         raise RuntimeError(f"ICAS device {ss_device['id']} not connected")
+                elif ss_device["type"] == "mib_agent":
+                    mib_svc = self.dm.get_mib_service(ss_device["id"])
+                    if mib_svc:
+                        img_bytes = await mib_svc.async_screencap_bytes(
+                            screen_type=ss_device.get("screen_type", "HU"), fmt="png"
+                        )
+                        Path(actual_path).write_bytes(img_bytes)
+                    else:
+                        raise RuntimeError(f"MIB device {ss_device['id']} not connected")
                 elif ss_device["type"] == "vision_camera":
                     cam = self.dm.get_vision_camera(ss_device["id"])
                     if cam:
@@ -1352,6 +1361,32 @@ class PlaybackService:
                             return
                 dev.status = "disconnected"
 
+        elif dev.type == "mib_agent":
+            mib = self.dm.get_mib_service(device_id)
+            if mib and mib.is_connected:
+                return
+            # MIB 재연결은 device_manager.connect_device_by_id를 재사용 — 콜백/저장된 ksend_src/dst 등 모두 적용.
+            lock = self.dm.get_reconnect_lock(device_id)
+            async with lock:
+                mib = self.dm.get_mib_service(device_id)
+                if mib and mib.is_connected:
+                    return
+                for attempt in range(1, max_retries + 1):
+                    if self._should_stop:
+                        return
+                    logger.info("Playback: MIB reconnect %s attempt %d/%d", device_id, attempt, max_retries)
+                    try:
+                        msg = await self.dm.connect_device_by_id(device_id)
+                        if "connected" in msg.lower() and "failed" not in msg.lower():
+                            logger.info("Playback: MIB reconnected %s", device_id)
+                            return
+                    except Exception as e:
+                        logger.debug("Playback: MIB reconnect %s failed: %s", device_id, e)
+                    if attempt < max_retries:
+                        if await self._interruptible_sleep(retry_interval):
+                            return
+                dev.status = "disconnected"
+
         elif dev.type == "adb":
             # 먼저 현재 상태 확인
             try:
@@ -1418,17 +1453,21 @@ class PlaybackService:
         return dev is not None and dev.type in ("hkmc_agent", "isap_agent")
 
     def _is_icas_device(self, device_id: Optional[str]) -> bool:
-        """디바이스가 ICAS 에이전트 타입인지 확인 (icas_* 스텝 라우팅용)."""
+        """디바이스가 ICAS 또는 MIB 에이전트 타입인지 확인 (icas_* 스텝 라우팅용).
+
+        MIB은 ICAS와 동일한 ksend 메커니즘 + 호환 API라 같은 step type을 사용.
+        """
         if not device_id:
             return False
         dev = self.dm.get_device(device_id)
-        return dev is not None and dev.type == "icas_agent"
+        return dev is not None and dev.type in ("icas_agent", "mib_agent")
 
     def _get_agent_service(self, device_id: Optional[str]):
         """Return (svc, kind) where kind ∈ {"hkmc", "isap", "icas", None}.
 
         기존 호출부는 `svc, is_isap = ...` 형태인데 ICAS 지원을 위해 kind 문자열을
-        반환하도록 확장. 기존 is_isap 사용처는 `kind == "isap"`와 동치.
+        반환하도록 확장. mib_agent는 MIBAgentService를 반환하면서 kind="icas"로 처리해
+        ICAS step 디스패처를 그대로 재사용 (두 서비스 API 호환).
         """
         if not device_id:
             return None, None
@@ -1441,6 +1480,8 @@ class PlaybackService:
             return self.dm.get_hkmc_service(device_id), "hkmc"
         if dev.type == "icas_agent":
             return self.dm.get_icas_service(device_id), "icas"
+        if dev.type == "mib_agent":
+            return self.dm.get_mib_service(device_id), "icas"
         return None, None
 
     def _resolve_screenshot_device(self, step: Step) -> Optional[dict]:
@@ -1489,6 +1530,9 @@ class PlaybackService:
                 if ss_dev.type == "icas_agent":
                     screen_type = step.screen_type or step.params.get("screen_type", "HU")
                     return {"type": "icas_agent", "id": ss_dev.id, "screen_type": screen_type}
+                if ss_dev.type == "mib_agent":
+                    screen_type = step.screen_type or step.params.get("screen_type", "HU")
+                    return {"type": "mib_agent", "id": ss_dev.id, "screen_type": screen_type}
                 if ss_dev.type == "vision_camera":
                     return {"type": "vision_camera", "id": ss_dev.id}
                 if ss_dev.type == "webcam":
@@ -1523,6 +1567,9 @@ class PlaybackService:
             elif dev and dev.type == "icas_agent":
                 screen_type = step.screen_type or step.params.get("screen_type", "HU")
                 return {"type": "icas_agent", "id": dev.id, "screen_type": screen_type}
+            elif dev and dev.type == "mib_agent":
+                screen_type = step.screen_type or step.params.get("screen_type", "HU")
+                return {"type": "mib_agent", "id": dev.id, "screen_type": screen_type}
             elif dev and dev.type == "vision_camera":
                 return {"type": "vision_camera", "id": dev.id}
             elif dev and dev.type == "webcam":

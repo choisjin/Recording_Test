@@ -496,7 +496,7 @@ export default function RecordPage() {
     if (screenshotDeviceId) {
       try {
         const dev = primaryDevices.find(d => d.id === screenshotDeviceId);
-        const needsScreenType = (dev?.type === 'hkmc_agent' || dev?.type === 'isap_agent' || dev?.type === 'icas_agent') || (dev?.type === 'adb' && (dev.info?.displays?.length ?? 0) > 1);
+        const needsScreenType = (dev?.type === 'hkmc_agent' || dev?.type === 'isap_agent' || dev?.type === 'icas_agent' || dev?.type === 'mib_agent') || (dev?.type === 'adb' && (dev.info?.displays?.length ?? 0) > 1);
         const res = await deviceApi.screenshot(screenshotDeviceId, needsScreenType ? screenType : undefined);
         if (res.data.image) {
           const fmt = res.data.format || 'jpeg';
@@ -566,7 +566,7 @@ export default function RecordPage() {
   const screenDevice = primaryDevices.find(d => d.id === screenshotDeviceId);
   const isScreenHkmc = screenDevice?.type === 'hkmc_agent' || screenDevice?.type === 'isap_agent';
   const isScreenCCRC = isScreenHkmc && screenDevice?.info?.device_model === 'ccRC';
-  const isScreenICAS = screenDevice?.type === 'icas_agent';
+  const isScreenICAS = screenDevice?.type === 'icas_agent' || screenDevice?.type === 'mib_agent';
 
   // CCRC: front_center/cluster 비허용 → 자동으로 rear_right로 교정
   useEffect(() => {
@@ -733,6 +733,11 @@ export default function RecordPage() {
         setHkmcKeys(res.data.keys || []);
         setHkmcSubCommands(res.data.sub_commands || {});
       }).catch(() => {});
+    } else if (dev?.type === 'mib_agent') {
+      deviceApi.listMibKeys(dev.id).then(res => {
+        setHkmcKeys(res.data.keys || []);
+        setHkmcSubCommands(res.data.sub_commands || {});
+      }).catch(() => {});
     } else {
       setHkmcKeys([]);
     }
@@ -800,9 +805,10 @@ export default function RecordPage() {
 
   // Map generic gesture actions to agent-specific equivalents based on device type
   // ICAS와 HKMC는 완전 별도 프로젝트 — 스텝 타입도 분리 (icas_* vs hkmc_*)
+  // MIB은 ICAS와 동일한 ksend 메커니즘이라 step 타입도 icas_*로 통일 (백엔드가 mib_agent에서 icas_* 호환 처리).
   const resolveAction = useCallback((action: string, targetDevice: string): string => {
     const dev = allDevices.find(d => d.id === targetDevice);
-    if (dev?.type === 'icas_agent') {
+    if (dev?.type === 'icas_agent' || dev?.type === 'mib_agent') {
       if (action === 'tap') return 'icas_touch';
       if (action === 'swipe') return 'icas_swipe';
       if (action === 'long_press') return 'icas_touch';
@@ -824,7 +830,7 @@ export default function RecordPage() {
   // Inject screen_type into params for agent / ADB multi-display actions
   const resolveParams = useCallback((action: string, params: Record<string, any>, targetDevice: string): Record<string, any> => {
     const dev = allDevices.find(d => d.id === targetDevice);
-    if (dev?.type === 'icas_agent' && (action === 'icas_touch' || action === 'icas_swipe' || action === 'icas_key' || action === 'repeat_tap')) {
+    if ((dev?.type === 'icas_agent' || dev?.type === 'mib_agent') && (action === 'icas_touch' || action === 'icas_swipe' || action === 'icas_key' || action === 'repeat_tap')) {
       return { ...params, screen_type: screenType };
     }
     if ((dev?.type === 'hkmc_agent' || dev?.type === 'isap_agent') && (action === 'hkmc_touch' || action === 'hkmc_swipe' || action === 'hkmc_key' || action === 'repeat_tap')) {

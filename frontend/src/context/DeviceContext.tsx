@@ -171,7 +171,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
     if (!dev) return;
     if (dev.type === 'hkmc_agent' || dev.type === 'isap_agent') {
       setScreenType('front_center');
-    } else if (dev.type === 'icas_agent') {
+    } else if (dev.type === 'icas_agent' || dev.type === 'mib_agent') {
       setScreenType('HU');
     } else if (dev.type === 'vision_camera' || dev.type === 'webcam') {
       setScreenType('default');
