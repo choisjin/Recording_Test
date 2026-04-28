@@ -312,10 +312,10 @@ export default function RecordPage() {
 
   // HKMC hardware keys
   const [hkmcKeys, setHkmcKeys] = useState<HkmcKeyInfo[]>([]);
-  // CCRC 명령(0x93) source 토글 — RRC/CCRC rear 그룹 키 발사 시 항상 적용
-  // 0x02=RRC(유선), 0x07=BRRC(Bluetooth). RRC/CCRC 그룹 키는 모두 CMD_CCRC(0x93)로 라우팅됨.
-  // 기본값: 유선 RRC (0x02)
-  const [rearKeySource, setRearKeySource] = useState<number>(0x02);
+  // CCRC 명령(0x93) source 토글 — RRC/CCRC rear 그룹 키 발사 시 적용
+  // null = Auto (기본): RRC는 CMD_RRC(0x90), CCRC는 정의된 source(보통 BRRC)
+  // 0x02=RRC(유선), 0x07=BRRC(Bluetooth) — 명시 선택 시 RRC도 CMD_CCRC(0x93)로 라우팅됨
+  const [rearKeySource, setRearKeySource] = useState<number | null>(null);
   // iSAP 키 설정 모달
   const [isapKeysModalOpen, setIsapKeysModalOpen] = useState(false);
   const [isapKeysDraft, setIsapKeysDraft] = useState<HkmcKeyInfo[]>([]);
@@ -990,9 +990,9 @@ export default function RecordPage() {
     const isLong = Math.random() < 0.2; // 20% 확률 Long press
     const sub = isLong ? HKMC_LONG_KEY : HKMC_SHORT_KEY;
     const label = `RAND HK: ${k.name}${isLong ? ' (Long)' : ''}`;
-    // rear-only 그룹(RRC/CCRC)에서만 source 토글값 첨부
+    // rear-only 그룹(RRC/CCRC)에서만 source 토글값 첨부 (Auto=null이면 미첨부)
     const params: Record<string, any> = { key_name: k.name, sub_cmd: sub, screen_type: screenType };
-    if (k.group === 'RRC' || k.group === 'CCRC') params.key_source = rearKeySource;
+    if ((k.group === 'RRC' || k.group === 'CCRC') && rearKeySource !== null) params.key_source = rearKeySource;
     executeAction('hkmc_key', params, label);
   }, [hkmcKeys, randHkKeysConfig, screenType, executeAction, rearKeySource]);
 
@@ -3450,10 +3450,11 @@ export default function RecordPage() {
                             size="small"
                             value={rearKeySource}
                             onChange={(v) => setRearKeySource(v)}
-                            style={{ width: 130, fontSize: 10 }}
+                            style={{ width: 150, fontSize: 10 }}
                             options={[
-                              { value: 0x02, label: 'RRC (고정)' },
-                              { value: 0x07, label: 'BRRC (BT)' },
+                              { value: null, label: 'Auto (기본)' },
+                              { value: 0x02, label: 'RRC (유선, 0x02)' },
+                              { value: 0x07, label: 'BRRC (BT, 0x07)' },
                             ]}
                           />
                           {/* L/R 모니터 토글 — screenType과 양방향 동기화. 누르면 화면을 즉시 전환 */}
@@ -3466,7 +3467,7 @@ export default function RecordPage() {
                               { label: 'R', value: 'R' },
                             ]}
                           />
-                          <Tooltip title="RRC/CCRC 그룹 키 발사 시 패킷의 key_source(data[0])로 사용됩니다. RRC=0x02 / BRRC=0x07. RRC 그룹 키도 CMD_CCRC(0x93)로 라우팅됩니다. L/R 버튼은 rear 화면 선택과 양방향 동기화됩니다.">
+                          <Tooltip title="RRC/CCRC 그룹 키 발사 시 패킷의 key_source(data[0])로 사용됩니다. Auto 선택 시 RRC=CMD_RRC(0x90) 기본 경로, CCRC=정의된 source(보통 BRRC). 명시 선택 시(0x02/0x07) RRC도 CMD_CCRC(0x93)로 라우팅됩니다. L/R 버튼은 rear 화면 선택과 양방향 동기화됩니다.">
                             <QuestionCircleOutlined style={{ fontSize: 11, color: subTextColor, cursor: 'help' }} />
                           </Tooltip>
                         </div>
@@ -3516,9 +3517,9 @@ export default function RecordPage() {
                                       const isLong = held >= HKMC_LONG_PRESS_MS;
                                       const sub = isLong ? HKMC_LONG_KEY : HKMC_SHORT_KEY;
                                       const label = k.name + (isLong ? ' (Long)' : '');
-                                      // rear-only 그룹(RRC/CCRC)에서만 source 토글값 첨부
+                                      // rear-only 그룹(RRC/CCRC)에서만 source 토글값 첨부 (Auto=null이면 미첨부)
                                       const params: Record<string, any> = { key_name: k.name, sub_cmd: sub, screen_type: screenType };
-                                      if (isRearOnly) params.key_source = rearKeySource;
+                                      if (isRearOnly && rearKeySource !== null) params.key_source = rearKeySource;
                                       executeAction('hkmc_key', params, label);
                                     }
                                     hkTimerRef.current.delete(k.name);

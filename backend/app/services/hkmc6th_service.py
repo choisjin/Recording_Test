@@ -1159,7 +1159,9 @@ class HKMC6thService:
         # key_source가 명시되었고 RRC 명령이면 CCRC 명령(0x93) 경로로 자동 전환.
         # RRC keycode들과 CCRC keycode들은 핵심 키(UP/DOWN/LEFT/RIGHT/ENTER/BACK/HOME/
         # VOLUME_*/POWER_*)가 모두 동일한 hex 값이라 같은 keycode를 그대로 재사용 가능.
-        if key_source is not None and cmd == CMD_RRC:
+        # 단, dial 키(JOGDIAL/VOLUME_*_DIAL)는 CCRC 프로토콜에 dial action 정의가 없어
+        # 라우팅하면 무반응이 되므로 제외하고 CMD_RRC(0x90) 그대로 유지한다.
+        if key_source is not None and cmd == CMD_RRC and not key_info.get("dial"):
             cmd = CMD_CCRC
             is_ccrc = True
 
