@@ -2057,6 +2057,16 @@ class DeviceManager:
                     logger.warning("ICAS auto-detect persist failed: %s", e)
 
             try:
+                # screen 인덱스 — 디바이스마다 가용 layer 다름. 저장된 값이 있으면 사용,
+                # 없으면 None으로 두어 서비스 기본값([0,2])을 따름. 형식: list[int].
+                stored_indices = dev.info.get("screen_indices")
+                screen_indices = None
+                if isinstance(stored_indices, list) and stored_indices:
+                    try:
+                        screen_indices = [int(i) for i in stored_indices]
+                    except Exception:
+                        screen_indices = None
+
                 svc = ICASAgentService(
                     dev.address, port=port, device_id=dev.id,
                     username=username, password=password, resolution=res_str,
@@ -2068,6 +2078,7 @@ class DeviceManager:
                     market=market,
                     key_overrides=dev.info.get("icas_keys"),
                     on_resolution_changed=_on_icas_resolution_changed,
+                    screen_indices=screen_indices,
                 )
                 ok = await svc.async_connect()
                 if ok:

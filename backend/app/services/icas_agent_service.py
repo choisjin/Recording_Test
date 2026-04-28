@@ -95,7 +95,8 @@ class ICASAgentService:
                  hud_display: str = "11",
                  market: str = "EU",
                  key_overrides: Optional[dict[str, dict]] = None,
-                 on_resolution_changed: Optional[Callable[[str], None]] = None):
+                 on_resolution_changed: Optional[Callable[[str], None]] = None,
+                 screen_indices: Optional[list[int]] = None):
         self.host = host
         self.port = int(port)
         self.device_id = device_id or f"ICAS_{host}"
@@ -131,6 +132,17 @@ class ICASAgentService:
         self._on_resolution_changed = on_resolution_changed
         # 콜백 폭주 방지 — 동일 해상도면 호출 안 함, 락으로 직렬화.
         self._res_callback_lock = threading.Lock()
+        # LayerManagerControl로 dump할 screen 인덱스 — 디바이스마다 가용한 layer가 다름.
+        # 기본값 [0, 2]은 일반적인 IVI 환경 추정치. 일부 단일 디스플레이 ICAS는 [0]만 존재.
+        # 캡처 실패가 누적되면 해당 인덱스를 자동 비활성화하고, 첫 연결 시 진단 명령으로 가용 레이어를 학습.
+        if screen_indices is None or not screen_indices:
+            self._screen_indices: list[int] = [0, 2]
+        else:
+            self._screen_indices = [int(i) for i in screen_indices]
+        # 인덱스별 연속 실패 카운트. 이 임계치 이상이면 비활성화.
+        self._screen_fail_count: dict[int, int] = {i: 0 for i in self._screen_indices}
+        self._screen_disabled: set[int] = set()
+        self._screen_fail_threshold = 3  # 3회 연속 실패하면 해당 인덱스 dump 시도 중단
 
     # ------------------------------------------------------------------
     # Basic accessors
@@ -367,11 +379,55 @@ class ICASAgentService:
                 self._get_shared_ssh()  # 끊어져 있으면 새로 연결
             self._connected = True
             logger.info("ICAS connected to %s:%d", self.host, self.port)
+            # 캡처 layer 진단: 가용 screen/layer 인덱스를 알면 사용자에게 가이드 제공.
+            # 실패해도 연결 자체에는 영향 없음 (best-effort, 5초 타임아웃).
+            try:
+                self._probe_layer_info()
+            except Exception as e:
+                logger.debug("ICAS layer probe skipped: %s", e)
             return True
         except Exception as e:
             logger.error("ICAS connect failed %s:%d: %s", self.host, self.port, e)
             self._connected = False
             return False
+
+    def _maybe_disable_screen(self, idx: int) -> None:
+        """연속 실패가 임계치를 넘으면 해당 screen 인덱스를 비활성화 (이후 dump 시도 안 함)."""
+        if idx in self._screen_disabled:
+            return
+        if self._screen_fail_count.get(idx, 0) >= self._screen_fail_threshold:
+            self._screen_disabled.add(idx)
+            logger.warning(
+                "ICAS HU screen %d auto-disabled after %d consecutive failures — "
+                "this layer is likely not available on this device. Active indices now: %s",
+                idx, self._screen_fail_threshold,
+                [i for i in self._screen_indices if i not in self._screen_disabled] or "[fallback: 0]",
+            )
+
+    def _probe_layer_info(self) -> None:
+        """LayerManagerControl get screens/layers를 실행해 진단 정보를 로깅.
+
+        실제 디바이스마다 가용 layer 인덱스가 다르므로, 사용자가 올바른 값을 설정하도록
+        로그로 안내. 명령 실패는 무시 (LayerManagerControl 자체가 없을 수도 있음).
+        """
+        with self._ssh_lock:
+            ssh = self._get_shared_ssh()
+            for label, cmd in (
+                ("screens", "export XDG_RUNTIME_DIR=/run/platform/weston ; LayerManagerControl get screens"),
+                ("layers",  "export XDG_RUNTIME_DIR=/run/platform/weston ; LayerManagerControl get layers"),
+            ):
+                try:
+                    stdin, stdout, stderr = ssh.exec_command(cmd, timeout=5)
+                    try:
+                        stdin.close()
+                    except Exception:
+                        pass
+                    out = stdout.read().decode("utf-8", errors="replace")
+                    err = stderr.read().decode("utf-8", errors="replace")
+                    snippet = (out or err).strip().replace("\r", " ").replace("\n", " | ")[:500]
+                    logger.info("ICAS LayerManagerControl get %s → %s", label, snippet or "(empty)")
+                except Exception as e:
+                    logger.debug("ICAS LayerManagerControl get %s failed: %s", label, e)
 
     def disconnect(self) -> None:
         self._connected = False
@@ -702,13 +758,23 @@ class ICASAgentService:
         tmp_dir = tempfile.mkdtemp(prefix="icas_cap_")
         try:
             # 공유 SSH 세션에서 dump + SCP pull 을 일괄 수행 (매 프레임마다 재인증 방지).
-            # - dump 2개를 && 체인으로 단일 exec_command (SSH 왕복 1회)
-            # - SCPClient 하나로 2 파일 연속 get (subsystem 1회)
+            # - 활성화된 screen 인덱스만 dump 시도 (디바이스마다 가용 layer 다름)
+            # - 각 dump를 ;로 분리: 한쪽 실패가 다른쪽을 막지 않음
+            # - SCPClient 하나로 모든 파일 연속 get (subsystem 1회)
             def _do_capture(ssh) -> list[str]:
+                active_indices = [i for i in self._screen_indices if i not in self._screen_disabled]
+                if not active_indices:
+                    # 모든 인덱스가 비활성화됨 — 안전 fallback: screen 0만 다시 시도
+                    active_indices = [0]
+                # 인덱스 → 로컬 파일명 매핑 (사람 가독 위해 1-base)
+                file_map = [(idx, f"screen_idx{idx}.png") for idx in active_indices]
+                dump_parts = [
+                    f"LayerManagerControl dump screen {idx} to /tmp/{fname} 2>/tmp/lmc_idx{idx}.err"
+                    for idx, fname in file_map
+                ]
                 dump_cmd = (
-                    "export XDG_RUNTIME_DIR=/run/platform/weston && "
-                    "LayerManagerControl dump screen 0 to /tmp/screen1.png && "
-                    "LayerManagerControl dump screen 2 to /tmp/screen2.png"
+                    "export XDG_RUNTIME_DIR=/run/platform/weston ; "
+                    + " ; ".join(dump_parts)
                 )
                 stdin, stdout, stderr = ssh.exec_command(dump_cmd, timeout=20)
                 try:
@@ -749,24 +815,29 @@ class ICASAgentService:
                 files: list[str] = []
                 try:
                     with SCPClient(ssh.get_transport()) as scp:
-                        for remote, fname in (("/tmp/screen1.png", "screen1.png"),
-                                              ("/tmp/screen2.png", "screen2.png")):
+                        for idx, fname in file_map:
+                            remote = f"/tmp/{fname}"
                             local = os.path.join(tmp_dir, fname)
                             try:
                                 scp.get(remote, local)
                                 if os.path.exists(local) and os.path.getsize(local) > 0:
                                     files.append(local)
+                                    # 성공 시 실패 카운터 리셋
+                                    self._screen_fail_count[idx] = 0
                                 else:
-                                    logger.warning(
-                                        "ICAS HU scp %s: file missing or empty (exit=%d, stderr=%r)",
-                                        remote, exit_status,
-                                        err_text.strip().replace("\r", " ").replace("\n", " | ")[:200],
-                                    )
+                                    self._screen_fail_count[idx] = self._screen_fail_count.get(idx, 0) + 1
+                                    self._maybe_disable_screen(idx)
                             except Exception as ee:
-                                logger.warning(
-                                    "ICAS HU scp %s failed: type=%s repr=%r",
-                                    remote, type(ee).__name__, ee,
-                                )
+                                self._screen_fail_count[idx] = self._screen_fail_count.get(idx, 0) + 1
+                                # 임계치 도달 직전까지만 warn — 그 후엔 auto-disable되어 시도 안 함
+                                if self._screen_fail_count[idx] <= self._screen_fail_threshold:
+                                    logger.warning(
+                                        "ICAS HU scp %s failed (%d/%d): type=%s repr=%r",
+                                        remote, self._screen_fail_count[idx],
+                                        self._screen_fail_threshold,
+                                        type(ee).__name__, ee,
+                                    )
+                                self._maybe_disable_screen(idx)
                 except Exception as ee:
                     logger.warning(
                         "ICAS HU SCPClient failed: type=%s repr=%r",
