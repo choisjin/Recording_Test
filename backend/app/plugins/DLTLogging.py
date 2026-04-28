@@ -182,8 +182,9 @@ class DLTLogging:
         self._lock = threading.Lock()
         self._recv_buffer = bytearray()
 
-        # 로그 버퍼 (전체 캡처된 로그)
+        # 로그 버퍼 (전체 캡처된 로그) + 라인별 capture timestamp (epoch float)
         self._logs: list[str] = []
+        self._log_capture_ts: list[float] = []
         self._msg_counter = 0
 
         # 파일 저장
@@ -223,6 +224,7 @@ class DLTLogging:
             self._socket = sock
             self._recv_buffer.clear()
             self._logs.clear()
+            self._log_capture_ts.clear()
             self._msg_counter = 0
             self._step_marks.clear()
             with self._counter_lock:
@@ -720,23 +722,50 @@ class DLTLogging:
     def fail_on_keyword(self, keyword: str, name: str = "") -> str:
         """캡처되는 라인에 keyword가 **포함되면** 시나리오 결과에 fail row 자동 누적.
         SerialLogging.fail_on_keyword와 동일 인터페이스. 'ERROR'/'crash' 등 검출용.
+        첫 호출 시 backfill 스캔 — 이미 누적된 로그 라인의 매칭도 정확한 timestamp로 보고.
         """
         key = name.strip() if name else f"fail_{keyword}"
+        backfill_reports: list[tuple[float, str]] = []
+        is_new = False
         with self._counter_lock:
             existing = self._fail_keywords.get(key)
             if existing is None:
-                self._fail_keywords[key] = {
+                is_new = True
+                new_entry = {
                     "keyword": keyword,
                     "hit_count": 0,
                     "hit_timestamps": [],
                     "started_at": time.time(),
                 }
-                logger.info("[DLTLogging] fail_on_keyword started: name='%s' keyword='%s'", key, keyword)
-                return f"Failing on keyword '{keyword}' (name='{key}')"
-            cnt = existing["hit_count"]
-            ts_list = list(existing["hit_timestamps"])
-            started_at = existing["started_at"]
-            kw = existing["keyword"]
+                self._fail_keywords[key] = new_entry
+                with self._lock:
+                    logs_snapshot = list(self._logs)
+                    ts_snapshot = list(self._log_capture_ts)
+                for i, ln in enumerate(logs_snapshot):
+                    if keyword in ln:
+                        ts_b = ts_snapshot[i] if i < len(ts_snapshot) else time.time()
+                        new_entry["hit_count"] += 1
+                        new_entry["hit_timestamps"].append(ts_b)
+                        backfill_reports.append((ts_b, ln))
+                logger.info("[DLTLogging] fail_on_keyword started: name='%s' keyword='%s' backfill=%d",
+                            key, keyword, len(backfill_reports))
+            else:
+                cnt = existing["hit_count"]
+                ts_list = list(existing["hit_timestamps"])
+                started_at = existing["started_at"]
+                kw = existing["keyword"]
+
+        if is_new and backfill_reports:
+            try:
+                from backend.app.services.playback_service import report_runtime_fail
+                for ts_b, ln in backfill_reports:
+                    report_runtime_fail("DLTLogging", keyword, ts_b, ln, reason="matched")
+            except Exception:
+                pass
+
+        if is_new:
+            return (f"Failing on keyword '{keyword}' (name='{key}')"
+                    + (f" — backfill matched {len(backfill_reports)} lines" if backfill_reports else ""))
 
         def _fmt(t: float) -> str:
             return time.strftime("%H:%M:%S", time.localtime(t))
@@ -1057,8 +1086,10 @@ class DLTLogging:
 
             line = self._parse_message(msg_data)
             if line:
+                cap_ts = time.time()
                 with self._lock:
                     self._logs.append(line)
+                    self._log_capture_ts.append(cap_ts)
                     self._msg_counter += 1
 
                 # 파일 저장 중이면 기록

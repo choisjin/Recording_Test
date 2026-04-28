@@ -161,8 +161,10 @@ class SerialLogging:
         self._capturing = False
         self._lock = threading.Lock()
 
-        # 로그 버퍼
+        # 로그 버퍼 + 라인별 capture timestamp (epoch float)
+        # _log_capture_ts와 _logs는 같은 길이 유지 — backfill 스캔 시 정확한 발생 시각 사용
         self._logs: list[str] = []
+        self._log_capture_ts: list[float] = []
         self._line_counter = 0
 
         # 파일 저장
@@ -201,6 +203,7 @@ class SerialLogging:
             import serial as pyserial
             self._serial = pyserial.Serial(self._port, self._bps, timeout=1)
             self._logs.clear()
+            self._log_capture_ts.clear()
             self._line_counter = 0
             self._step_marks.clear()
             with self._counter_lock:
@@ -576,26 +579,58 @@ class SerialLogging:
         직관적 사용 — 'ERROR'/'Fail'/'crash' 등 비정상 단어 검출용.
         시나리오 재생 중일 때만 fail 보고됨. 결과 페이지에서 row 클릭 시 영상 점프 가능.
 
+        **첫 호출 시 backfill**: 호출 이전에 이미 캡처된 로그 라인도 함께 스캔하여
+        keyword 매칭 라인의 정확한 capture timestamp로 fail row 추가. 시나리오의
+        StartLogging부터 fail_on_keyword 호출 사이에 발생한 매칭이 누락되지 않음.
+
         호출 흐름:
-          - 첫 호출: 검출 시작
+          - 첫 호출: 검출 시작 + 기존 로그 backfill 스캔
           - 같은 name 재호출: 현재까지 hit count + first/last timestamp 반환
         """
         key = name.strip() if name else f"fail_{keyword}"
+        backfill_reports: list[tuple[float, str]] = []  # 첫 호출 backfill용
+        is_new = False
         with self._counter_lock:
             existing = self._fail_keywords.get(key)
             if existing is None:
-                self._fail_keywords[key] = {
+                is_new = True
+                new_entry = {
                     "keyword": keyword,
                     "hit_count": 0,
                     "hit_timestamps": [],
                     "started_at": time.time(),
                 }
-                logger.info("[SerialLogging] fail_on_keyword started: name='%s' keyword='%s'", key, keyword)
-                return f"Failing on keyword '{keyword}' (name='{key}')"
-            cnt = existing["hit_count"]
-            ts_list = list(existing["hit_timestamps"])
-            started_at = existing["started_at"]
-            kw = existing["keyword"]
+                self._fail_keywords[key] = new_entry
+                # backfill: 이미 캡처된 라인 중 keyword 매칭한 것 모두 보고
+                with self._lock:
+                    logs_snapshot = list(self._logs)
+                    ts_snapshot = list(self._log_capture_ts)
+                for i, ln in enumerate(logs_snapshot):
+                    if keyword in ln:
+                        ts_b = ts_snapshot[i] if i < len(ts_snapshot) else time.time()
+                        new_entry["hit_count"] += 1
+                        new_entry["hit_timestamps"].append(ts_b)
+                        backfill_reports.append((ts_b, ln))
+                logger.info("[SerialLogging] fail_on_keyword started: name='%s' keyword='%s' backfill=%d",
+                            key, keyword, len(backfill_reports))
+            else:
+                cnt = existing["hit_count"]
+                ts_list = list(existing["hit_timestamps"])
+                started_at = existing["started_at"]
+                kw = existing["keyword"]
+
+        # backfill 항목을 playback_service에 보고 (lock 밖에서)
+        if is_new and backfill_reports:
+            try:
+                from backend.app.services.playback_service import report_runtime_fail
+                for ts_b, ln in backfill_reports:
+                    report_runtime_fail("SerialLogging", keyword, ts_b, ln, reason="matched")
+            except Exception:
+                pass
+
+        if is_new:
+            return (f"Failing on keyword '{keyword}' (name='{key}')"
+                    + (f" — backfill matched {len(backfill_reports)} lines" if backfill_reports else ""))
 
         def _fmt(t: float) -> str:
             return time.strftime("%H:%M:%S", time.localtime(t))
@@ -899,11 +934,13 @@ class SerialLogging:
                 if not line:
                     continue
 
-                ts = time.strftime("%H:%M:%S")
+                cap_ts = time.time()
+                ts = time.strftime("%H:%M:%S", time.localtime(cap_ts))
                 stamped = f"[{ts}] {line}"
 
                 with self._lock:
                     self._logs.append(stamped)
+                    self._log_capture_ts.append(cap_ts)
                     self._line_counter += 1
 
                 # 파일 저장 중이면 기록
