@@ -164,18 +164,75 @@ class WoohyunBench:
         self._canfd.CHECK_CAN_SIGNAL()
         return f"OK: {len(self._canfd.signal_defs)} signals"
 
-    def SendCanFd(self, can_id: int, payload_hex: str = "") -> str:
-        """Raw CAN FD 프레임 직접 송신 (신호 정의 불필요)."""
+    def SendCanFd(self, can_id, payload_hex: str = "") -> str:
+        """Raw CAN FD 프레임 직접 송신 (신호 정의 불필요).
+
+        can_id: int 또는 문자열. 문자열이면 "0x448"(hex)/"1096"(decimal) 자동 파싱.
+        payload_hex: hex 문자열. 다음 형식 모두 허용:
+          - "00 11 22 33"      (공백 구분 hex)
+          - "00,11,22,33"      (콤마 구분)
+          - "[0, 17, 34, 51]"  (decimal 리스트 표기 — 각 값 0~255)
+          - "00112233"         (연속 hex)
+        """
         if self._canfd is None:
             return "FAIL: CAN FD 비활성"
         try:
-            cleaned = (payload_hex or "").replace(" ", "").replace(",", "")
-            payload = bytearray.fromhex(cleaned) if cleaned else bytearray()
-            self._canfd.UDP_CANFD_SEND(int(can_id), payload)
-            return f"OK: SendCanFd ID=0x{int(can_id):X} ({len(payload)}B)"
+            cid = self._parse_can_id(can_id)
+            payload = self._parse_payload(payload_hex)
+            self._canfd.UDP_CANFD_SEND(cid, payload)
+            return f"OK: SendCanFd ID=0x{cid:X} ({len(payload)}B)"
         except Exception as e:
             logger.error("WoohyunBench SendCanFd failed: %s", e)
             return f"FAIL: SendCanFd: {e}"
+
+    @staticmethod
+    def _parse_can_id(can_id) -> int:
+        """can_id를 int로 정규화. '0x448', '1096', 1096 모두 허용."""
+        if isinstance(can_id, int):
+            return can_id
+        if isinstance(can_id, str):
+            s = can_id.strip()
+            if not s:
+                raise ValueError("can_id is empty")
+            # 0x 접두 또는 hex 문자가 섞여 있으면 hex로 해석
+            if s.lower().startswith("0x"):
+                return int(s, 16)
+            try:
+                return int(s)
+            except ValueError:
+                # 마지막 폴백: hex 시도
+                return int(s, 16)
+        return int(can_id)
+
+    @staticmethod
+    def _parse_payload(payload_hex: str) -> bytearray:
+        """payload 문자열을 bytearray로 정규화. 여러 형식 허용."""
+        if not payload_hex:
+            return bytearray()
+        s = payload_hex.strip()
+        if not s:
+            return bytearray()
+        # 리스트 표기 "[a, b, c]" → decimal byte 배열로 처리
+        if s.startswith("[") and s.endswith("]"):
+            inner = s[1:-1].strip()
+            if not inner:
+                return bytearray()
+            tokens = [t.strip() for t in inner.replace(";", ",").split(",") if t.strip()]
+            out = bytearray()
+            for t in tokens:
+                # "0x10" 또는 "16" 모두 허용
+                v = int(t, 16) if t.lower().startswith("0x") else int(t)
+                if not (0 <= v <= 0xFF):
+                    raise ValueError(f"payload byte out of range: {t}")
+                out.append(v)
+            return out
+        # 그 외: 공백/콤마 제거 후 hex 디코드
+        cleaned = s.replace(" ", "").replace(",", "").replace(";", "")
+        if cleaned.lower().startswith("0x"):
+            cleaned = cleaned[2:]
+        if len(cleaned) % 2 != 0:
+            cleaned = "0" + cleaned  # 홀수 길이면 앞에 0 패딩
+        return bytearray.fromhex(cleaned)
 
     def ReinitCanFd(self, baudrate: int = 0x1F4, databit_time: int = 0x7D0) -> str:
         """CAN FD 버스 재초기화 (기본 500k/2M)."""
