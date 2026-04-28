@@ -26,6 +26,18 @@ START_2 = 0xAA
 SENDER_ID = 100
 DEFAULT_UDP_PORT = 25000
 
+# CAN FD 송신 패킷 헤더 (legacy CCIC_BENCH/UDP_CANFD 동일)
+CANFD_SEND_PACKET_HEADER = [START_1, START_2, SENDER_ID, 0x00, 0x04, 0x30]
+
+
+def _payload_size_to_dlc(payload_size: int) -> int:
+    """CAN FD payload 크기 → DLC. 매핑에 없으면 8."""
+    _map = {
+        0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7,
+        8: 8, 12: 9, 16: 10, 20: 11, 24: 12, 32: 13, 48: 14, 64: 15,
+    }
+    return _map.get(payload_size, 8)
+
 
 class WoohyunBench:
     """CCIC 우현벤치 UDP 제어 플러그인 (전원 + CAN FD)."""
@@ -164,26 +176,60 @@ class WoohyunBench:
         self._canfd.CHECK_CAN_SIGNAL()
         return f"OK: {len(self._canfd.signal_defs)} signals"
 
-    def SendCanFd(self, can_id, payload_hex: str = "") -> str:
+    def SendCanFd(self, can_id, payload_hex: str = "", fd_mode: bool = False) -> str:
         """Raw CAN FD 프레임 직접 송신 (신호 정의 불필요).
 
-        can_id: int 또는 문자열. 문자열이면 "0x448"(hex)/"1096"(decimal) 자동 파싱.
-        payload_hex: hex 문자열. 다음 형식 모두 허용:
-          - "00 11 22 33"      (공백 구분 hex)
-          - "00,11,22,33"      (콤마 구분)
-          - "[0, 17, 34, 51]"  (decimal 리스트 표기 — 각 값 0~255)
-          - "00112233"         (연속 hex)
+        legacy CCIC_BENCH._canfd_send와 동일한 패킷 구조로 직접 송신:
+          [0x55,0xAA,0x64,0x00,0x04,0x30, len_hi,len_lo,
+           CAN_ID(4B), can_frame(1B), reserved(0x00, 1B), payload...]
+
+        Args:
+            can_id: int 또는 문자열("0x448"/"1096" 모두 허용).
+            payload_hex: 다음 형식 모두 허용:
+              - "0 0 0 0 0 0 1 0"  (공백 구분 → 각 토큰을 1byte decimal로 해석)
+              - "0,0,0,0,0,0,1,0"  (콤마 구분 — 동일)
+              - "[0, 0, 0, 0, 0, 0, 1, 0]" (대괄호 리스트)
+              - "0000000100"       (붙여쓴 hex 문자열)
+            fd_mode: True면 frame byte에 FD 플래그(0x80) + DLC 매핑 적용.
+                     False(기본)는 legacy 출력과 동일하게 frame byte = payload 길이.
         """
-        if self._canfd is None:
-            return "FAIL: CAN FD 비활성"
+        if not self._sock:
+            return "FAIL: 연결 안 됨 — Connect() 먼저 호출"
         try:
             cid = self._parse_can_id(can_id)
             payload = self._parse_payload(payload_hex)
-            self._canfd.UDP_CANFD_SEND(cid, payload)
-            return f"OK: SendCanFd ID=0x{cid:X} ({len(payload)}B)"
+            # fd_mode UI 입력은 문자열일 수 있음
+            if isinstance(fd_mode, str):
+                fd_mode = fd_mode.strip().lower() in ("1", "true", "yes", "on")
+            self._send_canfd_raw(cid, payload, bool(fd_mode))
+            return f"OK: SendCanFd ID=0x{cid:X} ({len(payload)}B, fd={'on' if fd_mode else 'off'})"
         except Exception as e:
             logger.error("WoohyunBench SendCanFd failed: %s", e)
             return f"FAIL: SendCanFd: {e}"
+
+    def _send_canfd_raw(self, can_id: int, payload: bytearray, fd_mode: bool) -> None:
+        """legacy CCIC_BENCH._canfd_send 패킷 구조 그대로 송신."""
+        if not self._sock:
+            raise RuntimeError("Not connected")
+
+        dlc = _payload_size_to_dlc(len(payload)) if fd_mode else len(payload)
+        can_frame = (0x80 if fd_mode else 0x00) | (dlc & 0x7F)
+
+        can_id_bytes = [
+            (can_id >> 24) & 0xFF,
+            (can_id >> 16) & 0xFF,
+            (can_id >> 8)  & 0xFF,
+             can_id        & 0xFF,
+        ]
+        # legacy와 동일: frame byte 뒤에 reserved 0x00 1바이트 포함
+        data = can_id_bytes + [can_frame, 0x00] + list(payload)
+        length_bytes = [(len(data) >> 8) & 0xFF, len(data) & 0xFF]
+        packet = bytearray(CANFD_SEND_PACKET_HEADER + length_bytes + data)
+
+        self._sock.sendto(packet, (self._host, self._udp_port))
+        hex_str = ", ".join(hex(b) for b in packet)
+        logger.info("WoohyunBench CANFD TX (ID=0x%X, payload=%dB): [%s]",
+                    can_id, len(payload), hex_str)
 
     @staticmethod
     def _parse_can_id(can_id) -> int:
@@ -206,33 +252,52 @@ class WoohyunBench:
 
     @staticmethod
     def _parse_payload(payload_hex: str) -> bytearray:
-        """payload 문자열을 bytearray로 정규화. 여러 형식 허용."""
+        """payload 문자열을 bytearray로 정규화. 여러 형식 허용.
+
+        우선순위:
+          1) 대괄호 리스트  "[a, b, c]"          → 각 토큰 1byte
+          2) 구분자(공백/콤마/세미콜론) 포함     → 각 토큰 1byte
+             - 토큰이 "0x" 접두면 hex, 아니면 decimal로 해석 (0~255)
+          3) 그 외 (붙여쓴 문자열)               → hex 문자열로 디코드
+        """
         if not payload_hex:
             return bytearray()
         s = payload_hex.strip()
         if not s:
             return bytearray()
-        # 리스트 표기 "[a, b, c]" → decimal byte 배열로 처리
+
+        # 1) 대괄호 리스트
         if s.startswith("[") and s.endswith("]"):
-            inner = s[1:-1].strip()
-            if not inner:
-                return bytearray()
-            tokens = [t.strip() for t in inner.replace(";", ",").split(",") if t.strip()]
-            out = bytearray()
-            for t in tokens:
-                # "0x10" 또는 "16" 모두 허용
-                v = int(t, 16) if t.lower().startswith("0x") else int(t)
-                if not (0 <= v <= 0xFF):
-                    raise ValueError(f"payload byte out of range: {t}")
-                out.append(v)
-            return out
-        # 그 외: 공백/콤마 제거 후 hex 디코드
-        cleaned = s.replace(" ", "").replace(",", "").replace(";", "")
+            return WoohyunBench._tokens_to_bytes(s[1:-1])
+
+        # 2) 구분자가 있으면 토큰별 byte로 해석
+        if any(ch in s for ch in (" ", ",", ";")):
+            return WoohyunBench._tokens_to_bytes(s)
+
+        # 3) 단일 hex 문자열
+        cleaned = s
         if cleaned.lower().startswith("0x"):
             cleaned = cleaned[2:]
         if len(cleaned) % 2 != 0:
-            cleaned = "0" + cleaned  # 홀수 길이면 앞에 0 패딩
+            cleaned = "0" + cleaned
         return bytearray.fromhex(cleaned)
+
+    @staticmethod
+    def _tokens_to_bytes(text: str) -> bytearray:
+        """공백/콤마/세미콜론으로 나뉜 토큰들을 byte 배열로 변환.
+
+        토큰이 "0x" 접두면 hex, 아니면 decimal로 해석. 각 값은 0~255 범위.
+        """
+        # 모든 구분자를 공백으로 통일 후 split
+        normalized = text.replace(",", " ").replace(";", " ")
+        tokens = [t.strip() for t in normalized.split() if t.strip()]
+        out = bytearray()
+        for t in tokens:
+            v = int(t, 16) if t.lower().startswith("0x") else int(t)
+            if not (0 <= v <= 0xFF):
+                raise ValueError(f"payload byte out of range: {t}")
+            out.append(v)
+        return out
 
     def ReinitCanFd(self, baudrate: int = 0x1F4, databit_time: int = 0x7D0) -> str:
         """CAN FD 버스 재초기화 (기본 500k/2M)."""
