@@ -119,8 +119,14 @@
     },
     {
       "name": "VW",
-      "enabled": false,
-      "models": []
+      "enabled": true,
+      "models": [
+        {
+          "value": "VW EU",
+          "enabled": true,
+          "agent": "MIB Agent"
+        }
+      ]
     },
     {
       "name": "Camera",
@@ -200,6 +206,11 @@
     {
       "name": "Webcam",
       "type": "webcam",
+      "enabled": true
+    },
+    {
+      "name": "MIB Agent",
+      "type": "mib_agent",
       "enabled": true
     }
   ]
