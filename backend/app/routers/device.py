@@ -976,17 +976,43 @@ async def update_device(req: UpdateDeviceRequest):
         reset_instance(req.module)
     if req.connect_type is not None:
         dev.info["connect_type"] = req.connect_type
+    icas_resolution_changed = False
     if req.extra_fields is not None:
         for k, v in req.extra_fields.items():
-            dev.info[k] = v
+            # ICAS의 resolution은 dict 스키마({width,height})를 보존해야 하므로
+            # 문자열 "WxH"로 들어온 경우 파싱하여 두 형태 모두 갱신.
+            if dev.type == "icas_agent" and k == "resolution" and isinstance(v, str):
+                try:
+                    rw_s, rh_s = v.upper().split("X")
+                    rw, rh = int(rw_s), int(rh_s)
+                    dev.info["resolution"] = {"width": rw, "height": rh}
+                    dev.info["resolution_str"] = f"{rw}x{rh}"
+                    icas_resolution_changed = True
+                except Exception:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid ICAS resolution format: {v} (expected WxH, e.g. 2240x1260)",
+                    )
+            else:
+                dev.info[k] = v
+        # 활성 ICASAgentService에 즉시 반영 — _x_mult/_y_mult가 새 해상도로 재계산되어
+        # 다음 터치부터 좌표 인코딩이 올바르게 동작.
+        if icas_resolution_changed:
+            svc = dm.get_icas_service(dev.id)
+            if svc is not None:
+                try:
+                    svc.resolution = dev.info["resolution_str"]
+                except Exception as e:
+                    logger.warning("Failed to update live ICAS resolution: %s", e)
         # Reset cached module instance when connection params change
         module_name = dev.info.get("module")
         if module_name:
             from ..services.module_service import reset_instance
             reset_instance(module_name)
 
-    # Persist changes if auxiliary device
-    if dev.category == "auxiliary":
+    # Persist changes — auxiliary는 항상, primary 중 ICAS는 해상도 변경 시 저장.
+    # _save_auxiliary_devices는 이름과 달리 ICAS 등 등록형 primary도 함께 직렬화함.
+    if dev.category == "auxiliary" or (dev.type == "icas_agent" and icas_resolution_changed):
         dm._save_auxiliary_devices()
 
     # Reopen serial connection if address or baudrate changed

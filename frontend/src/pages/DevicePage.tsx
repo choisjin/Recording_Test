@@ -34,6 +34,20 @@ interface SerialPort {
   pid: string;
 }
 
+// ICAS 디바이스 해상도 프리셋 — Coding Value 가이드 기반.
+// value는 "WxH" 문자열로 백엔드 ICASAgentService가 그대로 파싱.
+const ICAS_RESOLUTION_PRESETS: { label: string; value: string }[] = [
+  { label: '10.0" — 1560x700',                   value: '1560x700'  },
+  { label: '10.4" — 1560x878',                   value: '1560x878'  },
+  { label: '12.9" — 1920x1080',                  value: '1920x1080' },
+  { label: '15.0" — 2240x1260',                  value: '2240x1260' },
+  { label: '13.1" — 1920x1080 (SK only)',        value: '1920x1080' },
+  { label: '8.0" — 800x480 (mib3oi-gp-mqb)',     value: '800x480'   },
+  { label: '9.2" — 1280x640 (mib3oi-gp-mqb)',    value: '1280x640'  },
+  { label: '14.6" — 1080x1920 (Ford Portrait)',  value: '1080x1920' },
+];
+const ICAS_DEFAULT_RESOLUTION = '1560x700';
+
 // 디바이스 ID에서 prefix 추출 (Android_1 → Android, POWER_2 → POWER)
 function getDevicePrefix(id: string): string {
   const m = id.match(/^(.+?)_\d+$/);
@@ -240,6 +254,8 @@ export default function DevicePage() {
   const [sshUser, setSshUser] = useState('');
   const [sshPass, setSshPass] = useState('');
   const [sshKeyFile, setSshKeyFile] = useState('');
+  // ICAS Agent 등록용 해상도 (등록 모달). "WxH" 형식.
+  const [icasResolution, setIcasResolution] = useState<string>(ICAS_DEFAULT_RESOLUTION);
   const [modalTabKey, setModalTabKey] = useState('scan');
   const [deviceProject, setDeviceProject] = useState('');
   const [deviceModel, setDeviceModel] = useState('');
@@ -335,6 +351,8 @@ export default function DevicePage() {
   const [editBaudrate, setEditBaudrate] = useState(115200);
   const [editModule, setEditModule] = useState<string | undefined>(undefined);
   const [editExtraFields, setEditExtraFields] = useState<Record<string, any>>({});
+  // ICAS 수정 모달 전용 해상도 ("WxH" 문자열). type === 'icas_agent'일 때만 노출.
+  const [editIcasResolution, setEditIcasResolution] = useState<string>('');
   const [editSaving, setEditSaving] = useState(false);
 
   // Scan settings modal
@@ -635,7 +653,8 @@ export default function DevicePage() {
         extra = extra || {};
         extra.username = (sshUser && sshUser.trim()) || 'root';
         extra.password = sshPass || '';
-        extra.resolution = '1560x700';
+        // 해상도가 잘못되면 터치 좌표 인코딩(_x_mult/_y_mult)이 어긋나 조작이 동작하지 않음.
+        extra.resolution = (icasResolution || ICAS_DEFAULT_RESOLUTION).trim();
       }
       const result = await connectDevice(devType, connectAddress.trim(), baudrate, '', modalCategory, selectedModule, moduleConnType, extra, '', tcpPort, model);
       message.success(result);
@@ -749,6 +768,20 @@ export default function DevicePage() {
       }
     }
     setEditExtraFields(extras);
+    // ICAS 해상도 초기값: resolution_str 우선, 없으면 dict에서 복원, 최후엔 기본값.
+    if (dev.type === 'icas_agent') {
+      const rs = dev.info?.resolution_str;
+      const r = dev.info?.resolution;
+      if (typeof rs === 'string' && rs.trim()) {
+        setEditIcasResolution(rs.trim());
+      } else if (r && typeof r === 'object' && r.width && r.height) {
+        setEditIcasResolution(`${r.width}x${r.height}`);
+      } else {
+        setEditIcasResolution(ICAS_DEFAULT_RESOLUTION);
+      }
+    } else {
+      setEditIcasResolution('');
+    }
     setEditModalOpen(true);
   };
 
@@ -780,6 +813,17 @@ export default function DevicePage() {
       }
       if (Object.keys(editExtraFields).length > 0) {
         updates.extra_fields = editExtraFields;
+      }
+      // ICAS 해상도 변경: 기존 resolution_str과 비교, 다르면 extra_fields.resolution으로 전달.
+      if (editDevice.type === 'icas_agent') {
+        const newRes = (editIcasResolution || '').trim();
+        const oldRes = (editDevice.info?.resolution_str || '').trim()
+          || (editDevice.info?.resolution
+            ? `${editDevice.info.resolution.width}x${editDevice.info.resolution.height}`
+            : '');
+        if (newRes && newRes !== oldRes) {
+          updates.extra_fields = { ...(updates.extra_fields || {}), resolution: newRes };
+        }
       }
       await deviceApi.updateDevice(editDevice.id, updates);
       message.success(t('device.editSuccess'));
@@ -1756,8 +1800,30 @@ export default function DevicePage() {
                           <span style={{ fontSize: 11, color: '#888' }}>Password:</span>
                           <Input.Password value={sshPass} onChange={(e) => setSshPass(e.target.value)} style={{ width: 160 }} placeholder="(blank if none)" />
                         </Space>
+                        <Space wrap>
+                          <span style={{ fontSize: 11, color: '#888' }}>Resolution:</span>
+                          <Select
+                            style={{ width: 280 }}
+                            value={icasResolution}
+                            onChange={(v) => setIcasResolution(v)}
+                            options={(() => {
+                              const opts = ICAS_RESOLUTION_PRESETS.map(p => ({ label: p.label, value: p.value }));
+                              // 현재 값이 프리셋에 없으면 사용자 정의로 함께 표시
+                              if (!opts.find(o => o.value === icasResolution) && icasResolution) {
+                                opts.push({ label: `사용자 정의 — ${icasResolution}`, value: icasResolution });
+                              }
+                              return opts;
+                            })()}
+                          />
+                          <Input
+                            placeholder="WxH 직접 입력"
+                            value={icasResolution}
+                            onChange={(e) => setIcasResolution(e.target.value)}
+                            style={{ width: 140 }}
+                          />
+                        </Space>
                         <div style={{ fontSize: 10, color: '#888' }}>
-                          해상도는 1560x700(10") 또는 2240x1260(15") 중 선택 — 등록 후 수정 모달에서 변경 가능
+                          해상도는 ICAS 디바이스 화면 크기와 정확히 일치해야 터치 좌표가 올바르게 인식됩니다. 등록 후 수정 모달에서 변경 가능.
                         </div>
                       </>
                     )}
@@ -1995,6 +2061,34 @@ export default function DevicePage() {
               )}
             </div>
             {/* 수정 가능한 필드 */}
+            {editDevice.type === 'icas_agent' && (
+              <div>
+                <span style={{ fontSize: 11, color: '#888' }}>Resolution:</span>
+                <Space.Compact style={{ width: '100%' }}>
+                  <Select
+                    style={{ flex: 1 }}
+                    value={editIcasResolution}
+                    onChange={(v) => setEditIcasResolution(v)}
+                    options={(() => {
+                      const opts = ICAS_RESOLUTION_PRESETS.map(p => ({ label: p.label, value: p.value }));
+                      if (editIcasResolution && !opts.find(o => o.value === editIcasResolution)) {
+                        opts.push({ label: `사용자 정의 — ${editIcasResolution}`, value: editIcasResolution });
+                      }
+                      return opts;
+                    })()}
+                  />
+                  <Input
+                    style={{ width: 140 }}
+                    placeholder="WxH"
+                    value={editIcasResolution}
+                    onChange={(e) => setEditIcasResolution(e.target.value)}
+                  />
+                </Space.Compact>
+                <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>
+                  변경 시 즉시 터치 좌표 매핑(_x_mult/_y_mult)이 갱신되며, 파일에도 영구 저장됩니다.
+                </div>
+              </div>
+            )}
             {(editDevice.type === 'serial' || editDevice.info?.baudrate) && (
               <div>
                 <span style={{ fontSize: 11, color: '#888' }}>Baudrate:</span>
