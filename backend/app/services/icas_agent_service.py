@@ -410,11 +410,50 @@ class ICASAgentService:
                 self._probe_layer_info()
             except Exception as e:
                 logger.debug("ICAS layer probe skipped: %s", e)
+            # ksend 입력 경로 진단: 바이너리 존재 + src/dst addr로 더미 프레임 송신 결과 확인.
+            try:
+                self._probe_ksend()
+            except Exception as e:
+                logger.debug("ICAS ksend probe skipped: %s", e)
             return True
         except Exception as e:
             logger.error("ICAS connect failed %s:%d: %s", self.host, self.port, e)
             self._connected = False
             return False
+
+    def _probe_ksend(self) -> None:
+        """ksend 입력 경로의 가용성을 진단.
+
+        1) ksend 바이너리 존재/권한 확인 (`ls -la /lge/app_ro/bin/ksend`)
+        2) help/usage 출력 확인 — 인자 형식이 다른 ksend 변종인지 식별
+        3) 가능한 다른 입력 메커니즘 탐색 (uinput/evtouch/input* 노드)
+        """
+        with self._ssh_lock:
+            ssh = self._get_shared_ssh()
+            cmd = (
+                "echo '--ksend bin--' ; "
+                "ls -la /lge/app_ro/bin/ksend 2>&1 ; "
+                "echo '--ksend help--' ; "
+                "/lge/app_ro/bin/ksend 2>&1 | head -n 20 ; "
+                "echo '--alt input nodes--' ; "
+                "ls -la /dev/input/ 2>&1 | head -n 30 ; "
+                "echo '--uinput--' ; "
+                "ls -la /dev/uinput 2>&1 ; "
+                "echo '--addr defaults--' ; "
+                f"echo 'src={self.src_addr} dst={self.dst_addr} market={self.market}'"
+            )
+            try:
+                stdin, stdout, stderr = ssh.exec_command(cmd, timeout=5)
+                try:
+                    stdin.close()
+                except Exception:
+                    pass
+                out = stdout.read().decode("utf-8", errors="replace")
+                err = stderr.read().decode("utf-8", errors="replace")
+                snippet = (out + ("\n[stderr] " + err if err.strip() else "")).strip().replace("\r", " ").replace("\n", " | ")[:1500]
+                logger.info("ICAS ksend probe → %s", snippet or "(empty)")
+            except Exception as e:
+                logger.debug("ICAS ksend probe exec failed: %s", e)
 
     def _wait_remote_files_stable(self, ssh, items: list[tuple[int, str]],
                                   max_wait_s: float = 1.0,
@@ -639,9 +678,16 @@ class ICASAgentService:
             _run_all(ssh, commands)
 
     def _ksend(self, data_bytes: str) -> None:
-        """ksend 명령 1회 송신 — 공유 shell 채널 사용 (레퍼런스 구현 동일 패턴)."""
+        """ksend 명령 1회 송신.
+
+        기본 모드(invoke_shell): 빠르지만 stderr/exit를 알 수 없어 silent fail 가능.
+        ICAS_KSEND_VERBOSE=1 환경변수: exec_command 모드 + 결과 로깅 (디버깅 시 사용).
+        """
         cmd = f'/lge/app_ro/bin/ksend -s {self.src_addr} -d {self.dst_addr} -b "{data_bytes}"'
-        self._shell_run([cmd])
+        if os.environ.get("ICAS_KSEND_VERBOSE", "").strip() in ("1", "true", "yes"):
+            self._ksend_exec_verbose(cmd)
+        else:
+            self._shell_run([cmd])
 
     def _ksend_many(self, data_list: list[str], interval_s: float = 0.1) -> None:
         """ksend 명령 여러 개를 공유 shell 채널에서 순차 송신."""
@@ -649,8 +695,41 @@ class ICASAgentService:
             f'/lge/app_ro/bin/ksend -s {self.src_addr} -d {self.dst_addr} -b "{data}"'
             for data in data_list
         ]
+        if os.environ.get("ICAS_KSEND_VERBOSE", "").strip() in ("1", "true", "yes"):
+            for c in cmds:
+                self._ksend_exec_verbose(c)
+                if interval_s > 0:
+                    time.sleep(interval_s)
+            return
         # 각 cmd 사이 간격은 shell_run의 post_sleep_s로 들어감 — interval_s 우선
         self._shell_run(cmds, post_sleep_s=max(0.02, interval_s))
+
+    def _ksend_exec_verbose(self, cmd: str) -> None:
+        """진단 모드: exec_command로 ksend 실행하고 stderr/exit 결과를 로깅.
+
+        성능 영향 있음 (매 명령당 SSH channel 1회). 디버깅 후 환경변수 해제 권장.
+        """
+        with self._ssh_lock:
+            ssh = self._get_shared_ssh()
+            try:
+                stdin, stdout, stderr = ssh.exec_command(cmd, timeout=5)
+                try:
+                    stdin.close()
+                except Exception:
+                    pass
+                out = stdout.read().decode("utf-8", errors="replace")
+                err = stderr.read().decode("utf-8", errors="replace")
+                ec = stdout.channel.recv_exit_status()
+                if ec != 0 or err.strip():
+                    logger.warning(
+                        "ksend exit=%d stderr=%r stdout=%r cmd=%r",
+                        ec, err.strip()[:200], out.strip()[:200], cmd,
+                    )
+                else:
+                    logger.info("ksend ok: %r", cmd[:160])
+            except Exception as e:
+                logger.warning("ksend exec failed: type=%s repr=%r cmd=%r",
+                               type(e).__name__, e, cmd)
 
     # ------------------------------------------------------------------
     # Touch (press/drag/release) — ref RemoteController.excutecmdTouch*
