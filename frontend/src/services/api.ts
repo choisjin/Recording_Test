@@ -28,6 +28,12 @@ export const deviceApi = {
     api.get('/device/icas-keys', { params: deviceId ? { device_id: deviceId } : {} }),
   updateIcasKeys: (deviceId: string, keys: Record<string, { class?: 'short' | 'long'; key?: number; visible?: boolean }>) =>
     api.post('/device/icas-keys', { device_id: deviceId, keys }),
+  listMibKeys: (deviceId?: string) =>
+    api.get('/device/mib-keys', { params: deviceId ? { device_id: deviceId } : {} }),
+  updateMibKeys: (deviceId: string, keys: Record<string, { class?: 'short' | 'long'; key?: number; visible?: boolean }>) =>
+    api.post('/device/mib-keys', { device_id: deviceId, keys }),
+  detectMibResolution: (deviceId: string) =>
+    api.post('/device/mib/detect_resolution', { device_id: deviceId }),
   disconnect: (deviceId: string) => api.post('/device/disconnect', { address: deviceId }),
   updateDevice: (device_id: string, updates: Record<string, any>) =>
     api.post('/device/update', { device_id, ...updates }),

@@ -16,6 +16,7 @@ from .adb_service import ADBService
 from .hkmc6th_service import HKMC6thService
 from .isap_agent_service import ISAPAgentService
 from .icas_agent_service import ICASAgentService
+from .mib_agent_service import MIBAgentService
 from .ssh_service import SSHConnection
 
 logger = logging.getLogger(__name__)
@@ -603,6 +604,8 @@ class DeviceManager:
         self._isap_reconnect_attempts: dict[str, int] = {}
         self._icas_conns: dict[str, ICASAgentService] = {}  # device_id -> ICASAgentService
         self._icas_reconnect_attempts: dict[str, int] = {}
+        self._mib_conns: dict[str, MIBAgentService] = {}  # device_id -> MIBAgentService
+        self._mib_reconnect_attempts: dict[str, int] = {}
         self._adb_reconnect_attempts: dict[str, int] = {}  # device_id -> 연속 재연결 실패 횟수
         # 디바이스별 재연결 락: playback의 _ensure_device_connected와 백그라운드 monitor 루프가
         # 같은 디바이스를 동시에 재연결하지 못하도록 직렬화. race condition 제거용.
@@ -699,6 +702,8 @@ class DeviceManager:
             prefix = "iSAP"
         elif dev_type == "icas_agent":
             prefix = "ICAS"
+        elif dev_type == "mib_agent":
+            prefix = "MIB"
         elif dev_type == "vision_camera":
             prefix = "VisionCam"
         elif dev_type == "webcam":
@@ -721,7 +726,7 @@ class DeviceManager:
         aux = [
             d.to_dict()
             for d in self._devices.values()
-            if d.category == "auxiliary" or d.type in ("adb", "hkmc_agent", "isap_agent", "icas_agent", "vision_camera", "webcam", "ssh")
+            if d.category == "auxiliary" or d.type in ("adb", "hkmc_agent", "isap_agent", "icas_agent", "mib_agent", "vision_camera", "webcam", "ssh")
         ]
         try:
             _AUX_DEVICES_FILE.write_text(json.dumps(aux, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -928,6 +933,68 @@ class DeviceManager:
             return self._icas_conns.get(dev.id)
         return None
 
+    async def add_mib_agent_device(self, host: str, port: int = 22, device_id: str = "",
+                                   name: str = "", device_model: str = "",
+                                   username: str = "root", password: str = "",
+                                   resolution: str = "1560x700",
+                                   private_server_ip: str = "",
+                                   private_server_password: str = "",
+                                   iid_display: str = "10",
+                                   hud_display: str = "11",
+                                   market: str = "") -> ManagedDevice:
+        """MIB Agent 디바이스 등록만 (연결은 connect_device_by_id로 별도 수행).
+
+        VW MIB(Modular Infotainment Building Block) HU용. ksend의 bit-position form 사용,
+        해상도 자동 감지/보정, screen 인덱스 동적 학습 등이 활성화됨.
+        """
+        final_id = device_id or self._generate_device_id("mib_agent", device_model=device_model)
+        display_name = name or f"MIB ({host}:{port})"
+        try:
+            rw_s, rh_s = str(resolution).upper().split("X")
+            res_dict = {"width": int(rw_s), "height": int(rh_s)}
+        except Exception:
+            res_dict = {"width": 1560, "height": 700}
+
+        resolved_market = (market or "EU").strip().upper() or "EU"
+
+        info: dict = {
+            "port": int(port),
+            "username": username,
+            "password": password,
+            "resolution": res_dict,
+            "resolution_str": str(resolution),
+            "private_server_ip": private_server_ip,
+            "private_server_password": private_server_password,
+            "iid_display": str(iid_display),
+            "hud_display": str(hud_display),
+            "market": resolved_market,
+        }
+        if device_model:
+            info["device_model"] = device_model
+
+        dev = ManagedDevice(
+            id=final_id,
+            type="mib_agent",
+            category="primary",
+            address=host,
+            status="disconnected",
+            name=display_name,
+            info=info,
+        )
+        self._devices[final_id] = dev
+        self._save_auxiliary_devices()
+        return dev
+
+    def get_mib_service(self, device_id: str) -> Optional[MIBAgentService]:
+        """Get MIBAgentService instance for a device. Returns None if not found."""
+        svc = self._mib_conns.get(device_id)
+        if svc:
+            return svc
+        dev = self.get_device(device_id)
+        if dev and dev.type == "mib_agent":
+            return self._mib_conns.get(dev.id)
+        return None
+
     async def add_vision_camera_device(self, mac: str, model: str = "", serial: str = "",
                                        ip: str = "", subnetmask: str = "255.255.0.0",
                                        device_id: str = "", name: str = "") -> ManagedDevice:
@@ -1041,6 +1108,13 @@ class DeviceManager:
             if dev.type == "icas_agent":
                 icas = self._icas_conns.get(dev.id)
                 if icas and icas.is_connected:
+                    dev.status = "connected"
+                elif dev.status != "reconnecting":
+                    dev.status = "disconnected"
+                continue
+            if dev.type == "mib_agent":
+                mib = self._mib_conns.get(dev.id)
+                if mib and mib.is_connected:
                     dev.status = "connected"
                 elif dev.status != "reconnecting":
                     dev.status = "disconnected"
@@ -2060,6 +2134,113 @@ class DeviceManager:
                 dev.status = "disconnected"
                 return f"ICAS connect failed: {dev.id} — {e}"
 
+        elif dev.type == "mib_agent":
+            port = int(dev.info.get("port", 22) or 22)
+            username = dev.info.get("username", "root") or "root"
+            password = dev.info.get("password", "") or ""
+            # resolution_str(원본 "WxH") 우선, 없으면 resolution(dict) → "WxH" 복원, 모두 없으면 기본값
+            res_str = dev.info.get("resolution_str")
+            if not res_str:
+                res_val = dev.info.get("resolution")
+                if isinstance(res_val, dict) and "width" in res_val and "height" in res_val:
+                    res_str = f"{res_val['width']}x{res_val['height']}"
+                elif isinstance(res_val, str):
+                    res_str = res_val
+                else:
+                    res_str = "1560x700"
+            market = (dev.info.get("market") or "EU").strip().upper() or "EU"
+            dev.info["market"] = market
+            private_ip = dev.info.get("private_server_ip", "") or ""
+
+            # 캡처 시 PNG 실제 크기와 입력 해상도가 다르면 dev.info 자동 갱신 + 영구 저장.
+            target_dev_id = dev.id
+            def _on_mib_resolution_changed(wxh: str, _did: str = target_dev_id) -> None:
+                d = self._devices.get(_did)
+                if d is None or d.type != "mib_agent":
+                    return
+                try:
+                    rw_s, rh_s = wxh.upper().split("X")
+                    rw, rh = int(rw_s), int(rh_s)
+                except Exception:
+                    return
+                cur = d.info.get("resolution") if isinstance(d.info.get("resolution"), dict) else None
+                if cur and cur.get("width") == rw and cur.get("height") == rh:
+                    return
+                d.info["resolution"] = {"width": rw, "height": rh}
+                d.info["resolution_str"] = f"{rw}x{rh}"
+                if isinstance(d.info.get("screens"), dict):
+                    for k in d.info["screens"]:
+                        d.info["screens"][k] = {"width": rw, "height": rh}
+                logger.info("MIB auto-detected resolution: %s → %s", _did, f"{rw}x{rh}")
+                try:
+                    self._save_auxiliary_devices()
+                except Exception as e:
+                    logger.warning("MIB auto-detect persist failed: %s", e)
+
+            def _on_mib_addr_changed(src: str, dst: str, _did: str = target_dev_id) -> None:
+                """ksend src/dst가 자동 보정될 때 dev.info에 저장 + 영구 저장."""
+                d = self._devices.get(_did)
+                if d is None or d.type != "mib_agent":
+                    return
+                cur_src = d.info.get("ksend_src", "")
+                cur_dst = d.info.get("ksend_dst", "")
+                if cur_src == src and cur_dst == dst:
+                    return
+                d.info["ksend_src"] = src
+                d.info["ksend_dst"] = dst
+                logger.info("MIB auto-corrected ksend addr: %s → src=%s dst=%s", _did, src, dst)
+                try:
+                    self._save_auxiliary_devices()
+                except Exception as e:
+                    logger.warning("MIB addr auto-correct persist failed: %s", e)
+
+            # screen 인덱스 — 디바이스마다 가용 layer 다름. 저장된 값이 있으면 사용.
+            stored_indices = dev.info.get("screen_indices")
+            screen_indices = None
+            if isinstance(stored_indices, list) and stored_indices:
+                try:
+                    screen_indices = [int(i) for i in stored_indices]
+                except Exception:
+                    screen_indices = None
+
+            try:
+                svc = MIBAgentService(
+                    dev.address, port=port, device_id=dev.id,
+                    username=username, password=password, resolution=res_str,
+                    private_server_ip=private_ip,
+                    private_server_password=dev.info.get("private_server_password", "") or "",
+                    iid_display=dev.info.get("iid_display", "10") or "10",
+                    hud_display=dev.info.get("hud_display", "11") or "11",
+                    market=market,
+                    key_overrides=dev.info.get("mib_keys"),
+                    on_resolution_changed=_on_mib_resolution_changed,
+                    on_addr_changed=_on_mib_addr_changed,
+                    screen_indices=screen_indices,
+                )
+                # 저장된 ksend src/dst override가 있으면 market default를 덮어씀
+                stored_src = dev.info.get("ksend_src")
+                stored_dst = dev.info.get("ksend_dst")
+                if stored_src and stored_dst:
+                    svc.set_addr(str(stored_src), str(stored_dst))
+                ok = await svc.async_connect()
+                if ok:
+                    self._mib_conns[dev.id] = svc
+                    dev.status = "connected"
+                    _mark_connected()
+                    dev.info["agent_version"] = svc.agent_version
+                    dev.info["screens"] = svc.get_info()["screens"]
+                    dev.info["resolution"] = dev.info["screens"].get(
+                        svc.default_screen, {"width": 1560, "height": 700}
+                    )
+                    dev.info["resolution_str"] = res_str
+                    return f"MIB connected: {dev.id} ({dev.address}:{port})"
+                else:
+                    dev.status = "disconnected"
+                    return f"MIB connect failed: {dev.id}"
+            except Exception as e:
+                dev.status = "disconnected"
+                return f"MIB connect failed: {dev.id} — {e}"
+
         elif dev.type == "module":
             module_name = dev.info.get("module", "")
             if not module_name:
@@ -2248,6 +2429,16 @@ class DeviceManager:
 
         elif dev.type == "icas_agent":
             svc = self._icas_conns.pop(device_id, None)
+            if svc:
+                try:
+                    svc.disconnect()
+                except Exception:
+                    pass
+            dev.status = "disconnected"
+            return f"Disconnected: {dev.id}"
+
+        elif dev.type == "mib_agent":
+            svc = self._mib_conns.pop(device_id, None)
             if svc:
                 try:
                     svc.disconnect()

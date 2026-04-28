@@ -434,6 +434,7 @@ async def websocket_screen_mirror(websocket: WebSocket):
     is_hkmc = dev and dev.type == "hkmc_agent"
     is_isap = dev and dev.type == "isap_agent"
     is_icas = dev and dev.type == "icas_agent"
+    is_mib = dev and dev.type == "mib_agent"
     is_vision_camera = dev and dev.type == "vision_camera"
     is_webcam = dev and dev.type == "webcam"
 
@@ -441,8 +442,9 @@ async def websocket_screen_mirror(websocket: WebSocket):
         "hkmc" if is_hkmc else
         ("isap" if is_isap else
          ("icas" if is_icas else
-          ("vision_camera" if is_vision_camera else
-           ("webcam" if is_webcam else "adb")))))
+          ("mib" if is_mib else
+           ("vision_camera" if is_vision_camera else
+            ("webcam" if is_webcam else "adb"))))))
     logger.debug("Screen mirror: device=%s type=%s", target_device_id, dev_type_label)
 
     # scrcpy 제거 — 항상 JPEG screencap 사용
@@ -486,6 +488,32 @@ async def websocket_screen_mirror(websocket: WebSocket):
                         except Exception as ce:
                             # 캡처 실패 원인을 진단하기 위해 warning 레벨로 기록
                             logger.warning("ICAS capture error (%s): %s", screen_type, ce)
+                            await asyncio.sleep(0.5)
+                            continue
+                    else:
+                        await asyncio.sleep(0.3)
+                        continue
+                elif is_mib:
+                    mib = device_manager.get_mib_service(target_device_id)
+                    if mib and mib.is_connected:
+                        try:
+                            # MIB도 SSH+scp 기반 (LayerManagerControl dump). 타임아웃 여유 부여.
+                            jpeg_bytes = await mib.async_screencap_bytes(
+                                screen_type=screen_type, fmt="jpeg"
+                            )
+                            await websocket.send_bytes(jpeg_bytes)
+                        except WebSocketDisconnect:
+                            break
+                        except Exception as ce:
+                            cls_name = type(ce).__name__
+                            # 클라이언트 끊김 패밀리는 즉시 break (재시도 무의미)
+                            if cls_name in ("ClientDisconnected", "ConnectionClosed",
+                                            "ConnectionClosedOK", "ConnectionClosedError"):
+                                break
+                            logger.warning(
+                                "MIB capture error (%s): type=%s repr=%r",
+                                screen_type, cls_name, ce,
+                            )
                             await asyncio.sleep(0.5)
                             continue
                     else:
