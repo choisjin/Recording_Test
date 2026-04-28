@@ -2028,62 +2028,7 @@ class DeviceManager:
             if market in ("EU", "NAR", "CN") and private_ip == "192.168.0.2":
                 private_ip = ""
                 dev.info["private_server_ip"] = ""
-            # 캡처 시 PNG 실제 크기와 입력 해상도가 다르면 dev.info 자동 갱신 + 영구 저장.
-            # closure로 dev_id를 캡처 (dev 객체 직접 캡처도 가능하나 명시적 lookup이 안전).
-            target_dev_id = dev.id
-            def _on_icas_resolution_changed(wxh: str, _did: str = target_dev_id) -> None:
-                d = self._devices.get(_did)
-                if d is None or d.type != "icas_agent":
-                    return
-                try:
-                    rw_s, rh_s = wxh.upper().split("X")
-                    rw, rh = int(rw_s), int(rh_s)
-                except Exception:
-                    return
-                # 변경 없으면 디스크 IO 회피
-                cur = d.info.get("resolution") if isinstance(d.info.get("resolution"), dict) else None
-                if cur and cur.get("width") == rw and cur.get("height") == rh:
-                    return
-                d.info["resolution"] = {"width": rw, "height": rh}
-                d.info["resolution_str"] = f"{rw}x{rh}"
-                # screens dict가 있으면 HU도 같이 업데이트해 프론트 표기 일관성 유지
-                if isinstance(d.info.get("screens"), dict):
-                    for k in d.info["screens"]:
-                        d.info["screens"][k] = {"width": rw, "height": rh}
-                logger.info("ICAS auto-detected resolution: %s → %s", _did, f"{rw}x{rh}")
-                try:
-                    self._save_auxiliary_devices()
-                except Exception as e:
-                    logger.warning("ICAS auto-detect persist failed: %s", e)
-
-            def _on_icas_addr_changed(src: str, dst: str, _did: str = target_dev_id) -> None:
-                """ksend src/dst가 자동 보정될 때 dev.info에 저장 + 영구 저장."""
-                d = self._devices.get(_did)
-                if d is None or d.type != "icas_agent":
-                    return
-                cur_src = d.info.get("ksend_src", "")
-                cur_dst = d.info.get("ksend_dst", "")
-                if cur_src == src and cur_dst == dst:
-                    return
-                d.info["ksend_src"] = src
-                d.info["ksend_dst"] = dst
-                logger.info("ICAS auto-corrected ksend addr: %s → src=%s dst=%s", _did, src, dst)
-                try:
-                    self._save_auxiliary_devices()
-                except Exception as e:
-                    logger.warning("ICAS addr auto-correct persist failed: %s", e)
-
             try:
-                # screen 인덱스 — 디바이스마다 가용 layer 다름. 저장된 값이 있으면 사용,
-                # 없으면 None으로 두어 서비스 기본값([0,2])을 따름. 형식: list[int].
-                stored_indices = dev.info.get("screen_indices")
-                screen_indices = None
-                if isinstance(stored_indices, list) and stored_indices:
-                    try:
-                        screen_indices = [int(i) for i in stored_indices]
-                    except Exception:
-                        screen_indices = None
-
                 svc = ICASAgentService(
                     dev.address, port=port, device_id=dev.id,
                     username=username, password=password, resolution=res_str,
@@ -2094,15 +2039,7 @@ class DeviceManager:
                     hud_display=dev.info.get("hud_display", "11") or "11",
                     market=market,
                     key_overrides=dev.info.get("icas_keys"),
-                    on_resolution_changed=_on_icas_resolution_changed,
-                    on_addr_changed=_on_icas_addr_changed,
-                    screen_indices=screen_indices,
                 )
-                # 저장된 ksend src/dst override가 있으면 market default를 덮어씀
-                stored_src = dev.info.get("ksend_src")
-                stored_dst = dev.info.get("ksend_dst")
-                if stored_src and stored_dst:
-                    svc.set_addr(str(stored_src), str(stored_dst))
                 ok = await svc.async_connect()
                 if ok:
                     self._icas_conns[dev.id] = svc

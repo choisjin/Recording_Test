@@ -34,20 +34,6 @@ interface SerialPort {
   pid: string;
 }
 
-// ICAS 디바이스 해상도 프리셋 — Coding Value 가이드 기반.
-// value는 "WxH" 문자열로 백엔드 ICASAgentService가 그대로 파싱.
-const ICAS_RESOLUTION_PRESETS: { label: string; value: string }[] = [
-  { label: '10.0" — 1560x700',                   value: '1560x700'  },
-  { label: '10.4" — 1560x878',                   value: '1560x878'  },
-  { label: '12.9" — 1920x1080',                  value: '1920x1080' },
-  { label: '15.0" — 2240x1260',                  value: '2240x1260' },
-  { label: '13.1" — 1920x1080 (SK only)',        value: '1920x1080' },
-  { label: '8.0" — 800x480 (mib3oi-gp-mqb)',     value: '800x480'   },
-  { label: '9.2" — 1280x640 (mib3oi-gp-mqb)',    value: '1280x640'  },
-  { label: '14.6" — 1080x1920 (Ford Portrait)',  value: '1080x1920' },
-];
-const ICAS_DEFAULT_RESOLUTION = '1560x700';
-
 // 디바이스 ID에서 prefix 추출 (Android_1 → Android, POWER_2 → POWER)
 function getDevicePrefix(id: string): string {
   const m = id.match(/^(.+?)_\d+$/);
@@ -254,8 +240,6 @@ export default function DevicePage() {
   const [sshUser, setSshUser] = useState('');
   const [sshPass, setSshPass] = useState('');
   const [sshKeyFile, setSshKeyFile] = useState('');
-  // ICAS Agent 등록용 해상도 (등록 모달). "WxH" 형식.
-  const [icasResolution, setIcasResolution] = useState<string>(ICAS_DEFAULT_RESOLUTION);
   const [modalTabKey, setModalTabKey] = useState('scan');
   const [deviceProject, setDeviceProject] = useState('');
   const [deviceModel, setDeviceModel] = useState('');
@@ -351,9 +335,6 @@ export default function DevicePage() {
   const [editBaudrate, setEditBaudrate] = useState(115200);
   const [editModule, setEditModule] = useState<string | undefined>(undefined);
   const [editExtraFields, setEditExtraFields] = useState<Record<string, any>>({});
-  // ICAS 수정 모달 전용 해상도 ("WxH" 문자열). type === 'icas_agent'일 때만 노출.
-  const [editIcasResolution, setEditIcasResolution] = useState<string>('');
-  const [detectingIcasRes, setDetectingIcasRes] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
 
   // Scan settings modal
@@ -654,8 +635,7 @@ export default function DevicePage() {
         extra = extra || {};
         extra.username = (sshUser && sshUser.trim()) || 'root';
         extra.password = sshPass || '';
-        // 해상도가 잘못되면 터치 좌표 인코딩(_x_mult/_y_mult)이 어긋나 조작이 동작하지 않음.
-        extra.resolution = (icasResolution || ICAS_DEFAULT_RESOLUTION).trim();
+        extra.resolution = '1560x700';
       }
       const result = await connectDevice(devType, connectAddress.trim(), baudrate, '', modalCategory, selectedModule, moduleConnType, extra, '', tcpPort, model);
       message.success(result);
@@ -769,44 +749,7 @@ export default function DevicePage() {
       }
     }
     setEditExtraFields(extras);
-    // ICAS 해상도 초기값: resolution_str 우선, 없으면 dict에서 복원, 최후엔 기본값.
-    if (dev.type === 'icas_agent') {
-      const rs = dev.info?.resolution_str;
-      const r = dev.info?.resolution;
-      if (typeof rs === 'string' && rs.trim()) {
-        setEditIcasResolution(rs.trim());
-      } else if (r && typeof r === 'object' && r.width && r.height) {
-        setEditIcasResolution(`${r.width}x${r.height}`);
-      } else {
-        setEditIcasResolution(ICAS_DEFAULT_RESOLUTION);
-      }
-    } else {
-      setEditIcasResolution('');
-    }
     setEditModalOpen(true);
-  };
-
-  // ICAS 자동 해상도 감지 — 1회 캡처해 PNG 실제 크기를 받아 저장.
-  // 디바이스가 'connected' 상태여야 동작. 결과는 즉시 Select에 반영하고 디바이스 목록도 새로고침.
-  const handleDetectIcasResolution = async () => {
-    if (!editDevice) return;
-    setDetectingIcasRes(true);
-    try {
-      const res = await deviceApi.detectIcasResolution(editDevice.id);
-      const w = res.data?.width;
-      const h = res.data?.height;
-      const wxh = res.data?.resolution_str || (w && h ? `${w}x${h}` : '');
-      if (wxh) {
-        setEditIcasResolution(wxh);
-        message.success(`해상도 자동 감지: ${wxh}`);
-      } else {
-        message.warning('해상도 응답 형식이 올바르지 않습니다');
-      }
-      await fetchDevices();
-    } catch (e: any) {
-      message.error(e.response?.data?.detail || '자동 감지 실패 — 디바이스 연결 상태를 확인하세요');
-    }
-    setDetectingIcasRes(false);
   };
 
   const handleSaveEdit = async () => {
@@ -837,17 +780,6 @@ export default function DevicePage() {
       }
       if (Object.keys(editExtraFields).length > 0) {
         updates.extra_fields = editExtraFields;
-      }
-      // ICAS 해상도 변경: 기존 resolution_str과 비교, 다르면 extra_fields.resolution으로 전달.
-      if (editDevice.type === 'icas_agent') {
-        const newRes = (editIcasResolution || '').trim();
-        const oldRes = (editDevice.info?.resolution_str || '').trim()
-          || (editDevice.info?.resolution
-            ? `${editDevice.info.resolution.width}x${editDevice.info.resolution.height}`
-            : '');
-        if (newRes && newRes !== oldRes) {
-          updates.extra_fields = { ...(updates.extra_fields || {}), resolution: newRes };
-        }
       }
       await deviceApi.updateDevice(editDevice.id, updates);
       message.success(t('device.editSuccess'));
@@ -1824,30 +1756,8 @@ export default function DevicePage() {
                           <span style={{ fontSize: 11, color: '#888' }}>Password:</span>
                           <Input.Password value={sshPass} onChange={(e) => setSshPass(e.target.value)} style={{ width: 160 }} placeholder="(blank if none)" />
                         </Space>
-                        <Space wrap>
-                          <span style={{ fontSize: 11, color: '#888' }}>Resolution:</span>
-                          <Select
-                            style={{ width: 280 }}
-                            value={icasResolution}
-                            onChange={(v) => setIcasResolution(v)}
-                            options={(() => {
-                              const opts = ICAS_RESOLUTION_PRESETS.map(p => ({ label: p.label, value: p.value }));
-                              // 현재 값이 프리셋에 없으면 사용자 정의로 함께 표시
-                              if (!opts.find(o => o.value === icasResolution) && icasResolution) {
-                                opts.push({ label: `사용자 정의 — ${icasResolution}`, value: icasResolution });
-                              }
-                              return opts;
-                            })()}
-                          />
-                          <Input
-                            placeholder="WxH 직접 입력"
-                            value={icasResolution}
-                            onChange={(e) => setIcasResolution(e.target.value)}
-                            style={{ width: 140 }}
-                          />
-                        </Space>
                         <div style={{ fontSize: 10, color: '#888' }}>
-                          해상도는 ICAS 디바이스 화면 크기와 정확히 일치해야 터치 좌표가 올바르게 인식됩니다. 등록 후 수정 모달에서 변경 가능.
+                          해상도는 1560x700(10") 또는 2240x1260(15") 중 선택 — 등록 후 수정 모달에서 변경 가능
                         </div>
                       </>
                     )}
@@ -2085,42 +1995,6 @@ export default function DevicePage() {
               )}
             </div>
             {/* 수정 가능한 필드 */}
-            {editDevice.type === 'icas_agent' && (
-              <div>
-                <span style={{ fontSize: 11, color: '#888' }}>Resolution:</span>
-                <Space.Compact style={{ width: '100%' }}>
-                  <Select
-                    style={{ flex: 1 }}
-                    value={editIcasResolution}
-                    onChange={(v) => setEditIcasResolution(v)}
-                    options={(() => {
-                      const opts = ICAS_RESOLUTION_PRESETS.map(p => ({ label: p.label, value: p.value }));
-                      if (editIcasResolution && !opts.find(o => o.value === editIcasResolution)) {
-                        opts.push({ label: `사용자 정의 — ${editIcasResolution}`, value: editIcasResolution });
-                      }
-                      return opts;
-                    })()}
-                  />
-                  <Input
-                    style={{ width: 120 }}
-                    placeholder="WxH"
-                    value={editIcasResolution}
-                    onChange={(e) => setEditIcasResolution(e.target.value)}
-                  />
-                  <Button
-                    onClick={handleDetectIcasResolution}
-                    loading={detectingIcasRes}
-                    disabled={editDevice.status !== 'connected'}
-                    title={editDevice.status !== 'connected' ? '디바이스 연결 후 사용 가능' : '실제 화면 캡처로 해상도 감지'}
-                  >
-                    자동 감지
-                  </Button>
-                </Space.Compact>
-                <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>
-                  자동 감지: 디바이스를 1회 캡처해 PNG 실제 크기를 읽어 자동 저장합니다. 첫 캡처 시에도 자동 보정됩니다.
-                </div>
-              </div>
-            )}
             {(editDevice.type === 'serial' || editDevice.info?.baudrate) && (
               <div>
                 <span style={{ fontSize: 11, color: '#888' }}>Baudrate:</span>

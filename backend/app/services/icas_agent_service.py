@@ -23,10 +23,9 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
-import os
 import threading
 import time
-from typing import Optional, Callable
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -70,30 +69,6 @@ def _encode_image(pil_image, fmt: str) -> bytes:
     return buf.getvalue()
 
 
-def _validate_png_file(path: str) -> bool:
-    """PNG 파일이 시그니처 + IEND chunk를 모두 갖춘 완전한 파일인지 빠르게 검증.
-
-    PIL.Image.open의 lazy load는 IEND 부재 등 일부 손상에 무관심하지만, .convert('RGBA')에서
-    실제 디코딩이 일어나며 chunk 경계 깨짐을 만나면 실패. SCP 결과를 사용 전 미리 거르기 위함.
-    """
-    try:
-        size = os.path.getsize(path)
-        if size < 16:
-            return False
-        with open(path, "rb") as f:
-            sig = f.read(8)
-            if sig != b"\x89PNG\r\n\x1a\n":
-                return False
-            # 마지막 12 bytes는 IEND chunk: 4byte length(0) + 'IEND' + 4byte CRC
-            f.seek(-12, 2)
-            tail = f.read(12)
-            if len(tail) < 12 or tail[4:8] != b"IEND":
-                return False
-        return True
-    except Exception:
-        return False
-
-
 def _rm_tree(path: str) -> None:
     try:
         import shutil
@@ -119,10 +94,7 @@ class ICASAgentService:
                  iid_display: str = "10",
                  hud_display: str = "11",
                  market: str = "EU",
-                 key_overrides: Optional[dict[str, dict]] = None,
-                 on_resolution_changed: Optional[Callable[[str], None]] = None,
-                 on_addr_changed: Optional[Callable[[str, str], None]] = None,
-                 screen_indices: Optional[list[int]] = None):
+                 key_overrides: Optional[dict[str, dict]] = None):
         self.host = host
         self.port = int(port)
         self.device_id = device_id or f"ICAS_{host}"
@@ -141,43 +113,18 @@ class ICASAgentService:
 
         self._connected = False
         self.agent_version = "ICAS Agent"
-        # 캡처 전용 SSH 세션 — LayerManagerControl dump + SCP pull 용. 캡처 한 사이클은
-        # 1초 가까이 걸리므로, 같은 락에 묶이면 그 사이 입력(ksend)이 블록됨.
-        # 따라서 터치/하드키는 별도 _input_ssh_*에서 보내 캡처와 병렬화.
+        # 공유 SSH 세션 — 액션마다 재연결하지 않고 keep-alive로 재사용하여 인증 오버헤드(80ms/call) 제거.
+        # 터치/하드키/스크린샷 등 모든 액션이 동일 클라이언트를 공유하므로 _ssh_lock으로 직렬화.
         self._ssh_client = None
-        self._ssh_shell = None  # (legacy, 더 이상 사용하지 않음 — 입력은 _input_ssh_shell이 담당)
+        self._ssh_shell = None  # 장수명 invoke_shell 채널 — ksend 등 fire-and-forget 명령용
         self._ssh_lock = threading.RLock()
         self._ssh_keepalive_interval = 30  # seconds; transport.set_keepalive로 TCP idle 방지
-        # 입력(터치/하드키) 전용 SSH 세션 — 캡처 락과 독립이라 SCP가 바빠도 ksend는 즉시 송신.
-        # invoke_shell도 이 connection 위에서 유지하여 fire-and-forget 패턴 그대로 사용.
-        self._input_ssh_client = None
-        self._input_ssh_shell = None
-        self._input_ssh_lock = threading.RLock()
         # IID/HUD 캡처 — private_server로의 direct-tcpip 터널 + SSH 클라이언트도 장수명 캐시.
         # 매 프레임마다 paramiko.connect() 인증(~300-500ms)을 반복하지 않도록.
         self._ps_ssh = None
         self._ps_tunnel_chan = None
         self._ps_lock = threading.RLock()
         self._key_overrides: dict[str, dict] = dict(key_overrides or {})
-        # 캡처에서 PNG 실제 크기와 _res_x/_res_y가 다를 때 자동 정정 + 영구 저장 콜백.
-        # 시그니처: callback("WxH"). DeviceManager가 dev.info 갱신과 파일 저장을 담당.
-        self._on_resolution_changed = on_resolution_changed
-        # 콜백 폭주 방지 — 동일 해상도면 호출 안 함, 락으로 직렬화.
-        self._res_callback_lock = threading.Lock()
-        # ksend src/dst가 디바이스 ksend 변종에서 거부될 때(예: bit-position form만 허용)
-        # 자동 보정 후 영구 저장하기 위한 콜백. 시그니처: callback(src, dst).
-        self._on_addr_changed = on_addr_changed
-        # LayerManagerControl로 dump할 screen 인덱스 — 디바이스마다 가용한 layer가 다름.
-        # 기본값 [0, 2]은 일반적인 IVI 환경 추정치. 일부 단일 디스플레이 ICAS는 [0]만 존재.
-        # 캡처 실패가 누적되면 해당 인덱스를 자동 비활성화하고, 첫 연결 시 진단 명령으로 가용 레이어를 학습.
-        if screen_indices is None or not screen_indices:
-            self._screen_indices: list[int] = [0, 2]
-        else:
-            self._screen_indices = [int(i) for i in screen_indices]
-        # 인덱스별 연속 실패 카운트. 이 임계치 이상이면 비활성화.
-        self._screen_fail_count: dict[int, int] = {i: 0 for i in self._screen_indices}
-        self._screen_disabled: set[int] = set()
-        self._screen_fail_threshold = 3  # 3회 연속 실패하면 해당 인덱스 dump 시도 중단
 
     # ------------------------------------------------------------------
     # Basic accessors
@@ -204,41 +151,6 @@ class ICASAgentService:
     @property
     def is_connected(self) -> bool:
         return self._connected
-
-    def _maybe_autoupdate_resolution(self, width: int, height: int) -> bool:
-        """캡처된 PNG 크기와 현재 _res_x/_res_y 비교 후 다르면 자동 갱신.
-
-        반환값: 실제로 갱신되었는지 여부. 콜백은 DeviceManager가 주입하며
-        dev.info dict + 파일 저장을 담당. 동일 해상도면 no-op.
-        """
-        if width <= 0 or height <= 0:
-            return False
-        if width == self._res_x and height == self._res_y:
-            return False
-        with self._res_callback_lock:
-            new_res = f"{width}x{height}"
-            self._resolution = new_res.upper()
-            self._parse_resolution()
-            cb = self._on_resolution_changed
-        if cb is not None:
-            try:
-                cb(new_res)
-            except Exception as e:
-                logger.warning("ICAS on_resolution_changed callback failed: %s", e)
-        else:
-            logger.info("ICAS resolution auto-detected (no persistence callback): %s", new_res)
-        return True
-
-    def detect_resolution(self) -> tuple[int, int]:
-        """1회 캡처를 트리거해 디바이스 실제 해상도를 반환 + 자동 갱신.
-
-        호출자: 자동 감지 버튼 / 등록 직후 1회 보정.
-        반환: (width, height). 캡처 실패 시 RuntimeError 전파.
-        """
-        # _screencap_hu 내부에서 _maybe_autoupdate_resolution이 호출되므로
-        # 캡처 후 self._res_x/_res_y가 곧 디바이스 실제 해상도가 됨.
-        self._screencap_hu(fmt="png")
-        return self._res_x, self._res_y
 
     def set_addr(self, src: str, dst: str) -> None:
         """src/dst ksend 주소 변경 (EU/NAR/CN/GP 분기)."""
@@ -364,65 +276,6 @@ class ICASAgentService:
         self._ssh_shell = shell
         return shell
 
-    def _get_input_ssh(self):
-        """입력 전용 SSH 클라이언트 반환 — 끊어졌으면 재연결.
-
-        _input_ssh_lock 안에서 호출해야 함. 캡처 SSH(_ssh_client)와는 완전히 독립된
-        TCP 세션이라 한쪽이 바빠도 다른 쪽은 영향 없음.
-        """
-        if self._is_ssh_alive(self._input_ssh_client):
-            return self._input_ssh_client
-        if self._input_ssh_client is not None:
-            try:
-                self._input_ssh_client.close()
-            except Exception:
-                pass
-            self._input_ssh_client = None
-        if self._input_ssh_shell is not None:
-            try:
-                self._input_ssh_shell.close()
-            except Exception:
-                pass
-            self._input_ssh_shell = None
-        ssh = self._new_ssh()
-        try:
-            t = ssh.get_transport()
-            if t is not None:
-                t.set_keepalive(self._ssh_keepalive_interval)
-        except Exception:
-            pass
-        self._input_ssh_client = ssh
-        return ssh
-
-    def _get_input_shell(self):
-        """입력 전용 invoke_shell 채널 반환 — ksend 등 fire-and-forget 명령용."""
-        ssh = self._get_input_ssh()
-        if self._input_ssh_shell is not None:
-            try:
-                if not self._input_ssh_shell.closed:
-                    return self._input_ssh_shell
-            except Exception:
-                pass
-            try:
-                self._input_ssh_shell.close()
-            except Exception:
-                pass
-            self._input_ssh_shell = None
-        shell = ssh.invoke_shell()
-        shell.settimeout(0.5)
-        # 초기 프롬프트 드레인 — 최대 1초
-        deadline = time.time() + 1.0
-        while time.time() < deadline:
-            try:
-                if shell.recv_ready():
-                    shell.recv(65536)
-                else:
-                    time.sleep(0.05)
-            except Exception:
-                break
-        self._input_ssh_shell = shell
-        return shell
-
     def _drain_shell(self, shell, max_bytes: int = 65536) -> bytes:
         """공유 shell의 수신 버퍼를 non-blocking으로 비움 (pipe 백프레셔 방지)."""
         buf = b""
@@ -437,10 +290,10 @@ class ICASAgentService:
         return buf
 
     def _shell_run(self, commands: list[str], post_sleep_s: float = 0.02) -> None:
-        """입력 전용 shell 채널로 명령 송신 + drain. transport/shell dead면 1회 리셋 재시도.
+        """공유 shell 채널로 명령 여러 개 송신 + drain. transport/shell dead면 1회 리셋 재시도.
 
-        캡처 SSH 락(_ssh_lock)과 독립된 _input_ssh_lock에서 실행되므로,
-        스크린샷 SCP가 진행 중이어도 터치/하드키는 즉시 송신됨.
+        각 명령 후 짧은 post_sleep로 서버가 명령을 소비할 시간을 준 뒤 drain으로 출력을 정리.
+        ksend는 수 ms 안에 끝나므로 20ms 기본값으로 충분.
         """
         def _do(shell) -> None:
             for c in commands:
@@ -449,297 +302,35 @@ class ICASAgentService:
                     time.sleep(post_sleep_s)
                 self._drain_shell(shell)
 
-        with self._input_ssh_lock:
+        with self._ssh_lock:
             try:
-                shell = self._get_input_shell()
+                shell = self._get_shared_shell()
                 _do(shell)
                 return
             except Exception as e:
-                logger.warning("ICAS input shell exec failed, retrying: %s", e)
+                logger.warning("ICAS shared shell exec failed, retrying: %s", e)
                 # shell 리셋 → 다시 시도 (transport가 살아있으면 재사용, 죽었으면 재연결)
-                if self._input_ssh_shell is not None:
+                if self._ssh_shell is not None:
                     try:
-                        self._input_ssh_shell.close()
+                        self._ssh_shell.close()
                     except Exception:
                         pass
-                    self._input_ssh_shell = None
-            shell = self._get_input_shell()
+                    self._ssh_shell = None
+            shell = self._get_shared_shell()
             _do(shell)
 
     def connect(self, timeout: float = 10.0) -> bool:
-        """캡처/입력 SSH 세션을 모두 확보. 두 세션은 독립이라 한쪽이 바빠도 다른쪽 영향 없음."""
+        """공유 SSH 세션을 확보하여 연결 상태를 확인 + 유지."""
         try:
             with self._ssh_lock:
-                self._get_shared_ssh()  # 캡처용 SSH 사전 확보
-            with self._input_ssh_lock:
-                self._get_input_ssh()   # 입력용 SSH 사전 확보 (첫 ksend 지연 제거)
+                self._get_shared_ssh()  # 끊어져 있으면 새로 연결
             self._connected = True
-            logger.info("ICAS connected to %s:%d (capture+input sessions)", self.host, self.port)
-            # 캡처 layer 진단: 가용 screen/layer 인덱스를 알면 사용자에게 가이드 제공.
-            # 실패해도 연결 자체에는 영향 없음 (best-effort, 5초 타임아웃).
-            try:
-                self._probe_layer_info()
-            except Exception as e:
-                logger.debug("ICAS layer probe skipped: %s", e)
-            # ksend 입력 경로 진단: 바이너리 존재 + src/dst addr로 더미 프레임 송신 결과 확인.
-            try:
-                self._probe_ksend()
-            except Exception as e:
-                logger.debug("ICAS ksend probe skipped: %s", e)
-            # ksend가 현재 src/dst를 거부하면 bit-position form으로 자동 변환 + 영구 저장.
-            try:
-                self._try_autocorrect_addr()
-            except Exception as e:
-                logger.debug("ICAS addr auto-correct skipped: %s", e)
+            logger.info("ICAS connected to %s:%d", self.host, self.port)
             return True
         except Exception as e:
             logger.error("ICAS connect failed %s:%d: %s", self.host, self.port, e)
             self._connected = False
             return False
-
-    def _probe_ksend(self) -> None:
-        """ksend 입력 경로의 가용성을 진단. 입력 전용 SSH 세션에서 실행.
-
-        여러 진단 명령을 별도 라인으로 출력 (단일 라인이 길이 제한에 잘리지 않도록).
-        """
-        # 더미 송신: 현재 src/dst로 짧은 binary 메시지 1회. -v로 verbose 출력 활성.
-        # 좌표 0,0 + end byte 0xFF(release)로 실 영향 최소화.
-        dummy_data = (
-            "0x83 0x50 0x20 0x0b 0x00 0x00 0x00 0x00 0x00 0xa0 0x01 0x11 "
-            "0x10 0x00 0x00 0xff"
-        )
-        # ksend usage가 작은 정수 PID(`-s 10 -d 11`)를 사용하는 점, 기본 0x80000000000이
-        # 32-bit overflow로 보이는 점을 근거로 다양한 dst 후보를 자동 시도.
-        # 각 후보를 ksend -v로 송신 → "empty address data" 같은 파싱 에러 vs 정상 송신 식별.
-        # 송신 자체는 메시지가 디바이스 KIPC 큐에 들어가도 처리될 보장은 없지만,
-        # 최소한 ksend 파서가 받아들이는 형식을 좁힐 수 있음.
-        candidates = [
-            "0", "1", "2", "5", "10", "11", "16", "32", "43", "57", "63", "64",
-            "100", "127", "128", "200", "255",
-            "0x10", "0x20", "0x40", "0x80",
-            # 32-bit/16-bit hex 변종 — overflow 안 되는 범위
-            "0x800", "0x8000", "0x80000",
-            "8796093022208",  # 0x80000000000을 decimal로
-        ]
-        ksend_sweep_lines = [
-            f"echo '==dst={d}==' ; "
-            f"/lge/app_ro/bin/ksend -v -s 0 -d {d} -b \"0x00 0x01\" 2>&1 | head -n 3 ; "
-            f"echo \"exit=$?\""
-            for d in candidates
-        ]
-        # (label, command, max_chars)
-        probes: list[tuple[str, str, int]] = [
-            ("ksend bin", "ls -la /lge/app_ro/bin/ksend 2>&1", 200),
-            ("ksend usage", "/lge/app_ro/bin/ksend 2>&1 | head -n 25", 1500),
-            ("input nodes", "ls -la /dev/input/ 2>&1 | head -n 30", 800),
-            ("uinput", "ls -la /dev/uinput 2>&1", 200),
-            ("KIPC procs",
-             "(ps -ef 2>/dev/null || ps 2>/dev/null) | "
-             "grep -iE '(touch|input|hmi|kipc|hardkey|remote|mcu|vtee)' | "
-             "grep -v grep | head -n 25", 4000),
-            ("KIPC proc dir", "ls -la /proc/lge_kipc/ 2>&1 | head -n 30", 1500),
-            ("KIPC list",
-             "for f in /proc/lge_kipc/list /proc/kipc/list "
-             "/proc/lge_kipc/proc /sys/kernel/kipc/list ; do "
-             "  if [ -e \"$f\" ]; then echo \"==$f==\"; cat \"$f\" 2>&1 | head -n 60 ; fi ; "
-             "done", 4000),
-            ("KIPC any",
-             "find /proc -maxdepth 3 -name 'kipc*' 2>/dev/null | head -n 20", 1500),
-            # 디바이스의 KIPC 설정 파일 찾기 — vw/hmi/lge 디렉토리에서 kipc 관련 conf
-            ("KIPC conf",
-             "( find /etc /vw /lge -maxdepth 6 -type f \\( -name '*kipc*' -o -name '*KIPC*' \\) 2>/dev/null ; "
-             "  grep -rl -i 'kipc' /vw/hmi/config 2>/dev/null | head -n 10 ; "
-             "  grep -rl -i 'kipc' /etc 2>/dev/null | head -n 10 ) | head -n 30", 2000),
-            ("addr defaults",
-             f"echo 'src={self.src_addr} dst={self.dst_addr} market={self.market}'",
-             400),
-            ("ksend -v dummy (current)",
-             f"/lge/app_ro/bin/ksend -v -s {self.src_addr} -d {self.dst_addr} "
-             f'-b "{dummy_data}" 2>&1 ; echo "exit=$?"', 2000),
-            # 다양한 dst 후보 sweep — 어느 값이 ksend 파서를 통과하는지 식별
-            ("ksend dst sweep", " ; ".join(ksend_sweep_lines), 6000),
-        ]
-        with self._input_ssh_lock:
-            ssh = self._get_input_ssh()
-            for label, cmd, limit in probes:
-                try:
-                    stdin, stdout, stderr = ssh.exec_command(cmd, timeout=8)
-                    try:
-                        stdin.close()
-                    except Exception:
-                        pass
-                    out = stdout.read().decode("utf-8", errors="replace")
-                    err = stderr.read().decode("utf-8", errors="replace")
-                    combined = out
-                    if err.strip():
-                        combined += "\n[stderr] " + err
-                    snippet = combined.strip().replace("\r", " ").replace("\n", " | ")[:limit]
-                    logger.info("ICAS probe[%s] → %s", label, snippet or "(empty)")
-                except Exception as e:
-                    logger.debug("ICAS probe[%s] failed: %s", label, e)
-
-    def _wait_remote_files_stable(self, ssh, items: list[tuple[int, str]],
-                                  max_wait_s: float = 1.0,
-                                  poll_interval_s: float = 0.05,
-                                  stable_iters: int = 2) -> None:
-        """디바이스 쪽 파일 크기가 stable_iters회 연속 동일할 때까지 폴링.
-
-        LayerManagerControl이 비동기로 PNG를 쓰는 환경에서 SCP가 partial 파일을 가져가는
-        race를 막기 위함. items: [(idx, remote_path), ...]. 실패해도 silent — 안정성은
-        PNG 무결성 검증(_validate_png_file)에서 한 번 더 거름.
-        """
-        if not items:
-            return
-        deadline = time.monotonic() + max_wait_s
-        # 단일 SSH 명령으로 모든 파일 크기를 한 번에 조회 (왕복 비용 절감).
-        size_cmd = " ; ".join([f"wc -c < {rp} 2>/dev/null || echo 0" for _, rp in items])
-        prev_sizes: Optional[list[int]] = None
-        stable_streak = 0
-        while time.monotonic() < deadline:
-            try:
-                stdin, stdout, stderr = ssh.exec_command(size_cmd, timeout=2)
-                try:
-                    stdin.close()
-                except Exception:
-                    pass
-                out = stdout.read().decode("utf-8", errors="replace")
-                lines = [l.strip() for l in out.splitlines() if l.strip()]
-                sizes: list[int] = []
-                for l in lines:
-                    try:
-                        sizes.append(int(l.split()[0]))
-                    except Exception:
-                        sizes.append(0)
-                # 모든 파일이 양수 + 직전과 동일하면 stable streak 증가
-                if sizes and all(s > 0 for s in sizes) and sizes == prev_sizes:
-                    stable_streak += 1
-                    if stable_streak >= stable_iters:
-                        return
-                else:
-                    stable_streak = 0
-                prev_sizes = sizes
-            except Exception:
-                pass
-            time.sleep(poll_interval_s)
-
-    @staticmethod
-    def _bitmask_to_bit_position(addr: str) -> Optional[str]:
-        """0x80000000000 (=1<<43) 같은 단일-비트 bitmask를 '43'(bit position)으로 변환.
-
-        - addr이 power-of-two가 아니거나 0이면 None
-        - 1 ≤ bit_position ≤ 63 범위 내일 때만 반환 (ksend 6-bit 한계)
-        """
-        try:
-            v = int(addr, 0) if isinstance(addr, str) else int(addr)
-            if v <= 0 or (v & (v - 1)) != 0:
-                return None
-            bp = v.bit_length() - 1
-            if 0 < bp <= 63:
-                return str(bp)
-        except Exception:
-            pass
-        return None
-
-    def _ksend_test_addr(self, src: str, dst: str, ssh) -> bool:
-        """주어진 src/dst로 더미 ksend를 1회 송신해 파서가 받아들이는지 확인.
-
-        반환: True = 정상 송신("Sending data via ksend..." 출력), False = 거부.
-        호출자가 _input_ssh_lock을 잡고 있어야 함.
-        """
-        try:
-            cmd = (
-                f"/lge/app_ro/bin/ksend -v -s {src} -d {dst} -b \"0x00\" 2>&1"
-            )
-            stdin, stdout, _ = ssh.exec_command(cmd, timeout=4)
-            try:
-                stdin.close()
-            except Exception:
-                pass
-            out = stdout.read().decode("utf-8", errors="replace")
-            return "Sending data" in out and "empty address data" not in out
-        except Exception:
-            return False
-
-    def _try_autocorrect_addr(self) -> bool:
-        """현재 src/dst가 ksend에서 거부되면 bit-position form으로 변환.
-
-        반환: 변환 적용 여부. 콜백이 등록되어 있으면 그것도 호출 (영구 저장).
-        """
-        with self._input_ssh_lock:
-            ssh = self._get_input_ssh()
-            # 1) 현재 addr 검증
-            if self._ksend_test_addr(self.src_addr, self.dst_addr, ssh):
-                return False  # 이미 동작
-            # 2) bit-position form 후보
-            new_src = self._bitmask_to_bit_position(self.src_addr) or self.src_addr
-            new_dst = self._bitmask_to_bit_position(self.dst_addr) or self.dst_addr
-            if new_src == self.src_addr and new_dst == self.dst_addr:
-                logger.warning(
-                    "ICAS ksend addr rejected (src=%s dst=%s) and no bit-position fallback available. "
-                    "Manual override may be required.",
-                    self.src_addr, self.dst_addr,
-                )
-                return False
-            # 3) 변환 후 검증
-            if not self._ksend_test_addr(new_src, new_dst, ssh):
-                logger.warning(
-                    "ICAS ksend addr rejected and bit-position form (src=%s dst=%s) also failed.",
-                    new_src, new_dst,
-                )
-                return False
-            # 4) 적용 + 영구 저장
-            old_src, old_dst = self.src_addr, self.dst_addr
-            self.src_addr = new_src
-            self.dst_addr = new_dst
-            logger.info(
-                "ICAS addr auto-corrected to bit-position form: src=%s→%s dst=%s→%s",
-                old_src, new_src, old_dst, new_dst,
-            )
-        cb = self._on_addr_changed
-        if cb is not None:
-            try:
-                cb(self.src_addr, self.dst_addr)
-            except Exception as e:
-                logger.warning("ICAS on_addr_changed callback failed: %s", e)
-        return True
-
-    def _maybe_disable_screen(self, idx: int) -> None:
-        """연속 실패가 임계치를 넘으면 해당 screen 인덱스를 비활성화 (이후 dump 시도 안 함)."""
-        if idx in self._screen_disabled:
-            return
-        if self._screen_fail_count.get(idx, 0) >= self._screen_fail_threshold:
-            self._screen_disabled.add(idx)
-            logger.warning(
-                "ICAS HU screen %d auto-disabled after %d consecutive failures — "
-                "this layer is likely not available on this device. Active indices now: %s",
-                idx, self._screen_fail_threshold,
-                [i for i in self._screen_indices if i not in self._screen_disabled] or "[fallback: 0]",
-            )
-
-    def _probe_layer_info(self) -> None:
-        """LayerManagerControl get screens/layers를 실행해 진단 정보를 로깅.
-
-        실제 디바이스마다 가용 layer 인덱스가 다르므로, 사용자가 올바른 값을 설정하도록
-        로그로 안내. 명령 실패는 무시 (LayerManagerControl 자체가 없을 수도 있음).
-        """
-        with self._ssh_lock:
-            ssh = self._get_shared_ssh()
-            for label, cmd in (
-                ("screens", "export XDG_RUNTIME_DIR=/run/platform/weston ; LayerManagerControl get screens"),
-                ("layers",  "export XDG_RUNTIME_DIR=/run/platform/weston ; LayerManagerControl get layers"),
-            ):
-                try:
-                    stdin, stdout, stderr = ssh.exec_command(cmd, timeout=5)
-                    try:
-                        stdin.close()
-                    except Exception:
-                        pass
-                    out = stdout.read().decode("utf-8", errors="replace")
-                    err = stderr.read().decode("utf-8", errors="replace")
-                    snippet = (out or err).strip().replace("\r", " ").replace("\n", " | ")[:500]
-                    logger.info("ICAS LayerManagerControl get %s → %s", label, snippet or "(empty)")
-                except Exception as e:
-                    logger.debug("ICAS LayerManagerControl get %s failed: %s", label, e)
 
     def disconnect(self) -> None:
         self._connected = False
@@ -756,20 +347,6 @@ class ICASAgentService:
                 except Exception:
                     pass
                 self._ssh_client = None
-        # 입력 전용 세션도 정리
-        with self._input_ssh_lock:
-            if self._input_ssh_shell is not None:
-                try:
-                    self._input_ssh_shell.close()
-                except Exception:
-                    pass
-                self._input_ssh_shell = None
-            if self._input_ssh_client is not None:
-                try:
-                    self._input_ssh_client.close()
-                except Exception:
-                    pass
-                self._input_ssh_client = None
         self._close_private_server_ssh()
 
     def _close_private_server_ssh(self) -> None:
@@ -896,63 +473,18 @@ class ICASAgentService:
             _run_all(ssh, commands)
 
     def _ksend(self, data_bytes: str) -> None:
-        """ksend 명령 1회 송신.
-
-        기본 모드(invoke_shell): 빠르지만 stderr/exit를 알 수 없어 silent fail 가능.
-        ICAS_KSEND_VERBOSE=1 환경변수: exec_command 모드 + ksend -v 옵션 + 결과 로깅.
-        """
-        verbose = os.environ.get("ICAS_KSEND_VERBOSE", "").strip() in ("1", "true", "yes")
-        v_flag = " -v " if verbose else " "
-        cmd = f'/lge/app_ro/bin/ksend{v_flag}-s {self.src_addr} -d {self.dst_addr} -b "{data_bytes}"'
-        if verbose:
-            self._ksend_exec_verbose(cmd)
-        else:
-            self._shell_run([cmd])
+        """ksend 명령 1회 송신 — 공유 shell 채널 사용 (레퍼런스 구현 동일 패턴)."""
+        cmd = f'/lge/app_ro/bin/ksend -s {self.src_addr} -d {self.dst_addr} -b "{data_bytes}"'
+        self._shell_run([cmd])
 
     def _ksend_many(self, data_list: list[str], interval_s: float = 0.1) -> None:
         """ksend 명령 여러 개를 공유 shell 채널에서 순차 송신."""
-        verbose = os.environ.get("ICAS_KSEND_VERBOSE", "").strip() in ("1", "true", "yes")
-        v_flag = " -v " if verbose else " "
         cmds = [
-            f'/lge/app_ro/bin/ksend{v_flag}-s {self.src_addr} -d {self.dst_addr} -b "{data}"'
+            f'/lge/app_ro/bin/ksend -s {self.src_addr} -d {self.dst_addr} -b "{data}"'
             for data in data_list
         ]
-        if verbose:
-            for c in cmds:
-                self._ksend_exec_verbose(c)
-                if interval_s > 0:
-                    time.sleep(interval_s)
-            return
         # 각 cmd 사이 간격은 shell_run의 post_sleep_s로 들어감 — interval_s 우선
         self._shell_run(cmds, post_sleep_s=max(0.02, interval_s))
-
-    def _ksend_exec_verbose(self, cmd: str) -> None:
-        """진단 모드: exec_command로 ksend 실행하고 stderr/exit 결과를 로깅.
-
-        성능 영향 있음 (매 명령당 SSH channel 1회). 디버깅 후 환경변수 해제 권장.
-        입력 전용 SSH 세션 사용 — 캡처와 독립.
-        """
-        with self._input_ssh_lock:
-            ssh = self._get_input_ssh()
-            try:
-                stdin, stdout, stderr = ssh.exec_command(cmd, timeout=5)
-                try:
-                    stdin.close()
-                except Exception:
-                    pass
-                out = stdout.read().decode("utf-8", errors="replace")
-                err = stderr.read().decode("utf-8", errors="replace")
-                ec = stdout.channel.recv_exit_status()
-                if ec != 0 or err.strip():
-                    logger.warning(
-                        "ksend exit=%d stderr=%r stdout=%r cmd=%r",
-                        ec, err.strip()[:200], out.strip()[:200], cmd,
-                    )
-                else:
-                    logger.info("ksend ok: %r", cmd[:160])
-            except Exception as e:
-                logger.warning("ksend exec failed: type=%s repr=%r cmd=%r",
-                               type(e).__name__, e, cmd)
 
     # ------------------------------------------------------------------
     # Touch (press/drag/release) — ref RemoteController.excutecmdTouch*
@@ -1129,30 +661,13 @@ class ICASAgentService:
         tmp_dir = tempfile.mkdtemp(prefix="icas_cap_")
         try:
             # 공유 SSH 세션에서 dump + SCP pull 을 일괄 수행 (매 프레임마다 재인증 방지).
-            # - 활성화된 screen 인덱스만 dump 시도 (디바이스마다 가용 layer 다름)
-            # - 각 dump를 ;로 분리: 한쪽 실패가 다른쪽을 막지 않음
-            # - SCPClient 하나로 모든 파일 연속 get (subsystem 1회)
+            # - dump 2개를 && 체인으로 단일 exec_command (SSH 왕복 1회)
+            # - SCPClient 하나로 2 파일 연속 get (subsystem 1회)
             def _do_capture(ssh) -> list[str]:
-                active_indices = [i for i in self._screen_indices if i not in self._screen_disabled]
-                if not active_indices:
-                    # 모든 인덱스가 비활성화됨 — 안전 fallback: screen 0만 다시 시도
-                    active_indices = [0]
-                # 인덱스 → 로컬 파일명 매핑 (사람 가독 위해 1-base)
-                file_map = [(idx, f"screen_idx{idx}.png") for idx in active_indices]
-                # 매 프레임 시작 시 stale 파일을 제거해야 SCP가 이전 프레임의 partial 파일을 가져오지 않음.
-                # LayerManagerControl dump는 IVI 그래픽 파이프라인을 통해 비동기로 PNG를 쓰는 구현체가
-                # 있어 exec_command가 끝나도 파일이 완성 전일 수 있음 → rm + dump + sync 순으로 처리.
-                rm_parts = [f"rm -f /tmp/{fname}" for _, fname in file_map]
-                dump_parts = [
-                    f"LayerManagerControl dump screen {idx} to /tmp/{fname} 2>/tmp/lmc_idx{idx}.err"
-                    for idx, fname in file_map
-                ]
                 dump_cmd = (
-                    "export XDG_RUNTIME_DIR=/run/platform/weston ; "
-                    + " ; ".join(rm_parts)
-                    + " ; "
-                    + " ; ".join(dump_parts)
-                    + " ; sync"
+                    "export XDG_RUNTIME_DIR=/run/platform/weston && "
+                    "LayerManagerControl dump screen 0 to /tmp/screen1.png && "
+                    "LayerManagerControl dump screen 2 to /tmp/screen2.png"
                 )
                 stdin, stdout, stderr = ssh.exec_command(dump_cmd, timeout=20)
                 try:
@@ -1190,49 +705,20 @@ class ICASAgentService:
                     snippet = err_text.strip().replace("\r", " ").replace("\n", " | ")[:200]
                     logger.warning("ICAS HU dump exit=%d stderr=%r", exit_status, snippet)
 
-                # LayerManagerControl이 비동기 처리하는 경우 dump_cmd 종료 후에도 파일 쓰기가 진행 중일 수 있음.
-                # SCP 전 짧은 wait + 디바이스 측 파일 크기 폴링으로 안정화 확인 (최대 1초).
-                self._wait_remote_files_stable(ssh, [(idx, f"/tmp/{fname}") for idx, fname in file_map])
-
                 files: list[str] = []
                 try:
                     with SCPClient(ssh.get_transport()) as scp:
-                        for idx, fname in file_map:
-                            remote = f"/tmp/{fname}"
+                        for remote, fname in (("/tmp/screen1.png", "screen1.png"),
+                                              ("/tmp/screen2.png", "screen2.png")):
                             local = os.path.join(tmp_dir, fname)
                             try:
                                 scp.get(remote, local)
-                                ok = False
                                 if os.path.exists(local) and os.path.getsize(local) > 0:
-                                    # PNG 무결성 1차 검증 — 시그니처 + IEND chunk 존재 여부
-                                    if _validate_png_file(local):
-                                        files.append(local)
-                                        self._screen_fail_count[idx] = 0
-                                        ok = True
-                                    else:
-                                        logger.warning(
-                                            "ICAS HU scp %s: PNG truncated/corrupt (size=%d)",
-                                            remote, os.path.getsize(local),
-                                        )
-                                if not ok:
-                                    self._screen_fail_count[idx] = self._screen_fail_count.get(idx, 0) + 1
-                                    self._maybe_disable_screen(idx)
+                                    files.append(local)
                             except Exception as ee:
-                                self._screen_fail_count[idx] = self._screen_fail_count.get(idx, 0) + 1
-                                # 임계치 도달 직전까지만 warn — 그 후엔 auto-disable되어 시도 안 함
-                                if self._screen_fail_count[idx] <= self._screen_fail_threshold:
-                                    logger.warning(
-                                        "ICAS HU scp %s failed (%d/%d): type=%s repr=%r",
-                                        remote, self._screen_fail_count[idx],
-                                        self._screen_fail_threshold,
-                                        type(ee).__name__, ee,
-                                    )
-                                self._maybe_disable_screen(idx)
+                                logger.debug("ICAS HU scp %s failed: %s", remote, ee)
                 except Exception as ee:
-                    logger.warning(
-                        "ICAS HU SCPClient failed: type=%s repr=%r",
-                        type(ee).__name__, ee, exc_info=True,
-                    )
+                    logger.warning("ICAS HU SCPClient failed: %s", ee)
                 return files
 
             local_files: list[str] = []
@@ -1241,10 +727,7 @@ class ICASAgentService:
                     ssh = self._get_shared_ssh()
                     local_files = _do_capture(ssh)
                 except Exception as e:
-                    logger.warning(
-                        "ICAS HU capture failed on shared SSH, retrying: type=%s repr=%r",
-                        type(e).__name__, e,
-                    )
+                    logger.warning("ICAS HU capture failed on shared SSH, retrying: %s", e)
                     if self._ssh_client is not None:
                         try:
                             self._ssh_client.close()
@@ -1255,40 +738,14 @@ class ICASAgentService:
                     local_files = _do_capture(ssh)
 
             if not local_files:
-                raise RuntimeError(
-                    f"No HU screenshot captured (LayerManagerControl dump may have failed; "
-                    f"check 'ICAS HU dump' / 'ICAS HU scp' / 'ICAS HU SCPClient' warnings above)"
-                )
+                raise RuntimeError("No HU screenshot captured")
 
-            # _validate_png_file이 1차로 거르지만, IDAT 내부 손상은 .convert에서야 드러남.
-            # 손상된 파일은 무시하고 정상 파일만 사용. 모두 실패 시 RuntimeError로 외부 재시도.
-            images: list[Image.Image] = []
-            corrupt_paths: list[tuple[str, int, str]] = []
-            for p in local_files:
-                try:
-                    img = Image.open(p)
-                    img = img.convert("RGBA")
-                    images.append(img)
-                except Exception as ie:
-                    sz = os.path.getsize(p) if os.path.exists(p) else -1
-                    corrupt_paths.append((p, sz, f"{type(ie).__name__}: {ie!r}"))
-            if not images:
-                raise RuntimeError(
-                    f"PIL Image.open failed for all captures (likely truncated PNG): {corrupt_paths}"
-                )
-            if corrupt_paths:
-                logger.debug("ICAS HU partial composite — corrupt skipped: %s", corrupt_paths)
+            images = [Image.open(p).convert("RGBA") for p in local_files]
             base = images[0]
             for over in images[1:]:
                 if over.size != base.size:
                     over = over.resize(base.size)
                 base = Image.alpha_composite(base, over)
-            # PNG 실제 크기 == 디바이스 실제 화면 해상도. 사용자가 잘못 입력한 경우 자동 보정.
-            # _x_mult/_y_mult가 어긋나면 터치 좌표 인코딩이 깨지므로 캡처가 들어올 때마다 점검.
-            try:
-                self._maybe_autoupdate_resolution(int(base.size[0]), int(base.size[1]))
-            except Exception as e:
-                logger.debug("ICAS resolution auto-correct skipped: %s", e)
             return _encode_image(base, fmt)
         finally:
             _rm_tree(tmp_dir)

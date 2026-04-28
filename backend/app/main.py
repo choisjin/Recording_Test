@@ -483,21 +483,9 @@ async def websocket_screen_mirror(websocket: WebSocket):
                                 screen_type=screen_type, fmt="jpeg"
                             )
                             await websocket.send_bytes(jpeg_bytes)
-                        except WebSocketDisconnect:
-                            # 정상적인 클라이언트 끊김 — 루프 종료
-                            break
                         except Exception as ce:
-                            # ClientDisconnected (uvicorn) 등 클라이언트 끊김 패밀리는 break.
-                            # 그 외 진짜 캡처 실패만 warning + sleep + continue.
-                            cls_name = type(ce).__name__
-                            if cls_name in ("ClientDisconnected", "ConnectionClosed",
-                                            "ConnectionClosedOK", "ConnectionClosedError"):
-                                break
-                            logger.warning(
-                                "ICAS capture error (%s): type=%s repr=%r",
-                                screen_type, cls_name, ce,
-                                exc_info=True,
-                            )
+                            # 캡처 실패 원인을 진단하기 위해 warning 레벨로 기록
+                            logger.warning("ICAS capture error (%s): %s", screen_type, ce)
                             await asyncio.sleep(0.5)
                             continue
                     else:
