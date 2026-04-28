@@ -25,7 +25,7 @@ import io
 import logging
 import threading
 import time
-from typing import Optional
+from typing import Optional, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +94,8 @@ class ICASAgentService:
                  iid_display: str = "10",
                  hud_display: str = "11",
                  market: str = "EU",
-                 key_overrides: Optional[dict[str, dict]] = None):
+                 key_overrides: Optional[dict[str, dict]] = None,
+                 on_resolution_changed: Optional[Callable[[str], None]] = None):
         self.host = host
         self.port = int(port)
         self.device_id = device_id or f"ICAS_{host}"
@@ -125,6 +126,11 @@ class ICASAgentService:
         self._ps_tunnel_chan = None
         self._ps_lock = threading.RLock()
         self._key_overrides: dict[str, dict] = dict(key_overrides or {})
+        # 캡처에서 PNG 실제 크기와 _res_x/_res_y가 다를 때 자동 정정 + 영구 저장 콜백.
+        # 시그니처: callback("WxH"). DeviceManager가 dev.info 갱신과 파일 저장을 담당.
+        self._on_resolution_changed = on_resolution_changed
+        # 콜백 폭주 방지 — 동일 해상도면 호출 안 함, 락으로 직렬화.
+        self._res_callback_lock = threading.Lock()
 
     # ------------------------------------------------------------------
     # Basic accessors
@@ -151,6 +157,41 @@ class ICASAgentService:
     @property
     def is_connected(self) -> bool:
         return self._connected
+
+    def _maybe_autoupdate_resolution(self, width: int, height: int) -> bool:
+        """캡처된 PNG 크기와 현재 _res_x/_res_y 비교 후 다르면 자동 갱신.
+
+        반환값: 실제로 갱신되었는지 여부. 콜백은 DeviceManager가 주입하며
+        dev.info dict + 파일 저장을 담당. 동일 해상도면 no-op.
+        """
+        if width <= 0 or height <= 0:
+            return False
+        if width == self._res_x and height == self._res_y:
+            return False
+        with self._res_callback_lock:
+            new_res = f"{width}x{height}"
+            self._resolution = new_res.upper()
+            self._parse_resolution()
+            cb = self._on_resolution_changed
+        if cb is not None:
+            try:
+                cb(new_res)
+            except Exception as e:
+                logger.warning("ICAS on_resolution_changed callback failed: %s", e)
+        else:
+            logger.info("ICAS resolution auto-detected (no persistence callback): %s", new_res)
+        return True
+
+    def detect_resolution(self) -> tuple[int, int]:
+        """1회 캡처를 트리거해 디바이스 실제 해상도를 반환 + 자동 갱신.
+
+        호출자: 자동 감지 버튼 / 등록 직후 1회 보정.
+        반환: (width, height). 캡처 실패 시 RuntimeError 전파.
+        """
+        # _screencap_hu 내부에서 _maybe_autoupdate_resolution이 호출되므로
+        # 캡처 후 self._res_x/_res_y가 곧 디바이스 실제 해상도가 됨.
+        self._screencap_hu(fmt="png")
+        return self._res_x, self._res_y
 
     def set_addr(self, src: str, dst: str) -> None:
         """src/dst ksend 주소 변경 (EU/NAR/CN/GP 분기)."""
@@ -746,6 +787,12 @@ class ICASAgentService:
                 if over.size != base.size:
                     over = over.resize(base.size)
                 base = Image.alpha_composite(base, over)
+            # PNG 실제 크기 == 디바이스 실제 화면 해상도. 사용자가 잘못 입력한 경우 자동 보정.
+            # _x_mult/_y_mult가 어긋나면 터치 좌표 인코딩이 깨지므로 캡처가 들어올 때마다 점검.
+            try:
+                self._maybe_autoupdate_resolution(int(base.size[0]), int(base.size[1]))
+            except Exception as e:
+                logger.debug("ICAS resolution auto-correct skipped: %s", e)
             return _encode_image(base, fmt)
         finally:
             _rm_tree(tmp_dir)

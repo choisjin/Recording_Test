@@ -1324,6 +1324,44 @@ async def update_icas_keys(req: UpdateIcasKeysRequest):
     return {"status": "ok", "device_id": req.device_id, "count": len(clean)}
 
 
+class IcasDetectResolutionRequest(BaseModel):
+    device_id: str
+
+
+@router.post("/icas/detect_resolution")
+async def icas_detect_resolution(req: IcasDetectResolutionRequest):
+    """ICAS 디바이스 실제 해상도를 1회 캡처로 감지하고 영구 저장.
+
+    캡처된 PNG의 픽셀 크기 == 디바이스 실제 화면. 서비스 내부에서
+    on_resolution_changed 콜백이 호출되어 dev.info도 자동 갱신됨.
+    """
+    dev = dm.get_device(req.device_id)
+    if not dev:
+        raise HTTPException(status_code=404, detail=f"Device {req.device_id} not found")
+    if dev.type != "icas_agent":
+        raise HTTPException(status_code=400, detail=f"Device {req.device_id} is not an ICAS agent")
+    svc = dm.get_icas_service(req.device_id)
+    if svc is None or not getattr(svc, "is_connected", False):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Device {req.device_id} is not connected. Connect first then retry.",
+        )
+    import asyncio
+    loop = asyncio.get_event_loop()
+    try:
+        width, height = await loop.run_in_executor(None, svc.detect_resolution)
+    except Exception as e:
+        logger.warning("ICAS detect_resolution failed for %s: %s", req.device_id, e)
+        raise HTTPException(status_code=500, detail=f"Detect failed: {e}")
+    return {
+        "device_id": req.device_id,
+        "width": int(width),
+        "height": int(height),
+        "resolution_str": f"{int(width)}x{int(height)}",
+        "device": dev.to_dict(),
+    }
+
+
 class UpdateHkmcKeysRequest(BaseModel):
     device_id: str
     keys: dict[str, dict]  # name → {cmd?, key?, dial?, visible?}

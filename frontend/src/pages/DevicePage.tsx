@@ -353,6 +353,7 @@ export default function DevicePage() {
   const [editExtraFields, setEditExtraFields] = useState<Record<string, any>>({});
   // ICAS 수정 모달 전용 해상도 ("WxH" 문자열). type === 'icas_agent'일 때만 노출.
   const [editIcasResolution, setEditIcasResolution] = useState<string>('');
+  const [detectingIcasRes, setDetectingIcasRes] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
 
   // Scan settings modal
@@ -783,6 +784,29 @@ export default function DevicePage() {
       setEditIcasResolution('');
     }
     setEditModalOpen(true);
+  };
+
+  // ICAS 자동 해상도 감지 — 1회 캡처해 PNG 실제 크기를 받아 저장.
+  // 디바이스가 'connected' 상태여야 동작. 결과는 즉시 Select에 반영하고 디바이스 목록도 새로고침.
+  const handleDetectIcasResolution = async () => {
+    if (!editDevice) return;
+    setDetectingIcasRes(true);
+    try {
+      const res = await deviceApi.detectIcasResolution(editDevice.id);
+      const w = res.data?.width;
+      const h = res.data?.height;
+      const wxh = res.data?.resolution_str || (w && h ? `${w}x${h}` : '');
+      if (wxh) {
+        setEditIcasResolution(wxh);
+        message.success(`해상도 자동 감지: ${wxh}`);
+      } else {
+        message.warning('해상도 응답 형식이 올바르지 않습니다');
+      }
+      await fetchDevices();
+    } catch (e: any) {
+      message.error(e.response?.data?.detail || '자동 감지 실패 — 디바이스 연결 상태를 확인하세요');
+    }
+    setDetectingIcasRes(false);
   };
 
   const handleSaveEdit = async () => {
@@ -2078,14 +2102,22 @@ export default function DevicePage() {
                     })()}
                   />
                   <Input
-                    style={{ width: 140 }}
+                    style={{ width: 120 }}
                     placeholder="WxH"
                     value={editIcasResolution}
                     onChange={(e) => setEditIcasResolution(e.target.value)}
                   />
+                  <Button
+                    onClick={handleDetectIcasResolution}
+                    loading={detectingIcasRes}
+                    disabled={editDevice.status !== 'connected'}
+                    title={editDevice.status !== 'connected' ? '디바이스 연결 후 사용 가능' : '실제 화면 캡처로 해상도 감지'}
+                  >
+                    자동 감지
+                  </Button>
                 </Space.Compact>
                 <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>
-                  변경 시 즉시 터치 좌표 매핑(_x_mult/_y_mult)이 갱신되며, 파일에도 영구 저장됩니다.
+                  자동 감지: 디바이스를 1회 캡처해 PNG 실제 크기를 읽어 자동 저장합니다. 첫 캡처 시에도 자동 보정됩니다.
                 </div>
               </div>
             )}
