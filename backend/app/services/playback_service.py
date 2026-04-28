@@ -760,6 +760,7 @@ class PlaybackService:
                                 "image": str(SCREENSHOTS_DIR / scenario_name / ci.image),
                                 "rel_path": f"{scenario_name}/{ci.image}",
                                 "label": ci.label,
+                                "roi": ci.roi.model_dump() if ci.roi else None,
                             }
                             for ci in step.expected_images
                         ]

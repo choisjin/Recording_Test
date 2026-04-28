@@ -102,17 +102,16 @@ class ImageCompareService:
         # Apply ROI crop if specified
         if roi:
             x, y, w, h = roi["x"], roi["y"], roi["width"], roi["height"]
-            img_exp = img_exp[y : y + h, x : x + w]
+            ah, aw = img_act.shape[:2]
+            eh, ew = img_exp.shape[:2]
+            # actual은 ROI로 자르고, expected는 이미 크롭된 상태일 수 있으므로 크기 비교 후 결정
             img_act = img_act[y : y + h, x : x + w]
+            if (eh, ew) != (h, w):
+                # expected가 풀 스크린샷이면 동일 ROI로 자른다
+                if eh >= y + h and ew >= x + w:
+                    img_exp = img_exp[y : y + h, x : x + w]
 
-        # If expected image is smaller than actual (cropped expected image),
-        # extract the matching region from actual via template matching.
-        eh, ew = img_exp.shape[:2]
-        ah, aw = img_act.shape[:2]
-        if eh < ah or ew < aw:
-            return self._compare_cropped(img_exp, img_act)
-
-        # Resize actual to match expected if needed (e.g. slight resolution diff)
+        # 크기가 다르면 actual을 expected에 맞춰 resize (template matching 사용 안 함)
         if img_exp.shape != img_act.shape:
             img_act = cv2.resize(img_act, (img_exp.shape[1], img_exp.shape[0]))
 
@@ -128,37 +127,45 @@ class ImageCompareService:
             "diff_array": diff_uint8,
         }
 
-    def _compare_cropped(self, img_exp: np.ndarray, img_act: np.ndarray) -> dict:
-        """Compare a cropped expected image against a full actual screenshot.
+    def _compare_at_roi(
+        self,
+        img_exp: np.ndarray,
+        img_act: np.ndarray,
+        roi: dict,
+    ) -> dict:
+        """ROI 영역을 actual에서 잘라 expected 크롭 이미지와 직접 SSIM 비교.
 
-        Uses template matching to locate the region, then SSIM on the matched area.
+        Template matching을 사용하지 않고, 녹화 시 저장된 ROI 좌표를 그대로 사용한다.
         """
+        ah, aw = img_act.shape[:2]
+        rx = max(0, int(roi["x"]))
+        ry = max(0, int(roi["y"]))
+        rw = int(roi["width"])
+        rh = int(roi["height"])
+        rx2 = min(aw, rx + rw)
+        ry2 = min(ah, ry + rh)
+
+        actual_crop = img_act[ry:ry2, rx:rx2]
+        if actual_crop.size == 0:
+            return {
+                "score": 0.0,
+                "error": "ROI is outside actual image bounds",
+                "match_location": {"x": rx, "y": ry, "width": rw, "height": rh},
+            }
+
+        # expected 크롭 이미지와 크기가 다르면 actual_crop을 expected에 맞춤
+        if img_exp.shape[:2] != actual_crop.shape[:2]:
+            actual_crop = cv2.resize(actual_crop, (img_exp.shape[1], img_exp.shape[0]))
+
         gray_exp = cv2.cvtColor(img_exp, cv2.COLOR_BGR2GRAY)
-        gray_act = cv2.cvtColor(img_act, cv2.COLOR_BGR2GRAY)
-
-        # Template match to find the best location
-        result = cv2.matchTemplate(gray_act, gray_exp, cv2.TM_CCOEFF_NORMED)
-        _, max_val, _, max_loc = cv2.minMaxLoc(result)
-
-        # Crop actual image at the matched location
-        eh, ew = img_exp.shape[:2]
-        x, y = max_loc
-        matched_region = gray_act[y:y + eh, x:x + ew]
-
-        # Compute SSIM on the matched region
-        score, diff = ssim(gray_exp, matched_region, full=True)
+        gray_act = cv2.cvtColor(actual_crop, cv2.COLOR_BGR2GRAY)
+        score, diff = ssim(gray_exp, gray_act, full=True)
         diff_uint8 = (diff * 255).astype("uint8")
-
-        logger.info(
-            "Cropped comparison: template_confidence=%.4f, ssim=%.4f, location=(%d,%d)",
-            max_val, score, x, y,
-        )
 
         return {
             "score": round(float(score), 4),
             "diff_array": diff_uint8,
-            "match_location": {"x": int(x), "y": int(y), "width": int(ew), "height": int(eh)},
-            "template_confidence": round(float(max_val), 4),
+            "match_location": {"x": rx, "y": ry, "width": rx2 - rx, "height": ry2 - ry},
         }
 
     # ------------------------------------------------------------------
@@ -256,10 +263,24 @@ class ImageCompareService:
                 })
                 continue
 
-            result = self._compare_cropped(img_exp, img_act)
-            score = result["score"]
+            roi = item.get("roi")
+            if not roi:
+                # ROI 정보가 없는 구버전 데이터는 비교 불가 (template matching 폐기)
+                sub_results.append({
+                    "label": item.get("label", ""),
+                    "expected_image": item.get("rel_path", ""),
+                    "score": 0.0,
+                    "status": "error",
+                    "match_location": None,
+                })
+                continue
 
-            status = "pass" if score >= threshold_pass else "fail"
+            result = self._compare_at_roi(img_exp, img_act, roi)
+            score = result["score"]
+            if "error" in result:
+                status = "error"
+            else:
+                status = "pass" if score >= threshold_pass else "fail"
 
             sub_results.append({
                 "label": item.get("label", ""),
