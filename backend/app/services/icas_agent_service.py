@@ -499,6 +499,25 @@ class ICASAgentService:
             "0x83 0x50 0x20 0x0b 0x00 0x00 0x00 0x00 0x00 0xa0 0x01 0x11 "
             "0x10 0x00 0x00 0xff"
         )
+        # ksend usage가 작은 정수 PID(`-s 10 -d 11`)를 사용하는 점, 기본 0x80000000000이
+        # 32-bit overflow로 보이는 점을 근거로 다양한 dst 후보를 자동 시도.
+        # 각 후보를 ksend -v로 송신 → "empty address data" 같은 파싱 에러 vs 정상 송신 식별.
+        # 송신 자체는 메시지가 디바이스 KIPC 큐에 들어가도 처리될 보장은 없지만,
+        # 최소한 ksend 파서가 받아들이는 형식을 좁힐 수 있음.
+        candidates = [
+            "0", "1", "2", "5", "10", "11", "16", "32", "43", "57", "63", "64",
+            "100", "127", "128", "200", "255",
+            "0x10", "0x20", "0x40", "0x80",
+            # 32-bit/16-bit hex 변종 — overflow 안 되는 범위
+            "0x800", "0x8000", "0x80000",
+            "8796093022208",  # 0x80000000000을 decimal로
+        ]
+        ksend_sweep_lines = [
+            f"echo '==dst={d}==' ; "
+            f"/lge/app_ro/bin/ksend -v -s 0 -d {d} -b \"0x00 0x01\" 2>&1 | head -n 3 ; "
+            f"echo \"exit=$?\""
+            for d in candidates
+        ]
         # (label, command, max_chars)
         probes: list[tuple[str, str, int]] = [
             ("ksend bin", "ls -la /lge/app_ro/bin/ksend 2>&1", 200),
@@ -517,12 +536,19 @@ class ICASAgentService:
              "done", 4000),
             ("KIPC any",
              "find /proc -maxdepth 3 -name 'kipc*' 2>/dev/null | head -n 20", 1500),
+            # 디바이스의 KIPC 설정 파일 찾기 — vw/hmi/lge 디렉토리에서 kipc 관련 conf
+            ("KIPC conf",
+             "( find /etc /vw /lge -maxdepth 6 -type f \\( -name '*kipc*' -o -name '*KIPC*' \\) 2>/dev/null ; "
+             "  grep -rl -i 'kipc' /vw/hmi/config 2>/dev/null | head -n 10 ; "
+             "  grep -rl -i 'kipc' /etc 2>/dev/null | head -n 10 ) | head -n 30", 2000),
             ("addr defaults",
              f"echo 'src={self.src_addr} dst={self.dst_addr} market={self.market}'",
              400),
-            ("ksend -v dummy",
+            ("ksend -v dummy (current)",
              f"/lge/app_ro/bin/ksend -v -s {self.src_addr} -d {self.dst_addr} "
              f'-b "{dummy_data}" 2>&1 ; echo "exit=$?"', 2000),
+            # 다양한 dst 후보 sweep — 어느 값이 ksend 파서를 통과하는지 식별
+            ("ksend dst sweep", " ; ".join(ksend_sweep_lines), 6000),
         ]
         with self._input_ssh_lock:
             ssh = self._get_input_ssh()
