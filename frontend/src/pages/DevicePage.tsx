@@ -340,6 +340,23 @@ export default function DevicePage() {
   // Scan settings modal
   const [scanSettingsOpen, setScanSettingsOpen] = useState(false);
   type ScanCategory = 'primary' | 'auxiliary';
+  // 고정 포트 정의 — 사용자가 변경할 수 없는 빌트인 스캔 포트
+  const FIXED_PORTS: Record<string, number[]> = {
+    hkmc: [6655, 5000],
+    isap: [20000],
+    dlt: [3490],
+    bench: [25000],
+  };
+  // 백엔드에서 받아온 builtin 설정에 고정 포트를 강제 적용
+  const applyFixedPorts = (
+    b: Record<string, { enabled: boolean; module: string; port?: number; ports?: number[]; host?: string; category?: ScanCategory }>,
+  ) => {
+    const result = { ...b };
+    for (const [key, ports] of Object.entries(FIXED_PORTS)) {
+      result[key] = { ...(result[key] || { enabled: true, module: '' }), ports };
+    }
+    return result;
+  };
   const [scanBuiltin, setScanBuiltin] = useState<Record<string, { enabled: boolean; module: string; port?: number; ports?: number[]; host?: string; category?: ScanCategory }>>({
     adb: { enabled: true, module: '', category: 'primary' },
     serial: { enabled: true, module: 'SerialLogging', category: 'auxiliary' },
@@ -357,7 +374,7 @@ export default function DevicePage() {
   // 앱 시작 시 스캔 설정 동기화 — device 추가 모달에서 category 기준 필터링 위해 필요
   useEffect(() => {
     deviceApi.getScanSettings().then(res => {
-      if (res.data?.builtin) setScanBuiltin(prev => ({ ...prev, ...res.data.builtin }));
+      if (res.data?.builtin) setScanBuiltin(prev => applyFixedPorts({ ...prev, ...res.data.builtin }));
       if (Array.isArray(res.data?.custom)) setScanCustom(res.data.custom);
     }).catch(() => { /* 실패 시 프론트 기본값 유지 */ });
   }, []);
@@ -427,14 +444,14 @@ export default function DevicePage() {
     } catch { /* ignore */ }
     try {
       const res = await deviceApi.getScanSettings();
-      setScanBuiltin(res.data.builtin || {});
+      setScanBuiltin(applyFixedPorts(res.data.builtin || {}));
       setScanCustom(res.data.custom || []);
     } catch { /* use defaults */ }
     setScanSettingsOpen(true);
   };
 
   const saveScanSettings = async () => {
-    const settings = { builtin: scanBuiltin, custom: scanCustom };
+    const settings = { builtin: applyFixedPorts(scanBuiltin), custom: scanCustom };
     try {
       await deviceApi.saveScanSettings(settings);
       message.success(t('common.saved'));
@@ -2066,11 +2083,11 @@ export default function DevicePage() {
           const builtinItems = [
             { key: 'adb',            label: 'ADB',            proto: 'USB/WiFi', editablePorts: false },
             { key: 'serial',         label: 'Serial',         proto: 'COM',      editablePorts: false },
-            { key: 'hkmc',           label: 'HKMC',           proto: 'TCP',      editablePorts: true  },
-            { key: 'isap',           label: 'iSAP Agent',     proto: 'TCP',      editablePorts: true  },
+            { key: 'hkmc',           label: 'HKMC',           proto: 'TCP',      editablePorts: false },
+            { key: 'isap',           label: 'iSAP Agent',     proto: 'TCP',      editablePorts: false },
             { key: 'icas',           label: 'ICAS Agent',     proto: 'SSH',      editablePorts: false },
-            { key: 'dlt',            label: 'DLT',            proto: 'TCP',      editablePorts: true  },
-            { key: 'bench',          label: 'WoohyunBench',   proto: 'UDP',      editablePorts: true  },
+            { key: 'dlt',            label: 'DLT',            proto: 'TCP',      editablePorts: false },
+            { key: 'bench',          label: 'WoohyunBench',   proto: 'UDP',      editablePorts: false },
             { key: 'vision_camera',  label: 'Vision Camera',  proto: 'GigE',     editablePorts: false },
             { key: 'webcam',         label: 'Webcam',         proto: 'USB',      editablePorts: false },
             { key: 'ssh',            label: 'SSH',            proto: 'TCP',      editablePorts: false },
@@ -2110,7 +2127,7 @@ export default function DevicePage() {
             const portsStr = v.ports && v.ports.length > 0 ? v.ports.join(',') : '';
             const portLabel = (item.key === 'ssh' || item.key === 'icas')
               ? String(v.port ?? 22)
-              : (item.editablePorts ? portsStr : '-');
+              : (portsStr || '-');
             return (
               <tr key={`b_${item.key}`} style={{ borderBottom: '1px solid #f0f0f0' }}>
                 <td style={{ padding: '4px' }}>
