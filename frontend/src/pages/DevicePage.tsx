@@ -398,7 +398,7 @@ export default function DevicePage() {
 
   // key → category 해석 (값 없으면 기본 정책 적용)
   const _defaultCategoryForKey = (key: string): ScanCategory => {
-    const primaryKeys = new Set(['adb', 'hkmc', 'isap', 'icas', 'vision_camera', 'webcam']);
+    const primaryKeys = new Set(['adb', 'hkmc', 'isap', 'icas', 'mib', 'vision_camera', 'webcam']);
     return primaryKeys.has(key) ? 'primary' : 'auxiliary';
   };
   const scanItemCategory = (key: string): ScanCategory =>
@@ -2313,7 +2313,7 @@ export default function DevicePage() {
           const renderBuiltinRow = (item: BuiltinItem) => {
             const v = scanBuiltin[item.key] || { enabled: true, module: '' };
             const portsStr = v.ports && v.ports.length > 0 ? v.ports.join(',') : '';
-            const portLabel = (item.key === 'ssh' || item.key === 'icas')
+            const portLabel = (item.key === 'ssh' || item.key === 'icas' || item.key === 'mib')
               ? String(v.port ?? 22)
               : (portsStr || '-');
             return (
@@ -2367,7 +2367,7 @@ export default function DevicePage() {
                         onChange={p => setScanBuiltin({ ...scanBuiltin, [item.key]: { ...v, port: p ?? 8000 } })}
                       />
                     </Space.Compact>
-                  ) : (item.key === 'ssh' || item.key === 'icas') ? (
+                  ) : (item.key === 'ssh' || item.key === 'icas' || item.key === 'mib') ? (
                     <InputNumber
                       size="small"
                       min={1} max={65535}
