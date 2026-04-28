@@ -491,57 +491,57 @@ class ICASAgentService:
     def _probe_ksend(self) -> None:
         """ksend 입력 경로의 가용성을 진단. 입력 전용 SSH 세션에서 실행.
 
-        진단 내용:
-          1) ksend 바이너리 존재/권한 확인
-          2) help/usage 출력 확인 — 인자 형식이 다른 ksend 변종인지 식별
-          3) 다른 입력 메커니즘 탐색 (uinput/evtouch/input* 노드)
-          4) KIPC listener 진단 — 실행 중인 touch/input handler 후보 프로세스 식별
-          5) 더미 ksend 송신 1회 — verbose(-v) 옵션으로 실제 송신 결과 확인
+        여러 진단 명령을 별도 라인으로 출력 (단일 라인이 길이 제한에 잘리지 않도록).
         """
+        # 더미 송신: 현재 src/dst로 짧은 binary 메시지 1회. -v로 verbose 출력 활성.
+        # 좌표 0,0 + end byte 0xFF(release)로 실 영향 최소화.
+        dummy_data = (
+            "0x83 0x50 0x20 0x0b 0x00 0x00 0x00 0x00 0x00 0xa0 0x01 0x11 "
+            "0x10 0x00 0x00 0xff"
+        )
+        # (label, command, max_chars)
+        probes: list[tuple[str, str, int]] = [
+            ("ksend bin", "ls -la /lge/app_ro/bin/ksend 2>&1", 200),
+            ("ksend usage", "/lge/app_ro/bin/ksend 2>&1 | head -n 25", 1500),
+            ("input nodes", "ls -la /dev/input/ 2>&1 | head -n 30", 800),
+            ("uinput", "ls -la /dev/uinput 2>&1", 200),
+            ("KIPC procs",
+             "(ps -ef 2>/dev/null || ps 2>/dev/null) | "
+             "grep -iE '(touch|input|hmi|kipc|hardkey|remote|mcu|vtee)' | "
+             "grep -v grep | head -n 25", 4000),
+            ("KIPC proc dir", "ls -la /proc/lge_kipc/ 2>&1 | head -n 30", 1500),
+            ("KIPC list",
+             "for f in /proc/lge_kipc/list /proc/kipc/list "
+             "/proc/lge_kipc/proc /sys/kernel/kipc/list ; do "
+             "  if [ -e \"$f\" ]; then echo \"==$f==\"; cat \"$f\" 2>&1 | head -n 60 ; fi ; "
+             "done", 4000),
+            ("KIPC any",
+             "find /proc -maxdepth 3 -name 'kipc*' 2>/dev/null | head -n 20", 1500),
+            ("addr defaults",
+             f"echo 'src={self.src_addr} dst={self.dst_addr} market={self.market}'",
+             400),
+            ("ksend -v dummy",
+             f"/lge/app_ro/bin/ksend -v -s {self.src_addr} -d {self.dst_addr} "
+             f'-b "{dummy_data}" 2>&1 ; echo "exit=$?"', 2000),
+        ]
         with self._input_ssh_lock:
             ssh = self._get_input_ssh()
-            # 더미 송신: 현재 src/dst로 짧은 binary 메시지 1회. -v로 verbose 출력 활성.
-            # 실제 touch frame 형식과 동일한 16바이트 + end byte 0xFF(release) 형태이지만
-            # 좌표를 0,0으로 설정해 실 영향 최소화.
-            dummy_data = (
-                "0x83 0x50 0x20 0x0b 0x00 0x00 0x00 0x00 0x00 0xa0 0x01 0x11 "
-                "0x10 0x00 0x00 0xff"
-            )
-            cmd = (
-                "echo '--ksend bin--' ; "
-                "ls -la /lge/app_ro/bin/ksend 2>&1 ; "
-                "echo '--ksend help--' ; "
-                "/lge/app_ro/bin/ksend 2>&1 | head -n 20 ; "
-                "echo '--alt input nodes--' ; "
-                "ls -la /dev/input/ 2>&1 | head -n 30 ; "
-                "echo '--uinput--' ; "
-                "ls -la /dev/uinput 2>&1 ; "
-                "echo '--KIPC procs--' ; "
-                "(ps -ef 2>/dev/null || ps 2>/dev/null) | "
-                "grep -iE '(touch|input|hmi|kipc|hardkey|remote)' | "
-                "grep -v grep | head -n 20 ; "
-                "echo '--KIPC proc table--' ; "
-                "ls /proc/lge_kipc/ 2>&1 | head -n 20 ; "
-                "cat /proc/lge_kipc/list 2>/dev/null | head -n 30 ; "
-                "echo '--addr defaults--' ; "
-                f"echo 'src={self.src_addr} dst={self.dst_addr} market={self.market}' ; "
-                "echo '--ksend -v dummy send--' ; "
-                f"/lge/app_ro/bin/ksend -v -s {self.src_addr} -d {self.dst_addr} "
-                f'-b "{dummy_data}" 2>&1 | head -n 20 ; '
-                'echo "exit=$?"'
-            )
-            try:
-                stdin, stdout, stderr = ssh.exec_command(cmd, timeout=10)
+            for label, cmd, limit in probes:
                 try:
-                    stdin.close()
-                except Exception:
-                    pass
-                out = stdout.read().decode("utf-8", errors="replace")
-                err = stderr.read().decode("utf-8", errors="replace")
-                snippet = (out + ("\n[stderr] " + err if err.strip() else "")).strip().replace("\r", " ").replace("\n", " | ")[:2500]
-                logger.info("ICAS ksend probe → %s", snippet or "(empty)")
-            except Exception as e:
-                logger.debug("ICAS ksend probe exec failed: %s", e)
+                    stdin, stdout, stderr = ssh.exec_command(cmd, timeout=8)
+                    try:
+                        stdin.close()
+                    except Exception:
+                        pass
+                    out = stdout.read().decode("utf-8", errors="replace")
+                    err = stderr.read().decode("utf-8", errors="replace")
+                    combined = out
+                    if err.strip():
+                        combined += "\n[stderr] " + err
+                    snippet = combined.strip().replace("\r", " ").replace("\n", " | ")[:limit]
+                    logger.info("ICAS probe[%s] → %s", label, snippet or "(empty)")
+                except Exception as e:
+                    logger.debug("ICAS probe[%s] failed: %s", label, e)
 
     def _wait_remote_files_stable(self, ssh, items: list[tuple[int, str]],
                                   max_wait_s: float = 1.0,
