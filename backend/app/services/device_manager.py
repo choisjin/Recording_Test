@@ -2056,6 +2056,23 @@ class DeviceManager:
                 except Exception as e:
                     logger.warning("ICAS auto-detect persist failed: %s", e)
 
+            def _on_icas_addr_changed(src: str, dst: str, _did: str = target_dev_id) -> None:
+                """ksend src/dst가 자동 보정될 때 dev.info에 저장 + 영구 저장."""
+                d = self._devices.get(_did)
+                if d is None or d.type != "icas_agent":
+                    return
+                cur_src = d.info.get("ksend_src", "")
+                cur_dst = d.info.get("ksend_dst", "")
+                if cur_src == src and cur_dst == dst:
+                    return
+                d.info["ksend_src"] = src
+                d.info["ksend_dst"] = dst
+                logger.info("ICAS auto-corrected ksend addr: %s → src=%s dst=%s", _did, src, dst)
+                try:
+                    self._save_auxiliary_devices()
+                except Exception as e:
+                    logger.warning("ICAS addr auto-correct persist failed: %s", e)
+
             try:
                 # screen 인덱스 — 디바이스마다 가용 layer 다름. 저장된 값이 있으면 사용,
                 # 없으면 None으로 두어 서비스 기본값([0,2])을 따름. 형식: list[int].
@@ -2078,8 +2095,14 @@ class DeviceManager:
                     market=market,
                     key_overrides=dev.info.get("icas_keys"),
                     on_resolution_changed=_on_icas_resolution_changed,
+                    on_addr_changed=_on_icas_addr_changed,
                     screen_indices=screen_indices,
                 )
+                # 저장된 ksend src/dst override가 있으면 market default를 덮어씀
+                stored_src = dev.info.get("ksend_src")
+                stored_dst = dev.info.get("ksend_dst")
+                if stored_src and stored_dst:
+                    svc.set_addr(str(stored_src), str(stored_dst))
                 ok = await svc.async_connect()
                 if ok:
                     self._icas_conns[dev.id] = svc

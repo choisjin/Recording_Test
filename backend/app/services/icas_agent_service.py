@@ -121,6 +121,7 @@ class ICASAgentService:
                  market: str = "EU",
                  key_overrides: Optional[dict[str, dict]] = None,
                  on_resolution_changed: Optional[Callable[[str], None]] = None,
+                 on_addr_changed: Optional[Callable[[str, str], None]] = None,
                  screen_indices: Optional[list[int]] = None):
         self.host = host
         self.port = int(port)
@@ -163,6 +164,9 @@ class ICASAgentService:
         self._on_resolution_changed = on_resolution_changed
         # 콜백 폭주 방지 — 동일 해상도면 호출 안 함, 락으로 직렬화.
         self._res_callback_lock = threading.Lock()
+        # ksend src/dst가 디바이스 ksend 변종에서 거부될 때(예: bit-position form만 허용)
+        # 자동 보정 후 영구 저장하기 위한 콜백. 시그니처: callback(src, dst).
+        self._on_addr_changed = on_addr_changed
         # LayerManagerControl로 dump할 screen 인덱스 — 디바이스마다 가용한 layer가 다름.
         # 기본값 [0, 2]은 일반적인 IVI 환경 추정치. 일부 단일 디스플레이 ICAS는 [0]만 존재.
         # 캡처 실패가 누적되면 해당 인덱스를 자동 비활성화하고, 첫 연결 시 진단 명령으로 가용 레이어를 학습.
@@ -482,6 +486,11 @@ class ICASAgentService:
                 self._probe_ksend()
             except Exception as e:
                 logger.debug("ICAS ksend probe skipped: %s", e)
+            # ksend가 현재 src/dst를 거부하면 bit-position form으로 자동 변환 + 영구 저장.
+            try:
+                self._try_autocorrect_addr()
+            except Exception as e:
+                logger.debug("ICAS addr auto-correct skipped: %s", e)
             return True
         except Exception as e:
             logger.error("ICAS connect failed %s:%d: %s", self.host, self.port, e)
@@ -612,6 +621,87 @@ class ICASAgentService:
             except Exception:
                 pass
             time.sleep(poll_interval_s)
+
+    @staticmethod
+    def _bitmask_to_bit_position(addr: str) -> Optional[str]:
+        """0x80000000000 (=1<<43) 같은 단일-비트 bitmask를 '43'(bit position)으로 변환.
+
+        - addr이 power-of-two가 아니거나 0이면 None
+        - 1 ≤ bit_position ≤ 63 범위 내일 때만 반환 (ksend 6-bit 한계)
+        """
+        try:
+            v = int(addr, 0) if isinstance(addr, str) else int(addr)
+            if v <= 0 or (v & (v - 1)) != 0:
+                return None
+            bp = v.bit_length() - 1
+            if 0 < bp <= 63:
+                return str(bp)
+        except Exception:
+            pass
+        return None
+
+    def _ksend_test_addr(self, src: str, dst: str, ssh) -> bool:
+        """주어진 src/dst로 더미 ksend를 1회 송신해 파서가 받아들이는지 확인.
+
+        반환: True = 정상 송신("Sending data via ksend..." 출력), False = 거부.
+        호출자가 _input_ssh_lock을 잡고 있어야 함.
+        """
+        try:
+            cmd = (
+                f"/lge/app_ro/bin/ksend -v -s {src} -d {dst} -b \"0x00\" 2>&1"
+            )
+            stdin, stdout, _ = ssh.exec_command(cmd, timeout=4)
+            try:
+                stdin.close()
+            except Exception:
+                pass
+            out = stdout.read().decode("utf-8", errors="replace")
+            return "Sending data" in out and "empty address data" not in out
+        except Exception:
+            return False
+
+    def _try_autocorrect_addr(self) -> bool:
+        """현재 src/dst가 ksend에서 거부되면 bit-position form으로 변환.
+
+        반환: 변환 적용 여부. 콜백이 등록되어 있으면 그것도 호출 (영구 저장).
+        """
+        with self._input_ssh_lock:
+            ssh = self._get_input_ssh()
+            # 1) 현재 addr 검증
+            if self._ksend_test_addr(self.src_addr, self.dst_addr, ssh):
+                return False  # 이미 동작
+            # 2) bit-position form 후보
+            new_src = self._bitmask_to_bit_position(self.src_addr) or self.src_addr
+            new_dst = self._bitmask_to_bit_position(self.dst_addr) or self.dst_addr
+            if new_src == self.src_addr and new_dst == self.dst_addr:
+                logger.warning(
+                    "ICAS ksend addr rejected (src=%s dst=%s) and no bit-position fallback available. "
+                    "Manual override may be required.",
+                    self.src_addr, self.dst_addr,
+                )
+                return False
+            # 3) 변환 후 검증
+            if not self._ksend_test_addr(new_src, new_dst, ssh):
+                logger.warning(
+                    "ICAS ksend addr rejected and bit-position form (src=%s dst=%s) also failed.",
+                    new_src, new_dst,
+                )
+                return False
+            # 4) 적용 + 영구 저장
+            old_src, old_dst = self.src_addr, self.dst_addr
+            self.src_addr = new_src
+            self.dst_addr = new_dst
+            logger.info(
+                "ICAS addr auto-corrected to bit-position form: src=%s→%s dst=%s→%s",
+                old_src, new_src, old_dst, new_dst,
+            )
+        cb = self._on_addr_changed
+        if cb is not None:
+            try:
+                cb(self.src_addr, self.dst_addr)
+            except Exception as e:
+                logger.warning("ICAS on_addr_changed callback failed: %s", e)
+        return True
 
     def _maybe_disable_screen(self, idx: int) -> None:
         """연속 실패가 임계치를 넘으면 해당 screen 인덱스를 비활성화 (이후 dump 시도 안 함)."""
