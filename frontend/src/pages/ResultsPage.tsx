@@ -185,7 +185,7 @@ export default function ResultsPage() {
   const [scenarioFilter, setScenarioFilter] = useState('');
 
   // Webcam recordings
-  const [recordings, setRecordings] = useState<{ filename: string; size: number; url: string }[]>([]);
+  const [recordings, setRecordings] = useState<{ filename: string; size: number; url: string; started_at?: string | null }[]>([]);
   const [webcamPanelOpen, setWebcamPanelOpen] = useState(false);
   const [webcamExpanded, setWebcamExpanded] = useState(false);
   const [activeRecUrl, setActiveRecUrl] = useState('');
@@ -229,6 +229,36 @@ export default function ResultsPage() {
     return [];
   }, [detail, groupDetail]);
 
+  // 비디오 내 step의 정확한 오프셋(초) 계산.
+  // 1순위: 녹화 시작 wall-clock(rec.started_at)이 있으면 step.timestamp - rec.started_at.
+  //       녹화는 첫 스텝보다 먼저 시작되고 마지막 스텝보다 늦게 끝나므로 이 방식이 가장 정확.
+  // 2순위(레거시 폴백): 첫 스텝 timestamp를 비디오 0초로 가정 (구 결과와의 호환).
+  const computeSeekOffsetSec = useCallback((
+    step: StepResultDetail,
+    rec: { started_at?: string | null } | undefined,
+    repeatIdx: number,
+  ): number | null => {
+    if (!step.timestamp) return null;
+    const stepTime = new Date(step.timestamp).getTime();
+    if (!Number.isFinite(stepTime)) return null;
+
+    // 1순위: 사이드카가 제공한 녹화 시작 시각
+    if (rec?.started_at) {
+      const recStart = new Date(rec.started_at).getTime();
+      if (Number.isFinite(recStart)) {
+        return Math.max(0, (stepTime - recStart) / 1000);
+      }
+    }
+
+    // 2순위: 첫 스텝 timestamp 기반 폴백 (구 데이터 호환). 스케일링은 부정확하므로 사용하지 않음.
+    const sameRepeatSteps = getAllStepsForRepeat(repeatIdx);
+    const firstStep = sameRepeatSteps[0];
+    if (!firstStep?.timestamp) return null;
+    const firstTime = new Date(firstStep.timestamp).getTime();
+    if (!Number.isFinite(firstTime)) return null;
+    return Math.max(0, (stepTime - firstTime) / 1000);
+  }, [getAllStepsForRepeat]);
+
   const seekToStep = (step: StepResultDetail) => {
     if ((!detail && !groupDetail) || recordings.length === 0) {
       message.info('녹화 영상이 없습니다');
@@ -245,28 +275,16 @@ export default function ResultsPage() {
       rec = fallback;
     }
 
-    // 같은 회차의 첫/마지막 스텝 타임스탬프 기준으로 오프셋 계산
-    const sameRepeatSteps = getAllStepsForRepeat(targetRepeat);
-    const firstStep = sameRepeatSteps[0];
-    const lastStep = sameRepeatSteps.length > 1 ? sameRepeatSteps[sameRepeatSteps.length - 1] : firstStep;
-    if (!firstStep?.timestamp || !step.timestamp) return;
-    const firstTime = new Date(firstStep.timestamp).getTime();
-    const stepTime = new Date(step.timestamp).getTime();
-    const rawOffsetSec = (stepTime - firstTime) / 1000;
+    const offsetSec = computeSeekOffsetSec(step, rec, targetRepeat);
+    if (offsetSec == null) return;
 
-    // 스케일 보정에 필요한 값을 클로저에 캡처
-    const lastTime = lastStep?.timestamp ? new Date(lastStep.timestamp).getTime() : stepTime;
-    const lastExec = lastStep?.execution_time_ms || 0;
-    const totalStepSpanSec = (lastTime - firstTime) / 1000 + lastExec / 1000;
-
-    // 실제 seek 적용 — video.duration을 읽어 스케일 보정 후 currentTime 설정
+    // 실제 seek 적용 — duration이 유효하면 클램프, 무한이면 그대로.
     const applySeek = (video: HTMLVideoElement) => {
       const videoDuration = video.duration;
       const hasDuration = Number.isFinite(videoDuration) && videoDuration > 0;
-      const scale = (hasDuration && totalStepSpanSec > 0) ? videoDuration / totalStepSpanSec : 1;
-      const seekTime = Math.max(0, rawOffsetSec * scale);
-      if (Number.isFinite(seekTime)) {
-        video.currentTime = hasDuration ? Math.min(seekTime, videoDuration) : seekTime;
+      const seekTime = hasDuration ? Math.min(offsetSec, Math.max(0, videoDuration - 0.05)) : offsetSec;
+      if (Number.isFinite(seekTime) && seekTime >= 0) {
+        try { video.currentTime = seekTime; } catch { /* ignore */ }
       }
       pendingSeekRef.current = null;
     };
@@ -276,23 +294,23 @@ export default function ResultsPage() {
     setActiveRecRepeat(targetRepeat);
 
     if (urlChanged) {
-      // URL 변경 → React re-render로 <video src> 교체 → 0초 리셋 발생.
-      // rAF 타이밍으로는 React flush를 보장할 수 없으므로,
-      // pendingSeekRef에 오프셋을 저장하고 <video onCanPlay>에서 적용한다.
-      pendingSeekRef.current = { offset: rawOffsetSec, applied: false };
+      // URL 변경 → React re-render로 <video src> 교체 → loadedmetadata/canplay 후 적용 필요.
+      pendingSeekRef.current = { offset: offsetSec, applied: false };
     } else {
-      // 같은 URL → 비디오 이미 로드됨 → 즉시 seek
+      // 같은 URL → 즉시 seek 가능 여부 확인. 메타데이터(>=1)만 있어도 currentTime 설정은 가능.
       const video = detailVideoRef.current;
-      if (video && video.readyState >= 3) {
+      if (video && video.readyState >= 1) {
         applySeek(video);
       } else if (video) {
-        pendingSeekRef.current = { offset: rawOffsetSec, applied: false };
-        video.addEventListener('canplay', () => applySeek(video), { once: true });
+        pendingSeekRef.current = { offset: offsetSec, applied: false };
+        // onCanPlay 핸들러가 일관되게 처리하므로 별도 리스너는 추가하지 않는다.
       }
     }
   };
 
-  // <video onCanPlay> 콜백 — URL 변경 후 비디오 로드 완료 시 pending seek 적용
+  // <video onCanPlay> 콜백 — URL 변경 후 비디오 로드 완료 시 pending seek 적용.
+  // pendingSeekRef.offset은 seekToStep에서 이미 "비디오 내 절대 시간(초)"으로 계산되어 있으므로
+  // 여기서는 추가 스케일링 없이 currentTime에 그대로 적용한다.
   const handleVideoCanPlay = useCallback(() => {
     const pending = pendingSeekRef.current;
     if (!pending || pending.applied) return;
@@ -300,59 +318,57 @@ export default function ResultsPage() {
     const video = detailVideoRef.current;
     if (!video) return;
 
-    // 현재 활성 스텝 정보로 스케일 보정
-    const sameRepeatSteps = getAllStepsForRepeat(activeRecRepeat);
-    const firstStep = sameRepeatSteps[0];
-    const lastStep = sameRepeatSteps.length > 1 ? sameRepeatSteps[sameRepeatSteps.length - 1] : firstStep;
-    if (!firstStep?.timestamp) { pendingSeekRef.current = null; return; }
-    const firstTime = new Date(firstStep.timestamp).getTime();
-    const lastTime = lastStep?.timestamp ? new Date(lastStep.timestamp).getTime() : firstTime;
-    const lastExec = lastStep?.execution_time_ms || 0;
-    const totalStepSpanSec = (lastTime - firstTime) / 1000 + lastExec / 1000;
     const videoDuration = video.duration;
     const hasDuration = Number.isFinite(videoDuration) && videoDuration > 0;
-    const scale = (hasDuration && totalStepSpanSec > 0) ? videoDuration / totalStepSpanSec : 1;
-    const seekTime = Math.max(0, pending.offset * scale);
-    if (Number.isFinite(seekTime)) {
-      video.currentTime = hasDuration ? Math.min(seekTime, videoDuration) : seekTime;
+    const seekTime = hasDuration ? Math.min(pending.offset, Math.max(0, videoDuration - 0.05)) : pending.offset;
+    if (Number.isFinite(seekTime) && seekTime >= 0) {
+      try { video.currentTime = seekTime; } catch { /* ignore */ }
     }
     pendingSeekRef.current = null;
-  }, [activeRecRepeat, getAllStepsForRepeat]);
+  }, []);
 
-  // 비디오 재생 시 현재 스텝 실시간 하이라이트
+  // 비디오 재생 시 현재 스텝 실시간 하이라이트.
+  // started_at 사이드카가 있으면 video time → wall-clock으로 직접 변환하여 정확히 매칭.
+  // 없으면 첫 스텝 timestamp를 비디오 0초로 가정하는 레거시 휴리스틱으로 폴백.
   const handleVideoTimeUpdate = useCallback(() => {
     const video = detailVideoRef.current;
     if (!video || (!detail && !groupDetail)) return;
     const currentTime = video.currentTime;
     const sameRepeatSteps = getAllStepsForRepeat(activeRecRepeat);
     if (sameRepeatSteps.length === 0) return;
+
+    // 활성 녹화 메타에서 started_at 조회 (1순위)
+    const activeRec = recordings.find(r => r.url === activeRecUrl);
+    const recStartIso = activeRec?.started_at || null;
+    const recStartMs = recStartIso ? new Date(recStartIso).getTime() : NaN;
+    const hasRecStart = Number.isFinite(recStartMs);
+
+    // 폴백 기준점: 첫 스텝 timestamp (구 데이터 호환)
     const firstStep = sameRepeatSteps[0];
-    const lastStep = sameRepeatSteps[sameRepeatSteps.length - 1];
     if (!firstStep?.timestamp) return;
     const firstTime = new Date(firstStep.timestamp).getTime();
 
-    // 비디오 duration ↔ 스텝 시간 범위 비율로 역보정 (Infinity면 스케일링 생략)
-    const videoDuration = video.duration;
-    const hasDuration = Number.isFinite(videoDuration) && videoDuration > 0;
-    const lastTime = lastStep?.timestamp ? new Date(lastStep.timestamp).getTime() : firstTime;
-    const lastExec = lastStep?.execution_time_ms || 0;
-    const totalStepSpanSec = (lastTime - firstTime) / 1000 + lastExec / 1000;
-    const scale = (hasDuration && totalStepSpanSec > 0) ? totalStepSpanSec / videoDuration : 1;
-    // 비디오 시간 → 스텝 시간으로 변환
-    const mappedTime = currentTime * scale;
-
+    // 현재 video 시간을 wall-clock(ms) 또는 첫 스텝 기준 오프셋(sec)으로 변환
     let matchedStep: StepResultDetail | null = null;
     for (let i = sameRepeatSteps.length - 1; i >= 0; i--) {
       const s = sameRepeatSteps[i];
       if (!s.timestamp) continue;
-      const stepOffset = (new Date(s.timestamp).getTime() - firstTime) / 1000;
-      if (mappedTime >= stepOffset - 1) {
-        matchedStep = s;
-        break;
+      if (hasRecStart) {
+        const stepOffset = (new Date(s.timestamp).getTime() - recStartMs) / 1000;
+        if (currentTime >= stepOffset - 0.5) {
+          matchedStep = s;
+          break;
+        }
+      } else {
+        const stepOffset = (new Date(s.timestamp).getTime() - firstTime) / 1000;
+        if (currentTime >= stepOffset - 0.5) {
+          matchedStep = s;
+          break;
+        }
       }
     }
     setCurrentPlayingStepId(matchedStep?.step_id ?? null);
-  }, [detail, groupDetail, activeRecRepeat, getAllStepsForRepeat]);
+  }, [detail, groupDetail, activeRecRepeat, getAllStepsForRepeat, recordings, activeRecUrl]);
 
   const handleVideoPauseOrEnd = useCallback(() => {
     setCurrentPlayingStepId(null);

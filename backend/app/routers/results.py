@@ -869,8 +869,13 @@ async def upload_webcam_recording(
     file: UploadFile = File(...),
     result_filename: str = Query(...),
     repeat_index: int = Query(1),
+    started_at: str | None = Query(None),
 ):
-    """Upload a webcam recording linked to a test result."""
+    """Upload a webcam recording linked to a test result.
+
+    started_at: 브라우저 기반 녹화의 실제 시작 wall-clock 시각(ISO 문자열).
+    사이드카(.meta.json)로 저장되어 프론트의 step→video 시간 매핑에 사용된다.
+    """
     base = result_filename.replace(".json", "").replace("/result", "")
     filename = f"webcam_r{repeat_index}.webm"
     content = await file.read()
@@ -888,7 +893,35 @@ async def upload_webcam_recording(
         filepath = RECORDINGS_DIR / f"{base}_webcam_r{repeat_index}.webm"
         filepath.write_bytes(content)
 
+    # 사이드카에 시작 시각 저장 (있을 때만)
+    if started_at:
+        try:
+            meta_path = filepath.with_suffix(filepath.suffix + ".meta.json")
+            meta_path.write_text(
+                json.dumps({"started_at": started_at}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
+
     return {"filename": filename, "path": str(filepath)}
+
+
+def _read_recording_started_at(video_path: Path) -> str | None:
+    """녹화 파일의 사이드카 (.meta.json)에서 started_at(wall-clock ISO)을 읽는다.
+
+    파일이 없거나 파싱 실패 시 None. 프론트엔드는 None인 경우 첫 스텝 timestamp
+    기반 휴리스틱으로 폴백한다.
+    """
+    try:
+        meta_path = video_path.with_suffix(video_path.suffix + ".meta.json")
+        if not meta_path.is_file():
+            return None
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+        v = data.get("started_at")
+        return v if isinstance(v, str) and v else None
+    except Exception:
+        return None
 
 
 @router.get("/recordings-for/{result_filename:path}")
@@ -912,6 +945,7 @@ async def list_recordings_for_result(result_filename: str):
                     "filename": f.name,
                     "size": f.stat().st_size,
                     "url": f"/results-files/{base}/recordings/{f.name}",
+                    "started_at": _read_recording_started_at(f),
                 })
 
     # 레거시: Results/Video/ 에서도 탐색 (webm + mp4)
@@ -924,18 +958,26 @@ async def list_recordings_for_result(result_filename: str):
                 "filename": f.name,
                 "size": f.stat().st_size,
                 "url": f"/recordings/{f.name}",
+                "started_at": _read_recording_started_at(f),
             })
     return {"recordings": recordings}
 
 
 @router.delete("/recordings/{filename}")
 async def delete_recording(filename: str):
-    """Delete a webcam recording."""
+    """Delete a webcam recording (and its sidecar .meta.json if any)."""
     safe_name = _safe_filename(filename)
     filepath = RECORDINGS_DIR / safe_name
     if not filepath.exists():
         raise HTTPException(status_code=404, detail="Recording not found")
     filepath.unlink()
+    # 사이드카 메타 파일도 함께 정리
+    meta_path = filepath.with_suffix(filepath.suffix + ".meta.json")
+    if meta_path.exists():
+        try:
+            meta_path.unlink()
+        except Exception:
+            pass
     return {"deleted": safe_name}
 
 

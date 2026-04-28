@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -612,12 +613,18 @@ class _WebcamPlaybackSession:
 
     멀티 사이클 시 cycle별로 stop+start 하면서 임시 파일들을 누적했다가
     재생 종료 시 결과 폴더의 recordings/ 안으로 일괄 이동한다.
+
+    cycle_files 항목은 (iteration, path, started_at_iso) 형태로 저장되며,
+    started_at_iso는 해당 cycle 녹화가 실제로 시작된 wall-clock 시각이다.
+    프론트엔드에서 step → 비디오 시간 매핑(스킵 점프)에 사용된다.
     """
     def __init__(self) -> None:
         self.temp_dir: Optional[Path] = None
-        self.cycle_files: list[tuple[int, Path]] = []  # (iteration, temp file path)
+        # (iteration, finalized path, started_at ISO string)
+        self.cycle_files: list[tuple[int, Path, str]] = []
         self.current_cycle: int = 0
         self.current_path: Optional[Path] = None
+        self.current_started_at: Optional[str] = None
 
     def is_active(self) -> bool:
         return self.temp_dir is not None
@@ -643,6 +650,9 @@ async def _webcam_session_start(iteration: int = 1) -> Optional[_WebcamPlaybackS
             return None
         session.current_cycle = iteration
         session.current_path = path
+        # 녹화 시작 직후 wall-clock 시각을 캡처. 프론트에서 step.timestamp -
+        # recording.started_at 으로 비디오 내 정확한 오프셋을 계산하기 위해 사용.
+        session.current_started_at = datetime.now(timezone.utc).isoformat()
         logger.info("Webcam session started: cycle %d → %s", iteration, path)
         return session
     except Exception as e:
@@ -650,11 +660,32 @@ async def _webcam_session_start(iteration: int = 1) -> Optional[_WebcamPlaybackS
         return None
 
 
-def _try_move_cycle_to_final(iteration: int, src: Path) -> Optional[Path]:
+def _write_recording_meta(video_path: Path, started_at_iso: Optional[str]) -> None:
+    """녹화 파일과 같은 폴더에 webcam_r{N}.meta.json 사이드카를 작성한다.
+
+    프론트엔드(ResultsPage)는 이 파일의 started_at을 사용해 step.timestamp를
+    비디오 내 정확한 오프셋으로 변환한다. 사이드카가 없으면 레거시 휴리스틱
+    (첫 스텝 timestamp 기준)으로 폴백한다.
+    """
+    if not started_at_iso:
+        return
+    try:
+        meta_path = video_path.with_suffix(video_path.suffix + ".meta.json")
+        meta_path.write_text(
+            json.dumps({"started_at": started_at_iso}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except Exception as e:
+        logger.warning("Failed to write recording meta for %s: %s", video_path, e)
+
+
+def _try_move_cycle_to_final(iteration: int, src: Path, started_at_iso: Optional[str] = None) -> Optional[Path]:
     """완료된 cycle 녹화 파일을 가능한 경우 즉시 최종 recordings/ 위치로 이동한다.
 
     `_run_output_dir`이 설정되어 있지 않으면 (single-cycle 초기 등) None을 반환하여
     호출 측이 임시 경로를 그대로 유지하도록 한다.
+
+    started_at_iso가 주어지면 동일 폴더에 사이드카 메타 파일도 함께 생성한다.
     """
     try:
         from .services.playback_service import get_run_output_dir
@@ -667,9 +698,19 @@ def _try_move_cycle_to_final(iteration: int, src: Path) -> Optional[Path]:
         if not src.exists():
             return None
         if src.resolve() == dst.resolve():
+            _write_recording_meta(dst, started_at_iso)
             return dst
         import shutil
         shutil.move(str(src), str(dst))
+        # 사이드카에 시작 시각 기록 (있을 때만)
+        _write_recording_meta(dst, started_at_iso)
+        # 임시 폴더에 남아 있을 수 있는 사이드카도 정리
+        legacy_meta = src.with_suffix(src.suffix + ".meta.json")
+        if legacy_meta.exists():
+            try:
+                legacy_meta.unlink()
+            except Exception:
+                pass
         logger.info("Webcam cycle %d published immediately: %s", iteration, dst)
         return dst
     except Exception as e:
@@ -694,18 +735,25 @@ async def _webcam_session_next_cycle(session: Optional[_WebcamPlaybackSession], 
         await asyncio.to_thread(svc.stop_recording)
         if session.current_path is not None:
             # 완료된 cycle 파일을 즉시 최종 위치로 이동 시도 (shutil.move = blocking)
+            prev_started = session.current_started_at
             moved = await asyncio.to_thread(
-                _try_move_cycle_to_final, session.current_cycle, session.current_path
+                _try_move_cycle_to_final, session.current_cycle, session.current_path, prev_started
             )
-            session.cycle_files.append((session.current_cycle, moved or session.current_path))
+            session.cycle_files.append((
+                session.current_cycle,
+                moved or session.current_path,
+                prev_started or "",
+            ))
         path = session.temp_dir / f"webcam_r{iteration}.mp4"  # type: ignore[union-attr]
         started = await asyncio.to_thread(svc.start_recording, str(path))
         if started:
             session.current_cycle = iteration
             session.current_path = path
+            session.current_started_at = datetime.now(timezone.utc).isoformat()
             logger.info("Webcam session next cycle %d → %s", iteration, path)
         else:
             session.current_path = None
+            session.current_started_at = None
     except Exception as e:
         logger.warning("Failed to rotate webcam recording: %s", e)
 
@@ -717,8 +765,15 @@ def _webcam_session_finalize_sync(session: _WebcamPlaybackSession, result_path: 
         svc = get_webcam_service()
         svc.stop_recording()
         if session.current_path is not None:
-            moved = _try_move_cycle_to_final(session.current_cycle, session.current_path)
-            session.cycle_files.append((session.current_cycle, moved or session.current_path))
+            prev_started = session.current_started_at
+            moved = _try_move_cycle_to_final(
+                session.current_cycle, session.current_path, prev_started
+            )
+            session.cycle_files.append((
+                session.current_cycle,
+                moved or session.current_path,
+                prev_started or "",
+            ))
     except Exception as e:
         logger.warning("Failed to stop webcam session: %s", e)
 
@@ -735,17 +790,27 @@ def _webcam_session_finalize_sync(session: _WebcamPlaybackSession, result_path: 
                 run_dir.mkdir(parents=True, exist_ok=True)
             final_dir = run_dir / "recordings"
             final_dir.mkdir(parents=True, exist_ok=True)
-            for iteration, src in session.cycle_files:
+            for iteration, src, started_at_iso in session.cycle_files:
                 if not src.exists():
                     continue
                 dst = final_dir / f"webcam_r{iteration}.mp4"
                 try:
                     if src.resolve() == dst.resolve():
+                        # 이미 최종 위치에 있어도 사이드카 갱신
+                        _write_recording_meta(dst, started_at_iso or None)
                         continue
                 except Exception:
                     pass
                 try:
                     shutil.move(str(src), str(dst))
+                    _write_recording_meta(dst, started_at_iso or None)
+                    # 임시 폴더의 사이드카도 정리
+                    legacy_meta = src.with_suffix(src.suffix + ".meta.json")
+                    if legacy_meta.exists():
+                        try:
+                            legacy_meta.unlink()
+                        except Exception:
+                            pass
                     logger.info("Webcam recording moved: %s → %s", src.name, dst)
                 except Exception as e:
                     logger.warning("Failed to move %s: %s", src, e)
