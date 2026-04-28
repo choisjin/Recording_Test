@@ -140,12 +140,18 @@ class ICASAgentService:
 
         self._connected = False
         self.agent_version = "ICAS Agent"
-        # 공유 SSH 세션 — 액션마다 재연결하지 않고 keep-alive로 재사용하여 인증 오버헤드(80ms/call) 제거.
-        # 터치/하드키/스크린샷 등 모든 액션이 동일 클라이언트를 공유하므로 _ssh_lock으로 직렬화.
+        # 캡처 전용 SSH 세션 — LayerManagerControl dump + SCP pull 용. 캡처 한 사이클은
+        # 1초 가까이 걸리므로, 같은 락에 묶이면 그 사이 입력(ksend)이 블록됨.
+        # 따라서 터치/하드키는 별도 _input_ssh_*에서 보내 캡처와 병렬화.
         self._ssh_client = None
-        self._ssh_shell = None  # 장수명 invoke_shell 채널 — ksend 등 fire-and-forget 명령용
+        self._ssh_shell = None  # (legacy, 더 이상 사용하지 않음 — 입력은 _input_ssh_shell이 담당)
         self._ssh_lock = threading.RLock()
         self._ssh_keepalive_interval = 30  # seconds; transport.set_keepalive로 TCP idle 방지
+        # 입력(터치/하드키) 전용 SSH 세션 — 캡처 락과 독립이라 SCP가 바빠도 ksend는 즉시 송신.
+        # invoke_shell도 이 connection 위에서 유지하여 fire-and-forget 패턴 그대로 사용.
+        self._input_ssh_client = None
+        self._input_ssh_shell = None
+        self._input_ssh_lock = threading.RLock()
         # IID/HUD 캡처 — private_server로의 direct-tcpip 터널 + SSH 클라이언트도 장수명 캐시.
         # 매 프레임마다 paramiko.connect() 인증(~300-500ms)을 반복하지 않도록.
         self._ps_ssh = None
@@ -354,6 +360,65 @@ class ICASAgentService:
         self._ssh_shell = shell
         return shell
 
+    def _get_input_ssh(self):
+        """입력 전용 SSH 클라이언트 반환 — 끊어졌으면 재연결.
+
+        _input_ssh_lock 안에서 호출해야 함. 캡처 SSH(_ssh_client)와는 완전히 독립된
+        TCP 세션이라 한쪽이 바빠도 다른 쪽은 영향 없음.
+        """
+        if self._is_ssh_alive(self._input_ssh_client):
+            return self._input_ssh_client
+        if self._input_ssh_client is not None:
+            try:
+                self._input_ssh_client.close()
+            except Exception:
+                pass
+            self._input_ssh_client = None
+        if self._input_ssh_shell is not None:
+            try:
+                self._input_ssh_shell.close()
+            except Exception:
+                pass
+            self._input_ssh_shell = None
+        ssh = self._new_ssh()
+        try:
+            t = ssh.get_transport()
+            if t is not None:
+                t.set_keepalive(self._ssh_keepalive_interval)
+        except Exception:
+            pass
+        self._input_ssh_client = ssh
+        return ssh
+
+    def _get_input_shell(self):
+        """입력 전용 invoke_shell 채널 반환 — ksend 등 fire-and-forget 명령용."""
+        ssh = self._get_input_ssh()
+        if self._input_ssh_shell is not None:
+            try:
+                if not self._input_ssh_shell.closed:
+                    return self._input_ssh_shell
+            except Exception:
+                pass
+            try:
+                self._input_ssh_shell.close()
+            except Exception:
+                pass
+            self._input_ssh_shell = None
+        shell = ssh.invoke_shell()
+        shell.settimeout(0.5)
+        # 초기 프롬프트 드레인 — 최대 1초
+        deadline = time.time() + 1.0
+        while time.time() < deadline:
+            try:
+                if shell.recv_ready():
+                    shell.recv(65536)
+                else:
+                    time.sleep(0.05)
+            except Exception:
+                break
+        self._input_ssh_shell = shell
+        return shell
+
     def _drain_shell(self, shell, max_bytes: int = 65536) -> bytes:
         """공유 shell의 수신 버퍼를 non-blocking으로 비움 (pipe 백프레셔 방지)."""
         buf = b""
@@ -368,10 +433,10 @@ class ICASAgentService:
         return buf
 
     def _shell_run(self, commands: list[str], post_sleep_s: float = 0.02) -> None:
-        """공유 shell 채널로 명령 여러 개 송신 + drain. transport/shell dead면 1회 리셋 재시도.
+        """입력 전용 shell 채널로 명령 송신 + drain. transport/shell dead면 1회 리셋 재시도.
 
-        각 명령 후 짧은 post_sleep로 서버가 명령을 소비할 시간을 준 뒤 drain으로 출력을 정리.
-        ksend는 수 ms 안에 끝나므로 20ms 기본값으로 충분.
+        캡처 SSH 락(_ssh_lock)과 독립된 _input_ssh_lock에서 실행되므로,
+        스크린샷 SCP가 진행 중이어도 터치/하드키는 즉시 송신됨.
         """
         def _do(shell) -> None:
             for c in commands:
@@ -380,30 +445,32 @@ class ICASAgentService:
                     time.sleep(post_sleep_s)
                 self._drain_shell(shell)
 
-        with self._ssh_lock:
+        with self._input_ssh_lock:
             try:
-                shell = self._get_shared_shell()
+                shell = self._get_input_shell()
                 _do(shell)
                 return
             except Exception as e:
-                logger.warning("ICAS shared shell exec failed, retrying: %s", e)
+                logger.warning("ICAS input shell exec failed, retrying: %s", e)
                 # shell 리셋 → 다시 시도 (transport가 살아있으면 재사용, 죽었으면 재연결)
-                if self._ssh_shell is not None:
+                if self._input_ssh_shell is not None:
                     try:
-                        self._ssh_shell.close()
+                        self._input_ssh_shell.close()
                     except Exception:
                         pass
-                    self._ssh_shell = None
-            shell = self._get_shared_shell()
+                    self._input_ssh_shell = None
+            shell = self._get_input_shell()
             _do(shell)
 
     def connect(self, timeout: float = 10.0) -> bool:
-        """공유 SSH 세션을 확보하여 연결 상태를 확인 + 유지."""
+        """캡처/입력 SSH 세션을 모두 확보. 두 세션은 독립이라 한쪽이 바빠도 다른쪽 영향 없음."""
         try:
             with self._ssh_lock:
-                self._get_shared_ssh()  # 끊어져 있으면 새로 연결
+                self._get_shared_ssh()  # 캡처용 SSH 사전 확보
+            with self._input_ssh_lock:
+                self._get_input_ssh()   # 입력용 SSH 사전 확보 (첫 ksend 지연 제거)
             self._connected = True
-            logger.info("ICAS connected to %s:%d", self.host, self.port)
+            logger.info("ICAS connected to %s:%d (capture+input sessions)", self.host, self.port)
             # 캡처 layer 진단: 가용 screen/layer 인덱스를 알면 사용자에게 가이드 제공.
             # 실패해도 연결 자체에는 영향 없음 (best-effort, 5초 타임아웃).
             try:
@@ -422,14 +489,14 @@ class ICASAgentService:
             return False
 
     def _probe_ksend(self) -> None:
-        """ksend 입력 경로의 가용성을 진단.
+        """ksend 입력 경로의 가용성을 진단. 입력 전용 SSH 세션에서 실행.
 
         1) ksend 바이너리 존재/권한 확인 (`ls -la /lge/app_ro/bin/ksend`)
         2) help/usage 출력 확인 — 인자 형식이 다른 ksend 변종인지 식별
         3) 가능한 다른 입력 메커니즘 탐색 (uinput/evtouch/input* 노드)
         """
-        with self._ssh_lock:
-            ssh = self._get_shared_ssh()
+        with self._input_ssh_lock:
+            ssh = self._get_input_ssh()
             cmd = (
                 "echo '--ksend bin--' ; "
                 "ls -la /lge/app_ro/bin/ksend 2>&1 ; "
@@ -552,6 +619,20 @@ class ICASAgentService:
                 except Exception:
                     pass
                 self._ssh_client = None
+        # 입력 전용 세션도 정리
+        with self._input_ssh_lock:
+            if self._input_ssh_shell is not None:
+                try:
+                    self._input_ssh_shell.close()
+                except Exception:
+                    pass
+                self._input_ssh_shell = None
+            if self._input_ssh_client is not None:
+                try:
+                    self._input_ssh_client.close()
+                except Exception:
+                    pass
+                self._input_ssh_client = None
         self._close_private_server_ssh()
 
     def _close_private_server_ssh(self) -> None:
@@ -708,9 +789,10 @@ class ICASAgentService:
         """진단 모드: exec_command로 ksend 실행하고 stderr/exit 결과를 로깅.
 
         성능 영향 있음 (매 명령당 SSH channel 1회). 디버깅 후 환경변수 해제 권장.
+        입력 전용 SSH 세션 사용 — 캡처와 독립.
         """
-        with self._ssh_lock:
-            ssh = self._get_shared_ssh()
+        with self._input_ssh_lock:
+            ssh = self._get_input_ssh()
             try:
                 stdin, stdout, stderr = ssh.exec_command(cmd, timeout=5)
                 try:
