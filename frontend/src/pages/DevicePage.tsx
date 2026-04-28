@@ -738,6 +738,37 @@ export default function DevicePage() {
     setConnecting(false);
   };
 
+  // SSH 기반 주 디바이스(ICAS/MIB) 즉시 등록·연결 — scan 결과 클릭 시 사용.
+  // project/model 검증 없이 바로 진행. SSH 자격증명은 입력값 또는 root/(공백) 기본값.
+  const handleAddSshAgent = async (
+    devType: 'icas_agent' | 'mib_agent',
+    ip: string,
+    port: number,
+  ) => {
+    setConnecting(true);
+    try {
+      const extra: Record<string, any> = {
+        username: (sshUser && sshUser.trim()) || 'root',
+        password: sshPass || '',
+      };
+      if (devType === 'mib_agent') {
+        extra.resolution = (mibResolution || MIB_DEFAULT_RESOLUTION).trim();
+      } else {
+        extra.resolution = '1560x700';
+      }
+      const result = await connectDevice(
+        devType, ip, undefined, '', 'primary',
+        undefined, undefined, extra, '', port,
+        deviceModel || undefined,
+      );
+      message.success(result);
+      closeAddModal();
+    } catch (e: any) {
+      message.error(e.response?.data?.detail || t('device.connectFailed'));
+    }
+    setConnecting(false);
+  };
+
   const handleAddBench = async (ip: string, port: number) => {
     const moduleName = scanSelectedModule || 'WoohyunBench';
     setConnecting(true);
@@ -1304,15 +1335,11 @@ export default function DevicePage() {
                             pagination={scannedIcas.length > PAGE_SIZE ? { pageSize: PAGE_SIZE, size: 'small' } : false}
                             renderItem={(h) => (
                               <List.Item actions={[
-                                <Button size="small" type="primary" onClick={() => {
-                                  setConnectType('icas_agent');
-                                  setConnectAddress(h.ip);
-                                  setHkmcPort(h.port);
-                                  if (modalCategory === 'primary') {
-                                    setDeviceProject('ICAS');
-                                  }
-                                  setModalTabKey('manual');
-                                }}>{t('common.connect')}</Button>
+                                <Button size="small" type="primary"
+                                  loading={connecting}
+                                  onClick={() => handleAddSshAgent('icas_agent', h.ip, h.port)}>
+                                  {t('common.connect')}
+                                </Button>
                               ]}>
                                 <Tag color="purple">ICAS</Tag> <Tag color="blue">{h.ip}</Tag> <span style={{ color: '#888' }}>SSH: {h.port}</span>
                               </List.Item>
@@ -1333,15 +1360,11 @@ export default function DevicePage() {
                             pagination={scannedMib.length > PAGE_SIZE ? { pageSize: PAGE_SIZE, size: 'small' } : false}
                             renderItem={(h) => (
                               <List.Item actions={[
-                                <Button size="small" type="primary" onClick={() => {
-                                  setConnectType('mib_agent');
-                                  setConnectAddress(h.ip);
-                                  setHkmcPort(h.port);
-                                  if (modalCategory === 'primary') {
-                                    setDeviceProject('VW');
-                                  }
-                                  setModalTabKey('manual');
-                                }}>{t('common.connect')}</Button>
+                                <Button size="small" type="primary"
+                                  loading={connecting}
+                                  onClick={() => handleAddSshAgent('mib_agent', h.ip, h.port)}>
+                                  {t('common.connect')}
+                                </Button>
                               ]}>
                                 <Tag color="geekblue">MIB</Tag> <Tag color="blue">{h.ip}</Tag> <span style={{ color: '#888' }}>SSH: {h.port}</span>
                               </List.Item>
