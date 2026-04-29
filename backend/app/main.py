@@ -1049,6 +1049,15 @@ async def _run_play_job(data: dict):
             playback_service._running = False
         mark_playback_active(False)
         mark_runtime_fail_active(False)
+        # 중단/예외로 끝난 경우 모듈 인스턴스를 정리해 포트/스레드 leak 방지.
+        # 정상 종료(playback_complete)에서는 시나리오 마지막 스텝이 StopLogging 등을 통해 직접 정리한 것으로 간주.
+        terminal_type = (terminal_event or {}).get("type")
+        if terminal_type in ("playback_stopped", "error"):
+            try:
+                from .services.module_service import cleanup_active_instances
+                await asyncio.to_thread(cleanup_active_instances, terminal_type)
+            except Exception as e:
+                logger.warning("module cleanup failed: %s", e)
         # 모든 리소스 정리가 끝난 뒤에야 프론트에 종료 이벤트 전파
         # (이전 순서에선 publish가 먼저 나가 프론트가 결과 상세에 진입 → 파일이 아직 없어 404 발생)
         if terminal_event is not None:
@@ -1288,6 +1297,14 @@ async def _run_play_group_job(data: dict):
         playback_service._running = False
         mark_playback_active(False)
         mark_runtime_fail_active(False)
+        # 중단/예외로 끝난 경우 모듈 인스턴스 정리 (단일 재생과 동일 정책)
+        terminal_type = (terminal_event or {}).get("type")
+        if terminal_type in ("playback_stopped", "error"):
+            try:
+                from .services.module_service import cleanup_active_instances
+                await asyncio.to_thread(cleanup_active_instances, terminal_type)
+            except Exception as e:
+                logger.warning("module cleanup failed (group): %s", e)
         # 리소스 정리 완료 후에 프론트에 알림 — 결과 상세 진입 시 파일이 모두 제자리에 있도록
         if terminal_event is not None:
             publish_event(terminal_event)

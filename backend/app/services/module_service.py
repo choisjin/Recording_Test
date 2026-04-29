@@ -910,3 +910,48 @@ def reset_instance(module_name: str) -> None:
     """Remove cached instance (e.g. on device disconnect)."""
     _instances.pop(module_name, None)
     _auto_connected.discard(module_name)
+
+
+def cleanup_active_instances(reason: str = "") -> dict[str, str]:
+    """모든 활성 모듈 인스턴스에 graceful Disconnect를 시도하고 캐시를 비운다.
+
+    재생이 중간 종료되거나 예외로 끝난 경우 호출. 시리얼/DLT 등의 포트가 leak되지 않도록
+    하기 위함이다. 인스턴스가 Disconnect/Close 같은 메서드를 가지면 호출하고, 어떤 결과든
+    조용히 무시한 뒤 캐시에서 제거한다.
+
+    Returns:
+        {module_name: "ok" | "skipped" | "error: <msg>"} — 호출 결과 요약 (디버그/로그용).
+    """
+    summary: dict[str, str] = {}
+    # 순회 중 dict 변경을 피하기 위해 키 스냅샷
+    for name in list(_instances.keys()):
+        inst = _instances.get(name)
+        if inst is None:
+            continue
+        called = False
+        # Disconnect → Close → close 순서로 시도 (대소문자 다양성)
+        for method_name in ("Disconnect", "disconnect", "Close", "close",
+                             "StopLogging", "StopSave"):
+            method = getattr(inst, method_name, None)
+            if callable(method):
+                try:
+                    # StopLogging/StopSave는 빈 인자 허용. 일부는 추가 인자가 있을 수 있어 try/except로 보호.
+                    method()
+                    called = True
+                    summary[name] = f"ok({method_name})"
+                    break
+                except TypeError:
+                    # 시그니처 불일치 → 다음 후보 시도
+                    continue
+                except Exception as e:
+                    summary[name] = f"error({method_name}): {e}"
+                    called = True
+                    break
+        if not called:
+            summary[name] = "skipped"
+        # 캐시 무효화 — 다음 사용 시 fresh 인스턴스로 시작
+        _instances.pop(name, None)
+        _auto_connected.discard(name)
+    if summary:
+        logger.info("cleanup_active_instances(reason=%s): %s", reason or "-", summary)
+    return summary
