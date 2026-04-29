@@ -153,7 +153,7 @@ class StepResult(BaseModel):
 class ScenarioResult(BaseModel):
     scenario_name: str
     device_serial: str
-    status: str  # "pass", "fail", "error"
+    status: str  # "pass", "fail", "error", "stopped"
     total_steps: int  # steps per cycle
     total_repeat: int = 1
     passed_steps: int = 0
@@ -163,3 +163,6 @@ class ScenarioResult(BaseModel):
     step_results: list[StepResult] = Field(default_factory=list)  # ALL cycles combined
     started_at: Optional[str] = None
     finished_at: Optional[str] = None
+    # 중단 시 진행 중이던 회차/스텝 추적 (status="stopped"일 때 의미 있음).
+    stopped_at_iteration: Optional[int] = None  # 1-based; None이면 일반 종료
+    stopped_at_step: Optional[int] = None       # 1-based; iteration 안에서의 step 인덱스

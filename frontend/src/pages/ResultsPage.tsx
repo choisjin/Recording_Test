@@ -82,10 +82,16 @@ interface ResultDetail {
   step_results: StepResultDetail[];
   started_at: string;
   finished_at: string;
+  stopped_at_iteration?: number | null;
+  stopped_at_step?: number | null;
 }
 
 const statusColor = (s: string) =>
-  s === 'pass' ? 'green' : s === 'warning' ? 'orange' : s === 'error' ? 'volcano' : 'red';
+  s === 'pass' ? 'green'
+    : s === 'warning' ? 'orange'
+    : s === 'error' ? 'volcano'
+    : s === 'stopped' ? 'default'
+    : 'red';
 
 const imageUrl = (path: string | null) => {
   if (!path) return null;
@@ -1041,11 +1047,15 @@ export default function ResultsPage() {
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
                 <span style={{ fontWeight: 600 }}>Cycle:</span>
-                {Array.from({ length: totalRepeat }, (_, i) => i + 1).map(c => (
-                  <Button key={c} size="small" type={groupDetailCycle === c ? 'primary' : 'default'} onClick={() => setGroupDetailCycle(c)}>
-                    {c}
-                  </Button>
-                ))}
+                {Array.from({ length: totalRepeat }, (_, i) => i + 1).map(c => {
+                  // 어떤 시나리오라도 이 cycle에서 중단됐으면 마킹
+                  const stoppedHere = groupDetail.some(d => d.stopped_at_iteration === c);
+                  return (
+                    <Button key={c} size="small" type={groupDetailCycle === c ? 'primary' : 'default'} onClick={() => setGroupDetailCycle(c)} danger={stoppedHere}>
+                      {c}{stoppedHere ? ' ⏹' : ''}
+                    </Button>
+                  );
+                })}
                 <span style={{ marginLeft: 'auto', color: '#888' }}>
                   {groupDetail.map(d => d.scenario_name).join(' → ')}
                 </span>
@@ -1130,9 +1140,17 @@ export default function ResultsPage() {
                 </Space>
               </Descriptions.Item>
               <Descriptions.Item label={t('common.status')}>
-                <Tag color={statusColor(detail.status)} style={{ fontSize: 12 }}>
-                  {detail.status.toUpperCase()}
-                </Tag>
+                <Space size={4} wrap>
+                  <Tag color={statusColor(detail.status)} style={{ fontSize: 12 }}>
+                    {detail.status.toUpperCase()}
+                  </Tag>
+                  {detail.status === 'stopped' && detail.stopped_at_iteration != null && (
+                    <Tag color="orange" style={{ fontSize: 11 }}>
+                      Cycle {detail.stopped_at_iteration} 중단
+                      {detail.stopped_at_step != null ? ` @ Step ${detail.stopped_at_step}` : ''}
+                    </Tag>
+                  )}
+                </Space>
               </Descriptions.Item>
             </Descriptions>
 

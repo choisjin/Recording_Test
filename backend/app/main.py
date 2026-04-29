@@ -907,6 +907,8 @@ async def _run_play_job(data: dict):
 
         global_step_seq = 0
         last_completed_iteration = 0
+        iteration = 0  # 외부 스코프 보존 — 중단 시 finally/이후 처리에서 참조
+        _step_idx = 0  # 외부 스코프 보존 — 중단 시점의 step 번호
         for iteration in range(1, repeat + 1):
             playback_service._monitor_state["current_cycle"] = iteration
             if _is_multi_cycle:
@@ -995,39 +997,25 @@ async def _run_play_job(data: dict):
             result.step_results.extend(runtime_fails)
             result.failed_steps += len(runtime_fails)
 
-        # 중단 처리
+        # 중단 처리 — 진행 중이던 회차의 부분 step도 보존하고 영상도 함께 남김.
         if playback_service._should_stop:
-            if last_completed_iteration == 0:
-                terminal_event = {"type": "playback_stopped", "result_filename": ""}
-            else:
-                if _is_multi_cycle:
-                    result.total_steps = global_step_seq
-                else:
-                    total_steps_per_cycle = len(scen.steps)
-                    keep_count = last_completed_iteration * total_steps_per_cycle
-                    # 일반 스텝(step_id<9000)을 keep_count만큼 유지 + 인라인 fail(parent_step_id 보유)은
-                    # 부모가 base 안에 살아있다면 함께 유지 + tail legacy fail(extras)은 그대로 추가.
-                    base = [sr for sr in result.step_results if sr.step_id < 9000]
-                    base_kept = base[:keep_count]
-                    base_kept_ids = {sr.step_id for sr in base_kept}
-                    inline_fails_kept = [
-                        sr for sr in result.step_results
-                        if sr.step_id >= 9000 and sr.parent_step_id is not None
-                        and sr.parent_step_id in base_kept_ids
-                    ]
-                    extras = [
-                        sr for sr in result.step_results
-                        if sr.step_id >= 9000 and sr.parent_step_id is None
-                    ]
-                    result.step_results = base_kept + inline_fails_kept + extras
-                result.passed_steps = sum(1 for sr in result.step_results if sr.status == "pass")
-                result.failed_steps = sum(1 for sr in result.step_results if sr.status == "fail")
-                result.error_steps = sum(1 for sr in result.step_results if sr.status not in ("pass", "fail"))
-                result.total_repeat = last_completed_iteration
-                result.finished_at = datetime.now(timezone.utc).isoformat()
-                result.status = "fail" if (result.failed_steps > 0 or result.error_steps > 0) else "pass"
-                result_path = await playback_service._save_result(result)
-                terminal_event = {"type": "playback_stopped", "result_filename": _result_filename(result_path)}
+            # 진행 중이던 회차가 끝까지 안 갔으면 그 회차를 stopped로 마킹
+            in_progress_iter = iteration if iteration > last_completed_iteration else None
+            if _is_multi_cycle:
+                result.total_steps = global_step_seq
+            # step_results는 슬라이싱하지 않고 진행분 전체 보존 (인라인 fail 포함)
+            result.passed_steps = sum(1 for sr in result.step_results if sr.status == "pass")
+            result.failed_steps = sum(1 for sr in result.step_results if sr.status == "fail")
+            result.error_steps = sum(1 for sr in result.step_results if sr.status not in ("pass", "fail"))
+            # total_repeat = 진행 시도한 마지막 회차 번호 (완료/중단 무관)
+            result.total_repeat = max(iteration, 1)
+            result.stopped_at_iteration = in_progress_iter
+            if in_progress_iter is not None:
+                result.stopped_at_step = _step_idx if _step_idx > 0 else None
+            result.finished_at = datetime.now(timezone.utc).isoformat()
+            result.status = "stopped"
+            result_path = await playback_service._save_result(result)
+            terminal_event = {"type": "playback_stopped", "result_filename": _result_filename(result_path)}
         else:
             if _is_multi_cycle:
                 result.total_steps = global_step_seq
@@ -1131,6 +1119,8 @@ async def _run_play_group_job(data: dict):
             started_at=datetime.now(timezone.utc).isoformat(),
         )
         global_step_seq = 0
+        iteration = 0  # 외부 보존 — 중단 시 stopped_at_iteration 표기에 사용
+        last_completed_iteration = 0
 
         for iteration in range(1, repeat + 1):
             if playback_service._should_stop:
@@ -1250,6 +1240,8 @@ async def _run_play_group_job(data: dict):
 
                 sc_idx = next_idx
 
+            if not playback_service._should_stop:
+                last_completed_iteration = iteration
             if repeat > 1 and not playback_service._should_stop:
                 _interim = ScenarioResult(
                     scenario_name=group_name,
@@ -1274,7 +1266,12 @@ async def _run_play_group_job(data: dict):
 
         unified_result.finished_at = datetime.now(timezone.utc).isoformat()
         unified_result.total_steps = global_step_seq
-        if unified_result.failed_steps > 0 or unified_result.error_steps > 0:
+        if playback_service._should_stop:
+            unified_result.status = "stopped"
+            in_progress_iter = iteration if iteration > last_completed_iteration else None
+            unified_result.stopped_at_iteration = in_progress_iter
+            unified_result.total_repeat = max(iteration, 1)
+        elif unified_result.failed_steps > 0 or unified_result.error_steps > 0:
             unified_result.status = "fail"
         else:
             unified_result.status = "pass"
