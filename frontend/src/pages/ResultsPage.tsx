@@ -272,16 +272,44 @@ export default function ResultsPage() {
   }, [getAllStepsForRepeat]);
 
   // seek 실제 적용 — 비디오와 보류 중인 seek가 같은 녹화에 속하고 readyState가 충분할 때만.
+  // video가 아직 mount 안 됐거나 metadata 미로드면 짧게 폴링하여 재시도. 이로써 패널 첫 오픈 시
+  // (1) onLoadedMetadata 이벤트가 React listener 부착 전에 이미 발화한 race
+  // (2) ref 할당 타이밍 차이 모두 흡수.
+  const seekRetryTimerRef = useRef<number | null>(null);
   const tryApplyPendingSeek = useCallback(() => {
+    if (seekRetryTimerRef.current != null) {
+      window.clearTimeout(seekRetryTimerRef.current);
+      seekRetryTimerRef.current = null;
+    }
     const pending = pendingSeekRef.current;
     if (!pending || pending.applied) return;
     const video = detailVideoRef.current;
-    if (!video) return;
-    // 비디오 src가 아직 보류 중인 녹화로 전환되지 않았으면 대기 (이후 effect 또는 onCanPlay에서 재시도).
+
+    const scheduleRetry = () => {
+      // 최대 약 3초까지 retry (panel mount + metadata 로드 시간 충분히 커버)
+      const attempts = (pending as any)._attempts || 0;
+      if (attempts >= 30) return;  // 30 * 100ms = 3s
+      (pending as any)._attempts = attempts + 1;
+      seekRetryTimerRef.current = window.setTimeout(() => {
+        seekRetryTimerRef.current = null;
+        tryApplyPendingSeek();
+      }, 100);
+    };
+
+    if (!video) {
+      scheduleRetry();
+      return;
+    }
+    // 비디오 src가 아직 보류 중인 녹화로 전환되지 않았으면 대기.
     const currentSrc = video.currentSrc || video.src || '';
-    if (pending.recUrl && currentSrc.indexOf(pending.recUrl) === -1) return;
-    // 메타데이터조차 없으면 대기.
-    if (video.readyState < 1) return;
+    if (pending.recUrl && currentSrc.indexOf(pending.recUrl) === -1) {
+      scheduleRetry();
+      return;
+    }
+    if (video.readyState < 1) {
+      scheduleRetry();
+      return;
+    }
 
     const videoDuration = video.duration;
     const hasDuration = Number.isFinite(videoDuration) && videoDuration > 0;
@@ -1158,9 +1186,7 @@ export default function ResultsPage() {
               {/* 좌측: 웹캠 녹화 패널 (접힘/펼침) */}
               {recordings.length > 0 && (
                 <div style={{ width: webcamPanelOpen ? (webcamExpanded ? '60%' : 300) : 36, flexShrink: 0, transition: 'width 0.2s' }}>
-                  {/* 패널이 닫혀있어도 Card는 mount되어 있어야 video element가 살아있고 metadata가 미리 로드됨.
-                      → 첫 step 클릭 시 seek race 방지. 닫힘 상태에선 display로만 숨김. */}
-                  <div style={{ display: webcamPanelOpen ? 'block' : 'none' }}>
+                  {webcamPanelOpen ? (
                     <Card
                       size="small"
                       title={<Space size={4}><VideoCameraOutlined />{t('webcam.recordings')}</Space>}
@@ -1177,7 +1203,6 @@ export default function ResultsPage() {
                         ref={detailVideoRef}
                         src={activeRecUrl}
                         controls
-                        preload="metadata"
                         onLoadedMetadata={handleVideoCanPlay}
                         onCanPlay={handleVideoCanPlay}
                         onTimeUpdate={handleVideoTimeUpdate}
@@ -1248,9 +1273,7 @@ export default function ResultsPage() {
                         })}
                       </div>
                     </Card>
-                  </div>
-                  {/* 닫힘 상태 UI — 동일 video element를 살리기 위해 display로만 토글 */}
-                  <div style={{ display: webcamPanelOpen ? 'none' : 'block' }}>
+                  ) : (
                     <Tooltip title={t('webcam.recordings')} placement="right">
                       <Button
                         type="text"
@@ -1261,7 +1284,7 @@ export default function ResultsPage() {
                         {t('webcam.recordings')} ({recordings.length})
                       </Button>
                     </Tooltip>
-                  </div>
+                  )}
                 </div>
               )}
 
