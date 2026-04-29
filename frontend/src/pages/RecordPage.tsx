@@ -2167,14 +2167,27 @@ export default function RecordPage() {
     try {
       const newName = scenarioName.trim();
       // If name changed, rename first
+      // 백엔드 rename은 screenshots 폴더와 image 파일도 새 이름으로 리네이밍하고
+      // 갱신된 expected_image 파일명을 응답으로 돌려준다. 이 새 파일명을 로컬
+      // steps에 머지하지 않으면 아래 update가 stale OLD 파일명으로 JSON을
+      // 덮어써 기대이미지가 사라진 것처럼 보이는 버그가 발생한다.
+      let renamedStepsByIdx: Record<number, any> = {};
       if (originalScenarioName && originalScenarioName !== newName) {
-        await scenarioApi.rename(originalScenarioName, newName);
+        const renameRes = await scenarioApi.rename(originalScenarioName, newName);
         setOriginalScenarioName(newName);
+        const renamedSteps: any[] = renameRes.data?.scenario?.steps || [];
+        renamedSteps.forEach((s, i) => { renamedStepsByIdx[i] = s; });
       }
       // Re-index step IDs, _imageVer 등 프론트엔드 전용 필드 제거
       const reindexed = steps.map((s, i) => {
         const { _imageVer, ...rest } = s;
-        return { ...rest, id: i + 1 };
+        const out: any = { ...rest, id: i + 1 };
+        const renamed = renamedStepsByIdx[i];
+        if (renamed) {
+          if (renamed.expected_image !== undefined) out.expected_image = renamed.expected_image;
+          if (renamed.expected_images !== undefined) out.expected_images = renamed.expected_images;
+        }
+        return out;
       });
       await scenarioApi.update(newName, {
         ...scenarioMetaRef.current,
@@ -2182,8 +2195,12 @@ export default function RecordPage() {
         description,
         steps: reindexed,
       });
-      // _imageVer 복원 (캐시 버스팅 유지)
-      const savedSteps = reindexed.map((s, i) => ({ ...s, _imageVer: steps[i]?._imageVer }));
+      // _imageVer 복원 (캐시 버스팅 유지) — 리네임된 경우 새 파일명을 강제 리로드
+      const renamed = Object.keys(renamedStepsByIdx).length > 0;
+      const savedSteps = reindexed.map((s, i) => ({
+        ...s,
+        _imageVer: renamed ? Date.now() + i : steps[i]?._imageVer,
+      }));
       setSteps(savedSteps);
       savedStepsRef.current = JSON.stringify(reindexed);
       setScenarioName(newName);
@@ -2828,9 +2845,30 @@ export default function RecordPage() {
     if (!scenarioName || !editingExisting) return;
     promptScenarioName(t('record.renameScenario'), scenarioName, async (name) => {
       try {
-        await scenarioApi.rename(scenarioName, name);
+        const renameRes = await scenarioApi.rename(scenarioName, name);
         setScenarioName(name);
         setOriginalScenarioName(name);
+        // 백엔드가 image 파일을 새 이름으로 리네이밍하고 expected_image 필드를
+        // 갱신했으므로, 그 파일명을 로컬 steps에 동기화해야 한다.
+        // 그렇지 않으면 미리보기 URL이 stale 파일명을 사용해 깨지고,
+        // 이후 저장 시 stale 파일명이 다시 디스크에 기록된다.
+        const renamedSteps: any[] = renameRes.data?.scenario?.steps || [];
+        if (renamedSteps.length > 0) {
+          setSteps(prev => prev.map((s, i) => {
+            const r = renamedSteps[i];
+            if (!r) return s;
+            return {
+              ...s,
+              expected_image: r.expected_image ?? s.expected_image,
+              expected_images: r.expected_images ?? s.expected_images,
+              _imageVer: Date.now() + i,
+            };
+          }));
+          // savedStepsRef 갱신 — 리네임 후 디스크 상태와 일치시켜
+          // 잘못된 dirty flag 발생 방지
+          const reindexed = renamedSteps.map((s, i) => ({ ...s, id: i + 1 }));
+          savedStepsRef.current = JSON.stringify(reindexed);
+        }
         message.success(t('record.scenarioRenamed', { name }));
         fetchSavedScenarios();
       } catch (e: any) {

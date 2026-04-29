@@ -1167,7 +1167,20 @@ async def rename_scenario(name: str, req: RenameScenarioRequest):
         raise HTTPException(status_code=409, detail=str(e))
     if not ok:
         raise HTTPException(status_code=404, detail=f"Scenario '{name}' not found")
-    return {"status": "renamed", "old_name": name, "new_name": req.new_name}
+    # 새 이름으로 저장된 시나리오를 응답에 포함 — 프론트엔드가 갱신된
+    # expected_image / expected_images 파일명을 로컬 state에 동기화할 수 있도록.
+    # (이전: 프론트가 stale 파일명으로 update 호출해 JSON이 존재하지 않는
+    #  파일을 가리키게 되어 기대이미지가 초기화되는 버그)
+    try:
+        scenario = await recording_svc.load_scenario(req.new_name)
+        return {
+            "status": "renamed",
+            "old_name": name,
+            "new_name": req.new_name,
+            "scenario": scenario.model_dump(),
+        }
+    except FileNotFoundError:
+        return {"status": "renamed", "old_name": name, "new_name": req.new_name}
 
 
 @router.put("/{name}")
