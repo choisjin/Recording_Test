@@ -1548,8 +1548,10 @@
     "_description": "시리얼 로깅 — 시리얼 포트에 연결하여 로그를 캡처·저장하고 키워드 PASS/FAIL 판정하는 모듈",
     "functions": {
       "StartLogging": {
-        "description": "시리얼 연결 + 캡처 시작 (메모리만, 파일 저장 없음). 뷰어 모달이 자동 오픈됩니다. 종료 시 StopLogging으로 일괄 저장.",
-        "params": {}
+        "description": "시리얼 연결 + 캡처 시작 (메모리만, 파일 저장 없음). 뷰어 모달이 자동 오픈됩니다. **리턴 시점에 포트가 안정화되고 capture 스레드가 ready 상태**라 다음 스텝의 SendCommand가 씹히지 않음. 종료 시 StopLogging으로 일괄 저장.",
+        "params": {
+          "settle_ms": "포트 open 후 안정화 대기(ms). 기본 500. USB-Serial 어댑터 reset/buffer settle 동안 다음 스텝이 씹히지 않게 확보. Arduino처럼 DTR-reset되는 보드는 1500~2000으로 늘리고, 빠른 산업용 시리얼은 100~200까지 낮출 수 있음."
+        }
       },
       "StopLogging": {
         "description": "시리얼 캡처 종료 + 메모리 버퍼를 파일로 일괄 저장. 자동 경로 또는 지정 경로.",
@@ -1598,9 +1600,10 @@
         }
       },
       "StartSave": {
-        "description": "시리얼 포트에 연결하고 로그 캡처 + 파일 저장을 시작합니다. (연결 → 캡처 → 저장 한번에 수행)",
+        "description": "시리얼 포트에 연결하고 로그 캡처 + 파일 저장을 시작합니다. (연결 → 캡처 → 저장 한번에 수행). 리턴 시점에 포트가 안정화되어 다음 스텝의 SendCommand가 씹히지 않음.",
         "params": {
-          "save_path": "저장 파일 경로. 빈 값이면 backend/logs/에 자동 생성"
+          "save_path": "저장 파일 경로. 빈 값이면 backend/logs/에 자동 생성",
+          "settle_ms": "포트 open 후 안정화 대기(ms). 기본 500. StartLogging의 settle_ms와 동일."
         }
       },
       "StopSave": {

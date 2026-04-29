@@ -192,8 +192,16 @@ class SerialLogging:
     # 연결 관리 (내부)
     # ------------------------------------------------------------------
 
-    def _connect(self) -> str:
-        """시리얼 포트 연결."""
+    def _connect(self, settle_ms: int = 500) -> str:
+        """시리얼 포트 연결.
+
+        Args:
+            settle_ms: open 직후 드라이버/디바이스 안정화 대기(ms).
+                       USB-Serial 어댑터(FTDI/CP210x/CH340 등)는 open 시 DTR/RTS 펄스가
+                       발생하여 디바이스가 짧게 리셋되는 경우가 있고, OS도 buffer 설정 적용에
+                       수십~수백 ms를 쓴다. 이 시간 안에 SendCommand가 들어오면 씹힘 — settle 후에
+                       reset_input/output_buffer로 가비지를 비우고 capture loop를 시작한다.
+        """
         if not self._port:
             return "ERROR: port가 설정되지 않았습니다"
         if self._serial and self._serial.is_open:
@@ -202,6 +210,15 @@ class SerialLogging:
         try:
             import serial as pyserial
             self._serial = pyserial.Serial(self._port, self._bps, timeout=1)
+            # 1) 드라이버/디바이스 안정화 — capture loop 시작 전에 처리 (가비지 라인 캡처 방지)
+            if settle_ms and settle_ms > 0:
+                time.sleep(settle_ms / 1000.0)
+            # 2) open 동안 들어온 가비지 / 송신 잔여 비우기
+            try:
+                self._serial.reset_input_buffer()
+                self._serial.reset_output_buffer()
+            except Exception as _be:
+                logger.debug("[SerialLogging] buffer reset skipped: %s", _be)
             self._logs.clear()
             self._log_capture_ts.clear()
             self._line_counter = 0
@@ -210,8 +227,11 @@ class SerialLogging:
                 self._counters.clear()  # 새 세션마다 키워드 카운터 자동 리셋
                 self._asserts.clear()    # assert 카운터도 함께 리셋
                 self._fail_keywords.clear()
+            # 3) capture loop 시작 후, 스레드가 실제 readline에 진입할 시간을 짧게 보장
             self._start_capture()
-            logger.info("[SerialLogging] Connected to %s @ %d", self._port, self._bps)
+            time.sleep(0.05)  # capture thread가 첫 read 루프에 진입할 충분한 시간
+            logger.info("[SerialLogging] Connected to %s @ %d (settle=%dms)",
+                        self._port, self._bps, settle_ms)
             return ""
         except Exception as e:
             self._serial = None
@@ -240,12 +260,20 @@ class SerialLogging:
     # 뷰어 연동: StartLogging / StopLogging (DLTLogging과 동일 시그니처)
     # ------------------------------------------------------------------
 
-    def StartLogging(self) -> str:
+    def StartLogging(self, settle_ms: int = 500) -> str:
         """뷰어 연동용: 시리얼 연결 + 로그 캡처 시작 (메모리만, 파일 저장 없음).
 
+        Args:
+            settle_ms: 포트 open 후 안정화 대기 시간(ms). 기본 500ms — USB-Serial
+                       드라이버 reset/buffer settle 동안 다음 스텝의 SendCommand가 씹히지
+                       않도록 보장. 디바이스가 빠르게 준비되면 100~200으로 줄여도 되고,
+                       Arduino처럼 DTR-reset되는 보드는 1500~2000으로 늘릴 수 있다.
+
+        리턴 시점에는 포트가 열리고, 입력/출력 버퍼가 비워졌으며, capture 스레드가 첫
+        readline 루프에 진입한 상태이므로 다음 스텝에서 즉시 SendCommand해도 안전하다.
         SERIAL_HUB에 session_started 이벤트를 emit하여 뷰어가 자동 오픈된다.
         """
-        err = self._connect()
+        err = self._connect(settle_ms=settle_ms)
         if err:
             return err
         SERIAL_HUB.emit_lifecycle({
@@ -256,7 +284,7 @@ class SerialLogging:
             "save_path": "",
             "started_at": time.time(),
         })
-        return f"Logging started: {self._port} @ {self._bps}"
+        return f"Logging started: {self._port} @ {self._bps} (settle={settle_ms}ms)"
 
     def StopLogging(self, save_path: str = "") -> str:
         """뷰어 연동용: 시리얼 연결 종료 + 메모리 버퍼를 파일로 일괄 저장.
@@ -355,11 +383,12 @@ class SerialLogging:
     # 로그 저장 시작/중단 (연결 포함)
     # ------------------------------------------------------------------
 
-    def StartSave(self, save_path: str = "") -> str:
+    def StartSave(self, save_path: str = "", settle_ms: int = 500) -> str:
         """시리얼 포트에 연결하고 로그 캡처 + 파일 저장을 시작합니다.
 
         Args:
             save_path: 저장 파일 경로. 빈 값이면 자동 생성 (backend/logs/serial_YYYYMMDD_HHMMSS.log)
+            settle_ms: 포트 open 후 안정화 대기(ms). 기본 500. StartLogging 참고.
 
         Returns:
             결과 메시지
@@ -367,8 +396,8 @@ class SerialLogging:
         if self._save_file:
             return f"ERROR: 이미 저장 중입니다 ({self._save_path}). StopSave() 먼저 호출하세요."
 
-        # 연결이 안 되어 있으면 자동 연결
-        err = self._connect()
+        # 연결이 안 되어 있으면 자동 연결 — settle 대기 + buffer flush 후 capture 시작
+        err = self._connect(settle_ms=settle_ms)
         if err:
             return err
 
