@@ -607,3 +607,19 @@ async def open_results_folder():
     else:
         subprocess.Popen(["xdg-open", str(results_dir)])
     return {"status": "ok", "path": str(results_dir)}
+
+
+@router.get("/version")
+async def get_version():
+    """프로젝트 버전 조회 (version.txt). 빌드된 배포본에서는 dist 루트에 위치."""
+    candidates = [
+        _PROJECT_ROOT / "version.txt",
+        Path(__file__).resolve().parent.parent.parent.parent / "version.txt",
+    ]
+    for vf in candidates:
+        if vf.exists():
+            try:
+                return {"version": vf.read_text(encoding="utf-8").strip()}
+            except Exception:
+                pass
+    return {"version": ""}

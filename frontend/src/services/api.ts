@@ -187,6 +187,7 @@ export const serverApi = {
   powerStatus: () => api.get('/settings/power-status'),
   memoryUsage: () => api.get('/settings/memory-usage'),
   resetMemoryPeak: () => api.post('/settings/memory-usage/reset-peak'),
+  getVersion: () => api.get('/settings/version'),
 };
 
 export default api;

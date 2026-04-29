@@ -77,6 +77,7 @@ function AppContent() {
   const [siderCollapsed, setSiderCollapsed] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [diskInfoList, setDiskInfoList] = useState<{ drive: string; free_gb: number; total_gb: number; used_percent: number }[]>([]);
+  const [appVersion, setAppVersion] = useState<string>('');
   const { settings, uploadWebcamRecording, fetchSettings } = useSettings();
   const { t } = useTranslation();
 
@@ -133,6 +134,10 @@ function AppContent() {
             const data = res.data;
             // 배열이면 그대로, 단일 객체면 배열로 래핑 (하위호환)
             setDiskInfoList(Array.isArray(data) ? data : [data]);
+          }).catch(() => {});
+          // 버전 조회
+          serverApi.getVersion().then(res => {
+            setAppVersion(res.data?.version || '');
           }).catch(() => {});
         }
       } catch {
@@ -398,6 +403,18 @@ function AppContent() {
                 </div>
               </Tooltip>
               ))}
+            </div>
+          )}
+          {appVersion && (
+            <div style={{
+              padding: siderCollapsed ? '6px 4px' : '6px 16px',
+              borderTop: '1px solid rgba(255,255,255,0.1)',
+              fontSize: 10,
+              color: '#888',
+              textAlign: 'center',
+              userSelect: 'none',
+            }}>
+              {appVersion}
             </div>
           )}
         </Sider>

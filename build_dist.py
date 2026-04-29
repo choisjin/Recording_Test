@@ -31,6 +31,8 @@ DIST_DIR = PROJECT_ROOT / "dist" / "ReplayKit"
 BUILD_DIR = PROJECT_ROOT / "build"
 CACHE_DIR = BUILD_DIR / "cache"
 HASH_FILE = BUILD_DIR / "build_hashes.json"
+VERSION_FILE = PROJECT_ROOT / "version.txt"
+HISTORY_FILE = PROJECT_ROOT / "build_history.txt"
 
 NPM_CMD = "npm.cmd" if sys.platform == "win32" else "npm"
 
@@ -45,11 +47,113 @@ SKIP_COMPILE = {"__init__.py", "dependencies.py",
 
 INCLUDE_ROOT_FILES = [
     "requirements.txt", "setup.bat", "ReplayKit.bat", "server.py", "replaykit.ico",
+    "version.txt",
 ]
 
 # 배포에서 보존할 항목 (삭제하지 않음)
 _PRESERVE_NAMES = {".git", ".gitignore", ".gitattributes", "git_remote.txt", "scan_settings.json"}
 _PRESERVE_EXTS = {".whl", ".msi", ".exe", ".zip"}
+
+
+# ── 버전 관리 (Semantic Versioning) ──
+
+def _read_version() -> str:
+    """version.txt에서 현재 버전 읽기. 'v' 접두사 제거하여 'X.Y.Z'로 반환."""
+    if VERSION_FILE.exists():
+        raw = VERSION_FILE.read_text(encoding="utf-8").strip()
+        return raw.lstrip("vV") or "0.0.0"
+    return "0.0.0"
+
+
+def _write_version(ver: str):
+    """version.txt에 'vX.Y.Z' 형식으로 저장."""
+    if not ver.startswith("v"):
+        ver = "v" + ver
+    VERSION_FILE.write_text(ver + "\n", encoding="utf-8")
+
+
+def _bump(current: str, kind: str) -> str:
+    """SemVer bump. kind ∈ {major, minor, patch, none}."""
+    parts = (current.split(".") + ["0", "0", "0"])[:3]
+    try:
+        major, minor, patch = int(parts[0]), int(parts[1]), int(parts[2])
+    except ValueError:
+        major, minor, patch = 1, 0, 0
+    if kind == "major":
+        return f"{major + 1}.0.0"
+    if kind == "minor":
+        return f"{major}.{minor + 1}.0"
+    if kind == "patch":
+        return f"{major}.{minor}.{patch + 1}"
+    return f"{major}.{minor}.{patch}"
+
+
+def _prompt_version_modal() -> str:
+    """SemVer 선택 모달. 새 버전 문자열(X.Y.Z) 반환. 취소/닫기 시 현재 버전 유지."""
+    import tkinter as tk
+    from tkinter import ttk
+
+    current = _read_version()
+    result = {"version": current}
+
+    root = tk.Tk()
+    root.title("ReplayKit — 빌드 버전 선택")
+    root.attributes("-topmost", True)
+    root.resizable(False, False)
+
+    frm = ttk.Frame(root, padding=20)
+    frm.pack(fill="both", expand=True)
+
+    ttk.Label(frm, text=f"현재 버전:  v{current}", font=("Segoe UI", 12, "bold")).pack(pady=(0, 4))
+    ttk.Label(frm, text="시맨틱 버저닝 기반 — 빌드할 버전을 선택하세요",
+              font=("Segoe UI", 9), foreground="#666").pack(pady=(0, 14))
+
+    def pick(kind: str):
+        result["version"] = _bump(current, kind)
+        root.destroy()
+
+    options = [
+        ("minor", _bump(current, "minor"), "하위 호환되는 기능 추가 (MINOR)"),
+        ("patch", _bump(current, "patch"), "버그 수정 (PATCH)"),
+        ("major", _bump(current, "major"), "하위 호환이 깨지는 변경 (MAJOR)"),
+        ("none",  current,                  "버전 유지"),
+    ]
+    for kind, ver, desc in options:
+        b = ttk.Button(frm, text=f"  v{ver:<10}  —  {desc}",
+                       command=lambda k=kind: pick(k), width=46)
+        b.pack(pady=4, fill="x")
+
+    root.update_idletasks()
+    w = root.winfo_reqwidth()
+    h = root.winfo_reqheight()
+    sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
+    root.geometry(f"+{(sw - w) // 2}+{(sh - h) // 2}")
+
+    root.protocol("WM_DELETE_WINDOW", lambda: (result.update(version=current), root.destroy()))
+    root.mainloop()
+
+    return result["version"]
+
+
+def _record_build_history(version: str):
+    """빌드 히스토리 기록: [날짜] vX.Y.Z — <short_hash> <subject>."""
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    commit_info = "(no commit)"
+    try:
+        r = subprocess.run(
+            ["git", "log", "-1", "--format=%h %s"],
+            cwd=str(PROJECT_ROOT),
+            capture_output=True, encoding="utf-8", errors="replace", timeout=5,
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            commit_info = r.stdout.strip()
+    except Exception:
+        pass
+
+    entry = f"[{timestamp}] v{version} — {commit_info}\n"
+    existing = HISTORY_FILE.read_text(encoding="utf-8") if HISTORY_FILE.exists() else ""
+    HISTORY_FILE.write_text(entry + existing, encoding="utf-8")
+    print(f"  build_history.txt 갱신: v{version}")
 
 
 # ── 유틸리티 ──
@@ -621,14 +725,26 @@ def main():
         deploy()
         return
 
+    # ── 빌드 시작: SemVer 모달 ──
+    print("\n버전 선택 모달을 표시합니다...")
+    new_version = _prompt_version_modal()
+    current_version = _read_version()
+    if new_version != current_version:
+        _write_version(new_version)
+        print(f"  version.txt: v{current_version} → v{new_version}")
+    else:
+        print(f"  version.txt: v{current_version} (유지)")
+
     if "--backend" in args:
-        step_compile_backend(force)
+        ok = step_compile_backend(force)
         clean()
+        if ok:
+            _record_build_history(new_version)
         return
 
     t_start = time.time()
     print("=" * 50)
-    print("  ReplayKit — 배포 빌드" + (" (FULL)" if force else " (증분)"))
+    print(f"  ReplayKit — 배포 빌드 v{new_version}" + (" (FULL)" if force else " (증분)"))
     print("=" * 50)
 
     if not step_compile_backend(force):
@@ -642,9 +758,11 @@ def main():
     step_package(force)
     clean()
 
+    _record_build_history(new_version)
+
     elapsed = time.time() - t_start
     print(f"\n{'=' * 50}")
-    print(f"  빌드 완료! ({elapsed:.1f}s)")
+    print(f"  빌드 완료! v{new_version} ({elapsed:.1f}s)")
     print(f"  배포 폴더: {DIST_DIR}")
     print(f"{'=' * 50}")
 
