@@ -1465,9 +1465,10 @@
         }
       },
       "fail_on_keyword": {
-        "description": "캡처되는 라인에 keyword가 **포함되면 fail step row 자동 누적**. assert_keyword의 반대. 비정상 키워드(예: 'ERROR', 'Fail', 'crash') 검출에 사용.",
+        "description": "캡처되는 라인에 keyword가 **포함되면 fail row 누적**. assert_keyword의 반대. 'ERROR'/'Fail'/'crash' 등 비정상 키워드 검출용. **time>0이면 동기 모드** (해당 시간 동안만 모니터링 후 자동 종료, 검출 fail은 이 스텝 바로 아래 Fail_Count_N으로 인라인 표시). time=0이면 백그라운드 모드.",
         "params": {
           "keyword": "검출할 부분 문자열. 이 단어가 라인에 들어오면 fail로 보고. 예: 'Fail', 'ERROR'",
+          "time": "동기 모니터링 시간(초). >0이면 해당 시간 동안만 감시 후 자동 unregister + 다음 스텝으로. 0(기본)이면 백그라운드.",
           "name": "검출기 식별자. 빈 값이면 'fail_<keyword>'. 같은 name 재호출 시 hit 통계 반환"
         }
       },
@@ -1583,9 +1584,10 @@
         }
       },
       "fail_on_keyword": {
-        "description": "캡처되는 라인에 keyword가 **포함되면 fail step row 자동 누적**. assert_keyword의 반대. 비정상 키워드(예: 'ERROR', 'Fail', 'crash') 검출에 사용.",
+        "description": "캡처되는 라인에 keyword가 **포함되면 fail row 누적**. assert_keyword의 반대. 'ERROR'/'Fail'/'crash' 등 비정상 키워드 검출용. **time>0이면 동기 모드** (해당 시간 동안만 모니터링 후 자동 종료, 검출 fail은 이 스텝 바로 아래 Fail_Count_N으로 인라인 표시). time=0이면 백그라운드 모드.",
         "params": {
           "keyword": "검출할 부분 문자열. 이 단어가 라인에 들어오면 fail로 보고. 예: 'Fail', 'ERROR'",
+          "time": "동기 모니터링 시간(초). >0이면 해당 시간 동안만 감시 후 자동 unregister + 다음 스텝으로. 0(기본)이면 백그라운드.",
           "name": "검출기 식별자. 빈 값이면 'fail_<keyword>'. 같은 name 재호출 시 hit 통계 반환"
         }
       },

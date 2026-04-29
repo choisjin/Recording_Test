@@ -573,7 +573,7 @@ class SerialLogging:
     # 키워드 검출 모드 — 키워드가 들어오면 fail로 보고 (assert_keyword의 반대)
     # ------------------------------------------------------------------
 
-    def fail_on_keyword(self, keyword: str, name: str = "") -> str:
+    def fail_on_keyword(self, keyword: str, time: float = 0, name: str = "") -> str:
         """캡처되는 라인에 keyword가 **포함되면** 시나리오 결과에 fail row 자동 누적.
 
         직관적 사용 — 'ERROR'/'Fail'/'crash' 등 비정상 단어 검출용.
@@ -583,10 +583,27 @@ class SerialLogging:
         keyword 매칭 라인의 정확한 capture timestamp로 fail row 추가. 시나리오의
         StartLogging부터 fail_on_keyword 호출 사이에 발생한 매칭이 누락되지 않음.
 
-        호출 흐름:
-          - 첫 호출: 검출 시작 + 기존 로그 backfill 스캔
-          - 같은 name 재호출: 현재까지 hit count + first/last timestamp 반환
+        모드:
+          - **time > 0 (sync, 권장)**: 등록 + backfill → 해당 시간 동안 모니터링 → 자동 unregister.
+            검출된 fail은 이 스텝의 인라인 결과로 분류되어 결과 표에 바로 아래 Fail_Count_N으로 표시.
+            blocking 호출이라 다음 스텝은 time 종료 후 실행됨.
+          - **time == 0 (legacy)**: 등록 후 즉시 리턴, 백그라운드로 시나리오 종료까지 누적.
+            같은 name 재호출 시 현재까지 hit count + first/last timestamp 반환.
         """
+        # NOTE: time 매개변수가 stdlib `time` 모듈 이름과 겹친다.
+        # 함수 시작에서 _time_mod로 alias, 이후 time은 매개변수 의미로 사용.
+        import time as _time_mod
+        sync_duration = float(time) if time else 0.0
+        # sync 모드면 현재 실행 중인 스텝을 parent로 박음
+        parent_step_id: Optional[int] = None
+        parent_repeat_index = 1
+        if sync_duration > 0:
+            try:
+                from backend.app.services.playback_service import get_current_step_context
+                parent_step_id, parent_repeat_index = get_current_step_context()
+            except Exception:
+                pass
+
         key = name.strip() if name else f"fail_{keyword}"
         backfill_reports: list[tuple[float, str]] = []  # 첫 호출 backfill용
         is_new = False
@@ -598,7 +615,9 @@ class SerialLogging:
                     "keyword": keyword,
                     "hit_count": 0,
                     "hit_timestamps": [],
-                    "started_at": time.time(),
+                    "started_at": _time_mod.time(),
+                    "parent_step_id": parent_step_id,
+                    "parent_repeat_index": parent_repeat_index,
                 }
                 self._fail_keywords[key] = new_entry
                 # backfill: 이미 캡처된 라인 중 keyword 매칭한 것 모두 보고
@@ -607,33 +626,55 @@ class SerialLogging:
                     ts_snapshot = list(self._log_capture_ts)
                 for i, ln in enumerate(logs_snapshot):
                     if keyword in ln:
-                        ts_b = ts_snapshot[i] if i < len(ts_snapshot) else time.time()
+                        ts_b = ts_snapshot[i] if i < len(ts_snapshot) else _time_mod.time()
                         new_entry["hit_count"] += 1
                         new_entry["hit_timestamps"].append(ts_b)
                         backfill_reports.append((ts_b, ln))
-                logger.info("[SerialLogging] fail_on_keyword started: name='%s' keyword='%s' backfill=%d",
-                            key, keyword, len(backfill_reports))
+                logger.info("[SerialLogging] fail_on_keyword started: name='%s' keyword='%s' backfill=%d sync=%.1fs parent=%s",
+                            key, keyword, len(backfill_reports), sync_duration, parent_step_id)
             else:
                 cnt = existing["hit_count"]
                 ts_list = list(existing["hit_timestamps"])
                 started_at = existing["started_at"]
                 kw = existing["keyword"]
+                # 동일 name 재호출이면서 sync 요청이면, 등록의 parent도 갱신 (현재 스텝 결과로 흡수)
+                if sync_duration > 0:
+                    existing["parent_step_id"] = parent_step_id
+                    existing["parent_repeat_index"] = parent_repeat_index
 
         # backfill 항목을 playback_service에 보고 (lock 밖에서)
         if is_new and backfill_reports:
             try:
                 from backend.app.services.playback_service import report_runtime_fail
                 for ts_b, ln in backfill_reports:
-                    report_runtime_fail("SerialLogging", keyword, ts_b, ln, reason="matched")
+                    report_runtime_fail(
+                        "SerialLogging", keyword, ts_b, ln, reason="matched",
+                        repeat_index=parent_repeat_index,
+                        parent_step_id=parent_step_id,
+                    )
             except Exception:
                 pass
+
+        # sync 모드: 지정된 시간 동안 capture loop가 보고하도록 대기 후 자동 해제
+        if sync_duration > 0:
+            _time_mod.sleep(sync_duration)
+            with self._counter_lock:
+                final_entry = self._fail_keywords.pop(key, None)
+            final_cnt = final_entry["hit_count"] if final_entry else 0
+            final_ts_list = list(final_entry["hit_timestamps"]) if final_entry else []
+            backfill_n = len(backfill_reports) if is_new else 0
+            window_n = max(0, final_cnt - backfill_n)
+            return (
+                f"FAIL_ON '{keyword}' (name='{key}', time={sync_duration:g}s): "
+                f"{final_cnt} hits (backfill={backfill_n}, window={window_n})"
+            )
 
         if is_new:
             return (f"Failing on keyword '{keyword}' (name='{key}')"
                     + (f" — backfill matched {len(backfill_reports)} lines" if backfill_reports else ""))
 
         def _fmt(t: float) -> str:
-            return time.strftime("%H:%M:%S", time.localtime(t))
+            return _time_mod.strftime("%H:%M:%S", _time_mod.localtime(t))
 
         if cnt == 0:
             return f"FAIL_ON '{kw}' (name='{key}'): 0 hits (since {_fmt(started_at)})"
@@ -954,30 +995,39 @@ class SerialLogging:
                 # 키워드 카운터/단언/검출 검사
                 if self._counters or self._asserts or self._fail_keywords:
                     now_ts = time.time()
-                    fail_reports: list[tuple[str, str, str]] = []  # (keyword, line, reason) — fail 보고
+                    # (keyword, line, reason, parent_step_id, parent_repeat_index)
+                    fail_reports: list[tuple[str, str, str, Optional[int], int]] = []
                     with self._counter_lock:
                         for c in self._counters.values():
                             if c["keyword"] in stamped:
                                 c["count"] += 1
                                 c["timestamps"].append(now_ts)
-                        # assert_keyword: 미포함 라인 → fail
+                        # assert_keyword: 미포함 라인 → fail (legacy: parent 없음)
                         for a in self._asserts.values():
                             if a["keyword"] not in stamped:
                                 a["miss_count"] += 1
                                 a["miss_timestamps"].append(now_ts)
-                                fail_reports.append((a["keyword"], stamped, "missing"))
-                        # fail_on_keyword: 포함 라인 → fail
+                                fail_reports.append((a["keyword"], stamped, "missing", None, 1))
+                        # fail_on_keyword: 포함 라인 → fail (sync 모드는 parent_step_id 보유)
                         for f in self._fail_keywords.values():
                             if f["keyword"] in stamped:
                                 f["hit_count"] += 1
                                 f["hit_timestamps"].append(now_ts)
-                                fail_reports.append((f["keyword"], stamped, "matched"))
+                                fail_reports.append((
+                                    f["keyword"], stamped, "matched",
+                                    f.get("parent_step_id"),
+                                    f.get("parent_repeat_index", 1),
+                                ))
                     # playback_service에 fail 보고 (재생 active일 때만 효과)
                     if fail_reports:
                         try:
                             from backend.app.services.playback_service import report_runtime_fail
-                            for kw, ln, reason in fail_reports:
-                                report_runtime_fail("SerialLogging", kw, now_ts, ln, reason=reason)
+                            for kw, ln, reason, p_sid, p_rep in fail_reports:
+                                report_runtime_fail(
+                                    "SerialLogging", kw, now_ts, ln, reason=reason,
+                                    repeat_index=p_rep,
+                                    parent_step_id=p_sid,
+                                )
                         except Exception:
                             pass
 

@@ -942,9 +942,16 @@ async def _run_play_job(data: dict):
                     })
                 else:
                     step_result = item
+                    # parent_step_id가 있는 항목은 sync 모드 fail_on_keyword가 trigger한 인라인 fail.
+                    # 일반 스텝과 다르게 처리: step_id(9000+)는 보존, parent_step_id를 직전 스텝의 _pending_seq로 remap.
+                    is_runtime_fail = step_result.parent_step_id is not None
                     if _is_multi_cycle:
-                        step_result.step_id = _pending_seq
-                        step_result.description = f"[Cycle {iteration}] {step_result.description}" if step_result.description else f"[Cycle {iteration}]"
+                        if is_runtime_fail:
+                            step_result.parent_step_id = _pending_seq
+                            step_result.description = f"[Cycle {iteration}] {step_result.description}" if step_result.description else f"[Cycle {iteration}]"
+                        else:
+                            step_result.step_id = _pending_seq
+                            step_result.description = f"[Cycle {iteration}] {step_result.description}" if step_result.description else f"[Cycle {iteration}]"
                     result.step_results.append(step_result)
                     if step_result.status == "pass":
                         result.passed_steps += 1
@@ -981,7 +988,8 @@ async def _run_play_job(data: dict):
                 )
                 await playback_service._save_result(_interim, interim=True)
 
-        # 시나리오 동안 모듈이 보고한 runtime fail(예: SerialLogging.assert_keyword 미일치)을 흡수
+        # 시나리오 동안 모듈이 보고한 legacy runtime fail (parent_step_id 없는 항목, 예: assert_keyword 미일치)을
+        # tail에 흡수. sync 모드 fail은 이미 인라인으로 step_results에 들어가 있어 buffer에 남아있지 않음.
         runtime_fails = consume_runtime_fails()
         if runtime_fails:
             result.step_results.extend(runtime_fails)
@@ -997,10 +1005,21 @@ async def _run_play_job(data: dict):
                 else:
                     total_steps_per_cycle = len(scen.steps)
                     keep_count = last_completed_iteration * total_steps_per_cycle
-                    # runtime_fails는 _runtime_fail_id_seq(9000+)이라 일반 step과 구분 — keep_count 슬라이싱 후 다시 추가
-                    extras = [sr for sr in result.step_results if sr.step_id >= 9000]
+                    # 일반 스텝(step_id<9000)을 keep_count만큼 유지 + 인라인 fail(parent_step_id 보유)은
+                    # 부모가 base 안에 살아있다면 함께 유지 + tail legacy fail(extras)은 그대로 추가.
                     base = [sr for sr in result.step_results if sr.step_id < 9000]
-                    result.step_results = base[:keep_count] + extras
+                    base_kept = base[:keep_count]
+                    base_kept_ids = {sr.step_id for sr in base_kept}
+                    inline_fails_kept = [
+                        sr for sr in result.step_results
+                        if sr.step_id >= 9000 and sr.parent_step_id is not None
+                        and sr.parent_step_id in base_kept_ids
+                    ]
+                    extras = [
+                        sr for sr in result.step_results
+                        if sr.step_id >= 9000 and sr.parent_step_id is None
+                    ]
+                    result.step_results = base_kept + inline_fails_kept + extras
                 result.passed_steps = sum(1 for sr in result.step_results if sr.status == "pass")
                 result.failed_steps = sum(1 for sr in result.step_results if sr.status == "fail")
                 result.error_steps = sum(1 for sr in result.step_results if sr.status not in ("pass", "fail"))
@@ -1156,7 +1175,12 @@ async def _run_play_group_job(data: dict):
                         continue
                     step_result = item
                     original_step_id = step_result.step_id
-                    step_result.step_id = _pending_seq
+                    is_runtime_fail = step_result.parent_step_id is not None
+                    if is_runtime_fail:
+                        # parent를 직전 일반 스텝의 _pending_seq로 remap, step_id(9000+)는 보존
+                        step_result.parent_step_id = _pending_seq
+                    else:
+                        step_result.step_id = _pending_seq
                     step_result.description = f"[{sc_name}] {step_result.description}" if step_result.description else f"[{sc_name}]"
 
                     unified_result.step_results.append(step_result)
@@ -1173,6 +1197,9 @@ async def _run_play_group_job(data: dict):
                         "scenario_name": sc_name,
                     })
 
+                    # step_jump는 일반 스텝에만 적용 (인라인 fail에는 무의미)
+                    if is_runtime_fail:
+                        continue
                     sj = step_jumps.get(str(original_step_id))
                     if sj:
                         if step_result.status == "pass":

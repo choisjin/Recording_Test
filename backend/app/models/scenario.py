@@ -130,6 +130,11 @@ class StepResult(BaseModel):
     command: str = ""  # human-readable action description
     description: str = ""  # user remark for the step
     status: str  # "pass", "fail", "error"
+    # 부모 스텝 id — fail_on_keyword(time>0)이 모니터링 중 검출한 fail row가 부모 스텝 직하에 인라인 표시될 때 사용.
+    # None이면 일반 스텝, 값이 있으면 해당 스텝이 trigger한 runtime fail.
+    parent_step_id: Optional[int] = None
+    # 부모 내 순번 (1-based). 같은 parent_step_id 그룹 내에서 Fail_Count_N 표기용.
+    fail_index: Optional[int] = None
     similarity_score: Optional[float] = None
     expected_image: Optional[str] = None
     expected_annotated_image: Optional[str] = None  # expected with regions drawn

@@ -190,6 +190,10 @@ _runtime_fail_buf: list[StepResult] = []
 _runtime_fail_lock = _rt_threading.Lock()
 _runtime_fail_active = False
 _runtime_fail_id_seq = 9000  # 일반 step_id와 충돌 방지용 시리즈
+# 현재 실행 중인 step.id — playback_service가 스텝 시작/종료 시 갱신.
+# fail_on_keyword(time>0)이 capture loop에서 검출 보고 시 자동으로 parent로 매칭됨.
+_current_step_id: Optional[int] = None
+_current_repeat_index: int = 1
 
 
 def mark_runtime_fail_active(active: bool) -> None:
@@ -198,15 +202,32 @@ def mark_runtime_fail_active(active: bool) -> None:
     _runtime_fail_active = active
 
 
+def set_current_step_context(step_id: Optional[int], repeat_index: int = 1) -> None:
+    """현재 실행 중인 스텝 컨텍스트 설정 (스텝 시작 직전에 호출).
+    플러그인이 sync 모드 fail_on_keyword 등록 시 get_current_step_context()로 조회하여
+    parent_step_id에 박는다."""
+    global _current_step_id, _current_repeat_index
+    _current_step_id = step_id
+    _current_repeat_index = repeat_index
+
+
+def get_current_step_context() -> tuple[Optional[int], int]:
+    """현재 실행 중인 스텝의 (step_id, repeat_index) 반환."""
+    return _current_step_id, _current_repeat_index
+
+
 def report_runtime_fail(source: str, keyword: str, ts: float,
                         line: str = "", repeat_index: int = 1,
-                        reason: str = "missing") -> None:
+                        reason: str = "missing",
+                        parent_step_id: Optional[int] = None) -> None:
     """모듈이 실시간 캡처 중 비정상 라인을 발견했을 때 호출.
 
     Args:
         reason: "missing" (assert_keyword 미일치) | "matched" (fail_on_keyword 검출)
+        parent_step_id: 명시 시 이 스텝의 인라인 결과로 분류 (sync 모드).
+                        None이면 시나리오 종료 시 tail-drain (legacy 모드).
 
-    재생이 active일 때만 buffer에 쌓이며, 시나리오 종료 시 step_results로 흡수.
+    재생이 active일 때만 buffer에 쌓이며, parent_step_id 유무에 따라 인라인 또는 tail에 흡수.
     """
     if not _runtime_fail_active:
         return
@@ -231,16 +252,33 @@ def report_runtime_fail(source: str, keyword: str, ts: float,
             description=desc,
             status="fail",
             message=snippet,
+            parent_step_id=parent_step_id,
         )
         _runtime_fail_buf.append(sr)
 
 
 def consume_runtime_fails() -> list[StepResult]:
-    """버퍼 비우고 누적된 fail step_results 반환. 재생 종료 시 호출."""
+    """버퍼 전체를 비우고 누적된 fail step_results 반환. 재생 종료 시 호출."""
     with _runtime_fail_lock:
         out = list(_runtime_fail_buf)
         _runtime_fail_buf.clear()
     return out
+
+
+def consume_runtime_fails_for(parent_step_id: int) -> list[StepResult]:
+    """버퍼에서 특정 parent_step_id에 매칭되는 fail만 뽑아 반환.
+    스텝 종료 직후 호출해 인라인 yield용으로 사용. fail_index도 1-based로 채워준다."""
+    with _runtime_fail_lock:
+        matched = [sr for sr in _runtime_fail_buf if sr.parent_step_id == parent_step_id]
+        if not matched:
+            return []
+        # 버퍼에서 제거
+        _runtime_fail_buf[:] = [sr for sr in _runtime_fail_buf if sr.parent_step_id != parent_step_id]
+        # timestamp 순 정렬 (capture 순서가 보통 그대로지만 안전하게)
+        matched.sort(key=lambda sr: sr.timestamp or "")
+        for i, sr in enumerate(matched, start=1):
+            sr.fail_index = i
+        return matched
 
 
 class PlaybackService:
@@ -397,6 +435,17 @@ class PlaybackService:
                 else:
                     result.error_steps += 1
 
+                # 이 스텝이 trigger한 sync 모드 fail_on_keyword 결과를 인라인 삽입
+                inline_fails = consume_runtime_fails_for(step.id)
+                for f_sr in inline_fails:
+                    result.step_results.append(f_sr)
+                    if f_sr.status == "fail":
+                        result.failed_steps += 1
+                    elif f_sr.status == "pass":
+                        result.passed_steps += 1
+                    else:
+                        result.error_steps += 1
+
                 # Conditional jump
                 next_idx = idx + 1
                 if step_result.status == "pass" and step.on_pass_goto is not None:
@@ -418,6 +467,7 @@ class PlaybackService:
         finally:
             self._running = False
             _set_sleep_block(False)
+            set_current_step_context(None, 1)
             self._cleanup_run_output_dir()
             result.finished_at = datetime.now(timezone.utc).isoformat()
 
@@ -492,6 +542,12 @@ class PlaybackService:
                 step_result = await self._execute_step(step, scenario.name, verify, repeat_index=repeat_index)
                 yield step_result
 
+                # 이 스텝이 trigger한 sync 모드 fail_on_keyword 결과를 인라인으로 yield
+                # (parent_step_id == step.id로 매칭된 항목만)
+                inline_fails = consume_runtime_fails_for(step.id)
+                for f_sr in inline_fails:
+                    yield f_sr
+
                 # Determine next step based on conditional jump
                 next_idx = idx + 1
                 if step_result.status == "pass" and step.on_pass_goto is not None:
@@ -510,6 +566,7 @@ class PlaybackService:
         finally:
             self._running = False
             _set_sleep_block(False)
+            set_current_step_context(None, 1)
             if not _is_group_member:
                 self._cleanup_run_output_dir()
 
@@ -574,6 +631,10 @@ class PlaybackService:
             step_result.status = "error"
             step_result.message = "Stopped by user"
             return step_result
+
+        # fail_on_keyword(time>0) 등 백그라운드 캡처가 보고하는 runtime fail이
+        # 이 스텝의 인라인 결과로 분류되도록 컨텍스트 설정.
+        set_current_step_context(step.id, repeat_index)
 
         t0 = t1 = t2 = t3 = t4 = start_time
         try:

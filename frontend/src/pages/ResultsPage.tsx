@@ -65,6 +65,8 @@ interface StepResultDetail {
   execution_time_ms: number;
   compare_mode: string | null;
   sub_results: SubResultDetail[];
+  parent_step_id?: number | null;  // sync 모드 fail_on_keyword가 trigger한 인라인 fail의 parent
+  fail_index?: number | null;       // 같은 parent 내 1-based 순번 (Fail_Count_N)
 }
 
 interface ResultDetail {
@@ -801,7 +803,13 @@ export default function ResultsPage() {
       dataIndex: 'step_id',
       key: 'step_id',
       align: 'center' as const,
-      render: (_: any, r: any) => r._seq || r.step_id,
+      render: (_: any, r: any) => {
+        // 인라인 runtime fail (sync 모드 fail_on_keyword 결과)은 Fail_Count_N으로 표시.
+        if (r.parent_step_id != null && r.fail_index != null) {
+          return <span style={{ color: '#ff4d4f' }}>↳ Fail_Count_{r.fail_index}</span>;
+        }
+        return r._seq || r.step_id;
+      },
       _hide: false,
     },
     {
