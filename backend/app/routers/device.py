@@ -12,7 +12,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 from ..dependencies import adb_service as adb, device_manager as dm
-from ..services.adb_service import resolve_sf_display_id
+from ..services.adb_service import resolve_sf_display_id, resolve_input_display_id
 from ..services.module_service import list_available_modules, get_module_functions, execute_module_function
 
 
@@ -929,7 +929,11 @@ async def device_input(req: InputRequest):
 
         # Resolve alias to real ADB serial address
         adb_serial = dev.address if dev else req.device_id
-        display_id = _parse_adb_display_id(req.params.get("screen_type"))
+        # screen_type은 우리 displays 배열 인덱스(0,1,...)
+        # → input -d 에는 Android DisplayManager logical ID로 변환해서 넘겨야 함
+        # (폴더블에서 우리 인덱스와 Android logical ID가 어긋날 수 있음)
+        our_index = _parse_adb_display_id(req.params.get("screen_type"))
+        display_id = resolve_input_display_id(dev.info if dev else None, our_index)
 
         p = req.params
         if req.action == "tap":

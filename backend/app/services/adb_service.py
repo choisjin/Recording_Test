@@ -18,7 +18,7 @@ ADB_PATH = os.environ.get("ADB_PATH", "adb")
 
 
 def resolve_sf_display_id(dev_info: dict | None, logical_id: int | None) -> str | None:
-    """logical display ID → SurfaceFlinger display ID 변환.
+    """우리 displays 배열 인덱스 → SurfaceFlinger display ID(`screencap -d`용) 변환.
 
     dev_info: ManagedDevice.info dict (displays 리스트 포함).
     SF display ID를 찾지 못하면 logical_id를 문자열로 폴백 반환.
@@ -43,6 +43,30 @@ def resolve_sf_display_id(dev_info: dict | None, logical_id: int | None) -> str 
         logger.warning("SF display ID not found for logical_id=%d, using logical ID as fallback", logical_id)
         return str(logical_id)
     return None
+
+
+def resolve_input_display_id(dev_info: dict | None, our_index: int | None) -> int | None:
+    """우리 displays 배열 인덱스 → Android DisplayManager logical ID(`input -d`용).
+
+    `screencap -d`(SurfaceFlinger uniqueId)와 `input -d`(DisplayManager logical ID)는
+    서로 다른 ID 체계를 쓴다. 폴더블처럼 두 internal display가 있는 기기에서는
+    dumpsys 파싱 순서와 Android logical ID가 어긋날 수 있어, 우리 배열 인덱스를
+    그대로 `input -d`에 넘기면 엉뚱한 디스플레이로 이벤트가 간다.
+
+    dev_info: ManagedDevice.info dict (displays 리스트 포함).
+    our_index: 프론트엔드가 보낸 screen_type을 int 변환한 값(우리 배열의 id).
+    찾지 못하면 our_index를 그대로 반환(단일 디스플레이 폴백).
+    """
+    if dev_info is None or our_index is None:
+        return our_index
+    displays = dev_info.get("displays", [])
+    for d in displays:
+        if d.get("id") == our_index:
+            android_id = d.get("logical_id")
+            if android_id is not None:
+                return int(android_id)
+            break
+    return our_index
 
 
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
@@ -205,19 +229,30 @@ class ADBService:
         displays: list[dict] = []
         seen_sf_ids: set[str] = set()
 
-        # 1) mViewports에서 논리 크기 추출 (logicalFrame = 실제 터치/screencap 좌표계)
-        # deviceWidth/Height는 물리 해상도이므로 Override와 다를 수 있음
-        viewport_map: dict[str, dict] = {}  # uniqueId → {width, height}
+        # 1) mViewports에서 논리 크기 + Android DisplayManager logical ID 추출
+        # logicalFrame = 실제 터치/screencap 좌표계 (deviceWidth/Height는 물리 해상도)
+        # displayId = `input -d`가 받는 Android logical ID
+        # isActive = 현재 활성 여부 (폴더블에서 비활성 디스플레이는 input 무시)
+        viewport_map: dict[str, dict] = {}  # uniqueId → {width, height, logical_id, is_active}
         for line in disp_output.split("\n"):
             if "DisplayViewport{" not in line:
                 continue
             for vp_m in re.finditer(
-                r"DisplayViewport\{[^}]*uniqueId='local:(\d+)'[^}]*logicalFrame=Rect\(\d+,\s*\d+\s*-\s*(\d+),\s*(\d+)\)",
+                r"DisplayViewport\{([^}]*?uniqueId='local:(\d+)'[^}]*)\}",
                 line
             ):
-                viewport_map[vp_m.group(1)] = {
-                    "width": int(vp_m.group(2)),
-                    "height": int(vp_m.group(3)),
+                inner = vp_m.group(1)
+                sf = vp_m.group(2)
+                lf_m = re.search(r"logicalFrame=Rect\(\d+,\s*\d+\s*-\s*(\d+),\s*(\d+)\)", inner)
+                if not lf_m:
+                    continue
+                did_m = re.search(r"displayId=(\d+)", inner)
+                act_m = re.search(r"isActive=(true|false)", inner)
+                viewport_map[sf] = {
+                    "width": int(lf_m.group(1)),
+                    "height": int(lf_m.group(2)),
+                    "logical_id": int(did_m.group(1)) if did_m else None,
+                    "is_active": act_m.group(1) == "true" if act_m else None,
                 }
 
         # 2) DisplayDeviceInfo 라인에서 SF ID, 해상도, 이름 추출
@@ -239,13 +274,15 @@ class ADBService:
             name = name_m.group(1) if name_m else f"Display {len(displays)}"
 
             # viewport에서 논리 크기(회전 적용) 가져오기, 없으면 물리 크기 사용
-            vp = viewport_map.get(sf_id)
-            w = vp["width"] if vp else phys_w
-            h = vp["height"] if vp else phys_h
+            vp = viewport_map.get(sf_id) or {}
+            w = vp.get("width") or phys_w
+            h = vp.get("height") or phys_h
 
             displays.append({
                 "id": len(displays),
-                "sf_id": sf_id,
+                "sf_id": sf_id,                       # screencap -d 용 (uniqueId 숫자)
+                "logical_id": vp.get("logical_id"),   # input -d 용 (Android DisplayManager ID)
+                "is_active": vp.get("is_active"),     # 비활성이면 input 무시됨
                 "name": name,
                 "width": w,
                 "height": h,
@@ -253,7 +290,10 @@ class ADBService:
 
         # 파싱 실패 시 기본 디스플레이
         if not displays:
-            displays.append({"id": 0, "sf_id": None, "name": "Default"})
+            displays.append({
+                "id": 0, "sf_id": None, "logical_id": None,
+                "is_active": None, "name": "Default",
+            })
 
         return displays
 
