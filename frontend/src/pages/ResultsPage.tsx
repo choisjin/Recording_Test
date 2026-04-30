@@ -197,6 +197,12 @@ export default function ResultsPage() {
   const [webcamPanelOpen, setWebcamPanelOpen] = useState(false);
   const [webcamExpanded, setWebcamExpanded] = useState(false);
   const [activeRecUrl, setActiveRecUrl] = useState('');
+  // Blob URL을 video src로 사용한다.
+  // Why: 서버(StaticFiles)가 HTTP Range 응답 헤더를 안 주는 케이스에서
+  // 브라우저가 video.seekable을 [0,0]으로 두고 seek를 0으로 snap시키는 문제가 있어,
+  // fetch → Blob → ObjectURL로 메모리 리소스화하면 seekable이 항상 [0, duration]이 된다.
+  const [activeRecBlobUrl, setActiveRecBlobUrl] = useState('');
+  const blobUrlMapRef = useRef<Map<string, string>>(new Map());
   const [activeRecRepeat, setActiveRecRepeat] = useState(1);
   const detailVideoRef = useRef<HTMLVideoElement>(null);
   // 보류 중인 seek 요청. seekToStep이 항상 여기에 기록하고,
@@ -306,8 +312,11 @@ export default function ResultsPage() {
       return;
     }
     // 비디오 src가 아직 보류 중인 녹화로 전환되지 않았으면 대기.
+    // src는 보통 blob:URL이므로 blobUrlMap에서 expected blob을 찾아 매칭한다.
     const currentSrc = video.currentSrc || video.src || '';
-    const srcReady = !pending.recUrl || currentSrc.indexOf(pending.recUrl) !== -1;
+    const expectedBlob = pending.recUrl ? blobUrlMapRef.current.get(pending.recUrl) : undefined;
+    const srcReady = !pending.recUrl
+      || (expectedBlob ? currentSrc === expectedBlob : currentSrc.indexOf(pending.recUrl) !== -1);
     // 브라우저가 이미 로딩 중(NETWORK_LOADING=2)이면 절대 건드리지 않는다.
     // load()를 호출하면 진행 중인 metadata 로딩이 reset돼서 오히려 더 느려짐.
     // IDLE/EMPTY/NO_SOURCE 상태에서 readyState < 1이면(= 브라우저가 loading을 멈춘 상태)
@@ -429,10 +438,52 @@ export default function ResultsPage() {
     }
   };
 
+  // activeRecUrl이 바뀔 때마다 해당 파일을 fetch해서 Blob URL로 변환.
+  // 이렇게 해야 video.seekable이 정상적으로 [0,duration] 범위를 가진다 (Range 응답 무관).
+  useEffect(() => {
+    if (!activeRecUrl) {
+      setActiveRecBlobUrl('');
+      return;
+    }
+    const cached = blobUrlMapRef.current.get(activeRecUrl);
+    if (cached) {
+      setActiveRecBlobUrl(cached);
+      return;
+    }
+    let cancelled = false;
+    fetch(activeRecUrl)
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.blob();
+      })
+      .then(blob => {
+        if (cancelled) return;
+        const blobUrl = URL.createObjectURL(blob);
+        blobUrlMapRef.current.set(activeRecUrl, blobUrl);
+        setActiveRecBlobUrl(blobUrl);
+      })
+      .catch(err => {
+        if (cancelled) return;
+        console.warn('[video] blob fetch failed, falling back to direct URL', err);
+        // 실패 시 직접 URL 사용 (seek 안 될 수 있지만 재생은 됨)
+        setActiveRecBlobUrl(activeRecUrl);
+      });
+    return () => { cancelled = true; };
+  }, [activeRecUrl]);
+
+  // 컴포넌트 unmount 시 blob URL 해제 (메모리 leak 방지).
+  useEffect(() => {
+    const map = blobUrlMapRef.current;
+    return () => {
+      map.forEach(url => { try { URL.revokeObjectURL(url); } catch { /* ignore */ } });
+      map.clear();
+    };
+  }, []);
+
   // React 커밋 후 보류 중인 seek 적용 시도. 패널 마운트/URL 변경/리렌더 모두 커버.
   useEffect(() => {
     tryApplyPendingSeek();
-  }, [pendingSeekTick, activeRecUrl, webcamPanelOpen, tryApplyPendingSeek]);
+  }, [pendingSeekTick, activeRecBlobUrl, webcamPanelOpen, tryApplyPendingSeek]);
 
   // <video onCanPlay> / <video onLoadedMetadata> 콜백 — URL 변경 후 비디오 로드 완료 시 pending seek 적용.
   // pendingSeekRef.offset은 seekToStep에서 이미 "비디오 내 절대 시간(초)"으로 계산되어 있다.
@@ -1193,7 +1244,7 @@ export default function ResultsPage() {
                             );
                           })}
                         </Space>
-                        {activeRecUrl && <video key={activeRecUrl} ref={detailVideoRef} src={activeRecUrl} controls preload="auto" onLoadedMetadata={handleVideoCanPlay} onCanPlay={handleVideoCanPlay} onTimeUpdate={handleVideoTimeUpdate} onPause={handleVideoPauseOrEnd} onEnded={handleVideoPauseOrEnd} style={{ width: '100%', maxHeight: 400 }} />}
+                        {activeRecBlobUrl && <video key={activeRecBlobUrl} ref={detailVideoRef} src={activeRecBlobUrl} controls preload="auto" onLoadedMetadata={handleVideoCanPlay} onCanPlay={handleVideoCanPlay} onTimeUpdate={handleVideoTimeUpdate} onPause={handleVideoPauseOrEnd} onEnded={handleVideoPauseOrEnd} style={{ width: '100%', maxHeight: 400 }} />}
                       </div>
                     ),
                   }]}
@@ -1273,9 +1324,9 @@ export default function ResultsPage() {
                       bodyStyle={{ padding: 5 }}
                     >
                       <video
-                        key={activeRecUrl}
+                        key={activeRecBlobUrl}
                         ref={detailVideoRef}
-                        src={activeRecUrl}
+                        src={activeRecBlobUrl}
                         controls
                         preload="auto"
                         onLoadedMetadata={handleVideoCanPlay}
