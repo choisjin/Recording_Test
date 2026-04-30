@@ -875,7 +875,7 @@ class RecordingService:
                 params.get("read_timeout", 1.0),
             )
             return response
-        elif step_type in (StepType.HKMC_TOUCH, StepType.HKMC_SWIPE, StepType.HKMC_KEY):
+        elif step_type in (StepType.HKMC_TOUCH, StepType.HKMC_SWIPE, StepType.HKMC_KEY, StepType.HKMC_LONG_PRESS):
             if not device_id:
                 raise ValueError("HKMC/iSAP step requires a device_id")
             dev = self.dm.get_device(device_id)
@@ -890,6 +890,9 @@ class RecordingService:
             screen_type = params.get("screen_type", "front_center")
             if step_type == StepType.HKMC_TOUCH:
                 await svc.async_tap(params["x"], params["y"], screen_type)
+            elif step_type == StepType.HKMC_LONG_PRESS:
+                await svc.async_long_press(params["x"], params["y"],
+                                           int(params.get("duration_ms", 3000)), screen_type)
             elif step_type == StepType.HKMC_SWIPE:
                 if is_isap:
                     await svc.async_swipe(params["x1"], params["y1"], params["x2"], params["y2"],
@@ -920,15 +923,24 @@ class RecordingService:
                             params["cmd"], params["sub_cmd"], params["key_data"],
                             params.get("monitor", 0x00), params.get("direction"),
                         )
-        elif step_type in (StepType.ICAS_TOUCH, StepType.ICAS_SWIPE, StepType.ICAS_KEY):
+        elif step_type in (StepType.ICAS_TOUCH, StepType.ICAS_SWIPE, StepType.ICAS_KEY, StepType.ICAS_LONG_PRESS):
             if not device_id:
                 raise ValueError("ICAS step requires a device_id")
-            svc = self.dm.get_icas_service(device_id)
+            # ICAS step types are shared with MIB (same ksend mechanism) — try both services
+            dev = self.dm.get_device(device_id)
+            svc = None
+            if dev and dev.type == "mib_agent":
+                svc = self.dm.get_mib_service(device_id)
+            else:
+                svc = self.dm.get_icas_service(device_id)
             if not svc:
-                raise ValueError(f"ICAS device {device_id} not connected")
+                raise ValueError(f"ICAS/MIB device {device_id} not connected")
             screen_type = params.get("screen_type", "HU")
             if step_type == StepType.ICAS_TOUCH:
                 await svc.async_tap(params["x"], params["y"], screen_type)
+            elif step_type == StepType.ICAS_LONG_PRESS:
+                await svc.async_long_press(params["x"], params["y"],
+                                           int(params.get("duration_ms", 3000)), screen_type)
             elif step_type == StepType.ICAS_SWIPE:
                 await svc.async_swipe(params["x1"], params["y1"], params["x2"], params["y2"],
                                       screen_type, int(params.get("duration_ms", 0)))

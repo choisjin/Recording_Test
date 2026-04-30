@@ -281,18 +281,54 @@ export default function RecordPage() {
   const serialSessionHook = useSerialSessions();
   const [dltModalOpen, setDltModalOpen] = useState(false);
   const [logViewerTab, setLogViewerTab] = useState<'dlt' | 'serial'>('dlt');
+  // 자동 오픈된 session_id 추적 — WS 재연결 시 백엔드가 활성 세션을 session_started로
+  // backfill 재전송하므로, 사용자가 닫은 모달이 즉시 다시 열리는 race를 방지.
+  // 같은 session_id에 대해서는 첫 1회만 자동 오픈, session_stopped 시 추적 해제.
+  const autoOpenedDltRef = useRef<Set<string>>(new Set());
+  const autoOpenedSerialRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    if (dltSessionHook.lastEvent?.type === 'session_started') {
-      setLogViewerTab('dlt');
-      setDltModalOpen(true);
+    const e = dltSessionHook.lastEvent;
+    if (e?.type === 'session_started' && e.session_id) {
+      if (!autoOpenedDltRef.current.has(e.session_id)) {
+        autoOpenedDltRef.current.add(e.session_id);
+        setLogViewerTab('dlt');
+        setDltModalOpen(true);
+      }
+    } else if (e?.type === 'session_stopped' && e.session_id) {
+      autoOpenedDltRef.current.delete(e.session_id);
     }
   }, [dltSessionHook.lastEvent]);
   useEffect(() => {
-    if (serialSessionHook.lastEvent?.type === 'session_started') {
-      setLogViewerTab('serial');
-      setDltModalOpen(true);
+    const e = serialSessionHook.lastEvent;
+    if (e?.type === 'session_started' && e.session_id) {
+      if (!autoOpenedSerialRef.current.has(e.session_id)) {
+        autoOpenedSerialRef.current.add(e.session_id);
+        setLogViewerTab('serial');
+        setDltModalOpen(true);
+      }
+    } else if (e?.type === 'session_stopped' && e.session_id) {
+      autoOpenedSerialRef.current.delete(e.session_id);
     }
   }, [serialSessionHook.lastEvent]);
+  // session_stopped 이벤트로 모든 세션이 비면 모달 자동 종료 — StopLogging이 시나리오
+  // 재생 중단 또는 정상 종료로 호출됐을 때 사용자가 X 버튼을 누르지 않아도 닫히도록.
+  // (step test는 짧아서 거의 인지되지 않았지만 시나리오 재생에선 명확하게 보였음)
+  useEffect(() => {
+    const e = dltSessionHook.lastEvent;
+    if (e?.type === 'session_stopped'
+        && dltSessionHook.sessions.length === 0
+        && serialSessionHook.sessions.length === 0) {
+      setDltModalOpen(false);
+    }
+  }, [dltSessionHook.lastEvent, dltSessionHook.sessions.length, serialSessionHook.sessions.length]);
+  useEffect(() => {
+    const e = serialSessionHook.lastEvent;
+    if (e?.type === 'session_stopped'
+        && dltSessionHook.sessions.length === 0
+        && serialSessionHook.sessions.length === 0) {
+      setDltModalOpen(false);
+    }
+  }, [serialSessionHook.lastEvent, dltSessionHook.sessions.length, serialSessionHook.sessions.length]);
 
   // Wait step insertion
   const [waitDurationMs, setWaitDurationMs] = useState(1000);
@@ -811,17 +847,18 @@ export default function RecordPage() {
     if (dev?.type === 'icas_agent' || dev?.type === 'mib_agent') {
       if (action === 'tap') return 'icas_touch';
       if (action === 'swipe') return 'icas_swipe';
-      if (action === 'long_press') return 'icas_touch';
+      if (action === 'long_press') return 'icas_long_press';
       // 이미 icas_* / hkmc_* 로 들어온 경우 hkmc_* → icas_* 로 교정
       if (action === 'hkmc_touch') return 'icas_touch';
       if (action === 'hkmc_swipe') return 'icas_swipe';
       if (action === 'hkmc_key') return 'icas_key';
+      if (action === 'hkmc_long_press') return 'icas_long_press';
       return action;
     }
     if (dev?.type === 'hkmc_agent' || dev?.type === 'isap_agent') {
       if (action === 'tap') return 'hkmc_touch';
       if (action === 'swipe') return 'hkmc_swipe';
-      if (action === 'long_press') return 'hkmc_touch';
+      if (action === 'long_press') return 'hkmc_long_press';
       return action;
     }
     return action;
@@ -830,10 +867,10 @@ export default function RecordPage() {
   // Inject screen_type into params for agent / ADB multi-display actions
   const resolveParams = useCallback((action: string, params: Record<string, any>, targetDevice: string): Record<string, any> => {
     const dev = allDevices.find(d => d.id === targetDevice);
-    if ((dev?.type === 'icas_agent' || dev?.type === 'mib_agent') && (action === 'icas_touch' || action === 'icas_swipe' || action === 'icas_key' || action === 'repeat_tap')) {
+    if ((dev?.type === 'icas_agent' || dev?.type === 'mib_agent') && (action === 'icas_touch' || action === 'icas_swipe' || action === 'icas_key' || action === 'icas_long_press' || action === 'repeat_tap')) {
       return { ...params, screen_type: screenType };
     }
-    if ((dev?.type === 'hkmc_agent' || dev?.type === 'isap_agent') && (action === 'hkmc_touch' || action === 'hkmc_swipe' || action === 'hkmc_key' || action === 'repeat_tap')) {
+    if ((dev?.type === 'hkmc_agent' || dev?.type === 'isap_agent') && (action === 'hkmc_touch' || action === 'hkmc_swipe' || action === 'hkmc_key' || action === 'hkmc_long_press' || action === 'repeat_tap')) {
       return { ...params, screen_type: screenType };
     }
     // ADB multi-display: 모든 디스플레이에 screen_type 주입 (display 0 포함 — screencap에 SF display ID 필요)
@@ -2745,9 +2782,10 @@ export default function RecordPage() {
       setSteps((prev) => prev.map((s, i) => i === editStepIndex ? { ...s, params: newParams } : s));
       setEditStepIndex(null);
       message.success(t('record.stepSwipeUpdated', { index: editStepIndex + 1 }));
-    } else if (step.type === 'long_press') {
+    } else if (step.type === 'long_press' || step.type === 'hkmc_long_press' || step.type === 'icas_long_press') {
       const dur = Math.max(500, elapsed);
-      const newParams = { x: startX, y: startY, duration_ms: dur };
+      const base = (step.type === 'hkmc_long_press' || step.type === 'icas_long_press') ? { screen_type: step.params.screen_type } : {};
+      const newParams = { ...base, x: startX, y: startY, duration_ms: dur };
       setEditStepParams(newParams);
       setSteps((prev) => prev.map((s, i) => i === editStepIndex ? { ...s, params: newParams } : s));
       setEditStepIndex(null);
@@ -4094,10 +4132,10 @@ export default function RecordPage() {
         title={editStepIndex != null ? t('record.editStepTitle', { index: editStepIndex + 1, type: steps[editStepIndex]?.type }) : ''}
         open={editStepIndex != null}
         onCancel={() => setEditStepIndex(null)}
-        width={['tap', 'long_press', 'swipe', 'hkmc_touch', 'hkmc_swipe', 'icas_touch', 'icas_swipe'].includes(steps[editStepIndex ?? 0]?.type) ? '80vw' : 500}
-        style={['tap', 'long_press', 'swipe', 'hkmc_touch', 'hkmc_swipe', 'icas_touch', 'icas_swipe'].includes(steps[editStepIndex ?? 0]?.type) ? { top: 20 } : undefined}
+        width={['tap', 'long_press', 'swipe', 'hkmc_touch', 'hkmc_swipe', 'hkmc_long_press', 'icas_touch', 'icas_swipe', 'icas_long_press'].includes(steps[editStepIndex ?? 0]?.type) ? '80vw' : 500}
+        style={['tap', 'long_press', 'swipe', 'hkmc_touch', 'hkmc_swipe', 'hkmc_long_press', 'icas_touch', 'icas_swipe', 'icas_long_press'].includes(steps[editStepIndex ?? 0]?.type) ? { top: 20 } : undefined}
         footer={
-          ['tap', 'long_press', 'swipe', 'hkmc_touch', 'hkmc_swipe', 'icas_touch', 'icas_swipe'].includes(steps[editStepIndex ?? 0]?.type)
+          ['tap', 'long_press', 'swipe', 'hkmc_touch', 'hkmc_swipe', 'hkmc_long_press', 'icas_touch', 'icas_swipe', 'icas_long_press'].includes(steps[editStepIndex ?? 0]?.type)
             ? <Button onClick={() => setEditStepIndex(null)}>{t('common.cancel')}</Button>
             : (
               <Space>
@@ -4107,7 +4145,7 @@ export default function RecordPage() {
             )
         }
         afterOpenChange={(open) => {
-          if (open && ['tap', 'long_press', 'swipe', 'hkmc_touch', 'hkmc_swipe', 'icas_touch', 'icas_swipe'].includes(steps[editStepIndex ?? 0]?.type)) {
+          if (open && ['tap', 'long_press', 'swipe', 'hkmc_touch', 'hkmc_swipe', 'hkmc_long_press', 'icas_touch', 'icas_swipe', 'icas_long_press'].includes(steps[editStepIndex ?? 0]?.type)) {
             setTimeout(drawEditCanvas, 100);
           }
         }}
@@ -4116,12 +4154,12 @@ export default function RecordPage() {
           const step = steps[editStepIndex];
           if (!step) return null;
 
-          if (['tap', 'long_press', 'swipe', 'hkmc_touch', 'hkmc_swipe', 'icas_touch', 'icas_swipe'].includes(step.type)) {
+          if (['tap', 'long_press', 'swipe', 'hkmc_touch', 'hkmc_swipe', 'hkmc_long_press', 'icas_touch', 'icas_swipe', 'icas_long_press'].includes(step.type)) {
             return (
               <div>
                 <div style={{ marginBottom: 6, color: subTextColor, fontSize: 11 }}>
                   {(step.type === 'tap' || step.type === 'hkmc_touch' || step.type === 'icas_touch') && t('record.tapHint')}
-                  {step.type === 'long_press' && t('record.longPressHint')}
+                  {(step.type === 'long_press' || step.type === 'hkmc_long_press' || step.type === 'icas_long_press') && t('record.longPressHint')}
                   {(step.type === 'swipe' || step.type === 'hkmc_swipe' || step.type === 'icas_swipe') && t('record.swipeHint')}
                 </div>
                 <div style={{ marginBottom: 6 }}>

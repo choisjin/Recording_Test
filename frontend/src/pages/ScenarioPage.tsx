@@ -420,7 +420,7 @@ export default function ScenarioPage() {
     const p = step.params || {};
     let detail = '';
     if (type === 'tap') detail = `(${p.x},${p.y})`;
-    else if (type === 'long_press') detail = `(${p.x},${p.y}) ${p.duration_ms || 1000}ms`;
+    else if (type === 'long_press' || type === 'hkmc_long_press' || type === 'icas_long_press') detail = `(${p.x},${p.y}) ${p.duration_ms || 1000}ms`;
     else if (type === 'swipe') detail = `(${p.x1},${p.y1})→(${p.x2},${p.y2})`;
     else if (type === 'input_text') detail = `"${p.text || ''}"`;
     else if (type === 'key_event') detail = p.keycode || '';

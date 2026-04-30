@@ -802,7 +802,7 @@ async def device_input(req: InputRequest):
             )
             return {"result": "ok", "response": response}
 
-        if req.action in ("hkmc_touch", "hkmc_swipe", "hkmc_key", "repeat_tap") and dev and dev.type == "isap_agent":
+        if req.action in ("hkmc_touch", "hkmc_swipe", "hkmc_key", "hkmc_long_press", "repeat_tap") and dev and dev.type == "isap_agent":
             isap = dm.get_isap_service(req.device_id)
             if not isap:
                 raise HTTPException(status_code=400, detail=f"iSAP device {req.device_id} not connected")
@@ -815,6 +815,9 @@ async def device_input(req: InputRequest):
                                             int(p.get("interval_ms", 100)), screen_type)
             elif req.action == "hkmc_touch":
                 await isap.async_tap(p["x"], p["y"], screen_type)
+            elif req.action == "hkmc_long_press":
+                await isap.async_long_press(p["x"], p["y"],
+                                            int(p.get("duration_ms", 3000)), screen_type)
             elif req.action == "hkmc_swipe":
                 await isap.async_swipe(p["x1"], p["y1"], p["x2"], p["y2"], screen_type,
                                        int(p.get("duration_ms", 0)))
@@ -831,7 +834,7 @@ async def device_input(req: InputRequest):
                     )
             return {"result": "ok"}
 
-        if req.action in ("icas_touch", "icas_swipe", "icas_key", "repeat_tap") and dev and dev.type == "icas_agent":
+        if req.action in ("icas_touch", "icas_swipe", "icas_key", "icas_long_press", "repeat_tap") and dev and dev.type == "icas_agent":
             icas = dm.get_icas_service(req.device_id)
             if not icas:
                 raise HTTPException(status_code=400, detail=f"ICAS device {req.device_id} not connected")
@@ -844,6 +847,9 @@ async def device_input(req: InputRequest):
                                             int(p.get("interval_ms", 100)), screen_type)
             elif req.action == "icas_touch":
                 await icas.async_tap(p["x"], p["y"], screen_type)
+            elif req.action == "icas_long_press":
+                await icas.async_long_press(p["x"], p["y"],
+                                            int(p.get("duration_ms", 3000)), screen_type)
             elif req.action == "icas_swipe":
                 await icas.async_swipe(p["x1"], p["y1"], p["x2"], p["y2"], screen_type,
                                        int(p.get("duration_ms", 0)))
@@ -861,8 +867,8 @@ async def device_input(req: InputRequest):
 
         # MIB Agent — ICAS Agent와 동일한 action set을 mib_touch/mib_swipe/mib_key로 노출.
         # 호환 위해 icas_* action도 디바이스 타입이 mib_agent일 때 같이 처리.
-        if (req.action in ("mib_touch", "mib_swipe", "mib_key", "repeat_tap",
-                           "icas_touch", "icas_swipe", "icas_key")
+        if (req.action in ("mib_touch", "mib_swipe", "mib_key", "mib_long_press", "repeat_tap",
+                           "icas_touch", "icas_swipe", "icas_key", "icas_long_press")
                 and dev and dev.type == "mib_agent"):
             mib = dm.get_mib_service(req.device_id)
             if not mib:
@@ -876,6 +882,9 @@ async def device_input(req: InputRequest):
                                            int(p.get("interval_ms", 100)), screen_type)
             elif req.action in ("mib_touch", "icas_touch"):
                 await mib.async_tap(p["x"], p["y"], screen_type)
+            elif req.action in ("mib_long_press", "icas_long_press"):
+                await mib.async_long_press(p["x"], p["y"],
+                                           int(p.get("duration_ms", 3000)), screen_type)
             elif req.action in ("mib_swipe", "icas_swipe"):
                 await mib.async_swipe(p["x1"], p["y1"], p["x2"], p["y2"], screen_type,
                                       int(p.get("duration_ms", 0)))
@@ -891,7 +900,7 @@ async def device_input(req: InputRequest):
                     )
             return {"result": "ok"}
 
-        if req.action in ("hkmc_touch", "hkmc_swipe", "hkmc_key", "repeat_tap") and dev and dev.type == "hkmc_agent":
+        if req.action in ("hkmc_touch", "hkmc_swipe", "hkmc_key", "hkmc_long_press", "repeat_tap") and dev and dev.type == "hkmc_agent":
             hkmc = dm.get_hkmc_service(req.device_id)
             if not hkmc:
                 raise HTTPException(status_code=400, detail=f"HKMC device {req.device_id} not connected")
@@ -905,6 +914,11 @@ async def device_input(req: InputRequest):
             elif req.action == "hkmc_touch":
                 await hkmc.async_tap(p["x"], p["y"], screen_type)
                 logger.info("[HKMC INPUT] tap sent: x=%s y=%s screen=%s", p["x"], p["y"], screen_type)
+            elif req.action == "hkmc_long_press":
+                await hkmc.async_long_press(p["x"], p["y"],
+                                            int(p.get("duration_ms", 3000)), screen_type)
+                logger.info("[HKMC INPUT] long_press sent: x=%s y=%s ms=%s screen=%s",
+                            p["x"], p["y"], p.get("duration_ms", 3000), screen_type)
             elif req.action == "hkmc_swipe":
                 await hkmc.async_swipe(p["x1"], p["y1"], p["x2"], p["y2"], screen_type)
                 logger.info("[HKMC INPUT] swipe sent")
