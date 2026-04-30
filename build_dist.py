@@ -33,6 +33,7 @@ CACHE_DIR = BUILD_DIR / "cache"
 HASH_FILE = BUILD_DIR / "build_hashes.json"
 VERSION_FILE = PROJECT_ROOT / "version.txt"
 HISTORY_FILE = PROJECT_ROOT / "build_history.txt"
+INSTALLER_ISS = PROJECT_ROOT / "installer.iss"
 
 NPM_CMD = "npm.cmd" if sys.platform == "win32" else "npm"
 
@@ -72,6 +73,32 @@ def _write_version(ver: str):
     VERSION_FILE.write_text(ver + "\n", encoding="utf-8")
 
 
+def _update_installer_iss(ver: str) -> bool:
+    """installer.iss의 '#define MyAppVersion "X.Y.Z"' 라인을 새 버전으로 갱신."""
+    import re
+    if not INSTALLER_ISS.exists():
+        return False
+    try:
+        text = INSTALLER_ISS.read_text(encoding="utf-8")
+        clean_ver = ver.lstrip("vV")
+        new_text, n = re.subn(
+            r'(#define\s+MyAppVersion\s+")[^"]*(")',
+            rf'\g<1>{clean_ver}\g<2>',
+            text,
+            count=1,
+        )
+        if n == 0:
+            print(f"  installer.iss: MyAppVersion 정의를 찾지 못함 — 스킵")
+            return False
+        if new_text != text:
+            INSTALLER_ISS.write_text(new_text, encoding="utf-8")
+            print(f"  installer.iss: MyAppVersion → {clean_ver}")
+        return True
+    except Exception as e:
+        print(f"  installer.iss 갱신 실패: {e}")
+        return False
+
+
 def _bump(current: str, kind: str) -> str:
     """SemVer bump. kind ∈ {major, minor, patch, none}."""
     parts = (current.split(".") + ["0", "0", "0"])[:3]
@@ -88,25 +115,32 @@ def _bump(current: str, kind: str) -> str:
     return f"{major}.{minor}.{patch}"
 
 
-def _prompt_version_modal() -> str:
-    """SemVer 선택 모달. 새 버전 문자열(X.Y.Z) 반환. 취소/닫기 시 현재 버전 유지."""
+def _prompt_version_modal():
+    """SemVer 선택 모달. 새 버전 문자열(X.Y.Z) 반환.
+    창을 그냥 닫거나 취소하면 None 반환 → 호출 측에서 빌드 중단."""
     import tkinter as tk
-    from tkinter import ttk
 
     current = _read_version()
-    result = {"version": current}
+    result = {"version": None}
+
+    BG = "#fafafa"
+    ROW_BG = "#ffffff"
+    ROW_HOVER = "#eef3fb"
+    BORDER = "#d9d9d9"
 
     root = tk.Tk()
     root.title("ReplayKit — 빌드 버전 선택")
     root.attributes("-topmost", True)
     root.resizable(False, False)
+    root.configure(bg=BG)
 
-    frm = ttk.Frame(root, padding=20)
+    frm = tk.Frame(root, padx=26, pady=22, bg=BG)
     frm.pack(fill="both", expand=True)
 
-    ttk.Label(frm, text=f"현재 버전:  v{current}", font=("Segoe UI", 12, "bold")).pack(pady=(0, 4))
-    ttk.Label(frm, text="시맨틱 버저닝 기반 — 빌드할 버전을 선택하세요",
-              font=("Segoe UI", 9), foreground="#666").pack(pady=(0, 14))
+    tk.Label(frm, text=f"현재 버전:  v{current}",
+             font=("Segoe UI", 12, "bold"), bg=BG, fg="#222").pack(pady=(0, 4))
+    tk.Label(frm, text="시맨틱 버저닝 기반 — 빌드할 버전을 선택하세요",
+             font=("Segoe UI", 9), bg=BG, fg="#888").pack(pady=(0, 16))
 
     def pick(kind: str):
         result["version"] = _bump(current, kind)
@@ -118,18 +152,43 @@ def _prompt_version_modal() -> str:
         ("major", _bump(current, "major"), "하위 호환이 깨지는 변경 (MAJOR)"),
         ("none",  current,                  "버전 유지"),
     ]
+
     for kind, ver, desc in options:
-        b = ttk.Button(frm, text=f"  v{ver:<10}  —  {desc}",
-                       command=lambda k=kind: pick(k), width=46)
-        b.pack(pady=4, fill="x")
+        row = tk.Frame(frm, bg=ROW_BG, cursor="hand2",
+                       highlightbackground=BORDER, highlightthickness=1)
+        row.pack(fill="x", pady=4, ipady=8)
+
+        # 버전 컬럼 (고정 너비, 가운데 정렬)
+        ver_lbl = tk.Label(row, text=f"v{ver}", width=10, anchor="center",
+                           bg=ROW_BG, fg="#1677ff",
+                           font=("Segoe UI", 11, "bold"))
+        ver_lbl.pack(side="left", padx=(12, 4))
+
+        # 구분자
+        sep_lbl = tk.Label(row, text="—", bg=ROW_BG, fg="#bbb",
+                           font=("Segoe UI", 11))
+        sep_lbl.pack(side="left", padx=8)
+
+        # 설명 컬럼 (좌측 정렬)
+        desc_lbl = tk.Label(row, text=desc, anchor="w",
+                            bg=ROW_BG, fg="#333",
+                            font=("Malgun Gothic", 10))
+        desc_lbl.pack(side="left", fill="x", expand=True, padx=(0, 12))
+
+        widgets = (row, ver_lbl, sep_lbl, desc_lbl)
+        for w in widgets:
+            w.bind("<Button-1>", lambda _e, k=kind: pick(k))
+            w.bind("<Enter>", lambda _e, ws=widgets: [x.configure(bg=ROW_HOVER) for x in ws])
+            w.bind("<Leave>", lambda _e, ws=widgets: [x.configure(bg=ROW_BG) for x in ws])
 
     root.update_idletasks()
-    w = root.winfo_reqwidth()
+    w = max(root.winfo_reqwidth(), 420)
     h = root.winfo_reqheight()
     sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
-    root.geometry(f"+{(sw - w) // 2}+{(sh - h) // 2}")
+    root.geometry(f"{w}x{h}+{(sw - w) // 2}+{(sh - h) // 2}")
 
-    root.protocol("WM_DELETE_WINDOW", lambda: (result.update(version=current), root.destroy()))
+    # 창을 그냥 닫으면 result["version"]는 None 그대로 → 빌드 취소
+    root.protocol("WM_DELETE_WINDOW", root.destroy)
     root.mainloop()
 
     return result["version"]
@@ -728,12 +787,17 @@ def main():
     # ── 빌드 시작: SemVer 모달 ──
     print("\n버전 선택 모달을 표시합니다...")
     new_version = _prompt_version_modal()
+    if new_version is None:
+        print("\n빌드 취소: 버전이 선택되지 않았습니다.")
+        return
+
     current_version = _read_version()
     if new_version != current_version:
         _write_version(new_version)
         print(f"  version.txt: v{current_version} → v{new_version}")
     else:
         print(f"  version.txt: v{current_version} (유지)")
+    _update_installer_iss(new_version)
 
     if "--backend" in args:
         ok = step_compile_backend(force)
