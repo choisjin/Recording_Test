@@ -304,15 +304,18 @@ export default function ResultsPage() {
     // 비디오 src가 아직 보류 중인 녹화로 전환되지 않았으면 대기.
     const currentSrc = video.currentSrc || video.src || '';
     const srcReady = !pending.recUrl || currentSrc.indexOf(pending.recUrl) !== -1;
-    // readyState가 0인 동안 1초마다 video.load()를 호출해 재시도.
-    // 파일이 아직 finalize 중이거나 OS 캐시에 보이지 않아 첫 load가 실패하면 자동으로 retry.
-    if (srcReady && video.readyState < 1) {
-      const attempts = (pending as any)._attempts || 0;
-      const lastLoad = (pending as any)._lastLoadAttempt;
-      if (lastLoad === undefined || attempts - lastLoad >= 10) {
-        (pending as any)._lastLoadAttempt = attempts;
-        try { video.load(); } catch { /* ignore */ }
-      }
+    // 브라우저가 이미 로딩 중(NETWORK_LOADING=2)이면 절대 건드리지 않는다.
+    // load()를 호출하면 진행 중인 metadata 로딩이 reset돼서 오히려 더 느려짐.
+    // IDLE/EMPTY/NO_SOURCE 상태에서 readyState < 1이면(= 브라우저가 loading을 멈춘 상태)
+    // 첫 1회만 video.load()를 호출해 강제 trigger.
+    if (
+      srcReady &&
+      video.readyState < 1 &&
+      video.networkState !== 2 /* NETWORK_LOADING */ &&
+      !(pending as any)._loadCalled
+    ) {
+      (pending as any)._loadCalled = true;
+      try { video.load(); } catch { /* ignore */ }
     }
     if (!srcReady) {
       scheduleRetry();
