@@ -302,7 +302,14 @@ export default function ResultsPage() {
     }
     // 비디오 src가 아직 보류 중인 녹화로 전환되지 않았으면 대기.
     const currentSrc = video.currentSrc || video.src || '';
-    if (pending.recUrl && currentSrc.indexOf(pending.recUrl) === -1) {
+    const srcReady = !pending.recUrl || currentSrc.indexOf(pending.recUrl) !== -1;
+    // 패널이 막 열려 video element가 mount된 직후 브라우저가 자동으로 메타데이터를
+    // 로드하지 않는 경우가 있어, 한 번만 명시적으로 load()를 호출해 강제로 트리거한다.
+    if (srcReady && video.readyState < 1 && !(pending as any)._loadCalled) {
+      (pending as any)._loadCalled = true;
+      try { video.load(); } catch { /* ignore */ }
+    }
+    if (!srcReady) {
       scheduleRetry();
       return;
     }
@@ -1186,10 +1193,7 @@ export default function ResultsPage() {
               {/* 좌측: 웹캠 녹화 패널 (접힘/펼침) */}
               {recordings.length > 0 && (
                 <div style={{ width: webcamPanelOpen ? (webcamExpanded ? '60%' : 300) : 36, flexShrink: 0, transition: 'width 0.2s' }}>
-                  {/* 패널이 닫혀있어도 Card는 mount된 채 display로만 숨김.
-                      이렇게 해야 video element가 살아있고 metadata가 미리 로드되어
-                      첫 step 클릭 시 seek race가 발생하지 않는다. */}
-                  <div style={{ display: webcamPanelOpen ? 'block' : 'none' }}>
+                  {webcamPanelOpen ? (
                     <Card
                       size="small"
                       title={<Space size={4}><VideoCameraOutlined />{t('webcam.recordings')}</Space>}
@@ -1277,9 +1281,7 @@ export default function ResultsPage() {
                         })}
                       </div>
                     </Card>
-                  </div>
-                  {/* 닫힘 상태 UI — video를 unmount하지 않기 위해 display로만 토글 */}
-                  <div style={{ display: webcamPanelOpen ? 'none' : 'block' }}>
+                  ) : (
                     <Tooltip title={t('webcam.recordings')} placement="right">
                       <Button
                         type="text"
@@ -1290,7 +1292,7 @@ export default function ResultsPage() {
                         {t('webcam.recordings')} ({recordings.length})
                       </Button>
                     </Tooltip>
-                  </div>
+                  )}
                 </div>
               )}
 
