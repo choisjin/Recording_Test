@@ -289,7 +289,10 @@ export default function ResultsPage() {
       // 최대 약 10초까지 retry. 시나리오 종료 직후 녹화 파일이 OS 파일시스템 캐시에서
       // 완전히 보이기 전 시점에 첫 로드가 시작될 수 있어 충분한 여유 필요.
       const attempts = (pending as any)._attempts || 0;
-      if (attempts >= 100) return;  // 100 * 100ms = 10s
+      if (attempts >= 100) {
+        console.log('[seek-debug] EXHAUSTED — retry limit reached');
+        return;  // 100 * 100ms = 10s
+      }
       (pending as any)._attempts = attempts + 1;
       seekRetryTimerRef.current = window.setTimeout(() => {
         seekRetryTimerRef.current = null;
@@ -298,6 +301,7 @@ export default function ResultsPage() {
     };
 
     if (!video) {
+      console.log('[seek-debug] WAIT no-video');
       scheduleRetry();
       return;
     }
@@ -318,10 +322,12 @@ export default function ResultsPage() {
       try { video.load(); } catch { /* ignore */ }
     }
     if (!srcReady) {
+      console.log('[seek-debug] WAIT src-not-ready', { currentSrc, want: pending.recUrl });
       scheduleRetry();
       return;
     }
     if (video.readyState < 1) {
+      console.log('[seek-debug] WAIT readyState<1', { readyState: video.readyState, networkState: video.networkState });
       scheduleRetry();
       return;
     }
@@ -336,15 +342,22 @@ export default function ResultsPage() {
     // preload="metadata"만 끝난 시점엔 seekable이 비거나 [0,0]에 머무르는 케이스가 있으므로,
     // target time이 seekable 범위 내인지 확인하고 아니면 polling 재시도.
     let seekableCovers = false;
+    const seekableRanges: Array<[number, number]> = [];
     try {
       for (let i = 0; i < video.seekable.length; i++) {
-        if (seekTime >= video.seekable.start(i) - 0.01 && seekTime <= video.seekable.end(i) + 0.01) {
+        const s = video.seekable.start(i);
+        const e = video.seekable.end(i);
+        seekableRanges.push([s, e]);
+        if (seekTime >= s - 0.01 && seekTime <= e + 0.01) {
           seekableCovers = true;
-          break;
         }
       }
     } catch { seekableCovers = true; /* seekable 접근 실패 시 일단 진행 */ }
     if (!seekableCovers) {
+      console.log('[seek-debug] WAIT seekable-not-covered', {
+        seekTime, readyState: video.readyState, networkState: video.networkState,
+        seekableRanges, attempts: (pending as any)._attempts,
+      });
       scheduleRetry();
       return;
     }
