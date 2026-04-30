@@ -239,13 +239,17 @@ class SerialLogging:
             return f"ERROR: 연결 실패 — {e}"
 
     def _disconnect(self):
-        """시리얼 포트 연결 해제."""
-        self._stop_capture()
-        if self._serial and self._serial.is_open:
+        """시리얼 포트 연결 해제. cleanup 경로에서 호출되므로 어떤 단계도 raise 하지 않는다."""
+        try:
+            self._stop_capture()
+        except Exception as e:
+            logger.warning("[SerialLogging] stop_capture raised: %s", e)
+        if self._serial is not None:
             try:
-                self._serial.close()
-            except Exception:
-                pass
+                if getattr(self._serial, "is_open", False):
+                    self._serial.close()
+            except Exception as e:
+                logger.warning("[SerialLogging] serial.close raised: %s", e)
         self._serial = None
         logger.info("[SerialLogging] Disconnected")
 
@@ -293,44 +297,54 @@ class SerialLogging:
             save_path: 저장할 파일 경로. 빈 값이면 컨텍스트별 자동 저장:
                 - 재생 중: {run_dir}/logs/serial_{timestamp}.log
                 - 스텝 테스트: backend/results/Temp_logs/serial_{timestamp}.log
+
+        파일 저장 단계의 어떤 예외(경로 해석/mkdir/open)가 발생해도 finally에서
+        _close_save_file + _disconnect를 무조건 실행하여 COM 포트 leak을 방지한다.
+        cleanup_active_instances가 재생 중단 시 자동 호출하는 진입점이기도 하다.
         """
         sid = self._session_id()
         with self._lock:
             logs_snapshot = list(self._logs)
 
-        if not save_path:
-            save_path = _auto_save_path("serial")
-        elif not os.path.dirname(save_path):
-            base_dir = Path(_auto_save_path("serial")).parent
-            save_path = str(base_dir / save_path)
-
         saved_path = ""
+        save_error = ""
         try:
-            os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
-            with open(save_path, "w", encoding="utf-8") as f:
-                f.write("\n".join(logs_snapshot))
-                if logs_snapshot:
-                    f.write("\n")
-            saved_path = save_path
-            logger.info("[SerialLogging] Saved %d lines to %s", len(logs_snapshot), save_path)
+            if not save_path:
+                save_path = _auto_save_path("serial")
+            elif not os.path.dirname(save_path):
+                base_dir = Path(_auto_save_path("serial")).parent
+                save_path = str(base_dir / save_path)
+            try:
+                os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+                with open(save_path, "w", encoding="utf-8") as f:
+                    f.write("\n".join(logs_snapshot))
+                    if logs_snapshot:
+                        f.write("\n")
+                saved_path = save_path
+                logger.info("[SerialLogging] Saved %d lines to %s", len(logs_snapshot), save_path)
+            except Exception as e:
+                logger.error("[SerialLogging] Save failed: %s", e)
+                save_error = str(e)
         except Exception as e:
-            logger.error("[SerialLogging] Save failed: %s", e)
+            # _auto_save_path 등 경로 해석 자체가 실패해도 finally의 _disconnect를 보장
+            logger.error("[SerialLogging] StopLogging path resolution failed: %s", e)
+            save_error = save_error or str(e)
+        finally:
+            # StartSave로 시작했더라도 _save_file 누수 방지 + 캡처/시리얼 무조건 정리
+            self._close_save_file()
             self._disconnect()
-            SERIAL_HUB.emit_lifecycle({
-                "type": "session_stopped",
-                "session_id": sid,
-                "save_path": "",
-                "stopped_at": time.time(),
-            })
-            return f"ERROR: 저장 실패 — {e}"
+            try:
+                SERIAL_HUB.emit_lifecycle({
+                    "type": "session_stopped",
+                    "session_id": sid,
+                    "save_path": saved_path,
+                    "stopped_at": time.time(),
+                })
+            except Exception:
+                pass
 
-        self._disconnect()
-        SERIAL_HUB.emit_lifecycle({
-            "type": "session_stopped",
-            "session_id": sid,
-            "save_path": saved_path,
-            "stopped_at": time.time(),
-        })
+        if save_error:
+            return f"ERROR: 저장 실패 — {save_error}"
         return f"Logging stopped. Saved {len(logs_snapshot)} lines to: {saved_path}"
 
     # ------------------------------------------------------------------

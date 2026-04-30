@@ -240,13 +240,16 @@ class DLTLogging:
             return f"ERROR: 연결 실패 — {e}"
 
     def _disconnect(self):
-        """DLT 데몬 연결 해제."""
-        self._stop_capture()
-        if self._socket:
+        """DLT 데몬 연결 해제. cleanup 경로에서 호출되므로 어떤 단계도 raise 하지 않는다."""
+        try:
+            self._stop_capture()
+        except Exception as e:
+            logger.warning("[DLTLogging] stop_capture raised: %s", e)
+        if self._socket is not None:
             try:
                 self._socket.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("[DLTLogging] socket.close raised: %s", e)
             self._socket = None
         logger.info("[DLTLogging] Disconnected")
 
@@ -343,6 +346,10 @@ class DLTLogging:
                 - 시나리오 재생 중: {run_dir}/logs/dlt_{timestamp}.log
                 - 스텝 테스트:     backend/results/Temp_logs/dlt_{timestamp}.log
 
+        파일 저장 단계의 어떤 예외(경로 해석/mkdir/open)가 발생해도 finally에서
+        _close_save_file + _disconnect를 무조건 실행하여 소켓 leak을 방지한다.
+        cleanup_active_instances가 재생 중단 시 자동 호출하는 진입점이기도 하다.
+
         Returns:
             결과 메시지 (저장 경로 포함)
         """
@@ -352,40 +359,46 @@ class DLTLogging:
         with self._lock:
             logs_snapshot = list(self._logs)
 
-        # save_path 해석: 빈 값 → 자동 경로+파일명, 파일명만 → 자동 디렉토리 하위
-        if not save_path:
-            save_path = _auto_save_path("dlt")
-        elif not os.path.dirname(save_path):
-            base_dir = Path(_auto_save_path("dlt")).parent
-            save_path = str(base_dir / save_path)
-
         saved_path = ""
+        save_error = ""
         try:
-            os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
-            with open(save_path, "w", encoding="utf-8") as f:
-                f.write("\n".join(logs_snapshot))
-                if logs_snapshot:
-                    f.write("\n")
-            saved_path = save_path
-            logger.info("[DLTLogging] Saved %d lines to %s", len(logs_snapshot), save_path)
+            # save_path 해석: 빈 값 → 자동 경로+파일명, 파일명만 → 자동 디렉토리 하위
+            if not save_path:
+                save_path = _auto_save_path("dlt")
+            elif not os.path.dirname(save_path):
+                base_dir = Path(_auto_save_path("dlt")).parent
+                save_path = str(base_dir / save_path)
+            try:
+                os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+                with open(save_path, "w", encoding="utf-8") as f:
+                    f.write("\n".join(logs_snapshot))
+                    if logs_snapshot:
+                        f.write("\n")
+                saved_path = save_path
+                logger.info("[DLTLogging] Saved %d lines to %s", len(logs_snapshot), save_path)
+            except Exception as e:
+                logger.error("[DLTLogging] Save failed: %s", e)
+                save_error = str(e)
         except Exception as e:
-            logger.error("[DLTLogging] Save failed: %s", e)
+            # _auto_save_path 등 경로 해석 자체가 실패해도 finally의 _disconnect를 보장
+            logger.error("[DLTLogging] StopLogging path resolution failed: %s", e)
+            save_error = save_error or str(e)
+        finally:
+            # StartSave로 시작했더라도 _save_file 누수 방지 + 캡처/소켓 무조건 정리
+            self._close_save_file()
             self._disconnect()
-            DLT_HUB.emit_lifecycle({
-                "type": "session_stopped",
-                "session_id": sid,
-                "save_path": "",
-                "stopped_at": time.time(),
-            })
-            return f"ERROR: 저장 실패 — {e}"
+            try:
+                DLT_HUB.emit_lifecycle({
+                    "type": "session_stopped",
+                    "session_id": sid,
+                    "save_path": saved_path,
+                    "stopped_at": time.time(),
+                })
+            except Exception:
+                pass
 
-        self._disconnect()
-        DLT_HUB.emit_lifecycle({
-            "type": "session_stopped",
-            "session_id": sid,
-            "save_path": saved_path,
-            "stopped_at": time.time(),
-        })
+        if save_error:
+            return f"ERROR: 저장 실패 — {save_error}"
         return f"Logging stopped. Saved {len(logs_snapshot)} lines to: {saved_path}"
 
     def SearchSection(self, keyword: str, from_step: int, to_step: int, count: int = 5) -> str:
