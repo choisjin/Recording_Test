@@ -1523,7 +1523,7 @@ export default function ScenarioPage() {
             for (const [fname, items] of Object.entries(folders)) {
               treeData.push({
                 key: `folder:${fname}`,
-                title: fname,
+                title: `${fname} (${items.length})`,
                 icon: <FolderOutlined />,
                 isLeaf: false,
                 children: items.filter(n => filteredScenarios.includes(n)).map(n => ({
