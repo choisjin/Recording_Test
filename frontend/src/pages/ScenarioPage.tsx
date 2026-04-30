@@ -1522,9 +1522,10 @@ export default function ScenarioPage() {
             const treeData: any[] = [];
             // 폴더 노드
             for (const [fname, items] of Object.entries(folders)) {
+              const existingCount = items.filter(n => scenarios.includes(n)).length;
               treeData.push({
                 key: `folder:${fname}`,
-                title: `${fname} (${items.length})`,
+                title: `${fname} (${existingCount})`,
                 icon: <FolderOutlined />,
                 isLeaf: false,
                 children: items.filter(n => filteredScenarios.includes(n)).map(n => ({

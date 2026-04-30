@@ -310,6 +310,16 @@ class RecordingService:
                     changed = True
             if changed:
                 self._save_groups(groups)
+            # Remove from any folders
+            folders = self._load_folders()
+            f_changed = False
+            for fname in list(folders.keys()):
+                before = len(folders[fname])
+                folders[fname] = [n for n in folders[fname] if n != name]
+                if len(folders[fname]) < before:
+                    f_changed = True
+            if f_changed:
+                self._save_folders(folders)
             return True
         return False
 
@@ -354,6 +364,17 @@ class RecordingService:
                     changed = True
         if changed:
             self._save_groups(groups)
+        # Update folder references
+        folders = self._load_folders()
+        f_changed = False
+        for fname in list(folders.keys()):
+            items = folders[fname]
+            for i, n in enumerate(items):
+                if n == old_name:
+                    items[i] = new_name
+                    f_changed = True
+        if f_changed:
+            self._save_folders(folders)
         return True
 
     @staticmethod
@@ -391,7 +412,18 @@ class RecordingService:
         FOLDERS_FILE.write_text(json.dumps(folders, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def get_folders(self) -> dict[str, list[str]]:
-        return self._load_folders()
+        folders = self._load_folders()
+        # 유령 항목(존재하지 않는 시나리오) 자동 정리
+        existing = {p.stem for p in SCENARIOS_DIR.glob("*.json") if p.name not in ("groups.json", "folders.json")}
+        changed = False
+        for fname in list(folders.keys()):
+            before = len(folders[fname])
+            folders[fname] = [n for n in folders[fname] if n in existing]
+            if len(folders[fname]) < before:
+                changed = True
+        if changed:
+            self._save_folders(folders)
+        return folders
 
     def create_folder(self, name: str) -> dict[str, list[str]]:
         folders = self._load_folders()
