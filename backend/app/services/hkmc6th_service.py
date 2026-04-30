@@ -71,6 +71,41 @@ CCRC_SRC_REAR_RIGHT_MONITOR = 0x0C
 CCRC_MONITOR_LEFT = 0x01
 CCRC_MONITOR_RIGHT = 0x02
 
+# RRC/L_RRC/R_RRC 모니터 별칭
+LEFT_MONITOR  = CCRC_MONITOR_LEFT   # 0x01
+RIGHT_MONITOR = CCRC_MONITOR_RIGHT  # 0x02
+
+# 다이얼 방향
+CLOCK      = 0x00
+ANTI_CLOCK = 0x01
+
+# RRC HKEY (버튼) 코드
+RRC_HKEY_ENTER        = 0x08
+RRC_HKEY_UP           = 0x00
+RRC_HKEY_DOWN         = 0x01
+RRC_HKEY_LEFT         = 0x03
+RRC_HKEY_RIGHT        = 0x06
+RRC_HKEY_BACK         = 0x09
+RRC_HKEY_MENU         = 0x0A
+RRC_HKEY_HOME         = 0x14
+RRC_HKEY_POWER_LEFT   = 0x1A
+RRC_HKEY_POWER_RIGHT  = 0x1B
+RRC_HKEY_VOLUME_LEFT  = 0x17
+RRC_HKEY_VOLUME_RIGHT = 0x18
+
+# RRC HKNOB (다이얼) 코드
+RRC_HKNOB_JOGDIAL      = 0x00
+RRC_HKNOB_VOLUME_LEFT  = 0x02
+RRC_HKNOB_VOLUME_RIGHT = 0x03
+
+# Ethernet 전송 커맨드
+CMD_ETHERNET         = 0x94
+CMD_ETHERNETSIGNAL   = 0x95  # EthernetSignal (신호 ID + Payload 전송)
+CMD_EXECUTESHELLCMD  = 0x96  # ExecuteShell (쉘 커맨드 문자열 전송)
+
+# Response codes
+RESPONSE_FAIL = 0x00   # 응답 불필요 / 실패 응답 코드
+
 # Screen type mapping for touch — CCRC_MONITOR_LEFT/RIGHT 값과 정렬.
 # (레거시 에이전트 호환을 위해 rear_right=1, rear_left=2 였으나, 최신 HKMC Agent
 # 에서는 monitor 바이트가 키와 터치 공통으로 LEFT=1, RIGHT=2 로 해석되어
@@ -215,6 +250,44 @@ HKMC_KEYS = {
     "SWRC2_DRAG_RIGHT":          {"cmd": CMD_SWRC2, "key": 0x11},
     "SWRC2_TOUCH":               {"cmd": CMD_SWRC2, "key": 0x12},
     "SWRC2_DOUBLE_TOUCH":        {"cmd": CMD_SWRC2, "key": 0x13},
+
+    # ---------- L_RRC / R_RRC (CMD_RRC=0x90) — 좌/우 모니터 지정 RRC ----------
+    "L_RRC_ENTER":                    {"cmd": CMD_RRC, "key": RRC_HKEY_ENTER,        "monitor": LEFT_MONITOR},
+    "L_RRC_UP":                       {"cmd": CMD_RRC, "key": RRC_HKEY_UP,           "monitor": LEFT_MONITOR},
+    "L_RRC_DOWN":                     {"cmd": CMD_RRC, "key": RRC_HKEY_DOWN,         "monitor": LEFT_MONITOR},
+    "L_RRC_LEFT":                     {"cmd": CMD_RRC, "key": RRC_HKEY_LEFT,         "monitor": LEFT_MONITOR},
+    "L_RRC_RIGHT":                    {"cmd": CMD_RRC, "key": RRC_HKEY_RIGHT,        "monitor": LEFT_MONITOR},
+    "L_RRC_BACK":                     {"cmd": CMD_RRC, "key": RRC_HKEY_BACK,         "monitor": LEFT_MONITOR},
+    "L_RRC_MENU":                     {"cmd": CMD_RRC, "key": RRC_HKEY_MENU,         "monitor": LEFT_MONITOR},
+    "L_RRC_HOME":                     {"cmd": CMD_RRC, "key": RRC_HKEY_HOME,         "monitor": LEFT_MONITOR},
+    "L_RRC_POWER_LEFT":               {"cmd": CMD_RRC, "key": RRC_HKEY_POWER_LEFT,   "monitor": LEFT_MONITOR},
+    "L_RRC_POWER_RIGHT":              {"cmd": CMD_RRC, "key": RRC_HKEY_POWER_RIGHT,  "monitor": LEFT_MONITOR},
+    "L_RRC_VOLUME_LEFT":              {"cmd": CMD_RRC, "key": RRC_HKEY_VOLUME_LEFT,  "monitor": LEFT_MONITOR},
+    "L_RRC_VOLUME_RIGHT":             {"cmd": CMD_RRC, "key": RRC_HKEY_VOLUME_RIGHT, "monitor": LEFT_MONITOR},
+    "R_RRC_ENTER":                    {"cmd": CMD_RRC, "key": RRC_HKEY_ENTER,        "monitor": RIGHT_MONITOR},
+    "R_RRC_UP":                       {"cmd": CMD_RRC, "key": RRC_HKEY_UP,           "monitor": RIGHT_MONITOR},
+    "R_RRC_DOWN":                     {"cmd": CMD_RRC, "key": RRC_HKEY_DOWN,         "monitor": RIGHT_MONITOR},
+    "R_RRC_LEFT":                     {"cmd": CMD_RRC, "key": RRC_HKEY_LEFT,         "monitor": RIGHT_MONITOR},
+    "R_RRC_RIGHT":                    {"cmd": CMD_RRC, "key": RRC_HKEY_RIGHT,        "monitor": RIGHT_MONITOR},
+    "R_RRC_BACK":                     {"cmd": CMD_RRC, "key": RRC_HKEY_BACK,         "monitor": RIGHT_MONITOR},
+    "R_RRC_MENU":                     {"cmd": CMD_RRC, "key": RRC_HKEY_MENU,         "monitor": RIGHT_MONITOR},
+    "R_RRC_HOME":                     {"cmd": CMD_RRC, "key": RRC_HKEY_HOME,         "monitor": RIGHT_MONITOR},
+    "R_RRC_POWER_LEFT":               {"cmd": CMD_RRC, "key": RRC_HKEY_POWER_LEFT,   "monitor": RIGHT_MONITOR},
+    "R_RRC_POWER_RIGHT":              {"cmd": CMD_RRC, "key": RRC_HKEY_POWER_RIGHT,  "monitor": RIGHT_MONITOR},
+    "R_RRC_VOLUME_LEFT":              {"cmd": CMD_RRC, "key": RRC_HKEY_VOLUME_LEFT,  "monitor": RIGHT_MONITOR},
+    "R_RRC_VOLUME_RIGHT":             {"cmd": CMD_RRC, "key": RRC_HKEY_VOLUME_RIGHT, "monitor": RIGHT_MONITOR},
+    "L_RRC_JOGDIAL_CLOCK":            {"cmd": CMD_RRC, "key": RRC_HKNOB_JOGDIAL,      "monitor": LEFT_MONITOR,  "dial": True, "direction": CLOCK},
+    "L_RRC_JOGDIAL_ANTI_CLOCK":       {"cmd": CMD_RRC, "key": RRC_HKNOB_JOGDIAL,      "monitor": LEFT_MONITOR,  "dial": True, "direction": ANTI_CLOCK},
+    "L_RRC_VOLUME_LEFT_CLOCK":        {"cmd": CMD_RRC, "key": RRC_HKNOB_VOLUME_LEFT,  "monitor": LEFT_MONITOR,  "dial": True, "direction": CLOCK},
+    "L_RRC_VOLUME_LEFT_ANTI_CLOCK":   {"cmd": CMD_RRC, "key": RRC_HKNOB_VOLUME_LEFT,  "monitor": LEFT_MONITOR,  "dial": True, "direction": ANTI_CLOCK},
+    "L_RRC_VOLUME_RIGHT_CLOCK":       {"cmd": CMD_RRC, "key": RRC_HKNOB_VOLUME_RIGHT, "monitor": LEFT_MONITOR,  "dial": True, "direction": CLOCK},
+    "L_RRC_VOLUME_RIGHT_ANTI_CLOCK":  {"cmd": CMD_RRC, "key": RRC_HKNOB_VOLUME_RIGHT, "monitor": LEFT_MONITOR,  "dial": True, "direction": ANTI_CLOCK},
+    "R_RRC_JOGDIAL_CLOCK":            {"cmd": CMD_RRC, "key": RRC_HKNOB_JOGDIAL,      "monitor": RIGHT_MONITOR, "dial": True, "direction": CLOCK},
+    "R_RRC_JOGDIAL_ANTI_CLOCK":       {"cmd": CMD_RRC, "key": RRC_HKNOB_JOGDIAL,      "monitor": RIGHT_MONITOR, "dial": True, "direction": ANTI_CLOCK},
+    "R_RRC_VOLUME_LEFT_CLOCK":        {"cmd": CMD_RRC, "key": RRC_HKNOB_VOLUME_LEFT,  "monitor": RIGHT_MONITOR, "dial": True, "direction": CLOCK},
+    "R_RRC_VOLUME_LEFT_ANTI_CLOCK":   {"cmd": CMD_RRC, "key": RRC_HKNOB_VOLUME_LEFT,  "monitor": RIGHT_MONITOR, "dial": True, "direction": ANTI_CLOCK},
+    "R_RRC_VOLUME_RIGHT_CLOCK":       {"cmd": CMD_RRC, "key": RRC_HKNOB_VOLUME_RIGHT, "monitor": RIGHT_MONITOR, "dial": True, "direction": CLOCK},
+    "R_RRC_VOLUME_RIGHT_ANTI_CLOCK":  {"cmd": CMD_RRC, "key": RRC_HKNOB_VOLUME_RIGHT, "monitor": RIGHT_MONITOR, "dial": True, "direction": ANTI_CLOCK},
 }
 
 
@@ -1165,6 +1238,11 @@ class HKMC6thService:
             cmd = CMD_CCRC
             is_ccrc = True
 
+        # 키 정의에 monitor 필드가 있으면 (L_RRC/R_RRC 계열) 우선 적용.
+        # 호출자가 monitor를 명시하지 않은 경우에만 — 명시된 값이 항상 우선.
+        if monitor not in (CCRC_MONITOR_LEFT, CCRC_MONITOR_RIGHT) and "monitor" in key_info:
+            monitor = key_info["monitor"]
+
         # monitor 미지정(0x00 NONE) + rear_left/rear_right 화면이면 자동으로 LEFT/RIGHT 유도.
         # CCRC·일반 하드키 공통 — 일반 키도 monitor 필드가 rear 모니터 라우팅에 사용됨.
         # CCRC 디바이스는 ccIC_Agent legacy 매핑이라 LEFT↔RIGHT 스왑.
@@ -1228,6 +1306,94 @@ class HKMC6thService:
                 self.send_key(cmd, sub_cmd, key_data, monitor, direction)
             # Agent 처리 시간 확보 (CMD_GETIMG 즉시 진입 방지)
             time.sleep(0.05)
+
+    # ------------------------------------------------------------------
+    # Ethernet signal / Shell command execution
+    # ------------------------------------------------------------------
+
+    def ethernet_signal(self, n_signal_payload: int, n_signal_id: int) -> int:
+        """Send an Ethernet signal with payload and signal ID.
+
+        Args:
+            n_signal_payload: Signal payload value (1 byte if ≤0xFF, 2 bytes otherwise)
+            n_signal_id:      Signal ID (4 bytes, big-endian)
+
+        Returns:
+            0 on success.
+        """
+        cmd     = CMD_ETHERNETSIGNAL
+        sub_cmd = 0
+        resp    = 0
+
+        data: list[int] = []
+        data.append(0x00)
+        data.append(0x00)
+
+        len_payload = 1 if n_signal_payload <= 0xFF else 2
+        data.append((len_payload >> 8) & 0xFF)
+        data.append(len_payload & 0xFF)
+
+        if len_payload == 1:
+            data.append(n_signal_payload & 0xFF)
+        else:
+            data.append((n_signal_payload >> 8) & 0xFF)
+            data.append(n_signal_payload & 0xFF)
+
+        data.append((n_signal_id >> 24) & 0xFF)
+        data.append((n_signal_id >> 16) & 0xFF)
+        data.append((n_signal_id >> 8) & 0xFF)
+        data.append(n_signal_id & 0xFF)
+
+        with self._send_lock:
+            self._make_send_packet(cmd, sub_cmd, resp, data)
+        return 0  # AT_SUCCESS
+
+    def execute_shell(self, cmd: int, sub_cmd: int, resp: int, str_data: str) -> int:
+        """Send a shell command string to the agent.
+
+        Args:
+            cmd:      Command byte (e.g. CMD_EXECUTESHELLCMD)
+            sub_cmd:  Sub-command byte (e.g. MOVE_KEY=0x45)
+            resp:     Response code byte (e.g. RESPONSE_FAIL)
+            str_data: Shell command string to send
+
+        Returns:
+            0 on success.
+        """
+        data: list[int] = []
+        length = len(str_data)
+        data.append((length >> 24) & 0xFF)
+        data.append((length >> 16) & 0xFF)
+        data.append((length >> 8) & 0xFF)
+        data.append(length & 0xFF)
+        for ch in str_data:
+            data.append(ord(ch))
+        with self._send_lock:
+            self._make_send_packet(cmd, sub_cmd, resp, data)
+        return 0  # AT_SUCCESS
+
+    def send_shell_cmd(self, str_data: str) -> int:
+        """Convenience wrapper: send shell command using fixed protocol constants.
+
+        Equivalent to execute_shell(CMD_EXECUTESHELLCMD, 0x45, RESPONSE_FAIL, str_data).
+        """
+        return self.execute_shell(CMD_EXECUTESHELLCMD, MOVE_KEY, RESPONSE_FAIL, str_data)
+
+    async def async_ethernet_signal(self, n_signal_payload: int, n_signal_id: int) -> int:
+        """Async wrapper for ethernet_signal()."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.ethernet_signal, n_signal_payload, n_signal_id)
+
+    async def async_execute_shell(self, cmd: int, sub_cmd: int, resp: int,
+                                  str_data: str) -> int:
+        """Async wrapper for execute_shell()."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.execute_shell, cmd, sub_cmd, resp, str_data)
+
+    async def async_send_shell_cmd(self, str_data: str) -> int:
+        """Async wrapper for send_shell_cmd()."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.send_shell_cmd, str_data)
 
     # ------------------------------------------------------------------
     # Async wrappers (for use from FastAPI/asyncio context)
