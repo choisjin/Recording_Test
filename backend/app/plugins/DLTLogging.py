@@ -269,6 +269,8 @@ class DLTLogging:
 
         Returns:
             결과 메시지
+
+        StartLogging과 동일하게 DLT_HUB에 session_started를 emit하여 뷰어가 자동 오픈된다.
         """
         if self._save_file:
             return f"ERROR: 이미 저장 중입니다 ({self._save_path}). StopSave() 먼저 호출하세요."
@@ -288,9 +290,23 @@ class DLTLogging:
             self._save_file = open(save_path, "w", encoding="utf-8")
             self._save_path = save_path
             logger.info("[DLTLogging] Save started: %s", save_path)
-            return f"Save started: {save_path}"
         except Exception as e:
             return f"ERROR: 파일 열기 실패 — {e}"
+
+        # 뷰어 동기화: StartLogging과 동일한 lifecycle emit
+        try:
+            DLT_HUB.emit_lifecycle({
+                "type": "session_started",
+                "session_id": self._session_id(),
+                "host": self._host,
+                "port": self._port,
+                "save_path": save_path,
+                "started_at": time.time(),
+            })
+        except Exception as e:
+            logger.warning("[DLTLogging] StartSave lifecycle emit failed: %s", e)
+
+        return f"Save started: {save_path}"
 
     def StopSave(self) -> str:
         """로그 파일 저장을 중단하고 DLT 연결을 해제합니다.
@@ -302,9 +318,22 @@ class DLTLogging:
             return "저장 중이 아닙니다."
 
         path = self._save_path
+        sid = self._session_id()
         self._close_save_file()
         self._disconnect()
         logger.info("[DLTLogging] Save stopped + disconnected: %s", path)
+
+        # 뷰어 동기화: StopLogging과 동일한 lifecycle emit
+        try:
+            DLT_HUB.emit_lifecycle({
+                "type": "session_stopped",
+                "session_id": sid,
+                "save_path": path or "",
+                "stopped_at": time.time(),
+            })
+        except Exception as e:
+            logger.warning("[DLTLogging] StopSave lifecycle emit failed: %s", e)
+
         return f"Save stopped: {path}"
 
     # ------------------------------------------------------------------
