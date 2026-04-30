@@ -1127,7 +1127,7 @@ export default function ResultsPage() {
                             );
                           })}
                         </Space>
-                        {activeRecUrl && <video ref={detailVideoRef} src={activeRecUrl} controls preload="metadata" onLoadedMetadata={handleVideoCanPlay} onCanPlay={handleVideoCanPlay} onTimeUpdate={handleVideoTimeUpdate} onPause={handleVideoPauseOrEnd} onEnded={handleVideoPauseOrEnd} style={{ width: '100%', maxHeight: 400 }} />}
+                        {activeRecUrl && <video key={activeRecUrl} ref={detailVideoRef} src={activeRecUrl} controls preload="metadata" onLoadedMetadata={handleVideoCanPlay} onCanPlay={handleVideoCanPlay} onTimeUpdate={handleVideoTimeUpdate} onPause={handleVideoPauseOrEnd} onEnded={handleVideoPauseOrEnd} style={{ width: '100%', maxHeight: 400 }} />}
                       </div>
                     ),
                   }]}
@@ -1207,6 +1207,7 @@ export default function ResultsPage() {
                       bodyStyle={{ padding: 5 }}
                     >
                       <video
+                        key={activeRecUrl}
                         ref={detailVideoRef}
                         src={activeRecUrl}
                         controls
