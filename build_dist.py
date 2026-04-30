@@ -792,17 +792,18 @@ def main():
         return
 
     current_version = _read_version()
-    if new_version != current_version:
+    version_changed = new_version != current_version
+    if version_changed:
         _write_version(new_version)
         print(f"  version.txt: v{current_version} → v{new_version}")
     else:
-        print(f"  version.txt: v{current_version} (유지)")
+        print(f"  version.txt: v{current_version} (유지) — build_history.txt 기록 생략")
     _update_installer_iss(new_version)
 
     if "--backend" in args:
         ok = step_compile_backend(force)
         clean()
-        if ok:
+        if ok and version_changed:
             _record_build_history(new_version)
         return
 
@@ -822,7 +823,8 @@ def main():
     step_package(force)
     clean()
 
-    _record_build_history(new_version)
+    if version_changed:
+        _record_build_history(new_version)
 
     elapsed = time.time() - t_start
     print(f"\n{'=' * 50}")
