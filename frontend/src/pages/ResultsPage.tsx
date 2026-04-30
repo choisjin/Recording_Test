@@ -331,9 +331,15 @@ export default function ResultsPage() {
     const seekTime = hasDuration
       ? Math.min(pending.offset, Math.max(0, videoDuration - 0.05))
       : pending.offset;
+    const beforeCT = video.currentTime;
     if (Number.isFinite(seekTime) && seekTime >= 0) {
       try { video.currentTime = seekTime; } catch { /* ignore */ }
     }
+    // [DEBUG] seek 적용 직후 상태 — 임시 진단용. 원인 파악 후 제거.
+    console.log('[seek-debug] APPLY', {
+      offset: pending.offset, seekTime, before: beforeCT, after: video.currentTime,
+      duration: video.duration, readyState: video.readyState, networkState: video.networkState,
+    });
     pending.applied = true;
     pendingSeekRef.current = null;
   }, []);
@@ -355,6 +361,16 @@ export default function ResultsPage() {
     }
 
     const offsetSec = computeSeekOffsetSec(step, rec, targetRepeat);
+    // [DEBUG] step 클릭 시 계산된 offset과 컨텍스트 — 임시 진단용. 원인 파악 후 제거.
+    console.log('[seek-debug] CLICK', {
+      step_id: step.step_id,
+      step_ts: step.timestamp,
+      rec_started_at: rec.started_at,
+      rec_url: rec.url,
+      offsetSec,
+      panelOpen: webcamPanelOpen,
+      activeRecUrl,
+    });
     if (offsetSec == null) return;
 
     // 항상 pendingSeekRef에 기록. URL 변경/패널 마운트/readyState 지연 등의 race를
