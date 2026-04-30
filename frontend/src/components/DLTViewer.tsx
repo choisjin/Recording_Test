@@ -196,7 +196,7 @@ const DLTViewer: React.FC<DLTViewerProps> = ({ sessions, onClose, mode = 'modal'
 
   if (sessions.length === 0) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: bg, padding: 13 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, width: '100%', height: '100%', background: bg, padding: 13 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontWeight: 600 }}>{t('dltViewer.title') || 'DLT 로그 뷰어'}</span>
           {onClose && <Button size="small" icon={<CloseOutlined />} onClick={onClose} />}
@@ -213,6 +213,8 @@ const DLTViewer: React.FC<DLTViewerProps> = ({ sessions, onClose, mode = 'modal'
       style={{
         display: 'flex',
         flexDirection: 'column',
+        flex: 1,
+        width: '100%',
         height: '100%',
         background: bg,
         overflow: 'hidden',

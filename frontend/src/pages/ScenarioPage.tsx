@@ -5,7 +5,7 @@ import {
   PlayCircleOutlined, PauseOutlined, DeleteOutlined, EyeOutlined,
   StopOutlined, CopyOutlined,
   FolderOutlined, FolderAddOutlined, FileOutlined,
-  ArrowUpOutlined, ArrowDownOutlined, EditOutlined, BranchesOutlined,
+  EditOutlined, BranchesOutlined,
   DownOutlined, RightOutlined, ClearOutlined, UploadOutlined,
   ExportOutlined, ImportOutlined, CheckCircleOutlined, WarningOutlined,
 } from '@ant-design/icons';
@@ -332,6 +332,7 @@ export default function ScenarioPage() {
   const [newGroupName, setNewGroupName] = useState('');
   const [scenarioStepsCache, setScenarioStepsCache] = useState<Record<string, any[]>>({});
   const [expandedEntries, setExpandedEntries] = useState<Set<string>>(new Set());
+  const [groupDrag, setGroupDrag] = useState<{ gName: string; from: number; over: number | null } | null>(null);
 
   // Copy
   const [copyName, setCopyName] = useState('');
@@ -667,11 +668,11 @@ export default function ScenarioPage() {
     } catch { message.error(t('scenario.reorderFailed')); }
   };
 
-  const moveInGroup = (gName: string, members: GroupEntry[], idx: number, dir: -1 | 1) => {
-    const newIdx = idx + dir;
-    if (newIdx < 0 || newIdx >= members.length) return;
+  const dropInGroup = (gName: string, members: GroupEntry[], from: number, to: number) => {
+    if (from === to || from < 0 || to < 0 || from >= members.length || to >= members.length) return;
     const perm = members.map((_, i) => i);
-    [perm[idx], perm[newIdx]] = [perm[newIdx], perm[idx]];
+    const [moved] = perm.splice(from, 1);
+    perm.splice(to, 0, moved);
     reorderGroup(gName, perm);
   };
 
@@ -1911,10 +1912,37 @@ export default function ScenarioPage() {
                       );
                     };
 
+                    const isDragOver = groupDrag && groupDrag.gName === gName && groupDrag.over === idx && groupDrag.from !== idx;
+                    const dragOverFromAbove = isDragOver && (groupDrag!.from < idx);
                     return (
-                      <List.Item style={{ display: 'block', padding: '6px 0' }}>
+                      <List.Item
+                        style={{
+                          display: 'block',
+                          padding: '6px 0',
+                          borderTop: isDragOver && !dragOverFromAbove ? '2px solid #1677ff' : undefined,
+                          borderBottom: isDragOver && dragOverFromAbove ? '2px solid #1677ff' : undefined,
+                          opacity: groupDrag && groupDrag.gName === gName && groupDrag.from === idx ? 0.4 : 1,
+                        }}
+                        draggable
+                        onDragStart={(e) => {
+                          setGroupDrag({ gName, from: idx, over: null });
+                          e.dataTransfer.effectAllowed = 'move';
+                        }}
+                        onDragOver={(e) => {
+                          if (!groupDrag || groupDrag.gName !== gName) return;
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = 'move';
+                          if (groupDrag.over !== idx) setGroupDrag({ ...groupDrag, over: idx });
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          if (groupDrag && groupDrag.gName === gName) dropInGroup(gName, members, groupDrag.from, idx);
+                          setGroupDrag(null);
+                        }}
+                        onDragEnd={() => setGroupDrag(null)}
+                      >
                         {/* 시나리오 헤더 */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'grab' }}>
                           <Tag color="blue" style={{ minWidth: 24, textAlign: 'center' }}>{idx + 1}</Tag>
                           <Button size="small" type="text" style={{ padding: '0 2px', fontSize: 10, color: '#888' }}
                             icon={isExpanded ? <DownOutlined /> : <RightOutlined />}
@@ -1924,14 +1952,6 @@ export default function ScenarioPage() {
                           {!scenarios.includes(entry.name) && <Tag color="red">{t('scenario.missing')}</Tag>}
                           {hasAnyJump && <BranchesOutlined style={{ color: '#722ed1', fontSize: 11 }} />}
                           <span style={{ color: '#888', fontSize: 10 }}>{steps.length} {t('scenario.steps')}</span>
-                          <Button size="small" type="text" icon={<ArrowUpOutlined />}
-                            disabled={idx === 0}
-                            onClick={() => moveInGroup(gName, members, idx, -1)}
-                          />
-                          <Button size="small" type="text" icon={<ArrowDownOutlined />}
-                            disabled={idx === members.length - 1}
-                            onClick={() => moveInGroup(gName, members, idx, 1)}
-                          />
                           <Button size="small" type="text" danger icon={<DeleteOutlined />}
                             onClick={() => removeFromGroup(gName, idx)}
                           />

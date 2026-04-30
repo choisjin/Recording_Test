@@ -180,7 +180,7 @@ const SerialViewer: React.FC<SerialViewerProps> = ({ sessions, onClose, mode = '
 
   if (sessions.length === 0) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: bg, padding: 13 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, width: '100%', height: '100%', background: bg, padding: 13 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontWeight: 600 }}>{'Serial 로그 뷰어'}</span>
           {onClose && <Button size="small" icon={<CloseOutlined />} onClick={onClose} />}
@@ -197,6 +197,8 @@ const SerialViewer: React.FC<SerialViewerProps> = ({ sessions, onClose, mode = '
       style={{
         display: 'flex',
         flexDirection: 'column',
+        flex: 1,
+        width: '100%',
         height: '100%',
         background: bg,
         overflow: 'hidden',
