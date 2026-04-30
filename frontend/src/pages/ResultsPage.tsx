@@ -342,22 +342,33 @@ export default function ResultsPage() {
     // preload="metadata"만 끝난 시점엔 seekable이 비거나 [0,0]에 머무르는 케이스가 있으므로,
     // target time이 seekable 범위 내인지 확인하고 아니면 polling 재시도.
     let seekableCovers = false;
-    const seekableRanges: Array<[number, number]> = [];
+    const seekableRangesStr: string[] = [];
+    const bufferedRangesStr: string[] = [];
     try {
       for (let i = 0; i < video.seekable.length; i++) {
         const s = video.seekable.start(i);
         const e = video.seekable.end(i);
-        seekableRanges.push([s, e]);
+        seekableRangesStr.push(`[${s.toFixed(3)},${e.toFixed(3)}]`);
         if (seekTime >= s - 0.01 && seekTime <= e + 0.01) {
           seekableCovers = true;
         }
       }
+      for (let i = 0; i < video.buffered.length; i++) {
+        bufferedRangesStr.push(`[${video.buffered.start(i).toFixed(3)},${video.buffered.end(i).toFixed(3)}]`);
+      }
     } catch { seekableCovers = true; /* seekable 접근 실패 시 일단 진행 */ }
     if (!seekableCovers) {
-      console.log('[seek-debug] WAIT seekable-not-covered', {
-        seekTime, readyState: video.readyState, networkState: video.networkState,
-        seekableRanges, attempts: (pending as any)._attempts,
-      });
+      const attempts = (pending as any)._attempts || 0;
+      // 너무 많이 찍히지 않도록 1초마다(10회마다) 한 번씩만 출력
+      if (attempts % 10 === 0) {
+        console.log('[seek-debug] WAIT seekable-not-covered', {
+          seekTime, readyState: video.readyState, networkState: video.networkState,
+          seekable: seekableRangesStr.join(','),
+          buffered: bufferedRangesStr.join(','),
+          duration: video.duration,
+          attempts,
+        });
+      }
       scheduleRetry();
       return;
     }
