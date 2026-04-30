@@ -331,6 +331,24 @@ export default function ResultsPage() {
     const seekTime = hasDuration
       ? Math.min(pending.offset, Math.max(0, videoDuration - 0.05))
       : pending.offset;
+
+    // 브라우저가 seekable 범위를 아직 확보하지 못했다면 set해도 0으로 snap된다.
+    // preload="metadata"만 끝난 시점엔 seekable이 비거나 [0,0]에 머무르는 케이스가 있으므로,
+    // target time이 seekable 범위 내인지 확인하고 아니면 polling 재시도.
+    let seekableCovers = false;
+    try {
+      for (let i = 0; i < video.seekable.length; i++) {
+        if (seekTime >= video.seekable.start(i) - 0.01 && seekTime <= video.seekable.end(i) + 0.01) {
+          seekableCovers = true;
+          break;
+        }
+      }
+    } catch { seekableCovers = true; /* seekable 접근 실패 시 일단 진행 */ }
+    if (!seekableCovers) {
+      scheduleRetry();
+      return;
+    }
+
     const beforeCT = video.currentTime;
     if (Number.isFinite(seekTime) && seekTime >= 0) {
       try { video.currentTime = seekTime; } catch { /* ignore */ }
@@ -1151,7 +1169,7 @@ export default function ResultsPage() {
                             );
                           })}
                         </Space>
-                        {activeRecUrl && <video key={activeRecUrl} ref={detailVideoRef} src={activeRecUrl} controls preload="metadata" onLoadedMetadata={handleVideoCanPlay} onCanPlay={handleVideoCanPlay} onTimeUpdate={handleVideoTimeUpdate} onPause={handleVideoPauseOrEnd} onEnded={handleVideoPauseOrEnd} style={{ width: '100%', maxHeight: 400 }} />}
+                        {activeRecUrl && <video key={activeRecUrl} ref={detailVideoRef} src={activeRecUrl} controls preload="auto" onLoadedMetadata={handleVideoCanPlay} onCanPlay={handleVideoCanPlay} onTimeUpdate={handleVideoTimeUpdate} onPause={handleVideoPauseOrEnd} onEnded={handleVideoPauseOrEnd} style={{ width: '100%', maxHeight: 400 }} />}
                       </div>
                     ),
                   }]}
@@ -1235,7 +1253,7 @@ export default function ResultsPage() {
                         ref={detailVideoRef}
                         src={activeRecUrl}
                         controls
-                        preload="metadata"
+                        preload="auto"
                         onLoadedMetadata={handleVideoCanPlay}
                         onCanPlay={handleVideoCanPlay}
                         onTimeUpdate={handleVideoTimeUpdate}
