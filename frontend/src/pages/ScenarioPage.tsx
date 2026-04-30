@@ -173,6 +173,13 @@ export default function ScenarioPage() {
   const dltSessionHook = useDLTSessions();
   const serialSessionHook = useSerialSessions();
   const [scenarioLogTab, setScenarioLogTab] = useState<'dlt' | 'serial'>('dlt');
+  // 새 세션이 시작되면 해당 탭으로 자동 전환 — SerialLogging 시작 시 Serial 탭이 하이라이트되도록
+  useEffect(() => {
+    if (dltSessionHook.lastEvent?.type === 'session_started') setScenarioLogTab('dlt');
+  }, [dltSessionHook.lastEvent]);
+  useEffect(() => {
+    if (serialSessionHook.lastEvent?.type === 'session_started') setScenarioLogTab('serial');
+  }, [serialSessionHook.lastEvent]);
   const { webcam, ensureWebcamOpen } = useWebcamContext();
   const { pauseScreenStream, resumeScreenStream, primaryDevices, auxiliaryDevices } = useDevice();
   const [scenarios, setScenarios] = useState<string[]>([]);
@@ -1367,8 +1374,9 @@ export default function ScenarioPage() {
       <Splitter.Panel defaultSize="40%" min="20%" max="60%" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {playing && (dltSessionHook.sessions.length > 0 || serialSessionHook.sessions.length > 0) ? (
         // 로그 활성 시 시나리오 카드를 완전 대체 — 패널 상단 50%만 차지(아래 50%는 웹캠 PiP 자리)
-        // DLT/Serial 탭으로 구분하여 두 종류 세션을 한 영역에서 전환
-        <div style={{ height: '50%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        // DLT/Serial 탭으로 구분하여 두 종류 세션을 한 영역에서 전환.
+        // width:100% — Splitter.Panel 좌측을 가로로 가득 채움.
+        <div style={{ width: '100%', height: '50%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <Tabs
             size="small"
             activeKey={scenarioLogTab}
