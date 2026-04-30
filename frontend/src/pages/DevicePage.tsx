@@ -293,12 +293,12 @@ export default function DevicePage() {
   }, [catalogProjects, catalogAgents]);
 
   const PROJECT_OPTIONS = useMemo(() => [
-    { label: '전체', value: '' },
+    { label: t('device.allProjects'), value: '' },
     ...catalogProjects
       .filter(p => p.enabled !== false && typeof p.name === 'string' && p.name.length > 0)
       .map(p => ({ label: p.name, value: p.name }))
       .sort((a, b) => (a.label || '').localeCompare(b.label || '')),
-  ], [catalogProjects]);
+  ], [catalogProjects, t]);
 
   const DEVICE_MODELS = useMemo(() => {
     const enabledProjects = catalogProjects.filter(p => p.enabled !== false);
@@ -1209,13 +1209,13 @@ export default function DevicePage() {
                             }
                           }}
                           style={{ minWidth: 200 }}
-                          placeholder="장비 모델 선택"
+                          placeholder={t('device.deviceModelPlaceholder')}
                           options={DEVICE_MODELS}
                           status={primaryProjectModelMissing && !deviceModel ? 'warning' : undefined}
                         />
                         {primaryProjectModelMissing && (
                           <Typography.Text type="warning" style={{ fontSize: 11 }}>
-                            ← 프로젝트와 모델을 먼저 선택하세요
+                            ← {t('device.selectProjectAndModelFirst')}
                           </Typography.Text>
                         )}
                       </>
@@ -1744,13 +1744,13 @@ export default function DevicePage() {
                             }
                           }}
                           style={{ minWidth: 200, flex: 1 }}
-                          placeholder="장비 모델 선택"
+                          placeholder={t('device.deviceModelPlaceholder')}
                           options={DEVICE_MODELS}
                           status={primaryProjectModelMissing && !deviceModel ? 'warning' : undefined}
                         />
                         {primaryProjectModelMissing && (
                           <Typography.Text type="warning" style={{ fontSize: 11 }}>
-                            ← 프로젝트와 모델을 먼저 선택하세요
+                            ← {t('device.selectProjectAndModelFirst')}
                           </Typography.Text>
                         )}
                       </Space>
