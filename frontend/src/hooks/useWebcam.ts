@@ -43,9 +43,9 @@ export function useWebcam() {
   const [exposureAuto, setExposureAuto] = useState(true);
 
   // 타임스탬프 오버레이 설정 (프런트 ↔ 백엔드 sync)
-  const [timestampPosition, setTimestampPositionState] = useState<'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'off'>('bottom-right');
+  const [timestampPosition, setTimestampPositionState] = useState<'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'off'>('top-left');
   const [timestampColor, setTimestampColorState] = useState('#ffffff');
-  const [timestampFontSize, setTimestampFontSizeState] = useState(0); // 0 = auto
+  const [timestampFontSize, setTimestampFontSizeState] = useState(24); // 기본 24px
 
   // 프런트 측 레거시 호환: WebcamPip가 여전히 webcamVideoRef를 사용할 수 있음.
   // 백엔드 전환 후에는 실제로 참조하지 않음 (WebcamPip는 img 태그로 교체됨).

@@ -144,9 +144,10 @@ class WebcamService:
         self._frames_written: int = 0
 
         # Overlay config (matches frontend preferences)
-        self._overlay_position: str = "bottom-right"  # top-left|top-right|bottom-left|bottom-right|off
+        # 기본값: top-left + 24px (frontend useWebcam.ts와 동기화)
+        self._overlay_position: str = "top-left"  # top-left|top-right|bottom-left|bottom-right|off
         self._overlay_color: tuple[int, int, int] = (255, 255, 255)  # BGR for cv2
-        self._overlay_font_scale: float = 0.0  # 0 = auto
+        self._overlay_font_scale: float = 1.0  # 1.0 == 24px (frontend syncOverlayToBackend 기준)
 
     # ------------------------------------------------------------
     # Device enumeration / probe
@@ -485,17 +486,17 @@ class WebcamService:
         box_w = text_w + pad * 2
         box_h = text_h + pad * 2
 
-        if pos == "top-left":
-            bx, by = margin, margin
-            tx, ty = bx + pad, by + pad + text_h
-        elif pos == "top-right":
+        if pos == "top-right":
             bx, by = w - box_w - margin, margin
             tx, ty = bx + pad, by + pad + text_h
         elif pos == "bottom-left":
             bx, by = margin, h - box_h - margin
             tx, ty = bx + pad, by + pad + text_h
-        else:  # bottom-right (default)
+        elif pos == "bottom-right":
             bx, by = w - box_w - margin, h - box_h - margin
+            tx, ty = bx + pad, by + pad + text_h
+        else:  # top-left (default)
+            bx, by = margin, margin
             tx, ty = bx + pad, by + pad + text_h
 
         # 반투명 박스

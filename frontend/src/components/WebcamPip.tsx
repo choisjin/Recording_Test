@@ -254,18 +254,15 @@ export default function WebcamPip({ webcam, onClose, isDark }: WebcamPipProps) {
                   />
                   <Select
                     size="small"
-                    value={timestampFontSize || 0}
+                    value={timestampFontSize || 24}
                     onChange={setTimestampFontSize}
                     style={{ width: 70 }}
                     getPopupContainer={getContainer}
                     options={[
-                      { value: 0, label: 'Auto' },
-                      { value: 10, label: '10px' },
-                      { value: 12, label: '12px' },
-                      { value: 14, label: '14px' },
-                      { value: 16, label: '16px' },
                       { value: 20, label: '20px' },
+                      { value: 22, label: '22px' },
                       { value: 24, label: '24px' },
+                      { value: 26, label: '26px' },
                     ]}
                   />
                 </div>
