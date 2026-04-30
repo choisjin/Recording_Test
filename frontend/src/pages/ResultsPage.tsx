@@ -1120,7 +1120,7 @@ export default function ResultsPage() {
                             );
                           })}
                         </Space>
-                        {activeRecUrl && <video ref={detailVideoRef} src={activeRecUrl} controls onLoadedMetadata={handleVideoCanPlay} onCanPlay={handleVideoCanPlay} onTimeUpdate={handleVideoTimeUpdate} onPause={handleVideoPauseOrEnd} onEnded={handleVideoPauseOrEnd} style={{ width: '100%', maxHeight: 400 }} />}
+                        {activeRecUrl && <video ref={detailVideoRef} src={activeRecUrl} controls preload="metadata" onLoadedMetadata={handleVideoCanPlay} onCanPlay={handleVideoCanPlay} onTimeUpdate={handleVideoTimeUpdate} onPause={handleVideoPauseOrEnd} onEnded={handleVideoPauseOrEnd} style={{ width: '100%', maxHeight: 400 }} />}
                       </div>
                     ),
                   }]}
@@ -1186,7 +1186,10 @@ export default function ResultsPage() {
               {/* 좌측: 웹캠 녹화 패널 (접힘/펼침) */}
               {recordings.length > 0 && (
                 <div style={{ width: webcamPanelOpen ? (webcamExpanded ? '60%' : 300) : 36, flexShrink: 0, transition: 'width 0.2s' }}>
-                  {webcamPanelOpen ? (
+                  {/* 패널이 닫혀있어도 Card는 mount된 채 display로만 숨김.
+                      이렇게 해야 video element가 살아있고 metadata가 미리 로드되어
+                      첫 step 클릭 시 seek race가 발생하지 않는다. */}
+                  <div style={{ display: webcamPanelOpen ? 'block' : 'none' }}>
                     <Card
                       size="small"
                       title={<Space size={4}><VideoCameraOutlined />{t('webcam.recordings')}</Space>}
@@ -1203,6 +1206,7 @@ export default function ResultsPage() {
                         ref={detailVideoRef}
                         src={activeRecUrl}
                         controls
+                        preload="metadata"
                         onLoadedMetadata={handleVideoCanPlay}
                         onCanPlay={handleVideoCanPlay}
                         onTimeUpdate={handleVideoTimeUpdate}
@@ -1273,7 +1277,9 @@ export default function ResultsPage() {
                         })}
                       </div>
                     </Card>
-                  ) : (
+                  </div>
+                  {/* 닫힘 상태 UI — video를 unmount하지 않기 위해 display로만 토글 */}
+                  <div style={{ display: webcamPanelOpen ? 'none' : 'block' }}>
                     <Tooltip title={t('webcam.recordings')} placement="right">
                       <Button
                         type="text"
@@ -1284,7 +1290,7 @@ export default function ResultsPage() {
                         {t('webcam.recordings')} ({recordings.length})
                       </Button>
                     </Tooltip>
-                  )}
+                  </div>
                 </div>
               )}
 
