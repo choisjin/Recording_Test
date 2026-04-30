@@ -1,0 +1,1 @@
+[2026-04-30 09:14:59] v1.0.0 — 5a7c030a feat: installer.iss 파일의 MyAppVersion 갱신 기능 추가
