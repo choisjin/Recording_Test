@@ -139,6 +139,16 @@ def _get_run_output_dir() -> Optional[Path]:
         return None
 
 
+def _is_scenario_playback() -> bool:
+    """시나리오 재생 active 여부. lifecycle 이벤트에 컨텍스트 플래그로 부착되어
+    프론트엔드(RecordPage) 모달 자동 오픈을 막는다 — ScenarioPage가 이미 좌측 카드로 표시함."""
+    try:
+        from backend.app.services.playback_service import is_playback_active
+        return is_playback_active()
+    except Exception:
+        return False
+
+
 def _auto_save_path(prefix: str = "dlt") -> str:
     """컨텍스트별 자동 저장 경로 생성.
 
@@ -302,6 +312,7 @@ class DLTLogging:
                 "port": self._port,
                 "save_path": save_path,
                 "started_at": time.time(),
+                "scenario_playback": _is_scenario_playback(),
             })
         except Exception as e:
             logger.warning("[DLTLogging] StartSave lifecycle emit failed: %s", e)
@@ -364,6 +375,7 @@ class DLTLogging:
             "port": self._port,
             "save_path": "",
             "started_at": time.time(),
+            "scenario_playback": _is_scenario_playback(),
         })
         return f"Logging started: {self._host}:{self._port}"
 

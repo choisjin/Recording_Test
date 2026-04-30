@@ -94,6 +94,12 @@ def mark_playback_active(active: bool) -> None:
     _playback_active = active
 
 
+def is_playback_active() -> bool:
+    """현재 시나리오 재생이 진행 중인지 — DLT/Serial lifecycle 이벤트에 컨텍스트 부착용.
+    재생 중이면 ScenarioPage가 좌측에 뷰어를 이미 표시하므로 RecordPage 모달 자동 오픈을 막는다."""
+    return _playback_active
+
+
 def subscribe_events() -> "asyncio.Queue[dict]":
     """재생 이벤트 구독 — 새 Queue를 생성한다.
 

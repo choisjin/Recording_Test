@@ -289,6 +289,8 @@ export default function RecordPage() {
   useEffect(() => {
     const e = dltSessionHook.lastEvent;
     if (e?.type === 'session_started' && e.session_id) {
+      // 시나리오 재생 중에 시작된 세션은 ScenarioPage 좌측 카드가 이미 표시 → 모달 자동 오픈 skip
+      if (e.scenario_playback) return;
       if (!autoOpenedDltRef.current.has(e.session_id)) {
         autoOpenedDltRef.current.add(e.session_id);
         setLogViewerTab('dlt');
@@ -301,6 +303,8 @@ export default function RecordPage() {
   useEffect(() => {
     const e = serialSessionHook.lastEvent;
     if (e?.type === 'session_started' && e.session_id) {
+      // 시나리오 재생 중에 시작된 세션은 ScenarioPage 좌측 카드가 이미 표시 → 모달 자동 오픈 skip
+      if (e.scenario_playback) return;
       if (!autoOpenedSerialRef.current.has(e.session_id)) {
         autoOpenedSerialRef.current.add(e.session_id);
         setLogViewerTab('serial');
