@@ -286,9 +286,10 @@ export default function ResultsPage() {
     const video = detailVideoRef.current;
 
     const scheduleRetry = () => {
-      // 최대 약 3초까지 retry (panel mount + metadata 로드 시간 충분히 커버)
+      // 최대 약 10초까지 retry. 시나리오 종료 직후 녹화 파일이 OS 파일시스템 캐시에서
+      // 완전히 보이기 전 시점에 첫 로드가 시작될 수 있어 충분한 여유 필요.
       const attempts = (pending as any)._attempts || 0;
-      if (attempts >= 30) return;  // 30 * 100ms = 3s
+      if (attempts >= 100) return;  // 100 * 100ms = 10s
       (pending as any)._attempts = attempts + 1;
       seekRetryTimerRef.current = window.setTimeout(() => {
         seekRetryTimerRef.current = null;
@@ -303,11 +304,15 @@ export default function ResultsPage() {
     // 비디오 src가 아직 보류 중인 녹화로 전환되지 않았으면 대기.
     const currentSrc = video.currentSrc || video.src || '';
     const srcReady = !pending.recUrl || currentSrc.indexOf(pending.recUrl) !== -1;
-    // 패널이 막 열려 video element가 mount된 직후 브라우저가 자동으로 메타데이터를
-    // 로드하지 않는 경우가 있어, 한 번만 명시적으로 load()를 호출해 강제로 트리거한다.
-    if (srcReady && video.readyState < 1 && !(pending as any)._loadCalled) {
-      (pending as any)._loadCalled = true;
-      try { video.load(); } catch { /* ignore */ }
+    // readyState가 0인 동안 1초마다 video.load()를 호출해 재시도.
+    // 파일이 아직 finalize 중이거나 OS 캐시에 보이지 않아 첫 load가 실패하면 자동으로 retry.
+    if (srcReady && video.readyState < 1) {
+      const attempts = (pending as any)._attempts || 0;
+      const lastLoad = (pending as any)._lastLoadAttempt;
+      if (lastLoad === undefined || attempts - lastLoad >= 10) {
+        (pending as any)._lastLoadAttempt = attempts;
+        try { video.load(); } catch { /* ignore */ }
+      }
     }
     if (!srcReady) {
       scheduleRetry();
