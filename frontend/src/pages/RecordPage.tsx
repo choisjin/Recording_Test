@@ -1040,6 +1040,9 @@ export default function RecordPage() {
     try {
       const res = await deviceApi.winListProcesses();
       setWcProcesses(res.data.processes || []);
+      // 새로고침 후 선택을 placeholder(0번 — '프로그램 선택') 로 리셋.
+      // 이전 hwnd 가 사라졌을 수 있으므로 사용자가 다시 선택하도록 유도.
+      setWcSelectedHwnd(null);
     } catch (e: any) {
       message.error(e.response?.data?.detail || t('record.winControlAttachFailed'));
     }
@@ -4109,18 +4112,22 @@ export default function RecordPage() {
                     <Select
                       size="small"
                       showSearch
-                      value={wcSelectedHwnd ?? undefined}
-                      onChange={(v) => setWcSelectedHwnd(v)}
-                      placeholder={t('record.winControlSelectProcess')}
+                      // 0(=Win32 NULL hwnd, 무효값)을 placeholder option 의 value 로 사용 →
+                      // 항상 0번 인덱스에 '프로그램 선택' 항목이 보이고, 새로고침 시 자동 선택.
+                      value={wcSelectedHwnd ?? 0}
+                      onChange={(v) => setWcSelectedHwnd(v ? v : null)}
                       style={{ minWidth: 280, maxWidth: 420 }}
                       loading={wcLoadingProcs}
                       filterOption={(input, opt) =>
                         ((opt?.label as string) || '').toLowerCase().includes(input.toLowerCase())
                       }
-                      options={wcProcesses.map(p => ({
-                        value: p.hwnd,
-                        label: `${p.name} — ${p.title}`,
-                      }))}
+                      options={[
+                        { value: 0, label: t('record.winControlSelectProcess') },
+                        ...wcProcesses.map(p => ({
+                          value: p.hwnd,
+                          label: `${p.name} — ${p.title}`,
+                        })),
+                      ]}
                     />
                     <Tooltip title={t('record.winControlRefresh')}>
                       <Button size="small" icon={<ReloadOutlined />} onClick={wcRefreshProcesses} loading={wcLoadingProcs} />
