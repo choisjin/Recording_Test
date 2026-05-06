@@ -961,7 +961,8 @@ async def device_input(req: InputRequest):
             exe_path = str(p.get("exe_path", "") or "")
             title_pattern = str(p.get("window_title", "") or "")
             class_name = str(p.get("window_class", "") or "")
-            if proc_name or exe_path or title_pattern:
+            aumid = str(p.get("process_aumid", "") or "")
+            if proc_name or exe_path or title_pattern or aumid:
                 import functools as _ft
                 try:
                     await loop.run_in_executor(
@@ -970,6 +971,7 @@ async def device_input(req: InputRequest):
                             wc.ensure_attached,
                             process_name=proc_name, exe_path=exe_path,
                             title_pattern=title_pattern, class_name=class_name,
+                            aumid=aumid,
                             launch_if_missing=True,
                             wait_seconds=float(p.get("launch_wait_seconds", 8.0) or 8.0),
                         ),

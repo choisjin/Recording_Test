@@ -1002,7 +1002,8 @@ class RecordingService:
             exe_path = str(params.get("exe_path", "") or "")
             title_pattern = str(params.get("window_title", "") or "")
             class_name = str(params.get("window_class", "") or "")
-            if proc_name or exe_path or title_pattern:
+            aumid = str(params.get("process_aumid", "") or "")
+            if proc_name or exe_path or title_pattern or aumid:
                 try:
                     import functools as _ft
                     await loop.run_in_executor(
@@ -1011,6 +1012,7 @@ class RecordingService:
                             wc.ensure_attached,
                             process_name=proc_name, exe_path=exe_path,
                             title_pattern=title_pattern, class_name=class_name,
+                            aumid=aumid,
                             launch_if_missing=True,
                             wait_seconds=float(params.get("launch_wait_seconds", 8.0) or 8.0),
                         ),

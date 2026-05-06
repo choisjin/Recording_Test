@@ -350,7 +350,7 @@ export default function RecordPage() {
   // 좌측 패널 탭: 'device' | 'wincontrol'. WinControl 디바이스가 연결된 경우에만 wincontrol 탭 노출.
   const [leftPanelTab, setLeftPanelTab] = useState<'device' | 'wincontrol'>('device');
   type WinProcess = { pid: number; hwnd: number; name: string; exe_path?: string; title: string; class_name?: string; width: number; height: number };
-  type WinAttachStatus = { attached: boolean; available?: boolean; hwnd?: number; pid?: number; name?: string; exe_path?: string; class_name?: string; title?: string; width?: number; height?: number; is_uwp?: boolean; content_hwnd?: number; import_error?: string };
+  type WinAttachStatus = { attached: boolean; available?: boolean; hwnd?: number; pid?: number; name?: string; exe_path?: string; class_name?: string; title?: string; width?: number; height?: number; is_uwp?: boolean; content_hwnd?: number; aumid?: string; import_error?: string };
   const [wcProcesses, setWcProcesses] = useState<WinProcess[]>([]);
   const [wcSelectedHwnd, setWcSelectedHwnd] = useState<number | null>(null);
   const [wcAttached, setWcAttached] = useState<WinAttachStatus | null>(null);
@@ -1179,12 +1179,15 @@ export default function RecordPage() {
       return;
     }
     // 프로세스 식별 정보 첨부 — 재생 시 ensure_attached 로 자동 복구.
+    // UWP/Packaged 앱은 .exe 직접 실행이 안 되므로 process_aumid 도 함께 저장 →
+    // 재생 시 explorer shell:AppsFolder\<AUMID> 로 활성화.
     const enrichedParams: Record<string, any> = {
       ...params,
       process_name: wcAttached.name || '',
       exe_path: wcAttached.exe_path || '',
       window_title: wcAttached.title || '',
       window_class: wcAttached.class_name || '',
+      process_aumid: wcAttached.aumid || '',
     };
     try {
       await deviceApi.input('WinControl', action, enrichedParams);

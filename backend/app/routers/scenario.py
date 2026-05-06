@@ -368,7 +368,7 @@ async def capture_expected_image(req: CaptureExpectedImageRequest):
             if not wc.is_attached():
                 # 저장된 프로세스 정보로 자동 attach 시도 (step.params 또는 그대로 실패)
                 step_params = step.params or {}
-                if step_params.get("process_name") or step_params.get("exe_path"):
+                if step_params.get("process_name") or step_params.get("exe_path") or step_params.get("process_aumid"):
                     import asyncio, functools
                     loop = asyncio.get_event_loop()
                     try:
@@ -380,6 +380,7 @@ async def capture_expected_image(req: CaptureExpectedImageRequest):
                                 exe_path=str(step_params.get("exe_path", "") or ""),
                                 title_pattern=str(step_params.get("window_title", "") or ""),
                                 class_name=str(step_params.get("window_class", "") or ""),
+                                aumid=str(step_params.get("process_aumid", "") or ""),
                                 launch_if_missing=True,
                             ),
                         )

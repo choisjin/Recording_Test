@@ -6,6 +6,7 @@ PrintWindow + PostMessage 기반으로 다른 Windows 프로세스의 윈도우�
 
 from __future__ import annotations
 
+import ctypes
 import io
 import logging
 import time
@@ -86,6 +87,9 @@ class WinControlService:
         self._is_uwp: bool = False
         # UWP 의 진짜 콘텐츠 윈도우(Windows.UI.Core.CoreWindow) — 캡처 시 우선 사용.
         self._content_hwnd: Optional[int] = None
+        # UWP AppUserModelID — 종료된 UWP 앱 재실행에 필요(.exe 직접 실행 불가).
+        # 예: "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"
+        self._aumid: str = ""
 
     @staticmethod
     def is_available() -> bool:
@@ -201,7 +205,7 @@ class WinControlService:
 
     @staticmethod
     def launch_process(exe_path: str, args: Optional[list[str]] = None) -> int:
-        """프로세스 실행. 성공 시 PID 반환. exe_path 가 비어있으면 ValueError."""
+        """일반 .exe 실행. 성공 시 PID 반환. exe_path 가 비어있으면 ValueError."""
         if not exe_path:
             raise ValueError("exe_path is empty")
         import subprocess
@@ -220,12 +224,36 @@ class WinControlService:
         logger.info("WinControl launched: %s pid=%d", exe_path, proc.pid)
         return proc.pid
 
+    @staticmethod
+    def launch_uwp(aumid: str) -> None:
+        """UWP/Packaged 앱 활성화 — explorer.exe shell:AppsFolder\\<AUMID>.
+
+        UWP 는 .exe 직접 실행 시 AppContainer 가 없어 빈 호스트만 뜨고 실제 앱은 안 뜸.
+        explorer 가 AppX 매니페스트를 따라 정상 launch 한다.
+        """
+        if not aumid:
+            raise ValueError("aumid is empty")
+        import subprocess
+        cmd = ["explorer.exe", f"shell:AppsFolder\\{aumid}"]
+        creationflags = 0
+        if _WIN32_AVAILABLE:
+            try:
+                creationflags = win32con.DETACHED_PROCESS  # type: ignore[attr-defined]
+            except Exception:
+                creationflags = 0x00000008
+        subprocess.Popen(
+            cmd, close_fds=True, creationflags=creationflags,
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        logger.info("WinControl launched UWP: %s", aumid)
+
     def ensure_attached(
         self,
         process_name: str = "",
         exe_path: str = "",
         title_pattern: str = "",
         class_name: str = "",
+        aumid: str = "",
         launch_if_missing: bool = True,
         wait_seconds: float = 8.0,
     ) -> dict:
@@ -234,7 +262,9 @@ class WinControlService:
         흐름:
           1) 이미 attached + 현재 프로세스명/타이틀이 일치하면 그대로 사용
           2) 일치 안 하거나 미임베드면 find_window로 매칭 윈도우 탐색 후 attach
-          3) 못 찾고 launch_if_missing=True 이면 exe_path 실행 + 윈도우 등장 polling 후 attach
+          3) 못 찾고 launch_if_missing=True 이면 launch:
+             - aumid 가 있으면 UWP 활성화 (explorer shell:AppsFolder\\AUMID) — UWP 우선
+             - 아니면 exe_path 로 일반 .exe 실행
         성공 시 status() 반환, 실패 시 RuntimeError.
         """
         if not _WIN32_AVAILABLE:
@@ -259,15 +289,22 @@ class WinControlService:
             return self.attach(match["hwnd"])
 
         # 3) 프로세스 실행 후 윈도우 등장 대기
-        if not launch_if_missing or not exe_path:
+        if not launch_if_missing or not (exe_path or aumid):
             raise RuntimeError(
                 f"WinControl: matching window not found "
-                f"(name={process_name!r}, exe={exe_path!r}, title~={title_pattern!r})"
+                f"(name={process_name!r}, exe={exe_path!r}, aumid={aumid!r}, title~={title_pattern!r})"
             )
+        launched_what = ""
         try:
-            self.launch_process(exe_path)
+            if aumid:
+                # UWP/Packaged 앱: explorer 로 활성화 — .exe 직접 실행 불가.
+                self.launch_uwp(aumid)
+                launched_what = f"AUMID={aumid}"
+            elif exe_path:
+                self.launch_process(exe_path)
+                launched_what = exe_path
         except Exception as e:
-            raise RuntimeError(f"WinControl: failed to launch {exe_path!r}: {e}")
+            raise RuntimeError(f"WinControl: failed to launch ({launched_what or aumid or exe_path!r}): {e}")
 
         deadline = time.monotonic() + max(0.5, wait_seconds)
         while time.monotonic() < deadline:
@@ -276,10 +313,43 @@ class WinControlService:
             if match:
                 return self.attach(match["hwnd"])
         raise RuntimeError(
-            f"WinControl: launched {exe_path!r} but window did not appear within {wait_seconds:.1f}s"
+            f"WinControl: launched ({launched_what}) but window did not appear within {wait_seconds:.1f}s "
+            f"(name={process_name!r}, title~={title_pattern!r})"
         )
 
-    # ── UWP/WinUI3 감지 ─────────────────────────────────────────────
+    # ── UWP/WinUI3 감지 + AUMID 추출 ─────────────────────────────
+    @staticmethod
+    def _get_aumid_for_pid(pid: int) -> str:
+        """프로세스의 AppUserModelID 반환. UWP/Packaged 앱이 아니면 빈 문자열.
+
+        Win32 API: kernel32!GetApplicationUserModelId(hProcess, *pulLength, pBuf)
+        반환 0=성공, 122(ERROR_INSUFFICIENT_BUFFER)=버퍼 부족, 그 외=비-패키지 앱.
+        """
+        if not _WIN32_AVAILABLE or not pid:
+            return ""
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        h = windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+        if not h:
+            return ""
+        try:
+            size = ctypes.c_uint32(260)
+            buf = ctypes.create_unicode_buffer(size.value)
+            res = windll.kernel32.GetApplicationUserModelId(h, ctypes.byref(size), buf)
+            if res == 122:  # ERROR_INSUFFICIENT_BUFFER → 더 큰 버퍼로 재시도
+                buf = ctypes.create_unicode_buffer(size.value)
+                res = windll.kernel32.GetApplicationUserModelId(h, ctypes.byref(size), buf)
+            if res == 0:
+                return buf.value or ""
+            return ""
+        except Exception as e:
+            logger.debug("GetApplicationUserModelId failed for pid %d: %s", pid, e)
+            return ""
+        finally:
+            try:
+                windll.kernel32.CloseHandle(h)
+            except Exception:
+                pass
+
     @staticmethod
     def _detect_uwp(hwnd: int) -> tuple[bool, Optional[int]]:
         """UWP/WinUI3 여부 + 진짜 콘텐츠 윈도우(CoreWindow) hwnd 반환.
@@ -349,9 +419,22 @@ class WinControlService:
             self._exe_path = ""
         # UWP/WinUI3 판정 — 캡처 플래그 자동 결정 + 사용자에게 입력 모드 권장 정보 노출용
         self._is_uwp, self._content_hwnd = self._detect_uwp(hwnd)
-        logger.info("WinControl attached: hwnd=%d pid=%s name=%s exe=%s title=%r class=%s uwp=%s content=%s",
+        # UWP 면 AUMID 추출 — 콘텐츠 자식 PID 우선 (호스트 ApplicationFrameHost 는 비-패키지 프로세스).
+        self._aumid = ""
+        if self._is_uwp:
+            target_pid: Optional[int] = None
+            if self._content_hwnd:
+                try:
+                    _, target_pid = win32process.GetWindowThreadProcessId(self._content_hwnd)
+                except Exception:
+                    target_pid = None
+            if not target_pid:
+                target_pid = self._pid
+            if target_pid:
+                self._aumid = self._get_aumid_for_pid(target_pid)
+        logger.info("WinControl attached: hwnd=%d pid=%s name=%s exe=%s title=%r class=%s uwp=%s aumid=%r content=%s",
                     hwnd, self._pid, self._process_name, self._exe_path,
-                    self._window_title, self._window_class, self._is_uwp, self._content_hwnd)
+                    self._window_title, self._window_class, self._is_uwp, self._aumid, self._content_hwnd)
         return self.status()
 
     def detach(self) -> None:
@@ -364,6 +447,7 @@ class WinControlService:
         self._window_class = ""
         self._is_uwp = False
         self._content_hwnd = None
+        self._aumid = ""
 
     def is_attached(self) -> bool:
         if not _WIN32_AVAILABLE or self._hwnd is None:
@@ -391,6 +475,7 @@ class WinControlService:
             "height": h,
             "is_uwp": self._is_uwp,
             "content_hwnd": self._content_hwnd,
+            "aumid": self._aumid,
         }
 
     def get_window_size(self) -> tuple[int, int]:
