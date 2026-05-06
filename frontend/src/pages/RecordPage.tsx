@@ -675,6 +675,14 @@ export default function RecordPage() {
   const selectedDevice = moduleDevices.find(d => d.id === selectedDeviceId);
   const selectedModuleName = selectedDevice?.info?.module as string | undefined;
 
+  // Send_adb_command용 — 연결된 ADB 디바이스 목록 (콤보 옵션)
+  const connectedAdbDevices = primaryDevices.filter(d => d.type === 'adb' && isDeviceConnected(d));
+  // 화면에서 현재 선택중인 ADB 디바이스의 시리얼 (없으면 빈 문자열)
+  const currentScreenAdbSerial = (() => {
+    const dev = primaryDevices.find(d => d.id === screenshotDeviceId);
+    return dev?.type === 'adb' ? (dev.address || '') : '';
+  })();
+
   // 선택된 디바이스의 모듈 함수 목록 로드
   useEffect(() => {
     if (!selectedModuleName) {
@@ -3792,6 +3800,10 @@ export default function RecordPage() {
                         if (fn) {
                           const defaults: Record<string, string> = {};
                           fn.params.forEach(p => { if (p.default !== undefined) defaults[p.name] = p.default.replace(/^'(.*)'$/, '$1'); });
+                          // Android.Send_adb_command: serial 비어있으면 현재 화면 디바이스 시리얼로 자동 채움
+                          if (selectedModuleName === 'Android' && v === 'Send_adb_command' && !defaults.serial) {
+                            defaults.serial = currentScreenAdbSerial;
+                          }
                           setModuleFuncArgs(defaults);
                         } else {
                           setModuleFuncArgs({});
@@ -3814,17 +3826,42 @@ export default function RecordPage() {
                               {fn.description}
                             </div>
                           )}
-                          {fn.params.length > 0 && fn.params.map(p => (
+                          {fn.params.length > 0 && fn.params.map(p => {
+                            const isAdbSerialCombo =
+                              selectedModuleName === 'Android' &&
+                              selectedModuleFunc === 'Send_adb_command' &&
+                              p.name === 'serial';
+                            return (
                             <div key={p.name} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                               <div style={{ display: 'flex', gap: 4, alignItems: 'center', width: '100%' }}>
                                 <Tag style={{ minWidth: 70, textAlign: 'center', margin: 0, flexShrink: 0 }}>{p.name}{p.required && <span style={{ color: '#ff4d4f' }}>*</span>}</Tag>
-                                <Input
-                                  size="small"
-                                  placeholder={p.required ? t('common.required') : `${t('common.default')}: ${p.default}`}
-                                  value={moduleFuncArgs[p.name] ?? ''}
-                                  onChange={(e) => setModuleFuncArgs(prev => ({ ...prev, [p.name]: e.target.value }))}
-                                  style={{ flex: 1, minWidth: 0 }}
-                                />
+                                {isAdbSerialCombo ? (
+                                  <Select
+                                    size="small"
+                                    showSearch
+                                    allowClear
+                                    placeholder={currentScreenAdbSerial
+                                      ? `${t('common.default')}: ${currentScreenAdbSerial}`
+                                      : t('common.default')}
+                                    value={moduleFuncArgs[p.name] || undefined}
+                                    onChange={(v) => setModuleFuncArgs(prev => ({ ...prev, [p.name]: v ?? '' }))}
+                                    style={{ flex: 1, minWidth: 0 }}
+                                    options={connectedAdbDevices.map(d => ({
+                                      value: d.address,
+                                      label: d.address === currentScreenAdbSerial
+                                        ? `${d.address} (${d.name || d.id}) ★`
+                                        : `${d.address} (${d.name || d.id})`,
+                                    }))}
+                                  />
+                                ) : (
+                                  <Input
+                                    size="small"
+                                    placeholder={p.required ? t('common.required') : `${t('common.default')}: ${p.default}`}
+                                    value={moduleFuncArgs[p.name] ?? ''}
+                                    onChange={(e) => setModuleFuncArgs(prev => ({ ...prev, [p.name]: e.target.value }))}
+                                    style={{ flex: 1, minWidth: 0 }}
+                                  />
+                                )}
                               </div>
                               {p.description && (
                                 <div style={{ marginLeft: 74, fontSize: 10, color: isDark ? '#888' : '#999', lineHeight: 1.4 }}>
@@ -3832,7 +3869,8 @@ export default function RecordPage() {
                                 </div>
                               )}
                             </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       );
                     })()}
@@ -4279,16 +4317,40 @@ export default function RecordPage() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                     {Object.entries(args).map(([k, v]) => {
                       const paramGuide = editFnGuide?.params.find(p => p.name === k);
+                      const isAdbSerialCombo =
+                        editStepParams.module === 'Android' &&
+                        editStepParams.function === 'Send_adb_command' &&
+                        k === 'serial';
                       return (
                         <div key={k} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                           <div style={{ display: 'flex', gap: 4, alignItems: 'center', width: '100%' }}>
                             <Tag style={{ minWidth: 70, textAlign: 'center', margin: 0, flexShrink: 0 }}>{k}</Tag>
-                            <Input
-                              size="small"
-                              value={String(v ?? '')}
-                              onChange={(e) => setEditStepParams({ ...editStepParams, args: { ...args, [k]: e.target.value } })}
-                              style={{ flex: 1, minWidth: 0 }}
-                            />
+                            {isAdbSerialCombo ? (
+                              <Select
+                                size="small"
+                                showSearch
+                                allowClear
+                                placeholder={currentScreenAdbSerial
+                                  ? `${t('common.default')}: ${currentScreenAdbSerial}`
+                                  : t('common.default')}
+                                value={String(v ?? '') || undefined}
+                                onChange={(nv) => setEditStepParams({ ...editStepParams, args: { ...args, [k]: nv ?? '' } })}
+                                style={{ flex: 1, minWidth: 0 }}
+                                options={connectedAdbDevices.map(d => ({
+                                  value: d.address,
+                                  label: d.address === currentScreenAdbSerial
+                                    ? `${d.address} (${d.name || d.id}) ★`
+                                    : `${d.address} (${d.name || d.id})`,
+                                }))}
+                              />
+                            ) : (
+                              <Input
+                                size="small"
+                                value={String(v ?? '')}
+                                onChange={(e) => setEditStepParams({ ...editStepParams, args: { ...args, [k]: e.target.value } })}
+                                style={{ flex: 1, minWidth: 0 }}
+                              />
+                            )}
                           </div>
                           {paramGuide?.description && (
                             <div style={{ marginLeft: 74, fontSize: 10, color: isDark ? '#888' : '#999', lineHeight: 1.4 }}>

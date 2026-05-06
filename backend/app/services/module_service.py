@@ -332,6 +332,29 @@ def get_module_functions(module_name: str) -> list[dict]:
         if cpm == plugin_mtime and cgm == guides_mtime:
             return cfuncs
 
+    # Android: 네이티브 lge.auto.Android 함수들은 노출하지 않고
+    # ReplayKit 자체 ADBService 기반의 Send_adb_command 단일 가상 함수만 제공
+    if module_name == "Android":
+        functions = [{
+            "name": "Send_adb_command",
+            "params": [
+                {"name": "command", "required": True},
+                {"name": "serial", "required": False, "default": "''"},
+            ],
+        }]
+        # 가이드 병합 후 캐싱하고 즉시 반환
+        guides = _load_guides()
+        mod_guide = guides.get(module_name, {})
+        func_guides = mod_guide.get("functions", {})
+        for fn in functions:
+            fg = func_guides.get(fn["name"], {})
+            fn["description"] = fg.get("description", "")
+            param_guides = fg.get("params", {})
+            for p in fn["params"]:
+                p["description"] = param_guides.get(p["name"], "")
+        _module_functions_cache[module_name] = (plugin_mtime, guides_mtime, functions)
+        return functions
+
     cls = _import_module_class(module_name)
     if cls is None:
         return []
@@ -367,16 +390,6 @@ def get_module_functions(module_name: str) -> list[dict]:
     if module_name == "SSHManager":
         functions.append({
             "name": "send_command_stream",
-            "params": [
-                {"name": "command", "required": True},
-            ],
-        })
-
-    # Android: ReplayKit 자체 ADBService를 통한 Send_adb_command 가상 함수 추가
-    # (Android 모듈 자체의 adb_shell 등은 그대로 유지)
-    if module_name == "Android":
-        functions.append({
-            "name": "Send_adb_command",
             "params": [
                 {"name": "command", "required": True},
             ],
@@ -602,13 +615,16 @@ def _execute_sync(module_name: str, function_name: str, args: dict,
     """Execute a module function synchronously."""
     # Android.Send_adb_command — ReplayKit 자체 ADBService로 라우팅 (가상 함수)
     if module_name == "Android" and function_name == "Send_adb_command":
-        if not adb_serial:
-            raise RuntimeError("Send_adb_command requires an ADB device (adb_serial missing)")
         from .adb_service import ADBService
         from ..dependencies import adb_service as _adb
         command = args.get("command", "")
         if not command:
             return "(empty command)"
+        # args.serial이 명시되어 있으면 우선 사용 (스텝에서 사용자가 콤보로 선택한 시리얼)
+        # 비어 있으면 step.device_id에서 derive된 adb_serial 사용
+        target_serial = (args.get("serial") or "").strip() or adb_serial
+        if not target_serial:
+            raise RuntimeError("Send_adb_command requires an ADB device (serial missing)")
         # async 호출이지만 _execute_sync는 sync context (run_in_executor 안에서 호출됨)
         # → asyncio.run을 사용할 수 없음 (이미 이벤트 루프 중). loop.run_until_complete도 위험.
         # → ADBService 내부의 _run_device가 subprocess.run을 호출하는지 확인 필요.
@@ -616,7 +632,7 @@ def _execute_sync(module_name: str, function_name: str, args: dict,
         import asyncio as _asyncio
         loop = _asyncio.new_event_loop()
         try:
-            output = loop.run_until_complete(_adb.run_shell_command(command, serial=adb_serial))
+            output = loop.run_until_complete(_adb.run_shell_command(command, serial=target_serial))
         finally:
             loop.close()
         return output if output is not None else "(no output)"

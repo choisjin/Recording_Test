@@ -1973,9 +1973,10 @@
         }
       },
       "Send_adb_command": {
-        "description": "ReplayKit 자체 ADBService를 통해 임의의 adb 명령을 실행합니다 (선택된 ADB 디바이스 자동 적용). 출력 반환. 예: 'shell pm list packages', 'install foo.apk', 'push file /sdcard/'",
+        "description": "ReplayKit 자체 ADBService를 통해 임의의 adb 명령을 실행합니다. serial 미지정 시 화면에서 선택된 ADB 디바이스 자동 사용. 예: 'shell pm list packages', 'install foo.apk', 'push file /sdcard/'",
         "params": {
-          "command": "실행할 adb 명령 (adb -s {serial} 부분은 자동 추가). 예: 'shell input keyevent KEYCODE_HOME'"
+          "command": "실행할 adb 명령 (adb -s {serial} 부분은 자동 추가). 예: 'shell input keyevent KEYCODE_HOME'",
+          "serial": "대상 ADB 시리얼 (선택). 비우면 현재 화면 디바이스의 시리얼 사용"
         }
       },
       "adb_screencap": {

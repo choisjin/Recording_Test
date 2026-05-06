@@ -1864,9 +1864,10 @@
         }
       },
       "Send_adb_command": {
-        "description": "Runs an arbitrary adb command via ReplayKit's own ADBService (selected ADB device auto-applied). Returns the output. e.g. 'shell pm list packages', 'install foo.apk', 'push file /sdcard/'",
+        "description": "Runs an arbitrary adb command via ReplayKit's own ADBService. If serial is empty, the device currently selected on the device screen is used. e.g. 'shell pm list packages', 'install foo.apk', 'push file /sdcard/'",
         "params": {
-          "command": "adb command to run (the 'adb -s {serial}' prefix is added automatically). e.g. 'shell input keyevent KEYCODE_HOME'"
+          "command": "adb command to run (the 'adb -s {serial}' prefix is added automatically). e.g. 'shell input keyevent KEYCODE_HOME'",
+          "serial": "Target ADB serial (optional). If empty, uses the serial of the currently displayed device."
         }
       },
       "adb_screencap": {
