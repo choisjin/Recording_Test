@@ -2167,11 +2167,7 @@ class PlaybackService:
                 )
             except Exception as e:
                 raise ValueError(f"WinControl attach failed: {e}")
-            # WinControl 디바이스 status 동기화 (UI 표시 정합성)
-            try:
-                self.dm.sync_wincontrol_status()
-            except Exception:
-                pass
+            # 디바이스 status 는 사용자 명시적 connect/disconnect 로만 변경 — 여기서 sync 안 함.
 
             import asyncio as _asyncio
             loop = _asyncio.get_event_loop()

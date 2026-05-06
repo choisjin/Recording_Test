@@ -36,6 +36,9 @@ interface SerialPort {
 
 // 디바이스 ID에서 prefix 추출 (Android_1 → Android, POWER_2 → POWER)
 function getDevicePrefix(id: string): string {
+  // 시스템 기본 디바이스 — 단독 그룹을 만들지 않고 Common 그룹에 합쳐서 표시.
+  // (사용자 요청: "WinControl 그룹 없애고 Common 안에 넣어달라")
+  if (id === 'WinControl') return 'Common';
   const m = id.match(/^(.+?)_\d+$/);
   return m ? m[1] : id;
 }
@@ -49,6 +52,7 @@ const GROUP_LABELS: Record<string, string> = {
   VisionCam: 'Vision Camera',
   Webcam: 'Webcam',
   Device: 'Device',
+  Common: 'Common',  // 시스템 기본 디바이스 (Common, WinControl)
 };
 
 function SortableDeviceRow({ device, children }: { device: ManagedDevice; children: React.ReactNode }) {

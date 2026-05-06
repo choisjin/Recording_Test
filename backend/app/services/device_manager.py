@@ -648,12 +648,16 @@ class DeviceManager:
         logger.info("Registered default 'Common' device (CMD module)")
 
     def _ensure_default_wincontrol_device(self) -> None:
-        """WinControl 디바이스를 기본값으로 등록 (미연결 상태가 기본)."""
+        """WinControl 디바이스를 기본값으로 등록 (미연결 상태가 기본).
+
+        디바이스 status 는 사용자의 명시적 connect/disconnect 로만 변경되며,
+        attach/detach(임베드 여부) 와는 독립적이다 — 임베드를 풀어도 디바이스 자체는 연결됨.
+        """
         existing = self._devices.get(self.DEFAULT_WINCONTROL_DEVICE_ID)
         if existing and existing.type == "wincontrol":
             existing.category = "auxiliary"
-            # status는 현재 attach 상태에 맞춰 동기화 (재시작 시 항상 disconnected)
-            existing.status = "connected" if self._wincontrol.is_attached() else "disconnected"
+            # 재시작 시점엔 항상 미임베드 상태이므로 disconnected 로 시작.
+            existing.status = "disconnected"
             return
         dev = ManagedDevice(
             id=self.DEFAULT_WINCONTROL_DEVICE_ID,
@@ -1138,12 +1142,9 @@ class DeviceManager:
                 available_com_ports = None
 
         for dev in self._devices.values():
-            # WinControl: 외부 연결 없음. attach 상태와 status 동기화만 수행.
+            # WinControl: 외부 연결 없음 + 디바이스 status 는 사용자 명시적 토글로만 변경.
+            # attach/detach(임베드) 는 디바이스 status 에 영향을 주지 않는다.
             if dev.type == "wincontrol":
-                if not self._wincontrol.is_attached() and dev.status == "connected":
-                    # 윈도우가 닫힌 경우 attached가 자동으로 풀림 → status도 갱신
-                    if dev.id not in self._ever_connected:
-                        dev.status = "disconnected"
                 continue
             # 사용자가 연결 끊기한 디바이스는 자동 상태 갱신 안 함
             if dev.id not in self._ever_connected:

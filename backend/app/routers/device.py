@@ -974,7 +974,6 @@ async def device_input(req: InputRequest):
                             wait_seconds=float(p.get("launch_wait_seconds", 8.0) or 8.0),
                         ),
                     )
-                    dm.sync_wincontrol_status()
                 except Exception as e:
                     raise HTTPException(status_code=500, detail=f"WinControl attach failed: {e}")
             elif not wc.is_attached():
@@ -1824,7 +1823,7 @@ async def wincontrol_status():
 
 @router.post("/wincontrol/attach")
 async def wincontrol_attach(req: WinControlAttachRequest):
-    """대상 프로세스 윈도우에 임베드(연결)."""
+    """대상 프로세스 윈도우에 임베드 — 디바이스 connection 과는 별개."""
     wc = dm.get_wincontrol_service()
     if not wc.is_available():
         raise HTTPException(status_code=503, detail=f"WinControl unavailable: {wc.import_error()}")
@@ -1834,13 +1833,12 @@ async def wincontrol_attach(req: WinControlAttachRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
-    dm.sync_wincontrol_status()
+    # 디바이스 status 는 사용자의 명시적 connect/disconnect 로만 변경 — sync 호출 안 함.
     return {"result": "attached", "status": info}
 
 
 @router.post("/wincontrol/detach")
 async def wincontrol_detach():
-    """임베드 해제 (디바이스 disconnect 와 별개로 윈도우만 분리)."""
+    """임베드만 해제 — WinControl 디바이스 자체의 연결 상태는 유지."""
     dm.get_wincontrol_service().detach()
-    dm.sync_wincontrol_status()
     return {"result": "detached"}

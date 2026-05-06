@@ -1015,7 +1015,6 @@ class RecordingService:
                             wait_seconds=float(params.get("launch_wait_seconds", 8.0) or 8.0),
                         ),
                     )
-                    self.dm.sync_wincontrol_status()
                 except Exception as e:
                     raise ValueError(f"WinControl attach failed: {e}")
             elif not wc.is_attached():
