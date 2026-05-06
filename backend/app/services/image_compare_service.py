@@ -73,6 +73,22 @@ class ImageCompareService:
             return safe_imread(path)
         return None
 
+    @staticmethod
+    def _normalize_for_ssim(gray):
+        """SSIM 비교 전 sub-pixel 노이즈 정규화.
+
+        같은 윈도우/화면이라도 캡처 시점·GPU 컴포지터·폰트 안티알리어싱·마우스 호버 등의
+        영향으로 픽셀값이 ±1~3 정도 흔들리는 경우가 흔하다. 가벼운 가우시안 블러
+        (3x3, sigma=0.5) 로 sub-pixel 노이즈를 흡수하면 SSIM 점수가 시각적 유사도와
+        더 잘 일치한다 (의미 있는 변화는 그대로 잡힘).
+        """
+        if cv2 is None or gray is None:
+            return gray
+        try:
+            return cv2.GaussianBlur(gray, (3, 3), 0.5)
+        except Exception:
+            return gray
+
     # ------------------------------------------------------------------
     # Level 1 — Full-image SSIM
     # ------------------------------------------------------------------
@@ -118,6 +134,9 @@ class ImageCompareService:
         # Convert to grayscale for SSIM
         gray_exp = cv2.cvtColor(img_exp, cv2.COLOR_BGR2GRAY)
         gray_act = cv2.cvtColor(img_act, cv2.COLOR_BGR2GRAY)
+        # Sub-pixel 노이즈 정규화 — 같은 화면 캡처가 100% 가까이 나오도록.
+        gray_exp = self._normalize_for_ssim(gray_exp)
+        gray_act = self._normalize_for_ssim(gray_act)
 
         score, diff = ssim(gray_exp, gray_act, full=True)
         diff_uint8 = (diff * 255).astype("uint8")
@@ -159,6 +178,9 @@ class ImageCompareService:
 
         gray_exp = cv2.cvtColor(img_exp, cv2.COLOR_BGR2GRAY)
         gray_act = cv2.cvtColor(actual_crop, cv2.COLOR_BGR2GRAY)
+        # Sub-pixel 노이즈 정규화 — 작은 크롭은 안티알리어싱 차이에 특히 민감.
+        gray_exp = self._normalize_for_ssim(gray_exp)
+        gray_act = self._normalize_for_ssim(gray_act)
         score, diff = ssim(gray_exp, gray_act, full=True)
         diff_uint8 = (diff * 255).astype("uint8")
 
@@ -196,6 +218,9 @@ class ImageCompareService:
 
         gray_exp = cv2.cvtColor(img_exp, cv2.COLOR_BGR2GRAY)
         gray_act = cv2.cvtColor(img_act, cv2.COLOR_BGR2GRAY)
+        # Sub-pixel 노이즈 정규화 (compare_ssim 와 동일).
+        gray_exp = self._normalize_for_ssim(gray_exp)
+        gray_act = self._normalize_for_ssim(gray_act)
 
         # Compute full SSIM map
         _, diff = ssim(gray_exp, gray_act, full=True)
