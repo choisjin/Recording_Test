@@ -84,6 +84,32 @@ goto :eof
 
 :after_git
 
+:: 의존성 자동 업데이트 — git pull로 requirements.txt가 변경된 경우에만 pip install
+:: build_dist.py와 동일한 .req_hash 패턴 사용 (python\.req_hash)
+if exist "python\python.exe" if exist "requirements.txt" call :update_deps
+goto :start_server
+
+:update_deps
+set "REQ_HASH_FILE=python\.req_hash"
+set "OLD_HASH="
+if exist "%REQ_HASH_FILE%" set /p OLD_HASH=<"%REQ_HASH_FILE%"
+set "NEW_HASH="
+for /f "skip=1 tokens=1" %%h in ('certutil -hashfile "requirements.txt" SHA256 2^>nul') do (
+    if not defined NEW_HASH set "NEW_HASH=%%h"
+)
+if not defined NEW_HASH goto :eof
+if /i "!NEW_HASH!"=="!OLD_HASH!" goto :eof
+echo [DEPS] requirements.txt changed - installing/updating packages...
+python\python.exe -m pip install -r requirements.txt --no-warn-script-location -q
+if errorlevel 1 (
+    echo [DEPS] Install failed - continuing with existing packages.
+    goto :eof
+)
+>"%REQ_HASH_FILE%" echo !NEW_HASH!
+echo [DEPS] Dependencies updated.
+goto :eof
+
+:start_server
 set "ENTRY=server.py"
 if exist "_launcher.py" set "ENTRY=_launcher.py"
 
