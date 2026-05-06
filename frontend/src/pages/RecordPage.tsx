@@ -350,15 +350,12 @@ export default function RecordPage() {
   // 좌측 패널 탭: 'device' | 'wincontrol'. WinControl 디바이스가 연결된 경우에만 wincontrol 탭 노출.
   const [leftPanelTab, setLeftPanelTab] = useState<'device' | 'wincontrol'>('device');
   type WinProcess = { pid: number; hwnd: number; name: string; exe_path?: string; title: string; class_name?: string; width: number; height: number };
-  type WinAttachStatus = { attached: boolean; available?: boolean; hwnd?: number; pid?: number; name?: string; exe_path?: string; class_name?: string; title?: string; width?: number; height?: number; import_error?: string };
+  type WinAttachStatus = { attached: boolean; available?: boolean; hwnd?: number; pid?: number; name?: string; exe_path?: string; class_name?: string; title?: string; width?: number; height?: number; is_uwp?: boolean; content_hwnd?: number; import_error?: string };
   const [wcProcesses, setWcProcesses] = useState<WinProcess[]>([]);
   const [wcSelectedHwnd, setWcSelectedHwnd] = useState<number | null>(null);
   const [wcAttached, setWcAttached] = useState<WinAttachStatus | null>(null);
   const [wcLoadingProcs, setWcLoadingProcs] = useState(false);
   const [wcInputText, setWcInputText] = useState('');
-  // 입력 전송 모드: post(기본, 백그라운드 PostMessage) | send(SendInput, 포커스 필요).
-  // UWP 앱(계산기), MMC 스냅인(장치관리자) 등 메시지 큐를 안 쓰는 앱은 'send' 필요.
-  const [wcInputMode, setWcInputMode] = useState<'post' | 'send'>('post');
   const wcCanvasRef = useRef<HTMLCanvasElement>(null);
   const wcGestureRef = useRef<{ startX: number; startY: number; startTime: number; active: boolean }>(
     { startX: 0, startY: 0, startTime: 0, active: false }
@@ -1068,7 +1065,7 @@ export default function RecordPage() {
     if (!wcSelectedHwnd) return;
     try {
       const res = await deviceApi.winAttach(wcSelectedHwnd);
-      setWcAttached(res.data.status);
+      setWcAttached(res.data.status as WinAttachStatus);
     } catch (e: any) {
       message.error(e.response?.data?.detail || t('record.winControlAttachFailed'));
     }
@@ -1182,14 +1179,12 @@ export default function RecordPage() {
       return;
     }
     // 프로세스 식별 정보 첨부 — 재생 시 ensure_attached 로 자동 복구.
-    // input_mode 도 저장 — 같은 모드로 재생되어야 동일한 동작 보장.
     const enrichedParams: Record<string, any> = {
       ...params,
       process_name: wcAttached.name || '',
       exe_path: wcAttached.exe_path || '',
       window_title: wcAttached.title || '',
       window_class: wcAttached.class_name || '',
-      input_mode: wcInputMode,
     };
     try {
       await deviceApi.input('WinControl', action, enrichedParams);
@@ -1223,7 +1218,7 @@ export default function RecordPage() {
         }
       }
     }
-  }, [wcAttached, recording, delayMs, steps, t, wcInputMode]);
+  }, [wcAttached, recording, delayMs, steps, t]);
 
   const wcMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const c = wcToWinCoords(e.clientX, e.clientY);
@@ -4126,17 +4121,6 @@ export default function RecordPage() {
                     />
                     <Tooltip title={t('record.winControlRefresh')}>
                       <Button size="small" icon={<ReloadOutlined />} onClick={wcRefreshProcesses} loading={wcLoadingProcs} />
-                    </Tooltip>
-                    <Tooltip title={t('record.winControlInputModeHint')}>
-                      <Segmented
-                        size="small"
-                        value={wcInputMode}
-                        onChange={(v) => setWcInputMode(v as 'post' | 'send')}
-                        options={[
-                          { label: t('record.winControlModePost'), value: 'post' },
-                          { label: t('record.winControlModeSend'), value: 'send' },
-                        ]}
-                      />
                     </Tooltip>
                     {wcAttached?.attached ? (
                       <Button size="small" danger onClick={wcDetach}>{t('record.winControlDetach')}</Button>

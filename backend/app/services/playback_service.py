@@ -2200,34 +2200,31 @@ class PlaybackService:
 
             import asyncio as _asyncio
             loop = _asyncio.get_event_loop()
-            input_mode = str(params.get("input_mode", "post") or "post")
-            if input_mode not in ("post", "send"):
-                input_mode = "post"
             if step.type == StepType.WIN_TAP:
                 await loop.run_in_executor(None,
                     functools.partial(wc.send_tap, int(params["x"]), int(params["y"]),
-                                      params.get("button", "left"), input_mode))
+                                      params.get("button", "left")))
             elif step.type == StepType.WIN_DOUBLE_CLICK:
                 await loop.run_in_executor(None,
                     functools.partial(wc.send_double_click,
-                                      int(params["x"]), int(params["y"]), input_mode))
+                                      int(params["x"]), int(params["y"])))
             elif step.type == StepType.WIN_LONG_PRESS:
                 await loop.run_in_executor(None,
                     functools.partial(wc.send_long_press,
                                       int(params["x"]), int(params["y"]),
-                                      int(params.get("duration_ms", 500)), input_mode))
+                                      int(params.get("duration_ms", 500))))
             elif step.type == StepType.WIN_SWIPE:
                 await loop.run_in_executor(None,
                     functools.partial(wc.send_swipe,
                                       int(params["x1"]), int(params["y1"]),
                                       int(params["x2"]), int(params["y2"]),
-                                      int(params.get("duration_ms", 300)), input_mode))
+                                      int(params.get("duration_ms", 300))))
             elif step.type == StepType.WIN_INPUT_TEXT:
                 await loop.run_in_executor(None,
-                    functools.partial(wc.send_text, str(params.get("text", "")), input_mode))
+                    functools.partial(wc.send_text, str(params.get("text", ""))))
             elif step.type == StepType.WIN_KEY:
                 await loop.run_in_executor(None,
-                    functools.partial(wc.send_key, str(params.get("key", "")), input_mode))
+                    functools.partial(wc.send_key, str(params.get("key", ""))))
         else:
             # ADB actions — real_id를 ADB 시리얼(dev.address)로 변환
             adb_serial = real_id

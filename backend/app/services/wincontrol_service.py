@@ -81,6 +81,11 @@ class WinControlService:
         self._exe_path: str = ""
         self._window_title: str = ""
         self._window_class: str = ""
+        # UWP/WinUI3 감지 — PrintWindow 가 PW_RENDERFULLCONTENT 없으면 검은 화면을 반환,
+        # PostMessage 도 거의 안 먹는다. attach 시 1회 판정 후 캡처/사용자 알림에 활용.
+        self._is_uwp: bool = False
+        # UWP 의 진짜 콘텐츠 윈도우(Windows.UI.Core.CoreWindow) — 캡처 시 우선 사용.
+        self._content_hwnd: Optional[int] = None
 
     @staticmethod
     def is_available() -> bool:
@@ -274,6 +279,44 @@ class WinControlService:
             f"WinControl: launched {exe_path!r} but window did not appear within {wait_seconds:.1f}s"
         )
 
+    # ── UWP/WinUI3 감지 ─────────────────────────────────────────────
+    @staticmethod
+    def _detect_uwp(hwnd: int) -> tuple[bool, Optional[int]]:
+        """UWP/WinUI3 여부 + 진짜 콘텐츠 윈도우(CoreWindow) hwnd 반환.
+
+        UWP 앱은 ApplicationFrameWindow 가 호스트이고 콘텐츠는 자식 CoreWindow.
+        WinUI3 (Win11 새 메모장 등) 도 비슷한 자식 윈도우 구조.
+        """
+        if not _WIN32_AVAILABLE or not hwnd:
+            return (False, None)
+        try:
+            cls = win32gui.GetClassName(hwnd) or ""
+        except Exception:
+            cls = ""
+        is_host = (cls == "ApplicationFrameWindow" or "Microsoft.UI" in cls)
+
+        content_hwnd: Optional[int] = None
+        # 자식 중 CoreWindow / Microsoft.UI.* 검색
+        try:
+            container = [None]  # type: list[Optional[int]]
+
+            def _cb(child: int, _: object) -> bool:
+                try:
+                    ccls = win32gui.GetClassName(child) or ""
+                except Exception:
+                    return True
+                if ccls == "Windows.UI.Core.CoreWindow" or "Microsoft.UI.Content" in ccls:
+                    container[0] = child
+                    return False
+                return True
+            win32gui.EnumChildWindows(hwnd, _cb, None)
+            content_hwnd = container[0]
+        except Exception:
+            content_hwnd = None
+
+        is_uwp = is_host or (content_hwnd is not None)
+        return (is_uwp, content_hwnd)
+
     # ── 임베드(대상 윈도우) ──────────────────────────────────────────
     def attach(self, hwnd: int) -> dict:
         if not _WIN32_AVAILABLE:
@@ -304,8 +347,11 @@ class WinControlService:
         except Exception:
             self._process_name = ""
             self._exe_path = ""
-        logger.info("WinControl attached: hwnd=%d pid=%s name=%s exe=%s title=%r",
-                    hwnd, self._pid, self._process_name, self._exe_path, self._window_title)
+        # UWP/WinUI3 판정 — 캡처 플래그 자동 결정 + 사용자에게 입력 모드 권장 정보 노출용
+        self._is_uwp, self._content_hwnd = self._detect_uwp(hwnd)
+        logger.info("WinControl attached: hwnd=%d pid=%s name=%s exe=%s title=%r class=%s uwp=%s content=%s",
+                    hwnd, self._pid, self._process_name, self._exe_path,
+                    self._window_title, self._window_class, self._is_uwp, self._content_hwnd)
         return self.status()
 
     def detach(self) -> None:
@@ -316,6 +362,8 @@ class WinControlService:
         self._exe_path = ""
         self._window_title = ""
         self._window_class = ""
+        self._is_uwp = False
+        self._content_hwnd = None
 
     def is_attached(self) -> bool:
         if not _WIN32_AVAILABLE or self._hwnd is None:
@@ -341,6 +389,8 @@ class WinControlService:
             "title": self._window_title,
             "width": w,
             "height": h,
+            "is_uwp": self._is_uwp,
+            "content_hwnd": self._content_hwnd,
         }
 
     def get_window_size(self) -> tuple[int, int]:
@@ -354,22 +404,15 @@ class WinControlService:
             return (0, 0)
 
     # ── 캡처 ─────────────────────────────────────────────────────────
-    def capture_window(self, fmt: str = "jpeg", render_full_content: bool = False) -> bytes:
-        """대상 윈도우의 client 영역을 PrintWindow 로 캡처.
-
-        Args:
-            render_full_content: True 면 PW_RENDERFULLCONTENT(0x02) 사용.
-              GPU/Chromium 기반 앱에 필수일 수 있으나, Chrome 등에서 화면이
-              깜박이는 부작용이 있어 기본값은 False(PW_CLIENTONLY 만 사용).
-        """
-        if not self.is_attached():
-            raise RuntimeError("No window attached")
-        hwnd = self._hwnd
-        rect = win32gui.GetClientRect(hwnd)
+    def _capture_with_flag(self, hwnd: int, flag: int) -> Optional[Image.Image]:
+        """주어진 PrintWindow 플래그로 hwnd 를 캡처해 PIL Image 반환. 실패 시 None."""
+        try:
+            rect = win32gui.GetClientRect(hwnd)
+        except Exception:
+            return None
         w, h = rect[2] - rect[0], rect[3] - rect[1]
         if w <= 0 or h <= 0:
-            raise RuntimeError(f"Window has invalid size: {w}x{h}")
-
+            return None
         hwndDC = win32gui.GetWindowDC(hwnd)
         mfcDC = None
         saveDC = None
@@ -380,19 +423,18 @@ class WinControlService:
             saveBitMap = win32ui.CreateBitmap()
             saveBitMap.CreateCompatibleBitmap(mfcDC, w, h)
             saveDC.SelectObject(saveBitMap)
-            # 기본은 PW_CLIENTONLY(1) 만 사용 — Chrome/Edge 깜박임 회피.
-            # render_full_content=True 또는 1차 캡처 결과가 빈 화면(전부 검정)일 때 0x03 재시도.
-            base_flag = 0x00000003 if render_full_content else 0x00000001
-            ok = windll.user32.PrintWindow(hwnd, saveDC.GetSafeHdc(), base_flag)
-            if not ok and base_flag != 0x00000001:
-                ok = windll.user32.PrintWindow(hwnd, saveDC.GetSafeHdc(), 1)
+            ok = windll.user32.PrintWindow(hwnd, saveDC.GetSafeHdc(), flag)
+            if not ok:
+                return None
             bmpinfo = saveBitMap.GetInfo()
             bmpstr = saveBitMap.GetBitmapBits(True)
-            img = Image.frombuffer(
+            return Image.frombuffer(
                 "RGB",
                 (bmpinfo["bmWidth"], bmpinfo["bmHeight"]),
                 bmpstr, "raw", "BGRX", 0, 1,
             )
+        except Exception:
+            return None
         finally:
             if saveBitMap is not None:
                 try:
@@ -414,6 +456,57 @@ class WinControlService:
             except Exception:
                 pass
 
+    @staticmethod
+    def _is_blank_image(img: Optional[Image.Image]) -> bool:
+        """이미지가 사실상 단색(검정/흰색) 인지 — UWP 캡처 실패 감지."""
+        if img is None:
+            return True
+        try:
+            extrema = img.getextrema()
+            # 각 채널의 (min,max) 가 거의 같으면 단색
+            if not extrema:
+                return True
+            # RGB → tuple of 3 (min,max). RGBA 또는 단일채널 케이스도 안전 처리.
+            if isinstance(extrema[0], tuple):
+                for mn, mx in extrema:
+                    if mx - mn > 8:  # 채널 변화 폭이 충분하면 정상
+                        return False
+                return True
+            mn, mx = extrema
+            return (mx - mn) <= 8
+        except Exception:
+            return False
+
+    def capture_window(self, fmt: str = "jpeg", render_full_content: bool = False) -> bytes:
+        """대상 윈도우 캡처.
+
+        시도 순서 (가장 안정적인 결과 자동 선택):
+          1) 일반 윈도우: PW_CLIENTONLY(1) — Chrome 등 깜박임 없음
+          2) UWP/WinUI3: PW_RENDERFULLCONTENT|PW_CLIENTONLY(3) — 검은 화면 회피
+          3) 1차 결과가 단색(검정)이면 자동으로 (3) 으로 재시도
+          4) host 캡처 실패 시 content_hwnd(CoreWindow)로 폴백
+        """
+        if not self.is_attached():
+            raise RuntimeError("No window attached")
+        host_hwnd = self._hwnd
+        # UWP 면 처음부터 PW_RENDERFULLCONTENT 사용
+        first_flag = 0x00000003 if (render_full_content or self._is_uwp) else 0x00000001
+        img = self._capture_with_flag(host_hwnd, first_flag)
+        if self._is_blank_image(img) and first_flag != 0x00000003:
+            # 검은 화면 → render_full_content 강제 재시도
+            img = self._capture_with_flag(host_hwnd, 0x00000003)
+        # 그래도 실패하면 콘텐츠 자식(CoreWindow)으로 폴백
+        if self._is_blank_image(img) and self._content_hwnd:
+            try:
+                if win32gui.IsWindow(self._content_hwnd):
+                    img = self._capture_with_flag(self._content_hwnd, 0x00000003)
+                    if self._is_blank_image(img):
+                        img = self._capture_with_flag(self._content_hwnd, 0x00000001)
+            except Exception:
+                pass
+        if img is None:
+            raise RuntimeError("PrintWindow failed for all flags")
+
         buf = io.BytesIO()
         if fmt.lower() == "png":
             img.save(buf, format="PNG")
@@ -422,20 +515,13 @@ class WinControlService:
         return buf.getvalue()
 
     # ── 입력 ─────────────────────────────────────────────────────────
-    # 입력 모드:
-    #   "post" (기본) — PostMessage 사용. 백그라운드 입력 가능, 깜박임 없음.
-    #     단점: UWP(계산기), MMC 스냅인(장치관리자), DirectX/게임 등 메시지 큐를
-    #     안 쓰는 앱에는 입력이 전달되지 않는다.
-    #   "send" — SendInput 사용. 모든 앱 호환되지만 대상 윈도우에 포커스가
-    #     필요하다 (SetForegroundWindow + 마우스 커서 이동 후 입력).
+    # 입력 방식: SendInput 만 사용 — UWP/WinUI3/MMC/일반 Win32 앱 모두 호환.
+    # 단점: 대상 윈도우에 포커스가 일시적으로 가져가짐 (SetForegroundWindow + 가상
+    # 데스크탑 절대 좌표로 마우스 이동 후 클릭). 백그라운드 입력은 지원하지 않음.
     def _check(self) -> int:
         if not self.is_attached():
             raise RuntimeError("No window attached")
         return self._hwnd  # type: ignore[return-value]
-
-    @staticmethod
-    def _lparam(x: int, y: int) -> int:
-        return win32api.MAKELONG(int(x) & 0xFFFF, int(y) & 0xFFFF)
 
     def _focus(self) -> None:
         """대상 윈도우를 전면으로 + 포커스. SendInput 모드 전제 조건."""
@@ -468,6 +554,61 @@ class WinControlService:
             time.sleep(0.05)
         except Exception as e:
             logger.debug("WinControl focus failed: %s", e)
+
+    # ── 액션 전후 컨텍스트(이전 활성 창 + 마우스 위치) 보존 ──────────
+    def _save_context(self) -> dict:
+        """현재 포어그라운드 hwnd + 마우스 커서 위치 캡처. 액션 후 복원에 사용."""
+        ctx: dict = {"prev_fg": None, "cursor": None}
+        try:
+            fg = windll.user32.GetForegroundWindow()
+            if fg and fg != self._hwnd and win32gui.IsWindow(fg):
+                ctx["prev_fg"] = int(fg)
+        except Exception:
+            pass
+        try:
+            ctx["cursor"] = win32api.GetCursorPos()
+        except Exception:
+            pass
+        return ctx
+
+    def _restore_context(self, ctx: dict) -> None:
+        """액션 후 이전 활성 창 + 마우스 커서 위치 복원."""
+        if not ctx:
+            return
+        # 1) 이전 활성 창으로 포커스 복귀 (AttachThreadInput 트릭)
+        prev_fg = ctx.get("prev_fg")
+        if prev_fg:
+            try:
+                if win32gui.IsWindow(prev_fg):
+                    cur_thread = win32api.GetCurrentThreadId()
+                    target_thread, _ = win32process.GetWindowThreadProcessId(prev_fg)
+                    attached = False
+                    try:
+                        if target_thread and target_thread != cur_thread:
+                            attached = bool(
+                                windll.user32.AttachThreadInput(cur_thread, target_thread, True)
+                            )
+                        win32gui.SetForegroundWindow(prev_fg)
+                    except Exception:
+                        try:
+                            windll.user32.SetForegroundWindow(prev_fg)
+                        except Exception:
+                            pass
+                    finally:
+                        if attached:
+                            try:
+                                windll.user32.AttachThreadInput(cur_thread, target_thread, False)
+                            except Exception:
+                                pass
+            except Exception as e:
+                logger.debug("WinControl FG restore failed: %s", e)
+        # 2) 마우스 커서 원위치 — SetCursorPos 직접 호출 (mouse_event 보다 깔끔)
+        cursor = ctx.get("cursor")
+        if cursor:
+            try:
+                win32api.SetCursorPos((int(cursor[0]), int(cursor[1])))
+            except Exception as e:
+                logger.debug("WinControl cursor restore failed: %s", e)
 
     def _client_to_screen(self, x: int, y: int) -> tuple[int, int]:
         """client 좌표 → screen 좌표 (SendInput 마우스 절대 위치용)."""
@@ -503,95 +644,13 @@ class WinControlService:
             flag = 0x0002 if down else 0x0004
         win32api.mouse_event(flag, 0, 0, 0, 0)
 
-    # ── 자식 윈도우 라우팅 (BG 모드 호환성 향상) ─────────────────────
-    # 최상위 hwnd 에만 PostMessage 를 보내면 mmc.exe(장치관리자) / 일반 대화상자류
-    # 등 컨트롤이 자식 윈도우인 경우 입력이 무시된다. 클릭 좌표 위치의 가장 깊은
-    # 자식을 찾아 그 자식의 client 좌표로 PostMessage 를 보내면 거의 모든 Win32 앱
-    # (UWP 제외)이 BG 모드로 작동한다.
-    def _deep_child_at(self, root_hwnd: int, screen_x: int, screen_y: int) -> int:
-        """root_hwnd 자손 중 (screen_x, screen_y) 위치의 가장 깊은 가시 자식 hwnd."""
-        cur = root_hwnd
-        # CWP_SKIPINVISIBLE=1 | CWP_SKIPDISABLED=2 | CWP_SKIPTRANSPARENT=4 = 7
-        guard = 0
-        while guard < 16:  # 무한 루프 방지
-            guard += 1
-            try:
-                cx, cy = win32gui.ScreenToClient(cur, (int(screen_x), int(screen_y)))
-            except Exception:
-                return cur
-            try:
-                child = windll.user32.ChildWindowFromPointEx(cur, cx, cy, 7)
-            except Exception:
-                return cur
-            if not child or child == cur:
-                return cur
-            cur = child
-        return cur
-
-    def _resolve_target(self, x: int, y: int) -> tuple[int, int, int]:
-        """클라이언트 좌표 (x,y) 에 위치한 가장 깊은 자식 hwnd 와 그 자식의 local 좌표.
-
-        Returns (target_hwnd, local_x, local_y). 자식이 없으면 root + 원래 좌표.
-        """
-        root = self._hwnd
-        if not root:
-            return (root, int(x), int(y))
-        try:
-            sx, sy = win32gui.ClientToScreen(root, (int(x), int(y)))
-        except Exception:
-            return (root, int(x), int(y))
-        target = self._deep_child_at(root, sx, sy)
-        if not target or target == root:
-            return (root, int(x), int(y))
-        try:
-            lx, ly = win32gui.ScreenToClient(target, (sx, sy))
-            return (target, int(lx), int(ly))
-        except Exception:
-            return (root, int(x), int(y))
-
-    def _post_to_target(self, target_hwnd: int, msg: int, wparam: int, lparam: int) -> None:
-        """대상 자식 hwnd 에 PostMessage. 실패 시 root 로 fallback."""
-        try:
-            win32api.PostMessage(target_hwnd, msg, wparam, lparam)
-        except Exception:
-            try:
-                win32api.PostMessage(self._hwnd, msg, wparam, lparam)
-            except Exception:
-                pass
-
-    def _focused_text_target(self) -> int:
-        """현재 대상 윈도우의 포커스된 컨트롤 hwnd. 없으면 root.
-
-        WM_CHAR / WM_KEY* 는 좌표가 없으므로 키 입력은 포커스된 자식에 보내야 한다.
-        AttachThreadInput 로 대상 스레드의 포커스 상태를 읽음.
-        """
-        root = self._hwnd
-        if not root:
-            return 0
-        try:
-            target_thread, _ = win32process.GetWindowThreadProcessId(root)
-        except Exception:
-            return root
-        cur_thread = win32api.GetCurrentThreadId()
-        attached = False
-        try:
-            if target_thread and target_thread != cur_thread:
-                attached = bool(windll.user32.AttachThreadInput(cur_thread, target_thread, True))
-            focus = win32gui.GetFocus()
-            return int(focus) if focus else root
-        except Exception:
-            return root
-        finally:
-            if attached:
-                try:
-                    windll.user32.AttachThreadInput(cur_thread, target_thread, False)
-                except Exception:
-                    pass
-
-    # ── tap/click ───────────────────────────────────────────────
-    def send_tap(self, x: int, y: int, button: str = "left", mode: str = "post") -> None:
+    # ── tap/click (FG = SendInput) ──────────────────────────────
+    # 모든 send_* 는 액션 전 컨텍스트(이전 활성 창 + 마우스 위치)를 저장하고
+    # finally 에서 복원 — 사용자가 작업 중이던 다른 창과 커서 위치를 방해하지 않는다.
+    def send_tap(self, x: int, y: int, button: str = "left") -> None:
         self._check()
-        if mode == "send":
+        ctx = self._save_context()
+        try:
             self._focus()
             sx, sy = self._client_to_screen(int(x), int(y))
             self._send_input_mouse_move(sx, sy)
@@ -599,25 +658,15 @@ class WinControlService:
             self._send_input_button(button, True)
             time.sleep(0.02)
             self._send_input_button(button, False)
-            return
-        # BG: 자식 윈도우 자동 라우팅 — 클릭 좌표 위치의 가장 깊은 컨트롤로 PostMessage.
-        target, lx, ly = self._resolve_target(x, y)
-        lp = self._lparam(lx, ly)
-        if button == "right":
-            down, up, mk = win32con.WM_RBUTTONDOWN, win32con.WM_RBUTTONUP, win32con.MK_RBUTTON
-        elif button == "middle":
-            down, up, mk = win32con.WM_MBUTTONDOWN, win32con.WM_MBUTTONUP, win32con.MK_MBUTTON
-        else:
-            down, up, mk = win32con.WM_LBUTTONDOWN, win32con.WM_LBUTTONUP, win32con.MK_LBUTTON
-        # 일부 컨트롤(버튼 등)은 hover 가 선행되어야 click 으로 인식.
-        self._post_to_target(target, win32con.WM_MOUSEMOVE, 0, lp)
-        self._post_to_target(target, down, mk, lp)
-        time.sleep(0.02)
-        self._post_to_target(target, up, 0, lp)
+            # OS 가 클릭을 처리할 짧은 시간 — 너무 빠르게 복귀하면 클릭이 묻힘
+            time.sleep(0.03)
+        finally:
+            self._restore_context(ctx)
 
-    def send_double_click(self, x: int, y: int, mode: str = "post") -> None:
+    def send_double_click(self, x: int, y: int) -> None:
         self._check()
-        if mode == "send":
+        ctx = self._save_context()
+        try:
             self._focus()
             sx, sy = self._client_to_screen(int(x), int(y))
             self._send_input_mouse_move(sx, sy)
@@ -627,18 +676,14 @@ class WinControlService:
                 time.sleep(0.02)
                 self._send_input_button("left", False)
                 time.sleep(0.02)
-            return
-        target, lx, ly = self._resolve_target(x, y)
-        lp = self._lparam(lx, ly)
-        self._post_to_target(target, win32con.WM_MOUSEMOVE, 0, lp)
-        self._post_to_target(target, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lp)
-        self._post_to_target(target, win32con.WM_LBUTTONUP, 0, lp)
-        self._post_to_target(target, win32con.WM_LBUTTONDBLCLK, win32con.MK_LBUTTON, lp)
-        self._post_to_target(target, win32con.WM_LBUTTONUP, 0, lp)
+            time.sleep(0.03)
+        finally:
+            self._restore_context(ctx)
 
-    def send_long_press(self, x: int, y: int, duration_ms: int = 500, mode: str = "post") -> None:
+    def send_long_press(self, x: int, y: int, duration_ms: int = 500) -> None:
         self._check()
-        if mode == "send":
+        ctx = self._save_context()
+        try:
             self._focus()
             sx, sy = self._client_to_screen(int(x), int(y))
             self._send_input_mouse_move(sx, sy)
@@ -648,22 +693,17 @@ class WinControlService:
                 time.sleep(max(0.0, duration_ms / 1000.0))
             finally:
                 self._send_input_button("left", False)
-            return
-        target, lx, ly = self._resolve_target(x, y)
-        lp = self._lparam(lx, ly)
-        self._post_to_target(target, win32con.WM_MOUSEMOVE, 0, lp)
-        self._post_to_target(target, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lp)
-        try:
-            time.sleep(max(0.0, duration_ms / 1000.0))
+            time.sleep(0.03)
         finally:
-            self._post_to_target(target, win32con.WM_LBUTTONUP, 0, lp)
+            self._restore_context(ctx)
 
-    def send_swipe(self, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 300, mode: str = "post") -> None:
+    def send_swipe(self, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 300) -> None:
         self._check()
-        steps = max(2, int(max(50, duration_ms) / 25))
-        delay = max(0.0, duration_ms / 1000.0 / steps)
-        if mode == "send":
+        ctx = self._save_context()
+        try:
             self._focus()
+            steps = max(2, int(max(50, duration_ms) / 25))
+            delay = max(0.0, duration_ms / 1000.0 / steps)
             sx1, sy1 = self._client_to_screen(int(x1), int(y1))
             self._send_input_mouse_move(sx1, sy1)
             time.sleep(0.02)
@@ -680,28 +720,14 @@ class WinControlService:
             self._send_input_mouse_move(sx2, sy2)
             time.sleep(0.02)
             self._send_input_button("left", False)
-            return
-        # BG swipe: 시작 위치 기준 자식에 routing (드래그 중 자식이 바뀌어도 같은 컨트롤로 보냄)
-        target, lx1, ly1 = self._resolve_target(x1, y1)
-        # 좌표 차이를 그대로 적용해 같은 자식 좌표계로 변환
-        dx = int(x2 - x1)
-        dy = int(y2 - y1)
-        self._post_to_target(target, win32con.WM_LBUTTONDOWN,
-                             win32con.MK_LBUTTON, self._lparam(lx1, ly1))
-        for i in range(1, steps):
-            t = i / steps
-            cx = int(lx1 + dx * t)
-            cy = int(ly1 + dy * t)
-            self._post_to_target(target, win32con.WM_MOUSEMOVE,
-                                 win32con.MK_LBUTTON, self._lparam(cx, cy))
-            if delay > 0:
-                time.sleep(delay)
-        self._post_to_target(target, win32con.WM_LBUTTONUP, 0,
-                             self._lparam(lx1 + dx, ly1 + dy))
+            time.sleep(0.03)
+        finally:
+            self._restore_context(ctx)
 
-    def send_text(self, text: str, mode: str = "post") -> None:
+    def send_text(self, text: str) -> None:
         self._check()
-        if mode == "send":
+        ctx = self._save_context()
+        try:
             self._focus()
             for ch in text:
                 # KEYEVENTF_UNICODE=0x0004
@@ -709,22 +735,20 @@ class WinControlService:
                 time.sleep(0.005)
                 win32api.keybd_event(0, ord(ch), 0x0004 | 0x0002, 0)
                 time.sleep(0.005)
-            return
-        # BG: 키 입력은 좌표가 없으므로 포커스된 자식 컨트롤로 라우팅.
-        target = self._focused_text_target()
-        for ch in text:
-            self._post_to_target(target, win32con.WM_CHAR, ord(ch), 0)
+            time.sleep(0.03)
+        finally:
+            self._restore_context(ctx)
 
-    def send_key(self, key: str, mode: str = "post") -> None:
+    def send_key(self, key: str) -> None:
         """가상키 한 번 누르고 떼기 (modifier 미지원 — 단일 키만)."""
         self._check()
         vk = _resolve_vk(key)
-        if mode == "send":
+        ctx = self._save_context()
+        try:
             self._focus()
             win32api.keybd_event(vk, 0, 0, 0)
             time.sleep(0.02)
             win32api.keybd_event(vk, 0, 0x0002, 0)  # KEYEVENTF_KEYUP
-            return
-        target = self._focused_text_target()
-        self._post_to_target(target, win32con.WM_KEYDOWN, vk, 0)
-        self._post_to_target(target, win32con.WM_KEYUP, vk, 0)
+            time.sleep(0.03)
+        finally:
+            self._restore_context(ctx)

@@ -978,32 +978,29 @@ async def device_input(req: InputRequest):
                     raise HTTPException(status_code=500, detail=f"WinControl attach failed: {e}")
             elif not wc.is_attached():
                 raise HTTPException(status_code=400, detail="WinControl: no window attached")
-            input_mode = str(p.get("input_mode", "post") or "post")
-            if input_mode not in ("post", "send"):
-                input_mode = "post"
             import functools as _ft2
             if req.action == "win_tap":
                 await loop.run_in_executor(None,
                     _ft2.partial(wc.send_tap, int(p["x"]), int(p["y"]),
-                                 p.get("button", "left"), input_mode))
+                                 p.get("button", "left")))
             elif req.action == "win_double_click":
                 await loop.run_in_executor(None,
-                    _ft2.partial(wc.send_double_click, int(p["x"]), int(p["y"]), input_mode))
+                    _ft2.partial(wc.send_double_click, int(p["x"]), int(p["y"])))
             elif req.action == "win_long_press":
                 await loop.run_in_executor(None,
                     _ft2.partial(wc.send_long_press, int(p["x"]), int(p["y"]),
-                                 int(p.get("duration_ms", 500)), input_mode))
+                                 int(p.get("duration_ms", 500))))
             elif req.action == "win_swipe":
                 await loop.run_in_executor(None,
                     _ft2.partial(wc.send_swipe, int(p["x1"]), int(p["y1"]),
                                  int(p["x2"]), int(p["y2"]),
-                                 int(p.get("duration_ms", 300)), input_mode))
+                                 int(p.get("duration_ms", 300))))
             elif req.action == "win_input_text":
                 await loop.run_in_executor(None,
-                    _ft2.partial(wc.send_text, str(p.get("text", "")), input_mode))
+                    _ft2.partial(wc.send_text, str(p.get("text", ""))))
             elif req.action == "win_key":
                 await loop.run_in_executor(None,
-                    _ft2.partial(wc.send_key, str(p.get("key", "")), input_mode))
+                    _ft2.partial(wc.send_key, str(p.get("key", ""))))
             return {"result": "ok"}
 
         # ADB actions — allow even if device is not in managed list (race with refresh)
