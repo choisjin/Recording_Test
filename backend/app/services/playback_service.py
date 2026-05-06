@@ -813,6 +813,30 @@ class PlaybackService:
                         )
                     else:
                         raise RuntimeError(f"Webcam device {ss_device['id']} not connected")
+                elif ss_device["type"] == "wincontrol":
+                    wc = self.dm.get_wincontrol_service()
+                    if not wc.is_attached():
+                        # 자동 attach 시도 — step.params 에 저장된 프로세스 정보로.
+                        try:
+                            await asyncio.get_event_loop().run_in_executor(
+                                None,
+                                functools.partial(
+                                    wc.ensure_attached,
+                                    process_name=str(step.params.get("process_name", "") or ""),
+                                    exe_path=str(step.params.get("exe_path", "") or ""),
+                                    title_pattern=str(step.params.get("window_title", "") or ""),
+                                    class_name=str(step.params.get("window_class", "") or ""),
+                                    launch_if_missing=True,
+                                    wait_seconds=float(step.params.get("launch_wait_seconds", 8.0) or 8.0),
+                                ),
+                            )
+                        except Exception as e:
+                            raise RuntimeError(f"WinControl screenshot: {e}")
+                    loop = asyncio.get_event_loop()
+                    img_bytes = await loop.run_in_executor(
+                        None, functools.partial(wc.capture_window, "png"),
+                    )
+                    Path(actual_path).write_bytes(img_bytes)
 
                 step_result.actual_image = self._rel_path(actual_path, scenario_name)
 
@@ -1633,6 +1657,8 @@ class PlaybackService:
                     return {"type": "vision_camera", "id": ss_dev.id}
                 if ss_dev.type == "webcam":
                     return {"type": "webcam", "id": ss_dev.id}
+                if ss_dev.type == "wincontrol":
+                    return {"type": "wincontrol", "id": ss_dev.id}
                 if ss_dev.type == "adb":
                     result = {"type": "adb", "id": ss_dev.id, "serial": ss_dev.address}
                     adb_screen = step.screen_type or step.params.get("screen_type")
@@ -1651,6 +1677,9 @@ class PlaybackService:
         real_id = self._resolve_real_device_id(step)
         if real_id:
             dev = self.dm.get_device(real_id)
+            if dev and dev.type == "wincontrol":
+                # WinControl 은 auxiliary 지만 스크린샷 가능 — 임베드된 윈도우 캡처.
+                return {"type": "wincontrol", "id": dev.id}
             if dev and dev.type in ("serial", "module"):
                 # 보조 디바이스는 스크린샷 불가 → primary 디바이스로 폴백
                 pass

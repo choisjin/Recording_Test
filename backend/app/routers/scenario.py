@@ -363,6 +363,33 @@ async def capture_expected_image(req: CaptureExpectedImageRequest):
             import asyncio
             loop = asyncio.get_event_loop()
             png_bytes = await loop.run_in_executor(None, cam.CaptureBytes, "png")
+        elif dev and dev.type == "wincontrol":
+            wc = dm.get_wincontrol_service()
+            if not wc.is_attached():
+                # 저장된 프로세스 정보로 자동 attach 시도 (step.params 또는 그대로 실패)
+                step_params = step.params or {}
+                if step_params.get("process_name") or step_params.get("exe_path"):
+                    import asyncio, functools
+                    loop = asyncio.get_event_loop()
+                    try:
+                        await loop.run_in_executor(
+                            None,
+                            functools.partial(
+                                wc.ensure_attached,
+                                process_name=str(step_params.get("process_name", "") or ""),
+                                exe_path=str(step_params.get("exe_path", "") or ""),
+                                title_pattern=str(step_params.get("window_title", "") or ""),
+                                class_name=str(step_params.get("window_class", "") or ""),
+                                launch_if_missing=True,
+                            ),
+                        )
+                    except Exception as e:
+                        raise HTTPException(status_code=400, detail=f"WinControl attach failed: {e}")
+                else:
+                    raise HTTPException(status_code=400, detail="WinControl: no window attached")
+            import asyncio
+            loop = asyncio.get_event_loop()
+            png_bytes = await loop.run_in_executor(None, wc.capture_window, "png")
         else:
             adb_serial = dev.address if dev else req.device_id
             # screen_type → SF display ID 변환
