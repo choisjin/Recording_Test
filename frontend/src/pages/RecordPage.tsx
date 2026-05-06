@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Button, Card, Col, Image, Input, Modal, Radio, Row, Segmented, Select, Slider, Space, InputNumber, message, List, Tabs, Tag, Popover, Tooltip, Splitter } from 'antd';
-import { PlayCircleOutlined, PauseOutlined, PlusOutlined, SwapOutlined, FolderOpenOutlined, SaveOutlined, DeleteOutlined, BranchesOutlined, ScissorOutlined, CameraOutlined, ThunderboltOutlined, CheckCircleOutlined, CloseCircleOutlined, WarningOutlined, EditOutlined, CopyOutlined, ZoomInOutlined, ZoomOutOutlined, HolderOutlined, SettingOutlined, StopOutlined, QuestionCircleOutlined, FundProjectionScreenOutlined } from '@ant-design/icons';
+import { PlayCircleOutlined, PauseOutlined, PlusOutlined, SwapOutlined, FolderOpenOutlined, SaveOutlined, DeleteOutlined, BranchesOutlined, ScissorOutlined, CameraOutlined, ThunderboltOutlined, CheckCircleOutlined, CloseCircleOutlined, WarningOutlined, EditOutlined, CopyOutlined, ZoomInOutlined, ZoomOutOutlined, HolderOutlined, SettingOutlined, StopOutlined, QuestionCircleOutlined, FundProjectionScreenOutlined, ReloadOutlined } from '@ant-design/icons';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -345,6 +345,22 @@ export default function RecordPage() {
   // Per-step controls (for manual step input)
   const [delayMs] = useState(1000);
   const [compareModePopoverIndex, setCompareModePopoverIndex] = useState<number | null>(null);
+
+  // ── WinControl (Windows 프로세스 임베드 컨트롤) ────────────────
+  // 좌측 패널 탭: 'device' | 'wincontrol'. WinControl 디바이스가 연결된 경우에만 wincontrol 탭 노출.
+  const [leftPanelTab, setLeftPanelTab] = useState<'device' | 'wincontrol'>('device');
+  type WinProcess = { pid: number; hwnd: number; name: string; title: string; width: number; height: number };
+  type WinAttachStatus = { attached: boolean; available?: boolean; hwnd?: number; pid?: number; name?: string; title?: string; width?: number; height?: number; import_error?: string };
+  const [wcProcesses, setWcProcesses] = useState<WinProcess[]>([]);
+  const [wcSelectedHwnd, setWcSelectedHwnd] = useState<number | null>(null);
+  const [wcAttached, setWcAttached] = useState<WinAttachStatus | null>(null);
+  const [wcLoadingProcs, setWcLoadingProcs] = useState(false);
+  const [wcInputText, setWcInputText] = useState('');
+  const wcCanvasRef = useRef<HTMLCanvasElement>(null);
+  const wcGestureRef = useRef<{ startX: number; startY: number; startTime: number; active: boolean }>(
+    { startX: 0, startY: 0, startTime: 0, active: false }
+  );
+  const wcImageRef = useRef<HTMLImageElement | null>(null);
 
   // 모듈 스텝 추가: 선택된 "디바이스" (해당 디바이스에 매칭된 모듈을 사용)
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
@@ -994,6 +1010,199 @@ export default function RecordPage() {
       }
     }
   }, [recording, screenshotDeviceId, delayMs, refreshScreenshot, resolveAction, resolveParams, steps.length, primaryDevices]);
+
+  // ----------------------------------------------------------------
+  // WinControl (Windows 프로세스 임베드 제어)
+  // ----------------------------------------------------------------
+  const wcDevice = auxiliaryDevices.find(d => d.id === 'WinControl' || d.type === 'wincontrol');
+  const wcConnected = !!wcDevice && wcDevice.status === 'connected';
+
+  // 디바이스 끊기면 탭 자동 복귀
+  useEffect(() => {
+    if (!wcConnected && leftPanelTab === 'wincontrol') {
+      setLeftPanelTab('device');
+    }
+  }, [wcConnected, leftPanelTab]);
+
+  const wcRefreshProcesses = useCallback(async () => {
+    if (!wcConnected) return;
+    setWcLoadingProcs(true);
+    try {
+      const res = await deviceApi.winListProcesses();
+      setWcProcesses(res.data.processes || []);
+    } catch (e: any) {
+      message.error(e.response?.data?.detail || t('record.winControlAttachFailed'));
+    }
+    setWcLoadingProcs(false);
+  }, [wcConnected, t]);
+
+  // 탭 진입 시 프로세스 목록 + 현재 임베드 상태 동기화
+  useEffect(() => {
+    if (leftPanelTab !== 'wincontrol' || !wcConnected) return;
+    wcRefreshProcesses();
+    deviceApi.winStatus().then(r => {
+      const s = r.data as WinAttachStatus;
+      if (s.attached) {
+        setWcAttached(s);
+        if (typeof s.hwnd === 'number') setWcSelectedHwnd(s.hwnd);
+      } else {
+        setWcAttached(null);
+      }
+    }).catch(() => {});
+  }, [leftPanelTab, wcConnected, wcRefreshProcesses]);
+
+  const wcAttach = useCallback(async () => {
+    if (!wcSelectedHwnd) return;
+    try {
+      const res = await deviceApi.winAttach(wcSelectedHwnd);
+      setWcAttached(res.data.status);
+    } catch (e: any) {
+      message.error(e.response?.data?.detail || t('record.winControlAttachFailed'));
+    }
+  }, [wcSelectedHwnd, t]);
+
+  const wcDetach = useCallback(async () => {
+    try {
+      await deviceApi.winDetach();
+      setWcAttached(null);
+    } catch (e: any) {
+      message.error(e.response?.data?.detail || t('record.winControlDetachFailed'));
+    }
+  }, [t]);
+
+  // 임베드된 윈도우 이미지 폴링 (~250ms ≈ 4fps — 윈도우 컨트롤 용도엔 충분)
+  useEffect(() => {
+    if (leftPanelTab !== 'wincontrol' || !wcAttached?.attached) return;
+    let alive = true;
+    const tick = async () => {
+      while (alive) {
+        try {
+          const res = await deviceApi.screenshot('WinControl', '');
+          if (!alive) break;
+          const b64: string = res.data?.image || '';
+          if (b64) {
+            const url = `data:image/jpeg;base64,${b64}`;
+            await new Promise<void>((resolve) => {
+              const img = new window.Image();
+              img.onload = () => {
+                if (!alive) return resolve();
+                wcImageRef.current = img;
+                const cv = wcCanvasRef.current;
+                if (cv) {
+                  if (cv.width !== img.naturalWidth) cv.width = img.naturalWidth;
+                  if (cv.height !== img.naturalHeight) cv.height = img.naturalHeight;
+                  const ctx = cv.getContext('2d');
+                  ctx?.drawImage(img, 0, 0);
+                }
+                resolve();
+              };
+              img.onerror = () => resolve();
+              img.src = url;
+            });
+          }
+        } catch {
+          // 폴링 실패 무시 — 다음 cycle 재시도
+        }
+        await new Promise(r => setTimeout(r, 250));
+      }
+    };
+    tick();
+    return () => { alive = false; };
+  }, [leftPanelTab, wcAttached?.attached]);
+
+  // 캔버스 클라이언트 좌표 → 윈도우 client 좌표 변환
+  const wcToWinCoords = useCallback((clientX: number, clientY: number): { x: number; y: number } | null => {
+    const cv = wcCanvasRef.current;
+    if (!cv || cv.width <= 0 || cv.height <= 0) return null;
+    const rect = cv.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    const x = ((clientX - rect.left) / rect.width) * cv.width;
+    const y = ((clientY - rect.top) / rect.height) * cv.height;
+    return { x: Math.round(x), y: Math.round(y) };
+  }, []);
+
+  // win 액션 실행 + 녹화 중이면 step 추가 (executeAction의 wincontrol 전용 버전)
+  const wcExecuteAction = useCallback(async (action: 'win_tap' | 'win_double_click' | 'win_long_press' | 'win_swipe' | 'win_input_text' | 'win_key', params: Record<string, any>, desc: string) => {
+    if (!wcAttached?.attached) {
+      message.warning(t('record.winControlNoAttach'));
+      return;
+    }
+    try {
+      await deviceApi.input('WinControl', action, params);
+    } catch (e: any) {
+      message.error(e.response?.data?.detail || t('record.inputFailed'));
+      return;
+    }
+    if (recording) {
+      const tempId = (steps[steps.length - 1]?.id || 0) + 1;
+      const optimisticStep: Step = {
+        id: tempId, type: action, device_id: 'WinControl',
+        params, delay_after_ms: delayMs, description: desc, expected_image: null,
+      };
+      setSteps(prev => [...prev, optimisticStep]);
+      pendingStepsRef.current += 1;
+      setHasPendingSteps(true);
+      try {
+        const res = await scenarioApi.addStep({
+          type: action, device_id: 'WinControl', params,
+          description: desc, delay_after_ms: delayMs, skip_execute: true,
+        });
+        setSteps(prev => prev.map(s => s === optimisticStep ? res.data.step : s));
+      } catch (e: any) {
+        message.error(e.response?.data?.detail || t('record.stepRecordFailed'));
+        setSteps(prev => prev.filter(s => s !== optimisticStep));
+      } finally {
+        pendingStepsRef.current -= 1;
+        if (pendingStepsRef.current <= 0) {
+          pendingStepsRef.current = 0;
+          setHasPendingSteps(false);
+        }
+      }
+    }
+  }, [wcAttached, recording, delayMs, steps, t]);
+
+  const wcMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const c = wcToWinCoords(e.clientX, e.clientY);
+    if (!c) return;
+    wcGestureRef.current = { startX: c.x, startY: c.y, startTime: Date.now(), active: true };
+  }, [wcToWinCoords]);
+
+  const wcMouseUp = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!wcGestureRef.current.active) return;
+    wcGestureRef.current.active = false;
+    const c = wcToWinCoords(e.clientX, e.clientY);
+    if (!c) return;
+    const { startX, startY, startTime } = wcGestureRef.current;
+    const dist = Math.hypot(c.x - startX, c.y - startY);
+    const elapsed = Date.now() - startTime;
+    if (dist > 10) {
+      const duration = Math.max(200, Math.min(elapsed, 3000));
+      wcExecuteAction('win_swipe',
+        { x1: startX, y1: startY, x2: c.x, y2: c.y, duration_ms: duration },
+        `win_swipe (${startX},${startY})→(${c.x},${c.y}) ${duration}ms`);
+    } else if (elapsed >= 500) {
+      wcExecuteAction('win_long_press',
+        { x: startX, y: startY, duration_ms: elapsed },
+        `win_long_press (${startX},${startY}) ${elapsed}ms`);
+    } else {
+      wcExecuteAction('win_tap', { x: startX, y: startY }, `win_tap (${startX},${startY})`);
+    }
+  }, [wcToWinCoords, wcExecuteAction]);
+
+  const wcDoubleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const c = wcToWinCoords(e.clientX, e.clientY);
+    if (!c) return;
+    // mouseDown/Up이 single tap을 먼저 보냈을 수 있어 무시 — Win32는 double_click 별도 처리.
+    wcGestureRef.current.active = false;
+    wcExecuteAction('win_double_click', { x: c.x, y: c.y }, `win_double_click (${c.x},${c.y})`);
+  }, [wcToWinCoords, wcExecuteAction]);
+
+  const wcSendText = useCallback(() => {
+    const txt = wcInputText;
+    if (!txt) return;
+    wcExecuteAction('win_input_text', { text: txt }, `win_input_text "${txt.length > 20 ? txt.slice(0, 20) + '...' : txt}"`);
+    setWcInputText('');
+  }, [wcInputText, wcExecuteAction]);
 
   // ----------------------------------------------------------------
   // Random stress helpers (HKMC/iSAP 전용)
@@ -3304,7 +3513,24 @@ export default function RecordPage() {
       `}</style>
       <Splitter style={{ flex: 1, minHeight: 0 }}>
         <Splitter.Panel defaultSize="40%" min="20%" max="70%" style={{ display: 'flex', flexDirection: 'column', gap: 6, overflow: 'hidden' }}>
-          {/* Left panel: Device screen + Webcam */}
+          {/* Left panel: Device screen + Webcam (+ WinControl tab when connected) */}
+          {wcConnected && (
+            <Segmented
+              size="small"
+              value={leftPanelTab}
+              onChange={(v) => setLeftPanelTab(v as 'device' | 'wincontrol')}
+              options={[
+                { label: t('record.deviceScreen'), value: 'device' },
+                { label: t('record.winControl'), value: 'wincontrol' },
+              ]}
+              style={{ alignSelf: 'flex-start' }}
+            />
+          )}
+          {/* Device screen 카드 — wincontrol 탭일 땐 display:none으로 숨겨 WS/스트림 유지 */}
+          <div style={{
+            display: (wcConnected && leftPanelTab === 'wincontrol') ? 'none' : 'flex',
+            flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden',
+          }}>
           <Card
             size="small"
             title={
@@ -3781,6 +4007,100 @@ export default function RecordPage() {
               </div>
             )}
           </Card>
+          </div>
+
+          {/* WinControl 패널 — 디바이스 연결되어 있고 wincontrol 탭 활성일 때만 표시 */}
+          {wcConnected && (
+            <div style={{
+              display: leftPanelTab === 'wincontrol' ? 'flex' : 'none',
+              flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden',
+            }}>
+              <Card
+                size="small"
+                title={
+                  <Space>
+                    <FundProjectionScreenOutlined />
+                    <span>{t('record.winControl')}</span>
+                  </Space>
+                }
+                extra={
+                  <Space size={4} wrap style={{ justifyContent: 'flex-end' }}>
+                    <Select
+                      size="small"
+                      showSearch
+                      value={wcSelectedHwnd ?? undefined}
+                      onChange={(v) => setWcSelectedHwnd(v)}
+                      placeholder={t('record.winControlSelectProcess')}
+                      style={{ minWidth: 280, maxWidth: 420 }}
+                      loading={wcLoadingProcs}
+                      filterOption={(input, opt) =>
+                        ((opt?.label as string) || '').toLowerCase().includes(input.toLowerCase())
+                      }
+                      options={wcProcesses.map(p => ({
+                        value: p.hwnd,
+                        label: `${p.name} — ${p.title}`,
+                      }))}
+                    />
+                    <Tooltip title={t('record.winControlRefresh')}>
+                      <Button size="small" icon={<ReloadOutlined />} onClick={wcRefreshProcesses} loading={wcLoadingProcs} />
+                    </Tooltip>
+                    {wcAttached?.attached ? (
+                      <Button size="small" danger onClick={wcDetach}>{t('record.winControlDetach')}</Button>
+                    ) : (
+                      <Button size="small" type="primary" onClick={wcAttach} disabled={!wcSelectedHwnd}>
+                        {t('record.winControlAttach')}
+                      </Button>
+                    )}
+                  </Space>
+                }
+                style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}
+                styles={{
+                  header: { flexWrap: 'wrap', height: 'auto', minHeight: 40, padding: '4px 12px' },
+                  body: { flex: 1, overflow: 'auto', padding: 6, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 },
+                }}
+              >
+                {wcAttached?.attached ? (
+                  <>
+                    <Tag color="green" style={{ alignSelf: 'flex-start' }}>
+                      {t('record.winControlAttached', {
+                        name: wcAttached.name || '',
+                        title: wcAttached.title || '',
+                      })}
+                    </Tag>
+                    <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%', maxHeight: '100%' }}>
+                      <canvas
+                        ref={wcCanvasRef}
+                        onMouseDown={wcMouseDown}
+                        onMouseUp={wcMouseUp}
+                        onDoubleClick={wcDoubleClick}
+                        style={{
+                          maxWidth: '100%', maxHeight: '100%',
+                          border: isDark ? '1px solid #333' : '1px solid #d9d9d9',
+                          borderRadius: 4, cursor: 'crosshair', userSelect: 'none',
+                        }}
+                      />
+                    </div>
+                    <Space.Compact style={{ width: '100%', maxWidth: 600 }}>
+                      <Input
+                        size="small"
+                        placeholder={t('record.winControlInputTextPlaceholder')}
+                        value={wcInputText}
+                        onChange={(e) => setWcInputText(e.target.value)}
+                        onPressEnter={wcSendText}
+                      />
+                      <Button size="small" type="primary" onClick={wcSendText} disabled={!wcInputText}>
+                        {t('record.winControlInputTextSend')}
+                      </Button>
+                    </Space.Compact>
+                  </>
+                ) : (
+                  <div style={{ color: mutedTextColor, textAlign: 'center', padding: 19 }}>
+                    {t('record.winControlNoAttach')}
+                  </div>
+                )}
+              </Card>
+            </div>
+          )}
 
         </Splitter.Panel>
 

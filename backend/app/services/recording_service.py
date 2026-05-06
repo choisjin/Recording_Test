@@ -987,6 +987,34 @@ class RecordingService:
                         params["cmd"], params["sub_cmd"], params["key_data"],
                         screen_type, params.get("direction"),
                     )
+        elif step_type in (StepType.WIN_TAP, StepType.WIN_DOUBLE_CLICK,
+                           StepType.WIN_LONG_PRESS, StepType.WIN_SWIPE,
+                           StepType.WIN_INPUT_TEXT, StepType.WIN_KEY):
+            wc = self.dm.get_wincontrol_service()
+            if not wc.is_attached():
+                raise ValueError("WinControl: no window attached")
+            import asyncio
+            loop = asyncio.get_event_loop()
+            if step_type == StepType.WIN_TAP:
+                await loop.run_in_executor(None, wc.send_tap,
+                                           int(params["x"]), int(params["y"]),
+                                           params.get("button", "left"))
+            elif step_type == StepType.WIN_DOUBLE_CLICK:
+                await loop.run_in_executor(None, wc.send_double_click,
+                                           int(params["x"]), int(params["y"]))
+            elif step_type == StepType.WIN_LONG_PRESS:
+                await loop.run_in_executor(None, wc.send_long_press,
+                                           int(params["x"]), int(params["y"]),
+                                           int(params.get("duration_ms", 500)))
+            elif step_type == StepType.WIN_SWIPE:
+                await loop.run_in_executor(None, wc.send_swipe,
+                                           int(params["x1"]), int(params["y1"]),
+                                           int(params["x2"]), int(params["y2"]),
+                                           int(params.get("duration_ms", 300)))
+            elif step_type == StepType.WIN_INPUT_TEXT:
+                await loop.run_in_executor(None, wc.send_text, str(params.get("text", "")))
+            elif step_type == StepType.WIN_KEY:
+                await loop.run_in_executor(None, wc.send_key, str(params.get("key", "")))
         elif step_type == StepType.WAIT:
             await _async_sleep(params.get("duration_ms", 1000) / 1000.0)
         else:

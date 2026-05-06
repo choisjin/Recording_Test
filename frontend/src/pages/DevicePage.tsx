@@ -1023,7 +1023,16 @@ export default function DevicePage() {
       {d.info?.baudrate && <Tag style={{ flexShrink: 0 }}>{d.info.baudrate}</Tag>}
       {d.info?.resolution && <Tag style={{ flexShrink: 0 }}>{d.info.resolution.width}x{d.info.resolution.height}</Tag>}
       <div style={{ marginLeft: 'auto', display: 'flex', gap: 3, flexShrink: 0 }}>
-        {d.protected ? null : (
+        {d.type === 'wincontrol' ? (
+          // WinControl: 삭제·편집은 금지(protected)지만 연결/해제는 사용자가 토글.
+          isDeviceConnected(d) ? (
+            <Button size="small" icon={<DisconnectOutlined />} loading={disconnectingIds.has(d.id)}
+              onClick={() => handleDisconnectOne(d.id)}>{t('device.disconnectOne')}</Button>
+          ) : (
+            <Button size="small" type="primary" icon={<LinkOutlined />} loading={connectingIds.has(d.id)}
+              onClick={() => handleConnectOne(d.id)}>{t('device.connectOne')}</Button>
+          )
+        ) : d.protected ? null : (
           <>
             {isDeviceConnected(d) ? (
               <Button size="small" icon={<DisconnectOutlined />} loading={disconnectingIds.has(d.id)}

@@ -58,6 +58,11 @@ export const deviceApi = {
     api.get(`/device/webcam-exposure/${deviceId}`),
   setWebcamExposure: (deviceId: string, value?: number, auto?: boolean) =>
     api.post(`/device/webcam-exposure/${deviceId}`, { value, auto }),
+  // WinControl
+  winListProcesses: () => api.get('/device/wincontrol/processes'),
+  winStatus: () => api.get('/device/wincontrol/status'),
+  winAttach: (hwnd: number) => api.post('/device/wincontrol/attach', { hwnd }),
+  winDetach: () => api.post('/device/wincontrol/detach'),
 };
 
 // Scenario APIs

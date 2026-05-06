@@ -18,6 +18,7 @@ from .isap_agent_service import ISAPAgentService
 from .icas_agent_service import ICASAgentService
 from .mib_agent_service import MIBAgentService
 from .ssh_service import SSHConnection
+from .wincontrol_service import WinControlService
 
 logger = logging.getLogger(__name__)
 
@@ -614,11 +615,15 @@ class DeviceManager:
         self._webcam_devs: dict[str, object] = {}  # device_id -> WebcamDevice instance
         self._ssh_conns: dict[str, SSHConnection] = {}  # device_id -> SSHConnection
         self._ever_connected: set[str] = set()  # 사용자가 명시적으로 연결한 디바이스만 자동 재연결
+        self._wincontrol = WinControlService()  # 단일 인스턴스 — WinControl 디바이스가 임베드한 윈도우 보유
         self._load_auxiliary_devices()
         self._ensure_default_common_device()
+        self._ensure_default_wincontrol_device()
 
     # 기본 Common 디바이스 ID — 삭제/수정 금지
     DEFAULT_COMMON_DEVICE_ID = "Common"
+    # 기본 WinControl 디바이스 ID — 삭제/수정 금지. 미연결 상태가 기본.
+    DEFAULT_WINCONTROL_DEVICE_ID = "WinControl"
 
     def _ensure_default_common_device(self) -> None:
         """Common(CMD) 디바이스를 기본값으로 등록 + 상태를 항상 connected로 고정."""
@@ -642,9 +647,40 @@ class DeviceManager:
         self._save_auxiliary_devices()
         logger.info("Registered default 'Common' device (CMD module)")
 
+    def _ensure_default_wincontrol_device(self) -> None:
+        """WinControl 디바이스를 기본값으로 등록 (미연결 상태가 기본)."""
+        existing = self._devices.get(self.DEFAULT_WINCONTROL_DEVICE_ID)
+        if existing and existing.type == "wincontrol":
+            existing.category = "auxiliary"
+            # status는 현재 attach 상태에 맞춰 동기화 (재시작 시 항상 disconnected)
+            existing.status = "connected" if self._wincontrol.is_attached() else "disconnected"
+            return
+        dev = ManagedDevice(
+            id=self.DEFAULT_WINCONTROL_DEVICE_ID,
+            type="wincontrol",
+            category="auxiliary",
+            address="",
+            status="disconnected",
+            name="WinControl",
+            info={"connect_type": "none"},
+        )
+        self._devices[self.DEFAULT_WINCONTROL_DEVICE_ID] = dev
+        self._save_auxiliary_devices()
+        logger.info("Registered default 'WinControl' device (disconnected)")
+
+    def get_wincontrol_service(self) -> WinControlService:
+        return self._wincontrol
+
+    def sync_wincontrol_status(self) -> None:
+        """attach 상태에 맞춰 디바이스 status를 동기화."""
+        dev = self._devices.get(self.DEFAULT_WINCONTROL_DEVICE_ID)
+        if not dev:
+            return
+        dev.status = "connected" if self._wincontrol.is_attached() else "disconnected"
+
     def is_protected_device(self, device_id: str) -> bool:
         """삭제/수정이 금지된 시스템 기본 디바이스인지 여부."""
-        return device_id == self.DEFAULT_COMMON_DEVICE_ID
+        return device_id in (self.DEFAULT_COMMON_DEVICE_ID, self.DEFAULT_WINCONTROL_DEVICE_ID)
 
     def _load_auxiliary_devices(self) -> None:
         """Load saved auxiliary devices from disk.
@@ -1102,6 +1138,13 @@ class DeviceManager:
                 available_com_ports = None
 
         for dev in self._devices.values():
+            # WinControl: 외부 연결 없음. attach 상태와 status 동기화만 수행.
+            if dev.type == "wincontrol":
+                if not self._wincontrol.is_attached() and dev.status == "connected":
+                    # 윈도우가 닫힌 경우 attached가 자동으로 풀림 → status도 갱신
+                    if dev.id not in self._ever_connected:
+                        dev.status = "disconnected"
+                continue
             # 사용자가 연결 끊기한 디바이스는 자동 상태 갱신 안 함
             if dev.id not in self._ever_connected:
                 continue
@@ -1991,6 +2034,16 @@ class DeviceManager:
         def _mark_connected():
             self._ever_connected.add(device_id)
 
+        if dev.type == "wincontrol":
+            # 별도 외부 연결 없음 — 서비스 가용 여부만 점검 후 status 전환.
+            if not self._wincontrol.is_available():
+                err = self._wincontrol.import_error() or "pywin32 not installed"
+                dev.status = "disconnected"
+                return f"WinControl unavailable: {err}"
+            dev.status = "connected"
+            _mark_connected()
+            return f"WinControl connected: {dev.id}"
+
         if dev.type == "serial":
             module_name = dev.info.get("module", "")
 
@@ -2425,11 +2478,19 @@ class DeviceManager:
         if not dev:
             return f"Device {device_id} not found"
 
-        # 시스템 기본 디바이스(Common 등)는 항상 연결 상태 유지
-        if self.is_protected_device(device_id):
+        # Common: 항상 연결 상태 유지 (no-op). WinControl은 사용자가 명시적으로 disconnect 가능.
+        if device_id == self.DEFAULT_COMMON_DEVICE_ID:
             return f"Device '{device_id}' is a protected system default (no-op)"
 
         self._ever_connected.discard(device_id)
+
+        if dev.type == "wincontrol":
+            try:
+                self._wincontrol.detach()
+            except Exception:
+                pass
+            dev.status = "disconnected"
+            return f"Disconnected: {dev.id}"
 
         if dev.type == "serial" or dev.type == "module":
             self._close_serial_conn(device_id)

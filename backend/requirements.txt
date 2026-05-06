@@ -14,6 +14,8 @@ harvesters>=1.4.0
 paramiko>=3.4.0
 scp>=0.14.5
 psutil>=5.9.0
+# WinControl 디바이스 (backend/app/services/wincontrol_service.py) — Windows 전용
+pywin32>=305; sys_platform == "win32"
 # UDP_CANFD 공용 라이브러리 의존성 (backend/app/lib/UDP_CANFD.py)
 # — 원본 코드를 수정하지 않고 import 성공을 보장하기 위함
 pandas>=2.0

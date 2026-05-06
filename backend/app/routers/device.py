@@ -676,6 +676,14 @@ async def connect_device(req: ConnectRequest):
             logger.error("[VisionCamera] connect failed: %s", e, exc_info=True)
             raise HTTPException(status_code=400, detail=str(e))
 
+    elif req.type == "wincontrol":
+        # WinControl: 시스템 기본 디바이스(WinControl_1 등 추가 등록 불가).
+        # 기본 'WinControl' 디바이스가 항상 존재하므로 이 경로로 신규 등록을 막는다.
+        raise HTTPException(
+            status_code=400,
+            detail="WinControl is a system default device — use /connect-registered instead",
+        )
+
     elif req.type == "webcam":
         ef = req.extra_fields or {}
         # address 또는 extra_fields.device_index 중 하나로 카메라 인덱스 전달
@@ -935,6 +943,32 @@ async def device_input(req: InputRequest):
                     await hkmc.async_send_key(
                         p["cmd"], p["sub_cmd"], p["key_data"], p.get("monitor", 0x00), p.get("direction")
                     )
+            return {"result": "ok"}
+
+        if req.action in ("win_tap", "win_double_click", "win_long_press", "win_swipe",
+                          "win_input_text", "win_key") and dev and dev.type == "wincontrol":
+            wc = dm.get_wincontrol_service()
+            if not wc.is_attached():
+                raise HTTPException(status_code=400, detail="WinControl: no window attached")
+            import asyncio
+            loop = asyncio.get_event_loop()
+            p = req.params
+            if req.action == "win_tap":
+                await loop.run_in_executor(None, wc.send_tap, int(p["x"]), int(p["y"]),
+                                           p.get("button", "left"))
+            elif req.action == "win_double_click":
+                await loop.run_in_executor(None, wc.send_double_click, int(p["x"]), int(p["y"]))
+            elif req.action == "win_long_press":
+                await loop.run_in_executor(None, wc.send_long_press, int(p["x"]), int(p["y"]),
+                                           int(p.get("duration_ms", 500)))
+            elif req.action == "win_swipe":
+                await loop.run_in_executor(None, wc.send_swipe, int(p["x1"]), int(p["y1"]),
+                                           int(p["x2"]), int(p["y2"]),
+                                           int(p.get("duration_ms", 300)))
+            elif req.action == "win_input_text":
+                await loop.run_in_executor(None, wc.send_text, str(p.get("text", "")))
+            elif req.action == "win_key":
+                await loop.run_in_executor(None, wc.send_key, str(p.get("key", "")))
             return {"result": "ok"}
 
         # ADB actions — allow even if device is not in managed list (race with refresh)
@@ -1694,8 +1728,18 @@ async def get_screenshot(device_id: str, fmt: str = "jpeg", screen_type: str = "
             img_bytes = await loop.run_in_executor(None, cam.CaptureBytes, fmt)
             b64 = base64.b64encode(img_bytes).decode("ascii")
             return {"image": b64, "format": fmt}
+        elif dev and dev.type == "wincontrol":
+            wc = dm.get_wincontrol_service()
+            if not wc.is_attached():
+                # 임베드 전 → 빈 이미지 반환 (UI 폴링 루프에서 500 방지)
+                return {"image": "", "format": fmt}
+            import asyncio
+            loop = asyncio.get_event_loop()
+            img_bytes = await loop.run_in_executor(None, wc.capture_window, fmt)
+            b64 = base64.b64encode(img_bytes).decode("ascii")
+            return {"image": b64, "format": fmt}
         elif dev and dev.type not in ("adb",):
-            raise HTTPException(status_code=400, detail="Screenshot only available for ADB, HKMC, iSAP, ICAS, VisionCamera, or Webcam devices")
+            raise HTTPException(status_code=400, detail="Screenshot only available for ADB, HKMC, iSAP, ICAS, VisionCamera, Webcam, or WinControl devices")
         else:
             # ADB device
             adb_serial = dev.address if dev else device_id
@@ -1710,3 +1754,52 @@ async def get_screenshot(device_id: str, fmt: str = "jpeg", screen_type: str = "
         # Transient ADB/HKMC capture failure — return empty image so the
         # browser doesn't log a 500 error on every polling cycle.
         return {"image": "", "format": fmt}
+
+
+# ── WinControl 전용 엔드포인트 ────────────────────────────────────
+
+
+class WinControlAttachRequest(BaseModel):
+    hwnd: int
+
+
+@router.get("/wincontrol/processes")
+async def wincontrol_list_processes():
+    """현재 시스템의 가시 윈도우/프로세스 목록 (콤보용)."""
+    wc = dm.get_wincontrol_service()
+    if not wc.is_available():
+        raise HTTPException(status_code=503, detail=f"WinControl unavailable: {wc.import_error()}")
+    import asyncio
+    loop = asyncio.get_event_loop()
+    procs = await loop.run_in_executor(None, wc.list_processes)
+    return {"processes": procs}
+
+
+@router.get("/wincontrol/status")
+async def wincontrol_status():
+    """현재 임베드된 윈도우 정보."""
+    return dm.get_wincontrol_service().status()
+
+
+@router.post("/wincontrol/attach")
+async def wincontrol_attach(req: WinControlAttachRequest):
+    """대상 프로세스 윈도우에 임베드(연결)."""
+    wc = dm.get_wincontrol_service()
+    if not wc.is_available():
+        raise HTTPException(status_code=503, detail=f"WinControl unavailable: {wc.import_error()}")
+    try:
+        info = wc.attach(req.hwnd)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    dm.sync_wincontrol_status()
+    return {"result": "attached", "status": info}
+
+
+@router.post("/wincontrol/detach")
+async def wincontrol_detach():
+    """임베드 해제 (디바이스 disconnect 와 별개로 윈도우만 분리)."""
+    dm.get_wincontrol_service().detach()
+    dm.sync_wincontrol_status()
+    return {"result": "detached"}

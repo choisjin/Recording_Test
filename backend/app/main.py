@@ -438,6 +438,7 @@ async def websocket_screen_mirror(websocket: WebSocket):
     is_mib = dev and dev.type == "mib_agent"
     is_vision_camera = dev and dev.type == "vision_camera"
     is_webcam = dev and dev.type == "webcam"
+    is_wincontrol = dev and dev.type == "wincontrol"
 
     dev_type_label = (
         "hkmc" if is_hkmc else
@@ -445,7 +446,8 @@ async def websocket_screen_mirror(websocket: WebSocket):
          ("icas" if is_icas else
           ("mib" if is_mib else
            ("vision_camera" if is_vision_camera else
-            ("webcam" if is_webcam else "adb"))))))
+            ("webcam" if is_webcam else
+             ("wincontrol" if is_wincontrol else "adb")))))))
     logger.debug("Screen mirror: device=%s type=%s", target_device_id, dev_type_label)
 
     # scrcpy 제거 — 항상 JPEG screencap 사용
@@ -558,6 +560,23 @@ async def websocket_screen_mirror(websocket: WebSocket):
                     else:
                         logger.warning("Webcam not ready: cam=%s connected=%s",
                                        cam is not None, cam.IsConnected() if cam else "no_cam")
+                        await asyncio.sleep(0.3)
+                        continue
+                elif is_wincontrol:
+                    wc = device_manager.get_wincontrol_service()
+                    if wc.is_attached():
+                        try:
+                            loop = asyncio.get_event_loop()
+                            jpeg_bytes = await loop.run_in_executor(
+                                None, wc.capture_window, "jpeg",
+                            )
+                            await websocket.send_bytes(jpeg_bytes)
+                        except Exception as we:
+                            logger.debug("WinControl capture error: %s", we)
+                            await asyncio.sleep(0.3)
+                            continue
+                    else:
+                        # 임베드 전 — 빈 프레임 대신 polling
                         await asyncio.sleep(0.3)
                         continue
                 else:
