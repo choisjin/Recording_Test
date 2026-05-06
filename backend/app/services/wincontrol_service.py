@@ -354,8 +354,14 @@ class WinControlService:
             return (0, 0)
 
     # ── 캡처 ─────────────────────────────────────────────────────────
-    def capture_window(self, fmt: str = "jpeg") -> bytes:
-        """대상 윈도우의 client 영역을 PrintWindow 로 캡처."""
+    def capture_window(self, fmt: str = "jpeg", render_full_content: bool = False) -> bytes:
+        """대상 윈도우의 client 영역을 PrintWindow 로 캡처.
+
+        Args:
+            render_full_content: True 면 PW_RENDERFULLCONTENT(0x02) 사용.
+              GPU/Chromium 기반 앱에 필수일 수 있으나, Chrome 등에서 화면이
+              깜박이는 부작용이 있어 기본값은 False(PW_CLIENTONLY 만 사용).
+        """
         if not self.is_attached():
             raise RuntimeError("No window attached")
         hwnd = self._hwnd
@@ -374,11 +380,11 @@ class WinControlService:
             saveBitMap = win32ui.CreateBitmap()
             saveBitMap.CreateCompatibleBitmap(mfcDC, w, h)
             saveDC.SelectObject(saveBitMap)
-            # PW_CLIENTONLY=1, PW_RENDERFULLCONTENT=2 (Windows 8.1+, GPU/Chromium 호환)
-            flags = 0x00000003
-            ok = windll.user32.PrintWindow(hwnd, saveDC.GetSafeHdc(), flags)
-            if not ok:
-                # PW_RENDERFULLCONTENT 미지원 → 1로 재시도
+            # 기본은 PW_CLIENTONLY(1) 만 사용 — Chrome/Edge 깜박임 회피.
+            # render_full_content=True 또는 1차 캡처 결과가 빈 화면(전부 검정)일 때 0x03 재시도.
+            base_flag = 0x00000003 if render_full_content else 0x00000001
+            ok = windll.user32.PrintWindow(hwnd, saveDC.GetSafeHdc(), base_flag)
+            if not ok and base_flag != 0x00000001:
                 ok = windll.user32.PrintWindow(hwnd, saveDC.GetSafeHdc(), 1)
             bmpinfo = saveBitMap.GetInfo()
             bmpstr = saveBitMap.GetBitmapBits(True)
@@ -416,6 +422,12 @@ class WinControlService:
         return buf.getvalue()
 
     # ── 입력 ─────────────────────────────────────────────────────────
+    # 입력 모드:
+    #   "post" (기본) — PostMessage 사용. 백그라운드 입력 가능, 깜박임 없음.
+    #     단점: UWP(계산기), MMC 스냅인(장치관리자), DirectX/게임 등 메시지 큐를
+    #     안 쓰는 앱에는 입력이 전달되지 않는다.
+    #   "send" — SendInput 사용. 모든 앱 호환되지만 대상 윈도우에 포커스가
+    #     필요하다 (SetForegroundWindow + 마우스 커서 이동 후 입력).
     def _check(self) -> int:
         if not self.is_attached():
             raise RuntimeError("No window attached")
@@ -425,8 +437,84 @@ class WinControlService:
     def _lparam(x: int, y: int) -> int:
         return win32api.MAKELONG(int(x) & 0xFFFF, int(y) & 0xFFFF)
 
-    def send_tap(self, x: int, y: int, button: str = "left") -> None:
+    def _focus(self) -> None:
+        """대상 윈도우를 전면으로 + 포커스. SendInput 모드 전제 조건."""
+        hwnd = self._hwnd
+        if not hwnd:
+            return
+        try:
+            # 최소화 상태면 복원
+            if win32gui.IsIconic(hwnd):
+                win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+            # 포어그라운드 락 회피 — AttachThreadInput 트릭
+            try:
+                fg = windll.user32.GetForegroundWindow()
+                cur_thread = win32api.GetCurrentThreadId()
+                fg_thread, _ = win32process.GetWindowThreadProcessId(fg) if fg else (0, 0)
+                if fg_thread and fg_thread != cur_thread:
+                    windll.user32.AttachThreadInput(cur_thread, fg_thread, True)
+                    try:
+                        win32gui.SetForegroundWindow(hwnd)
+                    finally:
+                        windll.user32.AttachThreadInput(cur_thread, fg_thread, False)
+                else:
+                    win32gui.SetForegroundWindow(hwnd)
+            except Exception:
+                try:
+                    win32gui.SetForegroundWindow(hwnd)
+                except Exception:
+                    pass
+            # 짧은 안정화 대기 — 포커스 전환 완료까지
+            time.sleep(0.05)
+        except Exception as e:
+            logger.debug("WinControl focus failed: %s", e)
+
+    def _client_to_screen(self, x: int, y: int) -> tuple[int, int]:
+        """client 좌표 → screen 좌표 (SendInput 마우스 절대 위치용)."""
+        hwnd = self._hwnd
+        if not hwnd:
+            return (int(x), int(y))
+        try:
+            return win32gui.ClientToScreen(hwnd, (int(x), int(y)))
+        except Exception:
+            return (int(x), int(y))
+
+    def _send_input_mouse_move(self, screen_x: int, screen_y: int) -> None:
+        """SendInput 으로 마우스 절대 위치 이동 (가상화면 좌표계)."""
+        # MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK = 0x4001 | 0x8000
+        # 절대 좌표는 0..65535 정규화 + 가상 데스크탑 기준
+        vx = windll.user32.GetSystemMetrics(76)  # SM_XVIRTUALSCREEN
+        vy = windll.user32.GetSystemMetrics(77)  # SM_YVIRTUALSCREEN
+        vw = windll.user32.GetSystemMetrics(78) or 1  # SM_CXVIRTUALSCREEN
+        vh = windll.user32.GetSystemMetrics(79) or 1  # SM_CYVIRTUALSCREEN
+        nx = int(((screen_x - vx) * 65535) / vw)
+        ny = int(((screen_y - vy) * 65535) / vh)
+        # MOUSEEVENTF_MOVE=0x0001, MOUSEEVENTF_ABSOLUTE=0x8000, MOUSEEVENTF_VIRTUALDESK=0x4000
+        win32api.mouse_event(0x0001 | 0x8000 | 0x4000, nx, ny, 0, 0)
+
+    def _send_input_button(self, button: str, down: bool) -> None:
+        # MOUSEEVENTF_LEFTDOWN=0x0002, LEFTUP=0x0004, RIGHTDOWN=0x0008, RIGHTUP=0x0010,
+        # MIDDLEDOWN=0x0020, MIDDLEUP=0x0040
+        if button == "right":
+            flag = 0x0008 if down else 0x0010
+        elif button == "middle":
+            flag = 0x0020 if down else 0x0040
+        else:
+            flag = 0x0002 if down else 0x0004
+        win32api.mouse_event(flag, 0, 0, 0, 0)
+
+    # ── tap/click ───────────────────────────────────────────────
+    def send_tap(self, x: int, y: int, button: str = "left", mode: str = "post") -> None:
         hwnd = self._check()
+        if mode == "send":
+            self._focus()
+            sx, sy = self._client_to_screen(int(x), int(y))
+            self._send_input_mouse_move(sx, sy)
+            time.sleep(0.02)
+            self._send_input_button(button, True)
+            time.sleep(0.02)
+            self._send_input_button(button, False)
+            return
         lp = self._lparam(x, y)
         if button == "right":
             down, up, mk = win32con.WM_RBUTTONDOWN, win32con.WM_RBUTTONUP, win32con.MK_RBUTTON
@@ -435,20 +523,41 @@ class WinControlService:
         else:
             down, up, mk = win32con.WM_LBUTTONDOWN, win32con.WM_LBUTTONUP, win32con.MK_LBUTTON
         win32api.PostMessage(hwnd, down, mk, lp)
-        # 클릭 처리 시간 확보
         time.sleep(0.02)
         win32api.PostMessage(hwnd, up, 0, lp)
 
-    def send_double_click(self, x: int, y: int) -> None:
+    def send_double_click(self, x: int, y: int, mode: str = "post") -> None:
         hwnd = self._check()
+        if mode == "send":
+            self._focus()
+            sx, sy = self._client_to_screen(int(x), int(y))
+            self._send_input_mouse_move(sx, sy)
+            time.sleep(0.02)
+            for _ in range(2):
+                self._send_input_button("left", True)
+                time.sleep(0.02)
+                self._send_input_button("left", False)
+                time.sleep(0.02)
+            return
         lp = self._lparam(x, y)
         win32api.PostMessage(hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lp)
         win32api.PostMessage(hwnd, win32con.WM_LBUTTONUP, 0, lp)
         win32api.PostMessage(hwnd, win32con.WM_LBUTTONDBLCLK, win32con.MK_LBUTTON, lp)
         win32api.PostMessage(hwnd, win32con.WM_LBUTTONUP, 0, lp)
 
-    def send_long_press(self, x: int, y: int, duration_ms: int = 500) -> None:
+    def send_long_press(self, x: int, y: int, duration_ms: int = 500, mode: str = "post") -> None:
         hwnd = self._check()
+        if mode == "send":
+            self._focus()
+            sx, sy = self._client_to_screen(int(x), int(y))
+            self._send_input_mouse_move(sx, sy)
+            time.sleep(0.02)
+            self._send_input_button("left", True)
+            try:
+                time.sleep(max(0.0, duration_ms / 1000.0))
+            finally:
+                self._send_input_button("left", False)
+            return
         lp = self._lparam(x, y)
         win32api.PostMessage(hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lp)
         try:
@@ -456,12 +565,31 @@ class WinControlService:
         finally:
             win32api.PostMessage(hwnd, win32con.WM_LBUTTONUP, 0, lp)
 
-    def send_swipe(self, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 300) -> None:
+    def send_swipe(self, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 300, mode: str = "post") -> None:
         hwnd = self._check()
-        lp_start = self._lparam(x1, y1)
-        win32api.PostMessage(hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lp_start)
         steps = max(2, int(max(50, duration_ms) / 25))
         delay = max(0.0, duration_ms / 1000.0 / steps)
+        if mode == "send":
+            self._focus()
+            sx1, sy1 = self._client_to_screen(int(x1), int(y1))
+            self._send_input_mouse_move(sx1, sy1)
+            time.sleep(0.02)
+            self._send_input_button("left", True)
+            for i in range(1, steps):
+                t = i / steps
+                x = int(x1 + (x2 - x1) * t)
+                y = int(y1 + (y2 - y1) * t)
+                sx, sy = self._client_to_screen(x, y)
+                self._send_input_mouse_move(sx, sy)
+                if delay > 0:
+                    time.sleep(delay)
+            sx2, sy2 = self._client_to_screen(int(x2), int(y2))
+            self._send_input_mouse_move(sx2, sy2)
+            time.sleep(0.02)
+            self._send_input_button("left", False)
+            return
+        lp_start = self._lparam(x1, y1)
+        win32api.PostMessage(hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lp_start)
         for i in range(1, steps):
             t = i / steps
             x = int(x1 + (x2 - x1) * t)
@@ -473,14 +601,29 @@ class WinControlService:
                 time.sleep(delay)
         win32api.PostMessage(hwnd, win32con.WM_LBUTTONUP, 0, self._lparam(x2, y2))
 
-    def send_text(self, text: str) -> None:
+    def send_text(self, text: str, mode: str = "post") -> None:
         hwnd = self._check()
+        if mode == "send":
+            self._focus()
+            for ch in text:
+                # KEYEVENTF_UNICODE=0x0004
+                win32api.keybd_event(0, ord(ch), 0x0004, 0)
+                time.sleep(0.005)
+                win32api.keybd_event(0, ord(ch), 0x0004 | 0x0002, 0)
+                time.sleep(0.005)
+            return
         for ch in text:
             win32api.PostMessage(hwnd, win32con.WM_CHAR, ord(ch), 0)
 
-    def send_key(self, key: str) -> None:
+    def send_key(self, key: str, mode: str = "post") -> None:
         """가상키 한 번 누르고 떼기 (modifier 미지원 — 단일 키만)."""
         hwnd = self._check()
         vk = _resolve_vk(key)
+        if mode == "send":
+            self._focus()
+            win32api.keybd_event(vk, 0, 0, 0)
+            time.sleep(0.02)
+            win32api.keybd_event(vk, 0, 0x0002, 0)  # KEYEVENTF_KEYUP
+            return
         win32api.PostMessage(hwnd, win32con.WM_KEYDOWN, vk, 0)
         win32api.PostMessage(hwnd, win32con.WM_KEYUP, vk, 0)

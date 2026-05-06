@@ -356,6 +356,9 @@ export default function RecordPage() {
   const [wcAttached, setWcAttached] = useState<WinAttachStatus | null>(null);
   const [wcLoadingProcs, setWcLoadingProcs] = useState(false);
   const [wcInputText, setWcInputText] = useState('');
+  // 입력 전송 모드: post(기본, 백그라운드 PostMessage) | send(SendInput, 포커스 필요).
+  // UWP 앱(계산기), MMC 스냅인(장치관리자) 등 메시지 큐를 안 쓰는 앱은 'send' 필요.
+  const [wcInputMode, setWcInputMode] = useState<'post' | 'send'>('post');
   const wcCanvasRef = useRef<HTMLCanvasElement>(null);
   const wcGestureRef = useRef<{ startX: number; startY: number; startTime: number; active: boolean }>(
     { startX: 0, startY: 0, startTime: 0, active: false }
@@ -1070,16 +1073,55 @@ export default function RecordPage() {
     }
   }, [t]);
 
-  // 임베드된 윈도우 이미지 폴링 (~250ms ≈ 4fps — 윈도우 컨트롤 용도엔 충분)
+  // 임베드된 윈도우 이미지 폴링 (기본 500ms ≈ 2fps — 깜박임 최소화).
+  // 캡처 응답에 attached:false 가 오면 → 자동 재임베드 시도 (저장된 프로세스 정보로).
+  // 이걸 통해 윈도우가 잠시 응답 불가 상태에 빠져도 사용자가 수동으로 재연결할 필요 없음.
   useEffect(() => {
     if (leftPanelTab !== 'wincontrol' || !wcAttached?.attached) return;
     let alive = true;
+    let detachedCount = 0;
+    const POLL_MS = 500;
+
     const tick = async () => {
       while (alive) {
         try {
           const res = await deviceApi.screenshot('WinControl', '');
           if (!alive) break;
           const b64: string = res.data?.image || '';
+          const stillAttached = res.data?.attached !== false;
+
+          if (!stillAttached) {
+            detachedCount += 1;
+            // 윈도우 핸들이 무효해졌음 → 즉시 한 번 재임베드 시도
+            if (detachedCount >= 1 && wcAttached?.exe_path) {
+              try {
+                const status = (await deviceApi.winStatus()).data as WinAttachStatus;
+                if (status.attached) {
+                  setWcAttached(status);
+                  detachedCount = 0;
+                } else {
+                  // ensure_attached 를 직접 노출하지 않으므로 input 라우트의 자동 attach 경로를
+                  // 사용하기엔 부담 — 대신 process_name/exe_path 로 win/attach 시도.
+                  const procs = (await deviceApi.winListProcesses()).data?.processes || [];
+                  const match = procs.find((p: WinProcess) =>
+                    (wcAttached?.exe_path && p.exe_path && p.exe_path.toLowerCase() === wcAttached.exe_path.toLowerCase()) ||
+                    (wcAttached?.name && p.name.toLowerCase() === wcAttached.name.toLowerCase())
+                  );
+                  if (match) {
+                    const r = await deviceApi.winAttach(match.hwnd);
+                    setWcAttached(r.data.status);
+                    setWcSelectedHwnd(match.hwnd);
+                    detachedCount = 0;
+                  }
+                }
+              } catch {
+                // 재임베드 실패 — 다음 cycle 재시도
+              }
+            }
+          } else {
+            detachedCount = 0;
+          }
+
           if (b64) {
             const url = `data:image/jpeg;base64,${b64}`;
             await new Promise<void>((resolve) => {
@@ -1101,14 +1143,14 @@ export default function RecordPage() {
             });
           }
         } catch {
-          // 폴링 실패 무시 — 다음 cycle 재시도
+          // 폴링 자체 실패 무시 — 다음 cycle 재시도
         }
-        await new Promise(r => setTimeout(r, 250));
+        await new Promise(r => setTimeout(r, POLL_MS));
       }
     };
     tick();
     return () => { alive = false; };
-  }, [leftPanelTab, wcAttached?.attached]);
+  }, [leftPanelTab, wcAttached?.attached, wcAttached?.exe_path, wcAttached?.name]);
 
   // 캔버스 클라이언트 좌표 → 윈도우 client 좌표 변환
   const wcToWinCoords = useCallback((clientX: number, clientY: number): { x: number; y: number } | null => {
@@ -1130,12 +1172,14 @@ export default function RecordPage() {
       return;
     }
     // 프로세스 식별 정보 첨부 — 재생 시 ensure_attached 로 자동 복구.
+    // input_mode 도 저장 — 같은 모드로 재생되어야 동일한 동작 보장.
     const enrichedParams: Record<string, any> = {
       ...params,
       process_name: wcAttached.name || '',
       exe_path: wcAttached.exe_path || '',
       window_title: wcAttached.title || '',
       window_class: wcAttached.class_name || '',
+      input_mode: wcInputMode,
     };
     try {
       await deviceApi.input('WinControl', action, enrichedParams);
@@ -1169,7 +1213,7 @@ export default function RecordPage() {
         }
       }
     }
-  }, [wcAttached, recording, delayMs, steps, t]);
+  }, [wcAttached, recording, delayMs, steps, t, wcInputMode]);
 
   const wcMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const c = wcToWinCoords(e.clientX, e.clientY);
@@ -4053,6 +4097,17 @@ export default function RecordPage() {
                     />
                     <Tooltip title={t('record.winControlRefresh')}>
                       <Button size="small" icon={<ReloadOutlined />} onClick={wcRefreshProcesses} loading={wcLoadingProcs} />
+                    </Tooltip>
+                    <Tooltip title={t('record.winControlInputModeHint')}>
+                      <Segmented
+                        size="small"
+                        value={wcInputMode}
+                        onChange={(v) => setWcInputMode(v as 'post' | 'send')}
+                        options={[
+                          { label: t('record.winControlModePost'), value: 'post' },
+                          { label: t('record.winControlModeSend'), value: 'send' },
+                        ]}
+                      />
                     </Tooltip>
                     {wcAttached?.attached ? (
                       <Button size="small" danger onClick={wcDetach}>{t('record.winControlDetach')}</Button>

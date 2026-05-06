@@ -1020,26 +1020,35 @@ class RecordingService:
                     raise ValueError(f"WinControl attach failed: {e}")
             elif not wc.is_attached():
                 raise ValueError("WinControl: no window attached")
+            input_mode = str(params.get("input_mode", "post") or "post")
+            if input_mode not in ("post", "send"):
+                input_mode = "post"
+            import functools as _ft3
             if step_type == StepType.WIN_TAP:
-                await loop.run_in_executor(None, wc.send_tap,
-                                           int(params["x"]), int(params["y"]),
-                                           params.get("button", "left"))
+                await loop.run_in_executor(None,
+                    _ft3.partial(wc.send_tap, int(params["x"]), int(params["y"]),
+                                 params.get("button", "left"), input_mode))
             elif step_type == StepType.WIN_DOUBLE_CLICK:
-                await loop.run_in_executor(None, wc.send_double_click,
-                                           int(params["x"]), int(params["y"]))
+                await loop.run_in_executor(None,
+                    _ft3.partial(wc.send_double_click,
+                                 int(params["x"]), int(params["y"]), input_mode))
             elif step_type == StepType.WIN_LONG_PRESS:
-                await loop.run_in_executor(None, wc.send_long_press,
-                                           int(params["x"]), int(params["y"]),
-                                           int(params.get("duration_ms", 500)))
+                await loop.run_in_executor(None,
+                    _ft3.partial(wc.send_long_press,
+                                 int(params["x"]), int(params["y"]),
+                                 int(params.get("duration_ms", 500)), input_mode))
             elif step_type == StepType.WIN_SWIPE:
-                await loop.run_in_executor(None, wc.send_swipe,
-                                           int(params["x1"]), int(params["y1"]),
-                                           int(params["x2"]), int(params["y2"]),
-                                           int(params.get("duration_ms", 300)))
+                await loop.run_in_executor(None,
+                    _ft3.partial(wc.send_swipe,
+                                 int(params["x1"]), int(params["y1"]),
+                                 int(params["x2"]), int(params["y2"]),
+                                 int(params.get("duration_ms", 300)), input_mode))
             elif step_type == StepType.WIN_INPUT_TEXT:
-                await loop.run_in_executor(None, wc.send_text, str(params.get("text", "")))
+                await loop.run_in_executor(None,
+                    _ft3.partial(wc.send_text, str(params.get("text", "")), input_mode))
             elif step_type == StepType.WIN_KEY:
-                await loop.run_in_executor(None, wc.send_key, str(params.get("key", "")))
+                await loop.run_in_executor(None,
+                    _ft3.partial(wc.send_key, str(params.get("key", "")), input_mode))
         elif step_type == StepType.WAIT:
             await _async_sleep(params.get("duration_ms", 1000) / 1000.0)
         else:

@@ -979,22 +979,32 @@ async def device_input(req: InputRequest):
                     raise HTTPException(status_code=500, detail=f"WinControl attach failed: {e}")
             elif not wc.is_attached():
                 raise HTTPException(status_code=400, detail="WinControl: no window attached")
+            input_mode = str(p.get("input_mode", "post") or "post")
+            if input_mode not in ("post", "send"):
+                input_mode = "post"
+            import functools as _ft2
             if req.action == "win_tap":
-                await loop.run_in_executor(None, wc.send_tap, int(p["x"]), int(p["y"]),
-                                           p.get("button", "left"))
+                await loop.run_in_executor(None,
+                    _ft2.partial(wc.send_tap, int(p["x"]), int(p["y"]),
+                                 p.get("button", "left"), input_mode))
             elif req.action == "win_double_click":
-                await loop.run_in_executor(None, wc.send_double_click, int(p["x"]), int(p["y"]))
+                await loop.run_in_executor(None,
+                    _ft2.partial(wc.send_double_click, int(p["x"]), int(p["y"]), input_mode))
             elif req.action == "win_long_press":
-                await loop.run_in_executor(None, wc.send_long_press, int(p["x"]), int(p["y"]),
-                                           int(p.get("duration_ms", 500)))
+                await loop.run_in_executor(None,
+                    _ft2.partial(wc.send_long_press, int(p["x"]), int(p["y"]),
+                                 int(p.get("duration_ms", 500)), input_mode))
             elif req.action == "win_swipe":
-                await loop.run_in_executor(None, wc.send_swipe, int(p["x1"]), int(p["y1"]),
-                                           int(p["x2"]), int(p["y2"]),
-                                           int(p.get("duration_ms", 300)))
+                await loop.run_in_executor(None,
+                    _ft2.partial(wc.send_swipe, int(p["x1"]), int(p["y1"]),
+                                 int(p["x2"]), int(p["y2"]),
+                                 int(p.get("duration_ms", 300)), input_mode))
             elif req.action == "win_input_text":
-                await loop.run_in_executor(None, wc.send_text, str(p.get("text", "")))
+                await loop.run_in_executor(None,
+                    _ft2.partial(wc.send_text, str(p.get("text", "")), input_mode))
             elif req.action == "win_key":
-                await loop.run_in_executor(None, wc.send_key, str(p.get("key", "")))
+                await loop.run_in_executor(None,
+                    _ft2.partial(wc.send_key, str(p.get("key", "")), input_mode))
             return {"result": "ok"}
 
         # ADB actions — allow even if device is not in managed list (race with refresh)
@@ -1757,13 +1767,18 @@ async def get_screenshot(device_id: str, fmt: str = "jpeg", screen_type: str = "
         elif dev and dev.type == "wincontrol":
             wc = dm.get_wincontrol_service()
             if not wc.is_attached():
-                # 임베드 전 → 빈 이미지 반환 (UI 폴링 루프에서 500 방지)
-                return {"image": "", "format": fmt}
+                # 임베드 전 또는 윈도우 핸들 무효 → 빈 이미지 + attached=false
+                # 프론트엔드 폴링 루프가 이 플래그를 보고 자동 재attach 트리거.
+                return {"image": "", "format": fmt, "attached": False}
             import asyncio
             loop = asyncio.get_event_loop()
-            img_bytes = await loop.run_in_executor(None, wc.capture_window, fmt)
-            b64 = base64.b64encode(img_bytes).decode("ascii")
-            return {"image": b64, "format": fmt}
+            try:
+                img_bytes = await loop.run_in_executor(None, wc.capture_window, fmt)
+                b64 = base64.b64encode(img_bytes).decode("ascii")
+                return {"image": b64, "format": fmt, "attached": True}
+            except Exception:
+                # 캡처 일시 실패: attach 상태는 유지, 빈 응답만 반환
+                return {"image": "", "format": fmt, "attached": wc.is_attached()}
         elif dev and dev.type not in ("adb",):
             raise HTTPException(status_code=400, detail="Screenshot only available for ADB, HKMC, iSAP, ICAS, VisionCamera, Webcam, or WinControl devices")
         else:
