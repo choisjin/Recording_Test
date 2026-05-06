@@ -829,6 +829,8 @@ class PlaybackService:
                                     aumid=str(step.params.get("process_aumid", "") or ""),
                                     launch_if_missing=True,
                                     wait_seconds=float(step.params.get("launch_wait_seconds", 8.0) or 8.0),
+                                    target_width=int(step.params.get("window_width", 0) or 0),
+                                    target_height=int(step.params.get("window_height", 0) or 0),
                                 ),
                             )
                         except Exception as e:
@@ -2194,6 +2196,8 @@ class PlaybackService:
                         aumid=str(params.get("process_aumid", "") or ""),
                         launch_if_missing=True,
                         wait_seconds=float(params.get("launch_wait_seconds", 8.0) or 8.0),
+                        target_width=int(params.get("window_width", 0) or 0),
+                        target_height=int(params.get("window_height", 0) or 0),
                     ),
                 )
             except Exception as e:

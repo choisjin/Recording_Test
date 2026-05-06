@@ -1184,6 +1184,8 @@ export default function RecordPage() {
     // 프로세스 식별 정보 첨부 — 재생 시 ensure_attached 로 자동 복구.
     // UWP/Packaged 앱은 .exe 직접 실행이 안 되므로 process_aumid 도 함께 저장 →
     // 재생 시 explorer shell:AppsFolder\<AUMID> 로 활성화.
+    // window_width/height: 녹화 시점의 client area 크기. 재생 시 동일 크기로
+    // 리사이즈 → 좌표가 항상 같은 UI 요소를 가리키도록 보장.
     const enrichedParams: Record<string, any> = {
       ...params,
       process_name: wcAttached.name || '',
@@ -1191,6 +1193,8 @@ export default function RecordPage() {
       window_title: wcAttached.title || '',
       window_class: wcAttached.class_name || '',
       process_aumid: wcAttached.aumid || '',
+      window_width: wcAttached.width || 0,
+      window_height: wcAttached.height || 0,
     };
     try {
       await deviceApi.input('WinControl', action, enrichedParams);

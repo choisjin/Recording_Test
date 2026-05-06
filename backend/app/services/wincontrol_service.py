@@ -291,6 +291,8 @@ class WinControlService:
         aumid: str = "",
         launch_if_missing: bool = True,
         wait_seconds: float = 8.0,
+        target_width: int = 0,
+        target_height: int = 0,
     ) -> dict:
         """저장된 프로세스 정보를 사용해 임베드 상태를 보장.
 
@@ -300,10 +302,18 @@ class WinControlService:
           3) 못 찾고 launch_if_missing=True 이면 launch:
              - aumid 가 있으면 UWP 활성화 (explorer shell:AppsFolder\\AUMID) — UWP 우선
              - 아니면 exe_path 로 일반 .exe 실행
+          4) target_width/height > 0 이면 attach 후 client area 를 해당 크기로 리사이즈
+             — 좌표 기반 입력이 녹화 시점과 동일한 위치를 가리키도록 보장.
         성공 시 status() 반환, 실패 시 RuntimeError.
         """
         if not _WIN32_AVAILABLE:
             raise RuntimeError(f"WinControl unavailable: {_IMPORT_ERROR}")
+
+        def _maybe_resize() -> None:
+            if target_width > 0 and target_height > 0:
+                cur_w, cur_h = self.get_window_size()
+                if cur_w != int(target_width) or cur_h != int(target_height):
+                    self.resize_client(int(target_width), int(target_height))
 
         # 1) 현재 attach 가 조건과 일치하는지
         if self.is_attached():
@@ -314,6 +324,7 @@ class WinControlService:
                 (title_pattern or "").lower() in (self._window_title or "").lower()
             )
             if cur_name_match and cur_title_match:
+                _maybe_resize()
                 return self.status()
             # 조건 불일치 → 새 attach 시도 (기존 핸들 유지하지 않음)
             self.detach()
@@ -321,7 +332,9 @@ class WinControlService:
         # 2) 현재 시스템에서 매칭 윈도우 탐색
         match = self.find_window(process_name, exe_path, title_pattern, class_name)
         if match:
-            return self.attach(match["hwnd"])
+            self.attach(match["hwnd"])
+            _maybe_resize()
+            return self.status()
 
         # 3) 프로세스 실행 후 윈도우 등장 대기
         if not launch_if_missing or not (exe_path or aumid):
@@ -351,7 +364,9 @@ class WinControlService:
                 self._wait_for_input_idle(match["hwnd"], timeout_ms=3000)
                 # 추가 안정화 — 페인팅/레이아웃 완료까지 약간 더 대기 (UWP 는 더 길게 필요).
                 time.sleep(0.5)
-                return self.attach(match["hwnd"])
+                self.attach(match["hwnd"])
+                _maybe_resize()
+                return self.status()
         raise RuntimeError(
             f"WinControl: launched ({launched_what}) but window did not appear within {wait_seconds:.1f}s "
             f"(name={process_name!r}, title~={title_pattern!r})"
@@ -527,6 +542,52 @@ class WinControlService:
             return (rect[2] - rect[0], rect[3] - rect[1])
         except Exception:
             return (0, 0)
+
+    def resize_client(self, target_w: int, target_h: int) -> tuple[int, int]:
+        """대상 윈도우의 client area 를 (target_w, target_h) 로 리사이즈.
+
+        녹화 시점과 동일한 client 크기로 맞춰서 좌표 기반 입력이 항상 같은
+        UI 요소를 가리키도록 보장. 외곽(타이틀바/보더) 크기를 빼고 더해
+        실제 client 가 정확히 일치하도록 SetWindowPos 호출.
+
+        반환: 리사이즈 후 실제 client (w, h). 윈도우가 최소/최대 크기 제약
+        때문에 요청 크기보다 작거나 클 수 있으므로 호출자에게 실측값 전달.
+        """
+        if not self.is_attached() or target_w <= 0 or target_h <= 0:
+            return self.get_window_size()
+        hwnd = self._hwnd
+        try:
+            # 최대화/최소화 상태면 정상 크기로 복원 — 그래야 SetWindowPos 가 먹힘.
+            try:
+                if win32gui.IsZoomed(hwnd) or win32gui.IsIconic(hwnd):
+                    win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+                    time.sleep(0.05)
+            except Exception:
+                pass
+            # 외곽-클라이언트 차이(보더/타이틀바)를 측정해서 outer 목표 크기 산출.
+            cur_window = win32gui.GetWindowRect(hwnd)
+            cur_outer_w = cur_window[2] - cur_window[0]
+            cur_outer_h = cur_window[3] - cur_window[1]
+            cur_client = win32gui.GetClientRect(hwnd)
+            cur_client_w = cur_client[2] - cur_client[0]
+            cur_client_h = cur_client[3] - cur_client[1]
+            dx = cur_outer_w - cur_client_w
+            dy = cur_outer_h - cur_client_h
+            new_outer_w = max(1, int(target_w) + dx)
+            new_outer_h = max(1, int(target_h) + dy)
+            # SWP_NOMOVE: 위치 유지, SWP_NOZORDER: z-order 유지, SWP_NOACTIVATE: 포커스 안 뺏음.
+            SWP_NOMOVE = 0x0002
+            SWP_NOZORDER = 0x0004
+            SWP_NOACTIVATE = 0x0010
+            win32gui.SetWindowPos(
+                hwnd, 0, 0, 0, new_outer_w, new_outer_h,
+                SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE,
+            )
+            # 레이아웃 반영 시간.
+            time.sleep(0.05)
+        except Exception as e:
+            logger.debug("WinControl resize_client failed: %s", e)
+        return self.get_window_size()
 
     # ── 캡처 ─────────────────────────────────────────────────────────
     def _capture_with_flag(self, hwnd: int, flag: int) -> Optional[Image.Image]:

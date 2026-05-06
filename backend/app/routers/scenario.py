@@ -382,6 +382,8 @@ async def capture_expected_image(req: CaptureExpectedImageRequest):
                                 class_name=str(step_params.get("window_class", "") or ""),
                                 aumid=str(step_params.get("process_aumid", "") or ""),
                                 launch_if_missing=True,
+                                target_width=int(step_params.get("window_width", 0) or 0),
+                                target_height=int(step_params.get("window_height", 0) or 0),
                             ),
                         )
                     except Exception as e:

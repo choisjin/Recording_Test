@@ -974,6 +974,8 @@ async def device_input(req: InputRequest):
                             aumid=aumid,
                             launch_if_missing=True,
                             wait_seconds=float(p.get("launch_wait_seconds", 8.0) or 8.0),
+                            target_width=int(p.get("window_width", 0) or 0),
+                            target_height=int(p.get("window_height", 0) or 0),
                         ),
                     )
                 except Exception as e:
