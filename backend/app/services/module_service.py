@@ -168,6 +168,13 @@ def list_available_modules() -> list[dict]:
          ]},
         {"name": "CANOE", "label": "CANOE", "connect_type": "none",
          "connect_fields": []},
+        {"name": "CANoePlugin", "label": "CANoePlugin (py-canoe RBS)", "connect_type": "none",
+         "connect_fields": []},
+        {"name": "CANoe_Ctrl", "label": "CANoe_Ctrl (Vector HW)", "connect_type": "none",
+         "connect_fields": [
+             {"name": "device_info", "label": "Device Info (list of dict)", "type": "text",
+              "default": "[{'channel': 0, 'app_name': 'CANoe', 'bitrate': 500000, 'data_bitrate': None, 'is_fd': False}]"},
+         ]},
         {"name": "CANAT", "label": "CANAT", "connect_type": "serial",
          "connect_fields": [
              {"name": "log_path", "label": "Log Path", "type": "text", "default": ""},
