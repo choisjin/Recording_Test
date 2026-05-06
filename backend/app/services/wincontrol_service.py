@@ -503,9 +503,94 @@ class WinControlService:
             flag = 0x0002 if down else 0x0004
         win32api.mouse_event(flag, 0, 0, 0, 0)
 
+    # ── 자식 윈도우 라우팅 (BG 모드 호환성 향상) ─────────────────────
+    # 최상위 hwnd 에만 PostMessage 를 보내면 mmc.exe(장치관리자) / 일반 대화상자류
+    # 등 컨트롤이 자식 윈도우인 경우 입력이 무시된다. 클릭 좌표 위치의 가장 깊은
+    # 자식을 찾아 그 자식의 client 좌표로 PostMessage 를 보내면 거의 모든 Win32 앱
+    # (UWP 제외)이 BG 모드로 작동한다.
+    def _deep_child_at(self, root_hwnd: int, screen_x: int, screen_y: int) -> int:
+        """root_hwnd 자손 중 (screen_x, screen_y) 위치의 가장 깊은 가시 자식 hwnd."""
+        cur = root_hwnd
+        # CWP_SKIPINVISIBLE=1 | CWP_SKIPDISABLED=2 | CWP_SKIPTRANSPARENT=4 = 7
+        guard = 0
+        while guard < 16:  # 무한 루프 방지
+            guard += 1
+            try:
+                cx, cy = win32gui.ScreenToClient(cur, (int(screen_x), int(screen_y)))
+            except Exception:
+                return cur
+            try:
+                child = windll.user32.ChildWindowFromPointEx(cur, cx, cy, 7)
+            except Exception:
+                return cur
+            if not child or child == cur:
+                return cur
+            cur = child
+        return cur
+
+    def _resolve_target(self, x: int, y: int) -> tuple[int, int, int]:
+        """클라이언트 좌표 (x,y) 에 위치한 가장 깊은 자식 hwnd 와 그 자식의 local 좌표.
+
+        Returns (target_hwnd, local_x, local_y). 자식이 없으면 root + 원래 좌표.
+        """
+        root = self._hwnd
+        if not root:
+            return (root, int(x), int(y))
+        try:
+            sx, sy = win32gui.ClientToScreen(root, (int(x), int(y)))
+        except Exception:
+            return (root, int(x), int(y))
+        target = self._deep_child_at(root, sx, sy)
+        if not target or target == root:
+            return (root, int(x), int(y))
+        try:
+            lx, ly = win32gui.ScreenToClient(target, (sx, sy))
+            return (target, int(lx), int(ly))
+        except Exception:
+            return (root, int(x), int(y))
+
+    def _post_to_target(self, target_hwnd: int, msg: int, wparam: int, lparam: int) -> None:
+        """대상 자식 hwnd 에 PostMessage. 실패 시 root 로 fallback."""
+        try:
+            win32api.PostMessage(target_hwnd, msg, wparam, lparam)
+        except Exception:
+            try:
+                win32api.PostMessage(self._hwnd, msg, wparam, lparam)
+            except Exception:
+                pass
+
+    def _focused_text_target(self) -> int:
+        """현재 대상 윈도우의 포커스된 컨트롤 hwnd. 없으면 root.
+
+        WM_CHAR / WM_KEY* 는 좌표가 없으므로 키 입력은 포커스된 자식에 보내야 한다.
+        AttachThreadInput 로 대상 스레드의 포커스 상태를 읽음.
+        """
+        root = self._hwnd
+        if not root:
+            return 0
+        try:
+            target_thread, _ = win32process.GetWindowThreadProcessId(root)
+        except Exception:
+            return root
+        cur_thread = win32api.GetCurrentThreadId()
+        attached = False
+        try:
+            if target_thread and target_thread != cur_thread:
+                attached = bool(windll.user32.AttachThreadInput(cur_thread, target_thread, True))
+            focus = win32gui.GetFocus()
+            return int(focus) if focus else root
+        except Exception:
+            return root
+        finally:
+            if attached:
+                try:
+                    windll.user32.AttachThreadInput(cur_thread, target_thread, False)
+                except Exception:
+                    pass
+
     # ── tap/click ───────────────────────────────────────────────
     def send_tap(self, x: int, y: int, button: str = "left", mode: str = "post") -> None:
-        hwnd = self._check()
+        self._check()
         if mode == "send":
             self._focus()
             sx, sy = self._client_to_screen(int(x), int(y))
@@ -515,19 +600,23 @@ class WinControlService:
             time.sleep(0.02)
             self._send_input_button(button, False)
             return
-        lp = self._lparam(x, y)
+        # BG: 자식 윈도우 자동 라우팅 — 클릭 좌표 위치의 가장 깊은 컨트롤로 PostMessage.
+        target, lx, ly = self._resolve_target(x, y)
+        lp = self._lparam(lx, ly)
         if button == "right":
             down, up, mk = win32con.WM_RBUTTONDOWN, win32con.WM_RBUTTONUP, win32con.MK_RBUTTON
         elif button == "middle":
             down, up, mk = win32con.WM_MBUTTONDOWN, win32con.WM_MBUTTONUP, win32con.MK_MBUTTON
         else:
             down, up, mk = win32con.WM_LBUTTONDOWN, win32con.WM_LBUTTONUP, win32con.MK_LBUTTON
-        win32api.PostMessage(hwnd, down, mk, lp)
+        # 일부 컨트롤(버튼 등)은 hover 가 선행되어야 click 으로 인식.
+        self._post_to_target(target, win32con.WM_MOUSEMOVE, 0, lp)
+        self._post_to_target(target, down, mk, lp)
         time.sleep(0.02)
-        win32api.PostMessage(hwnd, up, 0, lp)
+        self._post_to_target(target, up, 0, lp)
 
     def send_double_click(self, x: int, y: int, mode: str = "post") -> None:
-        hwnd = self._check()
+        self._check()
         if mode == "send":
             self._focus()
             sx, sy = self._client_to_screen(int(x), int(y))
@@ -539,14 +628,16 @@ class WinControlService:
                 self._send_input_button("left", False)
                 time.sleep(0.02)
             return
-        lp = self._lparam(x, y)
-        win32api.PostMessage(hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lp)
-        win32api.PostMessage(hwnd, win32con.WM_LBUTTONUP, 0, lp)
-        win32api.PostMessage(hwnd, win32con.WM_LBUTTONDBLCLK, win32con.MK_LBUTTON, lp)
-        win32api.PostMessage(hwnd, win32con.WM_LBUTTONUP, 0, lp)
+        target, lx, ly = self._resolve_target(x, y)
+        lp = self._lparam(lx, ly)
+        self._post_to_target(target, win32con.WM_MOUSEMOVE, 0, lp)
+        self._post_to_target(target, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lp)
+        self._post_to_target(target, win32con.WM_LBUTTONUP, 0, lp)
+        self._post_to_target(target, win32con.WM_LBUTTONDBLCLK, win32con.MK_LBUTTON, lp)
+        self._post_to_target(target, win32con.WM_LBUTTONUP, 0, lp)
 
     def send_long_press(self, x: int, y: int, duration_ms: int = 500, mode: str = "post") -> None:
-        hwnd = self._check()
+        self._check()
         if mode == "send":
             self._focus()
             sx, sy = self._client_to_screen(int(x), int(y))
@@ -558,15 +649,17 @@ class WinControlService:
             finally:
                 self._send_input_button("left", False)
             return
-        lp = self._lparam(x, y)
-        win32api.PostMessage(hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lp)
+        target, lx, ly = self._resolve_target(x, y)
+        lp = self._lparam(lx, ly)
+        self._post_to_target(target, win32con.WM_MOUSEMOVE, 0, lp)
+        self._post_to_target(target, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lp)
         try:
             time.sleep(max(0.0, duration_ms / 1000.0))
         finally:
-            win32api.PostMessage(hwnd, win32con.WM_LBUTTONUP, 0, lp)
+            self._post_to_target(target, win32con.WM_LBUTTONUP, 0, lp)
 
     def send_swipe(self, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 300, mode: str = "post") -> None:
-        hwnd = self._check()
+        self._check()
         steps = max(2, int(max(50, duration_ms) / 25))
         delay = max(0.0, duration_ms / 1000.0 / steps)
         if mode == "send":
@@ -588,21 +681,26 @@ class WinControlService:
             time.sleep(0.02)
             self._send_input_button("left", False)
             return
-        lp_start = self._lparam(x1, y1)
-        win32api.PostMessage(hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lp_start)
+        # BG swipe: 시작 위치 기준 자식에 routing (드래그 중 자식이 바뀌어도 같은 컨트롤로 보냄)
+        target, lx1, ly1 = self._resolve_target(x1, y1)
+        # 좌표 차이를 그대로 적용해 같은 자식 좌표계로 변환
+        dx = int(x2 - x1)
+        dy = int(y2 - y1)
+        self._post_to_target(target, win32con.WM_LBUTTONDOWN,
+                             win32con.MK_LBUTTON, self._lparam(lx1, ly1))
         for i in range(1, steps):
             t = i / steps
-            x = int(x1 + (x2 - x1) * t)
-            y = int(y1 + (y2 - y1) * t)
-            win32api.PostMessage(
-                hwnd, win32con.WM_MOUSEMOVE, win32con.MK_LBUTTON, self._lparam(x, y),
-            )
+            cx = int(lx1 + dx * t)
+            cy = int(ly1 + dy * t)
+            self._post_to_target(target, win32con.WM_MOUSEMOVE,
+                                 win32con.MK_LBUTTON, self._lparam(cx, cy))
             if delay > 0:
                 time.sleep(delay)
-        win32api.PostMessage(hwnd, win32con.WM_LBUTTONUP, 0, self._lparam(x2, y2))
+        self._post_to_target(target, win32con.WM_LBUTTONUP, 0,
+                             self._lparam(lx1 + dx, ly1 + dy))
 
     def send_text(self, text: str, mode: str = "post") -> None:
-        hwnd = self._check()
+        self._check()
         if mode == "send":
             self._focus()
             for ch in text:
@@ -612,12 +710,14 @@ class WinControlService:
                 win32api.keybd_event(0, ord(ch), 0x0004 | 0x0002, 0)
                 time.sleep(0.005)
             return
+        # BG: 키 입력은 좌표가 없으므로 포커스된 자식 컨트롤로 라우팅.
+        target = self._focused_text_target()
         for ch in text:
-            win32api.PostMessage(hwnd, win32con.WM_CHAR, ord(ch), 0)
+            self._post_to_target(target, win32con.WM_CHAR, ord(ch), 0)
 
     def send_key(self, key: str, mode: str = "post") -> None:
         """가상키 한 번 누르고 떼기 (modifier 미지원 — 단일 키만)."""
-        hwnd = self._check()
+        self._check()
         vk = _resolve_vk(key)
         if mode == "send":
             self._focus()
@@ -625,5 +725,6 @@ class WinControlService:
             time.sleep(0.02)
             win32api.keybd_event(vk, 0, 0x0002, 0)  # KEYEVENTF_KEYUP
             return
-        win32api.PostMessage(hwnd, win32con.WM_KEYDOWN, vk, 0)
-        win32api.PostMessage(hwnd, win32con.WM_KEYUP, vk, 0)
+        target = self._focused_text_target()
+        self._post_to_target(target, win32con.WM_KEYDOWN, vk, 0)
+        self._post_to_target(target, win32con.WM_KEYUP, vk, 0)
