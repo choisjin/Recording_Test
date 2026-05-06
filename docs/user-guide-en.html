@@ -368,6 +368,8 @@
     <a href="#intro" class="toc-h2">Introduction</a>
     <a href="#overview" class="toc-h3">System Overview</a>
     <a href="#workflow" class="toc-h3">Core Workflow</a>
+    <a href="#supported-avn" class="toc-h3">Supported AVN Models</a>
+    <a href="#supported-device" class="toc-h3">Supported Devices</a>
 
     <a href="#install" class="toc-h2">Installation &amp; Launch</a>
     <a href="#install-req" class="toc-h3">System Requirements</a>
@@ -517,6 +519,51 @@
   </svg>
   <div class="figure-caption">ReplayKit Data Flow Diagram</div>
 </div>
+
+
+<!-- ============================== Supported Devices ============================== -->
+<h3 id="supported-avn">Supported AVN Models</h3>
+<p>The following models are supported out of the box for connection, recording, and playback. The Agent column indicates the communication type to select when registering the device.</p>
+<table>
+  <tr><th>Project</th><th>Model</th><th>Agent</th></tr>
+  <tr><td rowspan="6"><strong>HKMC</strong></td><td>ccRC</td><td>HKMC Agent</td></tr>
+  <tr><td>ccIC</td><td>HKMC Agent</td></tr>
+  <tr><td>ccIC27</td><td>HKMC Agent</td></tr>
+  <tr><td>Connect Wide</td><td>iSAP Agent</td></tr>
+  <tr><td>CCU2</td><td>HKMC Agent</td></tr>
+  <tr><td>Gen6 Premium</td><td>HKMC Agent</td></tr>
+  <tr><td><strong>GM</strong></td><td>GVM</td><td>ADB</td></tr>
+  <tr><td rowspan="4"><strong>Nissan</strong></td><td>CDC_High</td><td>ADB</td></tr>
+  <tr><td>CDC_STD</td><td>ADB</td></tr>
+  <tr><td>CCS2_DA2</td><td>&mdash;</td></tr>
+  <tr><td>Europe_New</td><td>&mdash;</td></tr>
+  <tr><td rowspan="4"><strong>Renault</strong></td><td>Latam</td><td>ADB</td></tr>
+  <tr><td>EGG</td><td>ADB</td></tr>
+  <tr><td>AUB</td><td>ADB</td></tr>
+  <tr><td>CDC</td><td>ADB</td></tr>
+  <tr><td rowspan="2"><strong>VW</strong></td><td>VW EU</td><td>MIB Agent</td></tr>
+  <tr><td>ICAS EU</td><td>ICAS Agent</td></tr>
+  <tr><td rowspan="2"><strong>Camera</strong></td><td>WebCam</td><td>Webcam</td></tr>
+  <tr><td>VisionCamera</td><td>VisionCamera</td></tr>
+  <tr><td rowspan="2"><strong>General</strong></td><td>Android</td><td>ADB</td></tr>
+  <tr><td>Phone</td><td>ADB</td></tr>
+</table>
+
+<h3 id="supported-device">Supported Devices</h3>
+<p>Auxiliary devices (power, CAN, logging, etc.) that can be used together with recording/playback scenarios.</p>
+<table>
+  <tr><th>Category</th><th>Device</th></tr>
+  <tr><td rowspan="2"><strong>CAN</strong></td><td>CANAT</td></tr>
+  <tr><td>CANOE</td></tr>
+  <tr><td rowspan="3"><strong>Bench</strong></td><td>IVIQEBench</td></tr>
+  <tr><td>SmartBench</td></tr>
+  <tr><td>WoohyunBench</td></tr>
+  <tr><td rowspan="2"><strong>Video</strong></td><td>VisionCamera</td></tr>
+  <tr><td>Webcam</td></tr>
+  <tr><td rowspan="3"><strong>Console Based Devices</strong></td><td>Serial</td></tr>
+  <tr><td>SSH</td></tr>
+  <tr><td>Android</td></tr>
+</table>
 
 
 <!-- ============================== Installation ============================== -->
