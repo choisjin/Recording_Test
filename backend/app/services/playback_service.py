@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 import re
 import sys
@@ -1233,6 +1234,23 @@ class PlaybackService:
             rc = int(p.get("repeat_count", 1))
             iv = int(p.get("interval_ms", 0))
             return f"all_random ×{rc} @{iv}ms"
+        elif step.type == StepType.WIN_TAP:
+            tgt = p.get("process_name") or p.get("window_title") or ""
+            return f"win_tap ({p.get('x', 0)}, {p.get('y', 0)}) [{tgt}]"
+        elif step.type == StepType.WIN_DOUBLE_CLICK:
+            tgt = p.get("process_name") or p.get("window_title") or ""
+            return f"win_double_click ({p.get('x', 0)}, {p.get('y', 0)}) [{tgt}]"
+        elif step.type == StepType.WIN_LONG_PRESS:
+            tgt = p.get("process_name") or p.get("window_title") or ""
+            return f"win_long_press ({p.get('x', 0)}, {p.get('y', 0)}) {p.get('duration_ms', 500)}ms [{tgt}]"
+        elif step.type == StepType.WIN_SWIPE:
+            tgt = p.get("process_name") or p.get("window_title") or ""
+            return f"win_swipe ({p.get('x1', 0)},{p.get('y1', 0)})→({p.get('x2', 0)},{p.get('y2', 0)}) [{tgt}]"
+        elif step.type == StepType.WIN_INPUT_TEXT:
+            txt = p.get("text", "")
+            return f"win_input_text \"{txt[:30]}{'...' if len(txt) > 30 else ''}\""
+        elif step.type == StepType.WIN_KEY:
+            return f"win_key {p.get('key', '')}"
         return step.type.value
 
     async def _force_reconnect_hkmc(self, device_id: str) -> bool:
@@ -2123,6 +2141,60 @@ class PlaybackService:
                             "total_ms": int(actual_ms),
                         })
                         next_progress = elapsed + PROGRESS_INTERVAL_S
+        elif step.type in (StepType.WIN_TAP, StepType.WIN_DOUBLE_CLICK,
+                           StepType.WIN_LONG_PRESS, StepType.WIN_SWIPE,
+                           StepType.WIN_INPUT_TEXT, StepType.WIN_KEY):
+            # 임베드 보장 — 저장된 process_name/exe_path 로 자동 attach 또는 launch.
+            wc = self.dm.get_wincontrol_service()
+            if not wc.is_available():
+                raise ValueError(
+                    f"WinControl unavailable: {wc.import_error() or 'pywin32 not installed'}"
+                )
+            try:
+                import asyncio
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(
+                    None,
+                    functools.partial(
+                        wc.ensure_attached,
+                        process_name=str(params.get("process_name", "") or ""),
+                        exe_path=str(params.get("exe_path", "") or ""),
+                        title_pattern=str(params.get("window_title", "") or ""),
+                        class_name=str(params.get("window_class", "") or ""),
+                        launch_if_missing=True,
+                        wait_seconds=float(params.get("launch_wait_seconds", 8.0) or 8.0),
+                    ),
+                )
+            except Exception as e:
+                raise ValueError(f"WinControl attach failed: {e}")
+            # WinControl 디바이스 status 동기화 (UI 표시 정합성)
+            try:
+                self.dm.sync_wincontrol_status()
+            except Exception:
+                pass
+
+            import asyncio as _asyncio
+            loop = _asyncio.get_event_loop()
+            if step.type == StepType.WIN_TAP:
+                await loop.run_in_executor(None, wc.send_tap,
+                                           int(params["x"]), int(params["y"]),
+                                           params.get("button", "left"))
+            elif step.type == StepType.WIN_DOUBLE_CLICK:
+                await loop.run_in_executor(None, wc.send_double_click,
+                                           int(params["x"]), int(params["y"]))
+            elif step.type == StepType.WIN_LONG_PRESS:
+                await loop.run_in_executor(None, wc.send_long_press,
+                                           int(params["x"]), int(params["y"]),
+                                           int(params.get("duration_ms", 500)))
+            elif step.type == StepType.WIN_SWIPE:
+                await loop.run_in_executor(None, wc.send_swipe,
+                                           int(params["x1"]), int(params["y1"]),
+                                           int(params["x2"]), int(params["y2"]),
+                                           int(params.get("duration_ms", 300)))
+            elif step.type == StepType.WIN_INPUT_TEXT:
+                await loop.run_in_executor(None, wc.send_text, str(params.get("text", "")))
+            elif step.type == StepType.WIN_KEY:
+                await loop.run_in_executor(None, wc.send_key, str(params.get("key", "")))
         else:
             # ADB actions — real_id를 ADB 시리얼(dev.address)로 변환
             adb_serial = real_id

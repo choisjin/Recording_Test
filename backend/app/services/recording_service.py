@@ -991,10 +991,35 @@ class RecordingService:
                            StepType.WIN_LONG_PRESS, StepType.WIN_SWIPE,
                            StepType.WIN_INPUT_TEXT, StepType.WIN_KEY):
             wc = self.dm.get_wincontrol_service()
-            if not wc.is_attached():
-                raise ValueError("WinControl: no window attached")
+            if not wc.is_available():
+                raise ValueError(
+                    f"WinControl unavailable: {wc.import_error() or 'pywin32 not installed'}"
+                )
             import asyncio
             loop = asyncio.get_event_loop()
+            # 자동 attach: params에 프로세스 정보가 포함된 경우 끊겼으면 재임베드/실행.
+            proc_name = str(params.get("process_name", "") or "")
+            exe_path = str(params.get("exe_path", "") or "")
+            title_pattern = str(params.get("window_title", "") or "")
+            class_name = str(params.get("window_class", "") or "")
+            if proc_name or exe_path or title_pattern:
+                try:
+                    import functools as _ft
+                    await loop.run_in_executor(
+                        None,
+                        _ft.partial(
+                            wc.ensure_attached,
+                            process_name=proc_name, exe_path=exe_path,
+                            title_pattern=title_pattern, class_name=class_name,
+                            launch_if_missing=True,
+                            wait_seconds=float(params.get("launch_wait_seconds", 8.0) or 8.0),
+                        ),
+                    )
+                    self.dm.sync_wincontrol_status()
+                except Exception as e:
+                    raise ValueError(f"WinControl attach failed: {e}")
+            elif not wc.is_attached():
+                raise ValueError("WinControl: no window attached")
             if step_type == StepType.WIN_TAP:
                 await loop.run_in_executor(None, wc.send_tap,
                                            int(params["x"]), int(params["y"]),

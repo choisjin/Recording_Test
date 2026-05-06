@@ -349,8 +349,8 @@ export default function RecordPage() {
   // ── WinControl (Windows 프로세스 임베드 컨트롤) ────────────────
   // 좌측 패널 탭: 'device' | 'wincontrol'. WinControl 디바이스가 연결된 경우에만 wincontrol 탭 노출.
   const [leftPanelTab, setLeftPanelTab] = useState<'device' | 'wincontrol'>('device');
-  type WinProcess = { pid: number; hwnd: number; name: string; title: string; width: number; height: number };
-  type WinAttachStatus = { attached: boolean; available?: boolean; hwnd?: number; pid?: number; name?: string; title?: string; width?: number; height?: number; import_error?: string };
+  type WinProcess = { pid: number; hwnd: number; name: string; exe_path?: string; title: string; class_name?: string; width: number; height: number };
+  type WinAttachStatus = { attached: boolean; available?: boolean; hwnd?: number; pid?: number; name?: string; exe_path?: string; class_name?: string; title?: string; width?: number; height?: number; import_error?: string };
   const [wcProcesses, setWcProcesses] = useState<WinProcess[]>([]);
   const [wcSelectedHwnd, setWcSelectedHwnd] = useState<number | null>(null);
   const [wcAttached, setWcAttached] = useState<WinAttachStatus | null>(null);
@@ -1122,13 +1122,23 @@ export default function RecordPage() {
   }, []);
 
   // win 액션 실행 + 녹화 중이면 step 추가 (executeAction의 wincontrol 전용 버전)
+  // 모든 win_* 스텝은 임베드된 프로세스 정보를 params 에 함께 저장 — 재생/테스트 시
+  // 프로세스가 실행 중이지 않으면 백엔드가 자동으로 실행 후 재임베드한다.
   const wcExecuteAction = useCallback(async (action: 'win_tap' | 'win_double_click' | 'win_long_press' | 'win_swipe' | 'win_input_text' | 'win_key', params: Record<string, any>, desc: string) => {
     if (!wcAttached?.attached) {
       message.warning(t('record.winControlNoAttach'));
       return;
     }
+    // 프로세스 식별 정보 첨부 — 재생 시 ensure_attached 로 자동 복구.
+    const enrichedParams: Record<string, any> = {
+      ...params,
+      process_name: wcAttached.name || '',
+      exe_path: wcAttached.exe_path || '',
+      window_title: wcAttached.title || '',
+      window_class: wcAttached.class_name || '',
+    };
     try {
-      await deviceApi.input('WinControl', action, params);
+      await deviceApi.input('WinControl', action, enrichedParams);
     } catch (e: any) {
       message.error(e.response?.data?.detail || t('record.inputFailed'));
       return;
@@ -1137,14 +1147,14 @@ export default function RecordPage() {
       const tempId = (steps[steps.length - 1]?.id || 0) + 1;
       const optimisticStep: Step = {
         id: tempId, type: action, device_id: 'WinControl',
-        params, delay_after_ms: delayMs, description: desc, expected_image: null,
+        params: enrichedParams, delay_after_ms: delayMs, description: desc, expected_image: null,
       };
       setSteps(prev => [...prev, optimisticStep]);
       pendingStepsRef.current += 1;
       setHasPendingSteps(true);
       try {
         const res = await scenarioApi.addStep({
-          type: action, device_id: 'WinControl', params,
+          type: action, device_id: 'WinControl', params: enrichedParams,
           description: desc, delay_after_ms: delayMs, skip_execute: true,
         });
         setSteps(prev => prev.map(s => s === optimisticStep ? res.data.step : s));

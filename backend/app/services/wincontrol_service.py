@@ -78,7 +78,9 @@ class WinControlService:
         self._hwnd: Optional[int] = None
         self._pid: Optional[int] = None
         self._process_name: str = ""
+        self._exe_path: str = ""
         self._window_title: str = ""
+        self._window_class: str = ""
 
     @staticmethod
     def is_available() -> bool:
@@ -89,14 +91,11 @@ class WinControlService:
         return _IMPORT_ERROR
 
     # ── 프로세스/윈도우 검색 ──────────────────────────────────────────
-    def list_processes(self) -> list[dict]:
-        """가시 최상위 윈도우 + PID/프로세스명 목록.
-
-        같은 PID의 여러 창은 가장 의미있는 첫 번째 윈도우(타이틀 있음)만 노출.
-        """
+    def _enum_windows(self) -> list[dict]:
+        """모든 가시 최상위 윈도우 (PID당 여러 창 허용). 내부 검색용."""
         if not _WIN32_AVAILABLE:
             return []
-        results: dict[int, dict] = {}
+        results: list[dict] = []
 
         def _cb(hwnd: int, _: object) -> bool:
             try:
@@ -105,28 +104,35 @@ class WinControlService:
                 title = win32gui.GetWindowText(hwnd)
                 if not title:
                     return True
-                # Windows shell 등 0px 윈도우 제외
                 rect = win32gui.GetWindowRect(hwnd)
                 w = rect[2] - rect[0]
                 h = rect[3] - rect[1]
                 if w <= 0 or h <= 0:
                     return True
                 _, pid = win32process.GetWindowThreadProcessId(hwnd)
-                if pid in results:
-                    return True
                 try:
                     proc = psutil.Process(pid)
                     name = proc.name()
+                    try:
+                        exe_path = proc.exe()
+                    except (psutil.AccessDenied, FileNotFoundError):
+                        exe_path = ""
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     return True
-                results[pid] = {
+                try:
+                    cls_name = win32gui.GetClassName(hwnd)
+                except Exception:
+                    cls_name = ""
+                results.append({
                     "pid": int(pid),
                     "hwnd": int(hwnd),
                     "name": name,
+                    "exe_path": exe_path,
                     "title": title,
+                    "class_name": cls_name,
                     "width": w,
                     "height": h,
-                }
+                })
             except Exception as e:
                 logger.debug("enum_window callback error: %s", e)
             return True
@@ -135,8 +141,138 @@ class WinControlService:
             win32gui.EnumWindows(_cb, None)
         except Exception as e:
             logger.warning("EnumWindows failed: %s", e)
+        return results
+
+    def list_processes(self) -> list[dict]:
+        """가시 최상위 윈도우 + PID/프로세스명 목록.
+
+        같은 PID의 여러 창은 첫 번째(가장 의미 있는) 창만 노출 — UI 콤보 표시용.
+        """
+        if not _WIN32_AVAILABLE:
+            return []
+        seen: set[int] = set()
+        out: list[dict] = []
+        for w in self._enum_windows():
+            if w["pid"] in seen:
+                continue
+            seen.add(w["pid"])
+            out.append(w)
         # 보기 좋게 프로세스명/타이틀 순 정렬
-        return sorted(results.values(), key=lambda d: (d["name"].lower(), d["title"].lower()))
+        return sorted(out, key=lambda d: (d["name"].lower(), d["title"].lower()))
+
+    def find_window(
+        self,
+        process_name: str = "",
+        exe_path: str = "",
+        title_pattern: str = "",
+        class_name: str = "",
+    ) -> Optional[dict]:
+        """주어진 조건과 일치하는 첫 번째 윈도우 정보 반환.
+
+        매칭 규칙:
+          - exe_path: 절대 경로 정확 일치 (대소문자 무시)
+          - process_name: 파일명 정확 일치 (대소문자 무시)
+          - title_pattern: 부분 문자열 일치 (대소문자 무시)
+          - class_name: 정확 일치
+        지정된 필드만 사용 (빈 값은 무시). 모두 빈 값이면 None.
+        """
+        if not _WIN32_AVAILABLE or not (process_name or exe_path or title_pattern or class_name):
+            return None
+        exe_path_norm = (exe_path or "").strip().lower()
+        proc_name_norm = (process_name or "").strip().lower()
+        title_norm = (title_pattern or "").strip().lower()
+        cls_norm = (class_name or "").strip()
+        for w in self._enum_windows():
+            if exe_path_norm and (w.get("exe_path") or "").lower() != exe_path_norm:
+                continue
+            if proc_name_norm and (w.get("name") or "").lower() != proc_name_norm:
+                continue
+            if title_norm and title_norm not in (w.get("title") or "").lower():
+                continue
+            if cls_norm and (w.get("class_name") or "") != cls_norm:
+                continue
+            return w
+        return None
+
+    @staticmethod
+    def launch_process(exe_path: str, args: Optional[list[str]] = None) -> int:
+        """프로세스 실행. 성공 시 PID 반환. exe_path 가 비어있으면 ValueError."""
+        if not exe_path:
+            raise ValueError("exe_path is empty")
+        import subprocess
+        cmd = [exe_path] + (args or [])
+        # 새 콘솔 분리 + 입력 무시 — 백엔드 종료와 독립적으로 살아남기.
+        creationflags = 0
+        if _WIN32_AVAILABLE:
+            try:
+                creationflags = win32con.DETACHED_PROCESS | win32con.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
+            except Exception:
+                creationflags = 0x00000008  # DETACHED_PROCESS
+        proc = subprocess.Popen(
+            cmd, close_fds=True, creationflags=creationflags,
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        logger.info("WinControl launched: %s pid=%d", exe_path, proc.pid)
+        return proc.pid
+
+    def ensure_attached(
+        self,
+        process_name: str = "",
+        exe_path: str = "",
+        title_pattern: str = "",
+        class_name: str = "",
+        launch_if_missing: bool = True,
+        wait_seconds: float = 8.0,
+    ) -> dict:
+        """저장된 프로세스 정보를 사용해 임베드 상태를 보장.
+
+        흐름:
+          1) 이미 attached + 현재 프로세스명/타이틀이 일치하면 그대로 사용
+          2) 일치 안 하거나 미임베드면 find_window로 매칭 윈도우 탐색 후 attach
+          3) 못 찾고 launch_if_missing=True 이면 exe_path 실행 + 윈도우 등장 polling 후 attach
+        성공 시 status() 반환, 실패 시 RuntimeError.
+        """
+        if not _WIN32_AVAILABLE:
+            raise RuntimeError(f"WinControl unavailable: {_IMPORT_ERROR}")
+
+        # 1) 현재 attach 가 조건과 일치하는지
+        if self.is_attached():
+            cur_name_match = (not process_name) or (
+                (self._process_name or "").lower() == (process_name or "").lower()
+            )
+            cur_title_match = (not title_pattern) or (
+                (title_pattern or "").lower() in (self._window_title or "").lower()
+            )
+            if cur_name_match and cur_title_match:
+                return self.status()
+            # 조건 불일치 → 새 attach 시도 (기존 핸들 유지하지 않음)
+            self.detach()
+
+        # 2) 현재 시스템에서 매칭 윈도우 탐색
+        match = self.find_window(process_name, exe_path, title_pattern, class_name)
+        if match:
+            return self.attach(match["hwnd"])
+
+        # 3) 프로세스 실행 후 윈도우 등장 대기
+        if not launch_if_missing or not exe_path:
+            raise RuntimeError(
+                f"WinControl: matching window not found "
+                f"(name={process_name!r}, exe={exe_path!r}, title~={title_pattern!r})"
+            )
+        try:
+            self.launch_process(exe_path)
+        except Exception as e:
+            raise RuntimeError(f"WinControl: failed to launch {exe_path!r}: {e}")
+
+        deadline = time.monotonic() + max(0.5, wait_seconds)
+        while time.monotonic() < deadline:
+            time.sleep(0.3)
+            match = self.find_window(process_name, exe_path, title_pattern, class_name)
+            if match:
+                return self.attach(match["hwnd"])
+        raise RuntimeError(
+            f"WinControl: launched {exe_path!r} but window did not appear within {wait_seconds:.1f}s"
+        )
 
     # ── 임베드(대상 윈도우) ──────────────────────────────────────────
     def attach(self, hwnd: int) -> dict:
@@ -151,11 +287,25 @@ class WinControlService:
             self._pid = None
         self._window_title = win32gui.GetWindowText(hwnd) or ""
         try:
-            self._process_name = psutil.Process(self._pid).name() if self._pid else ""
+            self._window_class = win32gui.GetClassName(hwnd) or ""
+        except Exception:
+            self._window_class = ""
+        try:
+            if self._pid:
+                proc = psutil.Process(self._pid)
+                self._process_name = proc.name()
+                try:
+                    self._exe_path = proc.exe()
+                except (psutil.AccessDenied, FileNotFoundError):
+                    self._exe_path = ""
+            else:
+                self._process_name = ""
+                self._exe_path = ""
         except Exception:
             self._process_name = ""
-        logger.info("WinControl attached: hwnd=%d pid=%s name=%s title=%r",
-                    hwnd, self._pid, self._process_name, self._window_title)
+            self._exe_path = ""
+        logger.info("WinControl attached: hwnd=%d pid=%s name=%s exe=%s title=%r",
+                    hwnd, self._pid, self._process_name, self._exe_path, self._window_title)
         return self.status()
 
     def detach(self) -> None:
@@ -163,7 +313,9 @@ class WinControlService:
         self._hwnd = None
         self._pid = None
         self._process_name = ""
+        self._exe_path = ""
         self._window_title = ""
+        self._window_class = ""
 
     def is_attached(self) -> bool:
         if not _WIN32_AVAILABLE or self._hwnd is None:
@@ -184,6 +336,8 @@ class WinControlService:
             "hwnd": self._hwnd,
             "pid": self._pid,
             "name": self._process_name,
+            "exe_path": self._exe_path,
+            "class_name": self._window_class,
             "title": self._window_title,
             "width": w,
             "height": h,
