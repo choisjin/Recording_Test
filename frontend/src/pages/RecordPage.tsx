@@ -269,6 +269,10 @@ export default function RecordPage() {
 
   // Detected gesture display
   const [lastGesture, setLastGesture] = useState('');
+  // 디바이스 화면 위 마우스 좌표 (실시간 표시용 — 디바이스 픽셀 좌표)
+  const [hoverCoords, setHoverCoords] = useState<{ x: number; y: number; clientX: number; clientY: number } | null>(null);
+  // mousemove 이벤트 throttle용 (rAF 한 프레임에 한 번만 setState)
+  const hoverRafRef = useRef<number | null>(null);
 
   // Settings
   const { settings } = useSettings();
@@ -1958,8 +1962,29 @@ export default function RecordPage() {
     gestureRef.current = { startX: x, startY: y, startTime: Date.now(), active: true };
   }, [screenshotDeviceId, deviceRes, hkmcDisplayMode, isScreenHkmc, viewCropEnabled, viewCropX, viewCropY]);
 
-  const handleMouseMove = useCallback((_e: React.MouseEvent<HTMLCanvasElement>) => {
-    // 스와이프 시각 피드백용으로 남겨둠 (필요 시 확장)
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!screenshotDeviceId) return;
+    const el = canvasRef.current;
+    if (!el) return;
+    // mousemove는 매우 자주 발생 → rAF로 한 프레임당 한 번만 setState
+    const clientX = e.clientX;
+    const clientY = e.clientY;
+    if (hoverRafRef.current != null) return;
+    hoverRafRef.current = requestAnimationFrame(() => {
+      hoverRafRef.current = null;
+      const cur = canvasRef.current;
+      if (!cur) return;
+      const { x, y } = toDeviceCoords(cur, clientX, clientY);
+      setHoverCoords({ x, y, clientX, clientY });
+    });
+  }, [screenshotDeviceId, deviceRes, hkmcDisplayMode, isScreenHkmc, viewCropEnabled, viewCropX, viewCropY]);
+
+  const handleMouseLeave = useCallback(() => {
+    if (hoverRafRef.current != null) {
+      cancelAnimationFrame(hoverRafRef.current);
+      hoverRafRef.current = null;
+    }
+    setHoverCoords(null);
   }, []);
 
   const handleMouseUp = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -3458,6 +3483,7 @@ export default function RecordPage() {
                       onMouseDown={interactive ? handleMouseDown : undefined}
                       onMouseMove={interactive ? handleMouseMove : undefined}
                       onMouseUp={interactive ? handleMouseUp : undefined}
+                      onMouseLeave={interactive ? handleMouseLeave : undefined}
                       style={baseStyle}
                     />
                   );
@@ -3467,6 +3493,37 @@ export default function RecordPage() {
                     <Tag color="processing" style={{ fontSize: 12, padding: '4px 12px' }}>{t('record.stepTesting')}</Tag>
                   </div>
                 )}
+                {hoverCoords && testingStepIndex == null && (() => {
+                  // 캔버스 기준 상대 좌표로 변환 (커서 옆에 배지 표시)
+                  const cv = canvasRef.current;
+                  if (!cv) return null;
+                  const rect = cv.getBoundingClientRect();
+                  const offX = hoverCoords.clientX - rect.left;
+                  const offY = hoverCoords.clientY - rect.top;
+                  // 우측 끝/아래 끝 근처일 땐 위치 보정
+                  const placeRight = offX < rect.width - 80;
+                  const placeBelow = offY < rect.height - 24;
+                  return (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        left: offX + (placeRight ? 12 : -76),
+                        top: offY + (placeBelow ? 12 : -24),
+                        background: 'rgba(0,0,0,0.65)',
+                        color: '#fff',
+                        fontSize: 11,
+                        padding: '2px 6px',
+                        borderRadius: 3,
+                        pointerEvents: 'none',
+                        fontFamily: 'monospace',
+                        whiteSpace: 'nowrap',
+                        zIndex: 10,
+                      }}
+                    >
+                      {hoverCoords.x},{hoverCoords.y}
+                    </div>
+                  );
+                })()}
                 </div>
                 {viewCropEnabled && (
                   <div style={{ width: '100%', padding: '4px 0' }}>
@@ -3502,10 +3559,17 @@ export default function RecordPage() {
                     </div>
                   </div>
                 )}
-                <div style={{ marginTop: 3, color: subTextColor, fontSize: 10 }}>
-                  {lastGesture
-                    ? `${lastGesture} → ${recording ? t('record.gestureRecord') : t('record.directExec')}`
-                    : t('record.gestureHint', { device: screenshotDeviceId || screenDevice?.id || '' })}
+                <div style={{ marginTop: 3, color: subTextColor, fontSize: 10, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  {hoverCoords && (
+                    <span style={{ fontFamily: 'monospace', color: isDark ? '#ddd' : '#333' }}>
+                      ({hoverCoords.x}, {hoverCoords.y})
+                    </span>
+                  )}
+                  <span>
+                    {lastGesture
+                      ? `${lastGesture} → ${recording ? t('record.gestureRecord') : t('record.directExec')}`
+                      : t('record.gestureHint', { device: screenshotDeviceId || screenDevice?.id || '' })}
+                  </span>
                 </div>
                 {(isScreenHkmc || isScreenICAS) && hkmcKeys.length > 0 && testingStepIndex == null && (() => {
                   // visible=false 키는 숨김. 그룹별로 details로 묶어 표시.
