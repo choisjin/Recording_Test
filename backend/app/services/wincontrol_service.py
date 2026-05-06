@@ -204,6 +204,41 @@ class WinControlService:
         return None
 
     @staticmethod
+    def _wait_for_input_idle(hwnd: int, timeout_ms: int = 3000) -> None:
+        """대상 윈도우의 프로세스가 입력 받을 준비 될 때까지 대기.
+
+        새로 spawn 한 프로세스(또는 UWP 활성화 직후)는 메시지 큐/페인팅이 안정화되기
+        전에는 입력을 무시한다. user32!WaitForInputIdle 은 프로세스가 첫 GetMessage
+        호출(=메인 루프 idle)에 도달할 때까지 블록 — Windows 표준 동기화 방법.
+        """
+        if not _WIN32_AVAILABLE or not hwnd:
+            return
+        try:
+            _, pid = win32process.GetWindowThreadProcessId(hwnd)
+        except Exception:
+            return
+        if not pid:
+            return
+        PROCESS_QUERY_INFORMATION = 0x0400
+        SYNCHRONIZE = 0x00100000
+        h = windll.kernel32.OpenProcess(
+            PROCESS_QUERY_INFORMATION | SYNCHRONIZE, False, int(pid),
+        )
+        if not h:
+            return
+        try:
+            # 0=성공, WAIT_TIMEOUT=258, WAIT_FAILED=0xFFFFFFFF.
+            # 콘솔 앱은 WAIT_FAILED — 무시하고 진행해도 무해.
+            windll.user32.WaitForInputIdle(h, int(timeout_ms))
+        except Exception as e:
+            logger.debug("WaitForInputIdle failed: %s", e)
+        finally:
+            try:
+                windll.kernel32.CloseHandle(h)
+            except Exception:
+                pass
+
+    @staticmethod
     def launch_process(exe_path: str, args: Optional[list[str]] = None) -> int:
         """일반 .exe 실행. 성공 시 PID 반환. exe_path 가 비어있으면 ValueError."""
         if not exe_path:
@@ -311,6 +346,11 @@ class WinControlService:
             time.sleep(0.3)
             match = self.find_window(process_name, exe_path, title_pattern, class_name)
             if match:
+                # 새로 launch 한 프로세스: 메시지 큐가 idle 상태에 도달할 때까지 대기.
+                # 이게 없으면 첫 send_tap 이 paint/init 중인 윈도우에 흡수돼 무시된다.
+                self._wait_for_input_idle(match["hwnd"], timeout_ms=3000)
+                # 추가 안정화 — 페인팅/레이아웃 완료까지 약간 더 대기 (UWP 는 더 길게 필요).
+                time.sleep(0.5)
                 return self.attach(match["hwnd"])
         raise RuntimeError(
             f"WinControl: launched ({launched_what}) but window did not appear within {wait_seconds:.1f}s "
@@ -614,9 +654,14 @@ class WinControlService:
         if not hwnd:
             return
         try:
-            # 최소화 상태면 복원
-            if win32gui.IsIconic(hwnd):
-                win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+            # 최소화 상태면 복원 — 복원 직후엔 페인팅 시간이 필요하므로 약간 더 대기.
+            was_iconic = False
+            try:
+                if win32gui.IsIconic(hwnd):
+                    win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+                    was_iconic = True
+            except Exception:
+                pass
             # 포어그라운드 락 회피 — AttachThreadInput 트릭
             try:
                 fg = windll.user32.GetForegroundWindow()
@@ -626,17 +671,30 @@ class WinControlService:
                     windll.user32.AttachThreadInput(cur_thread, fg_thread, True)
                     try:
                         win32gui.SetForegroundWindow(hwnd)
+                        # BringWindowToTop / SetFocus 보강 — SetForegroundWindow 단독으로
+                        # 거부되는 경우(다른 스레드가 포어그라운드 락 보유)에 대비.
+                        try:
+                            win32gui.BringWindowToTop(hwnd)
+                            win32gui.SetFocus(hwnd)
+                        except Exception:
+                            pass
                     finally:
                         windll.user32.AttachThreadInput(cur_thread, fg_thread, False)
                 else:
                     win32gui.SetForegroundWindow(hwnd)
+                    try:
+                        win32gui.SetFocus(hwnd)
+                    except Exception:
+                        pass
             except Exception:
                 try:
                     win32gui.SetForegroundWindow(hwnd)
                 except Exception:
                     pass
-            # 짧은 안정화 대기 — 포커스 전환 완료까지
-            time.sleep(0.05)
+            # 안정화 대기 — 포커스 전환 + 메시지 큐 처리 완료까지.
+            # 0.05s 는 일부 환경(다중 모니터, 원격 데스크톱 등)에서 부족 → 0.15s 로 증가.
+            # 최소화에서 복원했으면 페인팅까지 추가 대기.
+            time.sleep(0.20 if was_iconic else 0.15)
         except Exception as e:
             logger.debug("WinControl focus failed: %s", e)
 
@@ -739,12 +797,14 @@ class WinControlService:
             self._focus()
             sx, sy = self._client_to_screen(int(x), int(y))
             self._send_input_mouse_move(sx, sy)
-            time.sleep(0.02)
+            # 마우스 이동 후 hover 인식 시간 — UWP/WinUI 컨트롤은 mousemove 처리 후
+            # 클릭을 받아야 정상 동작.
+            time.sleep(0.04)
             self._send_input_button(button, True)
-            time.sleep(0.02)
+            time.sleep(0.04)
             self._send_input_button(button, False)
-            # OS 가 클릭을 처리할 짧은 시간 — 너무 빠르게 복귀하면 클릭이 묻힘
-            time.sleep(0.03)
+            # OS 가 클릭을 처리할 시간 — 다음 액션(또는 컨텍스트 복원) 전 대기.
+            time.sleep(0.06)
         finally:
             self._restore_context(ctx)
 
@@ -755,13 +815,13 @@ class WinControlService:
             self._focus()
             sx, sy = self._client_to_screen(int(x), int(y))
             self._send_input_mouse_move(sx, sy)
-            time.sleep(0.02)
+            time.sleep(0.04)
             for _ in range(2):
                 self._send_input_button("left", True)
-                time.sleep(0.02)
+                time.sleep(0.04)
                 self._send_input_button("left", False)
-                time.sleep(0.02)
-            time.sleep(0.03)
+                time.sleep(0.04)
+            time.sleep(0.06)
         finally:
             self._restore_context(ctx)
 
@@ -772,13 +832,13 @@ class WinControlService:
             self._focus()
             sx, sy = self._client_to_screen(int(x), int(y))
             self._send_input_mouse_move(sx, sy)
-            time.sleep(0.02)
+            time.sleep(0.04)
             self._send_input_button("left", True)
             try:
                 time.sleep(max(0.0, duration_ms / 1000.0))
             finally:
                 self._send_input_button("left", False)
-            time.sleep(0.03)
+            time.sleep(0.06)
         finally:
             self._restore_context(ctx)
 
@@ -791,7 +851,7 @@ class WinControlService:
             delay = max(0.0, duration_ms / 1000.0 / steps)
             sx1, sy1 = self._client_to_screen(int(x1), int(y1))
             self._send_input_mouse_move(sx1, sy1)
-            time.sleep(0.02)
+            time.sleep(0.04)
             self._send_input_button("left", True)
             for i in range(1, steps):
                 t = i / steps
@@ -803,9 +863,9 @@ class WinControlService:
                     time.sleep(delay)
             sx2, sy2 = self._client_to_screen(int(x2), int(y2))
             self._send_input_mouse_move(sx2, sy2)
-            time.sleep(0.02)
+            time.sleep(0.04)
             self._send_input_button("left", False)
-            time.sleep(0.03)
+            time.sleep(0.06)
         finally:
             self._restore_context(ctx)
 
