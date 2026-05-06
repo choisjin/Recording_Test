@@ -19,3 +19,7 @@ psutil>=5.9.0
 pandas>=2.0
 xlrd>=2.0.1
 robotframework>=6.1
+# CANoe 보조 디바이스 (backend/app/plugins/CANoePlugin.py, CANoe_Ctrl.py)
+py-canoe>=26.0.0
+can-isotp>=2.0
+python-can>=4.6.0
