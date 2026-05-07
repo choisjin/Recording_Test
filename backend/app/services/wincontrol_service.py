@@ -1001,17 +1001,23 @@ class WinControlService:
                     win32gui.SetForegroundWindow(hwnd)
                 except Exception:
                     pass
-            # 안정화 대기 — 포커스 전환 + 메시지 큐 처리 완료까지.
-            # 0.05s 는 일부 환경(다중 모니터, 원격 데스크톱 등)에서 부족 → 0.15s 로 증가.
+            # 안정화 대기 — 포커스 전환 + 메시지 큐 처리 + 타겟 앱이 입력 받을 준비까지.
+            # 너무 짧으면 첫 클릭이 paint/init 중인 윈도우에 흡수돼 무시됨.
             # 최소화에서 복원했으면 페인팅까지 추가 대기.
-            time.sleep(0.20 if was_iconic else 0.15)
+            time.sleep(0.50 if was_iconic else 0.30)
         except Exception as e:
             logger.debug("WinControl focus failed: %s", e)
 
-    # ── 액션 전후 컨텍스트(마우스 위치만) 보존 ──────────────────────
+    # ── 액션 전후 컨텍스트(이전 활성 창 + 마우스 위치) 보존 ──────────
     def _save_context(self) -> dict:
-        """마우스 커서 위치 캡처. 액션 후 커서만 원위치로 복원 (포어그라운드는 그대로)."""
-        ctx: dict = {"cursor": None}
+        """현재 포어그라운드 hwnd + 마우스 커서 위치 캡처. 액션 후 복원에 사용."""
+        ctx: dict = {"prev_fg": None, "cursor": None}
+        try:
+            fg = windll.user32.GetForegroundWindow()
+            if fg and fg != self._hwnd and win32gui.IsWindow(fg):
+                ctx["prev_fg"] = int(fg)
+        except Exception:
+            pass
         try:
             ctx["cursor"] = win32api.GetCursorPos()
         except Exception:
@@ -1019,13 +1025,37 @@ class WinControlService:
         return ctx
 
     def _restore_context(self, ctx: dict) -> None:
-        """액션 후 마우스 커서 위치만 복원 (z-order/포어그라운드 복귀는 안 함).
-
-        포어그라운드를 액션 전 창으로 되돌리면 사용자가 타겟 앱과 연속 상호작용할 때
-        매번 포커스가 빼앗기는 문제가 있어 비활성화. 타겟이 포어그라운드 유지.
-        """
+        """액션 후 이전 활성 창(z-order) + 마우스 커서 위치 복원."""
         if not ctx:
             return
+        # 1) 이전 활성 창으로 포커스 복귀 (AttachThreadInput 트릭)
+        prev_fg = ctx.get("prev_fg")
+        if prev_fg:
+            try:
+                if win32gui.IsWindow(prev_fg):
+                    cur_thread = win32api.GetCurrentThreadId()
+                    target_thread, _ = win32process.GetWindowThreadProcessId(prev_fg)
+                    attached = False
+                    try:
+                        if target_thread and target_thread != cur_thread:
+                            attached = bool(
+                                windll.user32.AttachThreadInput(cur_thread, target_thread, True)
+                            )
+                        win32gui.SetForegroundWindow(prev_fg)
+                    except Exception:
+                        try:
+                            windll.user32.SetForegroundWindow(prev_fg)
+                        except Exception:
+                            pass
+                    finally:
+                        if attached:
+                            try:
+                                windll.user32.AttachThreadInput(cur_thread, target_thread, False)
+                            except Exception:
+                                pass
+            except Exception as e:
+                logger.debug("WinControl FG restore failed: %s", e)
+        # 2) 마우스 커서 원위치 — SetCursorPos 직접 호출 (mouse_event 보다 깔끔)
         cursor = ctx.get("cursor")
         if cursor:
             try:
@@ -1078,13 +1108,13 @@ class WinControlService:
             sx, sy = self._client_to_screen(int(x), int(y))
             self._send_input_mouse_move(sx, sy)
             # 마우스 이동 후 hover 인식 시간 — UWP/WinUI 컨트롤은 mousemove 처리 후
-            # 클릭을 받아야 정상 동작.
-            time.sleep(0.04)
+            # 클릭을 받아야 정상 동작. 더 안정적인 인식을 위해 시간 확대.
+            time.sleep(0.10)
             self._send_input_button(button, True)
-            time.sleep(0.04)
+            time.sleep(0.08)
             self._send_input_button(button, False)
             # OS 가 클릭을 처리할 시간 — 다음 액션(또는 컨텍스트 복원) 전 대기.
-            time.sleep(0.06)
+            time.sleep(0.12)
         finally:
             self._restore_context(ctx)
 
@@ -1095,13 +1125,13 @@ class WinControlService:
             self._focus()
             sx, sy = self._client_to_screen(int(x), int(y))
             self._send_input_mouse_move(sx, sy)
-            time.sleep(0.04)
+            time.sleep(0.10)
             for _ in range(2):
                 self._send_input_button("left", True)
-                time.sleep(0.04)
+                time.sleep(0.06)
                 self._send_input_button("left", False)
-                time.sleep(0.04)
-            time.sleep(0.06)
+                time.sleep(0.06)
+            time.sleep(0.12)
         finally:
             self._restore_context(ctx)
 
@@ -1117,13 +1147,13 @@ class WinControlService:
             self._focus()
             sx, sy = self._client_to_screen(int(x), int(y))
             self._send_input_mouse_move(sx, sy)
-            time.sleep(0.04)
+            time.sleep(0.10)
             self._send_input_button(button, True)
             try:
                 time.sleep(max(0.0, duration_ms / 1000.0))
             finally:
                 self._send_input_button(button, False)
-            time.sleep(0.06)
+            time.sleep(0.12)
         finally:
             self._restore_context(ctx)
 
@@ -1136,7 +1166,7 @@ class WinControlService:
             delay = max(0.0, duration_ms / 1000.0 / steps)
             sx1, sy1 = self._client_to_screen(int(x1), int(y1))
             self._send_input_mouse_move(sx1, sy1)
-            time.sleep(0.04)
+            time.sleep(0.10)
             self._send_input_button("left", True)
             for i in range(1, steps):
                 t = i / steps
@@ -1148,9 +1178,9 @@ class WinControlService:
                     time.sleep(delay)
             sx2, sy2 = self._client_to_screen(int(x2), int(y2))
             self._send_input_mouse_move(sx2, sy2)
-            time.sleep(0.04)
+            time.sleep(0.08)
             self._send_input_button("left", False)
-            time.sleep(0.06)
+            time.sleep(0.12)
         finally:
             self._restore_context(ctx)
 
@@ -1162,10 +1192,10 @@ class WinControlService:
             for ch in text:
                 # KEYEVENTF_UNICODE=0x0004
                 win32api.keybd_event(0, ord(ch), 0x0004, 0)
-                time.sleep(0.005)
+                time.sleep(0.015)
                 win32api.keybd_event(0, ord(ch), 0x0004 | 0x0002, 0)
-                time.sleep(0.005)
-            time.sleep(0.03)
+                time.sleep(0.015)
+            time.sleep(0.10)
         finally:
             self._restore_context(ctx)
 
@@ -1177,8 +1207,8 @@ class WinControlService:
         try:
             self._focus()
             win32api.keybd_event(vk, 0, 0, 0)
-            time.sleep(0.02)
+            time.sleep(0.05)
             win32api.keybd_event(vk, 0, 0x0002, 0)  # KEYEVENTF_KEYUP
-            time.sleep(0.03)
+            time.sleep(0.10)
         finally:
             self._restore_context(ctx)
