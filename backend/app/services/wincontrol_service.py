@@ -843,22 +843,25 @@ class WinControlService:
     def capture_window(self, fmt: str = "jpeg", render_full_content: bool = False) -> bytes:
         """대상 윈도우 캡처 (타이틀바 포함 풀 윈도우, PrintWindow 기반).
 
-        Alt+PrintScreen 처럼 PrintWindow 로 윈도우 자체에 redraw 요청 → occlusion 무시
-        하고 윈도우의 모든 컨텐츠 캡처. 화면 BitBlt 와 달리 다른 윈도우가 위에 있어도
-        영향 없음 (단점: DPI 가상화 레거시 앱은 native unscaled 좌표계로 그릴 수 있음).
+        flag=0 (no PW_CLIENTONLY, no PW_RENDERFULLCONTENT) 로 윈도우의 현재 DC 버퍼를
+        그대로 복사 → redraw 트리거 없음 → 깜박임/IME 포커스 풀림 없음.
+        Alt+PrintScreen 과 유사한 동작. 일반 Win32 GDI 앱에서 안정적.
 
         시도 순서:
-          1) PW_RENDERFULLCONTENT(2) — 풀 윈도우. target DPI 컨텍스트로 좌표계 일치.
-          2) 단색이면 PW_RENDERFULLCONTENT|PW_CLIENTONLY(3) 로 재시도.
-          3) UWP 는 (3) 우선 + content_hwnd(CoreWindow) 폴백.
+          1) flag=0 — 풀 윈도우, redraw 없음. target DPI 컨텍스트로 좌표계 일치.
+          2) 단색(DWM 컴포지션 콘텐츠 누락)이면 PW_RENDERFULLCONTENT|PW_CLIENTONLY(3).
+          3) UWP/WinUI3 는 (3) 우선 + content_hwnd(CoreWindow) 폴백.
         """
         if not self.is_attached():
             raise RuntimeError("No window attached")
         host_hwnd = self._hwnd
 
-        first_flag = 0x00000003 if (render_full_content or self._is_uwp) else 0x00000002
+        # 일반 앱: 0x0 (redraw 안 함). UWP: 0x3 (DWM 컨텐츠 강제 렌더링 필요).
+        first_flag = 0x00000003 if (render_full_content or self._is_uwp) else 0x00000000
         with self._target_dpi_ctx():
             img = self._capture_with_flag(host_hwnd, first_flag)
+            # 단색이면 강제 렌더링 폴백 — DWM 으로 컴포지트되는 일부 앱은 flag=0 으로
+            # 검은 화면이 나옴. 이 경우만 redraw 비용 감수하고 PW_RENDERFULLCONTENT.
             if self._is_blank_image(img) and first_flag != 0x00000003:
                 img = self._capture_with_flag(host_hwnd, 0x00000003)
             if self._is_blank_image(img) and self._content_hwnd:
