@@ -175,7 +175,10 @@
     "SP25Bench": false,
     "PCANClient": false,
     "MLP": false,
-    "CANOE": true
+    "CANOE": true,
+    "SerialPlugin": false,
+    "DLTViewer": false,
+    "VisionCamera": false
   },
   "agents": [
     {
