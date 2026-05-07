@@ -1509,18 +1509,30 @@
           "save_path": "Save file path. Auto if empty (during playback: run_dir/logs/serial_*.log, step test: backend/results/Temp_logs/serial_*.log)"
         }
       },
-      "fail_on_keyword": {
-        "description": "If the keyword is **contained** in any captured line, a fail row is appended to the scenario result. Used for detecting abnormal words like 'ERROR'/'Fail'/'crash'. **time>0 is sync mode** (monitors for the given duration then auto-unregisters; detected fails appear inline as Fail_Count_N just below this step). time=0 is background mode.",
-        "params": {
-          "keyword": "Substring to detect. Reported as fail if contained in a line. e.g. 'Fail', 'ERROR'",
-          "time": "Sync monitoring duration (seconds). >0 monitors for that duration then auto-unregisters and proceeds. 0 (default) is background.",
-          "name": "Detector ID. Defaults to 'fail_<keyword>'. Re-call with same name returns hit statistics."
-        }
-      },
       "SendCommand": {
         "description": "Sends a text command via the serial port.",
         "params": {
           "command": "Command to send. e.g. 'reboot', 'cat /proc/version'",
+          "encoding": "Encoding (default: utf-8)",
+          "append_newline": "Auto-append newline. true/false (default: true)"
+        }
+      },
+      "SendCommand_fail_on_keyword": {
+        "description": "Sends a command, then **FAILS if the keyword appears** in the response. Used to detect abnormal keywords like 'ERROR'/'Fail'/'crash'. After sending, monitors only newly captured lines for 'time' seconds; every matching line is appended as a fail row and displayed inline (Fail_Count_N). Returns PASS if no match.",
+        "params": {
+          "command": "Command to send. e.g. 'status', 'self_test'",
+          "keyword": "Substring that triggers FAIL. e.g. 'ERROR', 'Fail', 'crash'",
+          "time": "Response monitoring duration (seconds). Default 5",
+          "encoding": "Encoding (default: utf-8)",
+          "append_newline": "Auto-append newline. true/false (default: true)"
+        }
+      },
+      "SendCommand_pass_on_keyword": {
+        "description": "Sends a command, then **PASSES if the keyword appears** in the response. Used for normal-response keywords like 'OK'/'Pass'/'BootComplete'. Returns PASS immediately on first match (early exit). If not found within 'time' seconds, appends one fail row and returns FAIL.",
+        "params": {
+          "command": "Command to send. e.g. 'ping', 'getversion'",
+          "keyword": "Substring required for PASS. e.g. 'OK', 'Pass', 'BootComplete'",
+          "time": "Response wait duration (seconds). Default 5",
           "encoding": "Encoding (default: utf-8)",
           "append_newline": "Auto-append newline. true/false (default: true)"
         }

@@ -1559,18 +1559,30 @@
           "save_path": "저장 파일 경로. 빈 값이면 자동 (재생 중: run_dir/logs/serial_*.log, 스텝 테스트: backend/results/Temp_logs/serial_*.log)"
         }
       },
-      "fail_on_keyword": {
-        "description": "캡처되는 라인에 keyword가 **포함되면 fail row 누적**. 'ERROR'/'Fail'/'crash' 등 비정상 키워드 검출용. **time>0이면 동기 모드** (해당 시간 동안만 모니터링 후 자동 종료, 검출 fail은 이 스텝 바로 아래 Fail_Count_N으로 인라인 표시). time=0이면 백그라운드 모드.",
-        "params": {
-          "keyword": "검출할 부분 문자열. 이 단어가 라인에 들어오면 fail로 보고. 예: 'Fail', 'ERROR'",
-          "time": "동기 모니터링 시간(초). >0이면 해당 시간 동안만 감시 후 자동 unregister + 다음 스텝으로. 0(기본)이면 백그라운드.",
-          "name": "검출기 식별자. 빈 값이면 'fail_<keyword>'. 같은 name 재호출 시 hit 통계 반환"
-        }
-      },
       "SendCommand": {
         "description": "시리얼 포트로 문자열 명령어를 전송합니다.",
         "params": {
           "command": "전송할 명령어. 예: 'reboot', 'cat /proc/version'",
+          "encoding": "인코딩 (기본 utf-8)",
+          "append_newline": "개행 문자 자동 추가. true/false (기본 true)"
+        }
+      },
+      "SendCommand_fail_on_keyword": {
+        "description": "명령어 전송 후 응답에 keyword가 **포함되면 FAIL 판정**. 'ERROR'/'Fail'/'crash' 등 비정상 키워드 검출용. 전송 직후 'time' 초간 새 라인만 모니터링 — 매칭된 라인은 모두 fail row로 누적되어 결과 표에 인라인(Fail_Count_N) 표시됨. 매칭 없으면 PASS 반환.",
+        "params": {
+          "command": "전송할 명령어. 예: 'status', 'self_test'",
+          "keyword": "FAIL을 일으킬 검출 키워드. 예: 'ERROR', 'Fail', 'crash'",
+          "time": "응답 모니터링 시간(초). 기본 5",
+          "encoding": "인코딩 (기본 utf-8)",
+          "append_newline": "개행 문자 자동 추가. true/false (기본 true)"
+        }
+      },
+      "SendCommand_pass_on_keyword": {
+        "description": "명령어 전송 후 응답에 keyword가 **포함되면 PASS 판정**. 'OK'/'Pass'/'BootComplete' 등 정상 응답 키워드 검출용. 발견 즉시 PASS 반환 (조기 종료). 'time' 초 안에 발견되지 않으면 fail row 1건 누적 후 FAIL 반환.",
+        "params": {
+          "command": "전송할 명령어. 예: 'ping', 'getversion'",
+          "keyword": "PASS를 만족할 키워드. 예: 'OK', 'Pass', 'BootComplete'",
+          "time": "응답 대기 시간(초). 기본 5",
           "encoding": "인코딩 (기본 utf-8)",
           "append_newline": "개행 문자 자동 추가. true/false (기본 true)"
         }

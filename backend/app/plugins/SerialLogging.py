@@ -1,15 +1,16 @@
-"""SerialLogging — 시리얼 포트 로그 캡처·저장·키워드 판정 모듈.
+"""SerialLogging — 시리얼 포트 로그 캡처·저장·키워드 합부 판정 모듈.
 
 시나리오 스텝 내에서:
   - StartLogging / StopLogging 으로 시리얼 캡처 시작/종료
   - SendCommand 로 명령 전송
-  - fail_on_keyword 로 비정상 키워드 검출 시 fail row 자동 누적
+  - SendCommand_fail_on_keyword / SendCommand_pass_on_keyword 로
+    명령 전송 + 응답 캡처를 한 호출로 묶어 합부 판정
 
 사용 예 (시나리오 스텝):
-  SerialLogging.StartLogging()                    # 연결 + 캡처 시작
-  SerialLogging.SendCommand("reboot")             # 명령 전송
-  SerialLogging.fail_on_keyword("ERROR", time=10) # 10초간 ERROR 모니터링
-  SerialLogging.StopLogging()                     # 캡처 종료 + 파일 저장
+  SerialLogging.StartLogging()                                          # 연결 + 캡처 시작
+  SerialLogging.SendCommand_pass_on_keyword("ping", "OK", time=3)       # 응답 OK 검사
+  SerialLogging.SendCommand_fail_on_keyword("self_test", "ERROR", 10)   # ERROR 검출 모니터링
+  SerialLogging.StopLogging()                                           # 캡처 종료 + 파일 저장
 """
 
 import logging
@@ -177,11 +178,6 @@ class SerialLogging:
         self._save_file = None
         self._save_path: Optional[str] = None
 
-        # fail_on_keyword: keyword가 라인에 **포함되면** fail로 보고.
-        # 'ERROR'/'Fail' 같은 비정상 단어 검출에 사용.
-        self._fail_keywords: dict[str, dict] = {}
-        self._fail_lock = threading.Lock()
-
     # ------------------------------------------------------------------
     # 연결 관리 (내부)
     # ------------------------------------------------------------------
@@ -216,8 +212,6 @@ class SerialLogging:
             self._logs.clear()
             self._log_capture_ts.clear()
             self._line_counter = 0
-            with self._fail_lock:
-                self._fail_keywords.clear()
             # 3) capture loop 시작 후, 스레드가 실제 readline에 진입할 시간을 짧게 보장
             self._start_capture()
             time.sleep(0.05)  # capture thread가 첫 read 루프에 진입할 충분한 시간
@@ -357,117 +351,6 @@ class SerialLogging:
             self._save_path = None
 
     # ------------------------------------------------------------------
-    # 키워드 검출 모드 — 키워드가 들어오면 fail로 보고
-    # ------------------------------------------------------------------
-
-    def fail_on_keyword(self, keyword: str, time: float = 0, name: str = "") -> str:
-        """캡처되는 라인에 keyword가 **포함되면** 시나리오 결과에 fail row 자동 누적.
-
-        직관적 사용 — 'ERROR'/'Fail'/'crash' 등 비정상 단어 검출용.
-        시나리오 재생 중일 때만 fail 보고됨. 결과 페이지에서 row 클릭 시 영상 점프 가능.
-
-        **첫 호출 시 backfill**: 호출 이전에 이미 캡처된 로그 라인도 함께 스캔하여
-        keyword 매칭 라인의 정확한 capture timestamp로 fail row 추가. 시나리오의
-        StartLogging부터 fail_on_keyword 호출 사이에 발생한 매칭이 누락되지 않음.
-
-        모드:
-          - **time > 0 (sync, 권장)**: 등록 + backfill → 해당 시간 동안 모니터링 → 자동 unregister.
-            검출된 fail은 이 스텝의 인라인 결과로 분류되어 결과 표에 바로 아래 Fail_Count_N으로 표시.
-            blocking 호출이라 다음 스텝은 time 종료 후 실행됨.
-          - **time == 0 (legacy)**: 등록 후 즉시 리턴, 백그라운드로 시나리오 종료까지 누적.
-            같은 name 재호출 시 현재까지 hit count + first/last timestamp 반환.
-        """
-        # NOTE: time 매개변수가 stdlib `time` 모듈 이름과 겹친다.
-        # 함수 시작에서 _time_mod로 alias, 이후 time은 매개변수 의미로 사용.
-        import time as _time_mod
-        sync_duration = float(time) if time else 0.0
-        # sync 모드면 현재 실행 중인 스텝을 parent로 박음
-        parent_step_id: Optional[int] = None
-        parent_repeat_index = 1
-        if sync_duration > 0:
-            try:
-                from backend.app.services.playback_service import get_current_step_context
-                parent_step_id, parent_repeat_index = get_current_step_context()
-            except Exception:
-                pass
-
-        key = name.strip() if name else f"fail_{keyword}"
-        backfill_reports: list[tuple[float, str]] = []  # 첫 호출 backfill용
-        is_new = False
-        with self._fail_lock:
-            existing = self._fail_keywords.get(key)
-            if existing is None:
-                is_new = True
-                new_entry = {
-                    "keyword": keyword,
-                    "hit_count": 0,
-                    "hit_timestamps": [],
-                    "started_at": _time_mod.time(),
-                    "parent_step_id": parent_step_id,
-                    "parent_repeat_index": parent_repeat_index,
-                }
-                self._fail_keywords[key] = new_entry
-                # backfill: 이미 캡처된 라인 중 keyword 매칭한 것 모두 보고
-                with self._lock:
-                    logs_snapshot = list(self._logs)
-                    ts_snapshot = list(self._log_capture_ts)
-                for i, ln in enumerate(logs_snapshot):
-                    if keyword in ln:
-                        ts_b = ts_snapshot[i] if i < len(ts_snapshot) else _time_mod.time()
-                        new_entry["hit_count"] += 1
-                        new_entry["hit_timestamps"].append(ts_b)
-                        backfill_reports.append((ts_b, ln))
-                logger.info("[SerialLogging] fail_on_keyword started: name='%s' keyword='%s' backfill=%d sync=%.1fs parent=%s",
-                            key, keyword, len(backfill_reports), sync_duration, parent_step_id)
-            else:
-                cnt = existing["hit_count"]
-                ts_list = list(existing["hit_timestamps"])
-                started_at = existing["started_at"]
-                kw = existing["keyword"]
-                # 동일 name 재호출이면서 sync 요청이면, 등록의 parent도 갱신 (현재 스텝 결과로 흡수)
-                if sync_duration > 0:
-                    existing["parent_step_id"] = parent_step_id
-                    existing["parent_repeat_index"] = parent_repeat_index
-
-        # backfill 항목을 playback_service에 보고 (lock 밖에서)
-        if is_new and backfill_reports:
-            try:
-                from backend.app.services.playback_service import report_runtime_fail
-                for ts_b, ln in backfill_reports:
-                    report_runtime_fail(
-                        "SerialLogging", keyword, ts_b, ln, reason="matched",
-                        repeat_index=parent_repeat_index,
-                        parent_step_id=parent_step_id,
-                    )
-            except Exception:
-                pass
-
-        # sync 모드: 지정된 시간 동안 capture loop가 보고하도록 대기 후 자동 해제
-        if sync_duration > 0:
-            _time_mod.sleep(sync_duration)
-            with self._fail_lock:
-                final_entry = self._fail_keywords.pop(key, None)
-            final_cnt = final_entry["hit_count"] if final_entry else 0
-            final_ts_list = list(final_entry["hit_timestamps"]) if final_entry else []
-            backfill_n = len(backfill_reports) if is_new else 0
-            window_n = max(0, final_cnt - backfill_n)
-            return (
-                f"FAIL_ON '{keyword}' (name='{key}', time={sync_duration:g}s): "
-                f"{final_cnt} hits (backfill={backfill_n}, window={window_n})"
-            )
-
-        if is_new:
-            return (f"Failing on keyword '{keyword}' (name='{key}')"
-                    + (f" — backfill matched {len(backfill_reports)} lines" if backfill_reports else ""))
-
-        def _fmt(t: float) -> str:
-            return _time_mod.strftime("%H:%M:%S", _time_mod.localtime(t))
-
-        if cnt == 0:
-            return f"FAIL_ON '{kw}' (name='{key}'): 0 hits (since {_fmt(started_at)})"
-        return f"FAIL_ON '{kw}' (name='{key}'): {cnt} hit lines | first: {_fmt(ts_list[0])} | last: {_fmt(ts_list[-1])}"
-
-    # ------------------------------------------------------------------
     # 명령어 전송
     # ------------------------------------------------------------------
 
@@ -490,6 +373,179 @@ class SerialLogging:
         self._serial.write(data.encode(encoding))
         logger.info("[SerialLogging] SendCommand: %s", command.strip())
         return "OK"
+
+    # ------------------------------------------------------------------
+    # 명령어 전송 + 키워드 합부 판정 (응답 라인을 즉시 캐치)
+    # ------------------------------------------------------------------
+
+    def SendCommand_fail_on_keyword(self, command: str, keyword: str, time: float = 5,
+                                      encoding: str = "utf-8",
+                                      append_newline: bool = True) -> str:
+        """명령어 전송 후 응답에 keyword가 **포함되면 FAIL 판정**.
+
+        'ERROR'/'Fail'/'crash' 등 비정상 키워드 검출용. 명령 전송 직후 캡처되는
+        라인을 'time' 초간 모니터링하여, keyword 매칭 라인이 발견되면 모두
+        fail row로 누적되며 결과 표에 인라인(Fail_Count_N) 표시됨.
+
+        동작:
+          1) SendCommand로 명령 전송 (실패 시 즉시 ERROR 반환)
+          2) 전송 직전의 로그 인덱스를 잡아 그 이후 라인만 검사 — 과거 로그 무시
+          3) time 초간 새로 들어오는 라인을 폴링하며 keyword 검사
+          4) 매칭된 모든 라인을 fail row로 누적 후 PASS/FAIL 메시지 반환
+
+        Args:
+            command: 전송할 명령어
+            keyword: FAIL을 일으킬 검출 키워드 (substring match)
+            time: 응답 모니터링 시간(초). 기본 5초
+            encoding: 인코딩 (기본 utf-8)
+            append_newline: 개행 문자 자동 추가 (기본 True)
+        """
+        import time as _time_mod
+        if not self._serial or not self._serial.is_open:
+            return "ERROR: 시리얼 포트가 연결되어 있지 않습니다. StartLogging() 먼저 호출하세요."
+        if not keyword:
+            return "ERROR: keyword가 비어 있습니다"
+
+        # 응답 매칭 시작점 — 전송 직전의 로그 인덱스. capture_loop와의 race를 lock으로 차단
+        with self._lock:
+            start_idx = len(self._logs)
+
+        data = command if (not append_newline or command.endswith("\n")) else command + "\n"
+        try:
+            self._serial.write(data.encode(encoding))
+        except Exception as e:
+            return f"ERROR: 명령 전송 실패 — {e}"
+        logger.info("[SerialLogging] SendCommand_fail_on_keyword: cmd='%s' kw='%s' time=%.1fs",
+                    command.strip(), keyword, float(time))
+
+        # parent step 컨텍스트 (인라인 결과 표시용)
+        parent_step_id: Optional[int] = None
+        parent_repeat_index = 1
+        try:
+            from backend.app.services.playback_service import get_current_step_context
+            parent_step_id, parent_repeat_index = get_current_step_context()
+        except Exception:
+            pass
+
+        deadline = _time_mod.time() + float(time)
+        hits: list[tuple[float, str]] = []
+        check_idx = start_idx
+        while _time_mod.time() < deadline:
+            with self._lock:
+                snapshot_logs = self._logs[check_idx:]
+                snapshot_ts = self._log_capture_ts[check_idx:check_idx + len(snapshot_logs)]
+            check_idx += len(snapshot_logs)
+            for ln, ts in zip(snapshot_logs, snapshot_ts):
+                if keyword in ln:
+                    hits.append((ts, ln))
+            _time_mod.sleep(0.1)
+
+        # 마지막 한 번 더 확인 — deadline 직전 도착한 라인 누락 방지
+        with self._lock:
+            tail_logs = self._logs[check_idx:]
+            tail_ts = self._log_capture_ts[check_idx:check_idx + len(tail_logs)]
+        for ln, ts in zip(tail_logs, tail_ts):
+            if keyword in ln:
+                hits.append((ts, ln))
+
+        if hits:
+            try:
+                from backend.app.services.playback_service import report_runtime_fail
+                for ts_b, ln in hits:
+                    report_runtime_fail(
+                        "SerialLogging", keyword, ts_b, ln, reason="matched",
+                        repeat_index=parent_repeat_index,
+                        parent_step_id=parent_step_id,
+                    )
+            except Exception:
+                pass
+            first = hits[0][1].strip()[:120]
+            return (f"FAIL: keyword '{keyword}' detected {len(hits)} time(s) "
+                    f"after command — {first}")
+        return f"PASS: keyword '{keyword}' not detected within {float(time):g}s after command"
+
+    def SendCommand_pass_on_keyword(self, command: str, keyword: str, time: float = 5,
+                                      encoding: str = "utf-8",
+                                      append_newline: bool = True) -> str:
+        """명령어 전송 후 응답에 keyword가 **포함되면 PASS 판정**.
+
+        'OK'/'Pass'/'BootComplete' 등 정상 응답 키워드 검출용. 명령 전송 직후
+        캡처되는 라인을 모니터링하여 keyword를 발견하면 즉시 PASS 반환.
+        time 초 안에 발견되지 않으면 fail row 누적 후 FAIL 반환.
+
+        동작:
+          1) SendCommand로 명령 전송 (실패 시 즉시 ERROR 반환)
+          2) 전송 직전의 로그 인덱스를 잡아 그 이후 라인만 검사
+          3) 새 라인 폴링하며 keyword 검사 — 발견 즉시 PASS 반환 (조기 종료)
+          4) 타임아웃이면 fail row 1건 누적 후 FAIL 반환
+
+        Args:
+            command: 전송할 명령어
+            keyword: PASS를 만족할 키워드 (substring match)
+            time: 응답 대기 시간(초). 기본 5초
+            encoding: 인코딩 (기본 utf-8)
+            append_newline: 개행 문자 자동 추가 (기본 True)
+        """
+        import time as _time_mod
+        if not self._serial or not self._serial.is_open:
+            return "ERROR: 시리얼 포트가 연결되어 있지 않습니다. StartLogging() 먼저 호출하세요."
+        if not keyword:
+            return "ERROR: keyword가 비어 있습니다"
+
+        with self._lock:
+            start_idx = len(self._logs)
+
+        data = command if (not append_newline or command.endswith("\n")) else command + "\n"
+        try:
+            self._serial.write(data.encode(encoding))
+        except Exception as e:
+            return f"ERROR: 명령 전송 실패 — {e}"
+        logger.info("[SerialLogging] SendCommand_pass_on_keyword: cmd='%s' kw='%s' time=%.1fs",
+                    command.strip(), keyword, float(time))
+
+        parent_step_id: Optional[int] = None
+        parent_repeat_index = 1
+        try:
+            from backend.app.services.playback_service import get_current_step_context
+            parent_step_id, parent_repeat_index = get_current_step_context()
+        except Exception:
+            pass
+
+        deadline = _time_mod.time() + float(time)
+        check_idx = start_idx
+        while _time_mod.time() < deadline:
+            with self._lock:
+                snapshot_logs = self._logs[check_idx:]
+                snapshot_ts = self._log_capture_ts[check_idx:check_idx + len(snapshot_logs)]
+            check_idx += len(snapshot_logs)
+            for ln, ts in zip(snapshot_logs, snapshot_ts):
+                if keyword in ln:
+                    summary = ln.strip()[:120]
+                    return f"PASS: keyword '{keyword}' detected — {summary}"
+            _time_mod.sleep(0.1)
+
+        # 최종 확인
+        with self._lock:
+            tail_logs = self._logs[check_idx:]
+            tail_ts = self._log_capture_ts[check_idx:check_idx + len(tail_logs)]
+        for ln, ts in zip(tail_logs, tail_ts):
+            if keyword in ln:
+                summary = ln.strip()[:120]
+                return f"PASS: keyword '{keyword}' detected — {summary}"
+
+        # 타임아웃 — fail row 1건 보고
+        fail_ts = _time_mod.time()
+        fail_line = f"(timeout: '{keyword}' not found after command '{command.strip()}')"
+        try:
+            from backend.app.services.playback_service import report_runtime_fail
+            report_runtime_fail(
+                "SerialLogging", keyword, fail_ts, fail_line, reason="missing",
+                repeat_index=parent_repeat_index,
+                parent_step_id=parent_step_id,
+            )
+        except Exception:
+            pass
+        return f"FAIL: keyword '{keyword}' not detected within {float(time):g}s after command"
 
     # ------------------------------------------------------------------
     # 상태 조회 (내부)
@@ -573,34 +629,6 @@ class SerialLogging:
                         self._save_file.flush()
                     except Exception:
                         pass
-
-                # fail_on_keyword 검사
-                if self._fail_keywords:
-                    now_ts = time.time()
-                    # (keyword, line, parent_step_id, parent_repeat_index)
-                    fail_reports: list[tuple[str, str, Optional[int], int]] = []
-                    with self._fail_lock:
-                        for f in self._fail_keywords.values():
-                            if f["keyword"] in stamped:
-                                f["hit_count"] += 1
-                                f["hit_timestamps"].append(now_ts)
-                                fail_reports.append((
-                                    f["keyword"], stamped,
-                                    f.get("parent_step_id"),
-                                    f.get("parent_repeat_index", 1),
-                                ))
-                    # playback_service에 fail 보고 (재생 active일 때만 효과)
-                    if fail_reports:
-                        try:
-                            from backend.app.services.playback_service import report_runtime_fail
-                            for kw, ln, p_sid, p_rep in fail_reports:
-                                report_runtime_fail(
-                                    "SerialLogging", kw, now_ts, ln, reason="matched",
-                                    repeat_index=p_rep,
-                                    parent_step_id=p_sid,
-                                )
-                        except Exception:
-                            pass
 
                 # 뷰어용 실시간 스트림으로 emit
                 try:
