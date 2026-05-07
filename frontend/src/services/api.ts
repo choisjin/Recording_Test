@@ -195,4 +195,62 @@ export const serverApi = {
   getVersion: () => api.get('/settings/version'),
 };
 
+// Compositor APIs (다중 캡처 합성 녹화)
+export interface CompositorSourceConfig {
+  id: string;
+  type: 'webcam' | 'window';
+  label?: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  crop?: { x: number; y: number; w: number; h: number } | null;
+  z_order?: number;
+  opacity?: number;
+  // webcam 전용
+  device_index?: number;
+  capture_width?: number;
+  capture_height?: number;
+  // window 전용
+  process_name?: string;
+  title_pattern?: string;
+  hwnd?: number;
+  capture_fps?: number;
+}
+
+export interface CompositorCanvasConfig {
+  width: number;
+  height: number;
+  fps: number;
+  background?: string;
+  show_labels?: boolean;
+  show_timestamp?: boolean;
+}
+
+export interface CompositorLayout {
+  canvas: CompositorCanvasConfig;
+  sources: CompositorSourceConfig[];
+}
+
+export const compositorApi = {
+  listWebcamSources: () => api.get('/compositor/sources/webcams'),
+  listWindowSources: () => api.get('/compositor/sources/windows'),
+  configure: (layout: CompositorLayout) => api.post('/compositor/configure', layout),
+  getLayout: () => api.get('/compositor/layout'),
+  startCapture: () => api.post('/compositor/capture/start'),
+  stopCapture: () => api.post('/compositor/capture/stop'),
+  status: () => api.get('/compositor/status'),
+  recordStart: (output_path: string) => api.post('/compositor/record/start', { output_path }),
+  recordStop: () => api.post('/compositor/record/stop'),
+  recordPause: () => api.post('/compositor/record/pause'),
+  recordResume: () => api.post('/compositor/record/resume'),
+  // Presets
+  listPresets: () => api.get('/compositor/presets'),
+  savePreset: (name: string, layout: CompositorLayout) =>
+    api.post('/compositor/presets', { name, layout }),
+  deletePreset: (name: string) => api.delete(`/compositor/presets/${encodeURIComponent(name)}`),
+  activatePreset: (name?: string, enabled?: boolean) =>
+    api.post('/compositor/presets/activate', { name, enabled }),
+};
+
 export default api;

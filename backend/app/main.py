@@ -8,14 +8,14 @@ import json
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
-from .routers import device, dlt as dlt_router, results, scenario, serial_log as serial_log_router, settings, webcam
+from .routers import compositor as compositor_router, device, dlt as dlt_router, results, scenario, serial_log as serial_log_router, settings, webcam
 from .dependencies import adb_service, device_manager, playback_service, recording_service, monitor_client
 from .services.adb_service import resolve_sf_display_id
 from .models.scenario import ScenarioResult
@@ -327,6 +327,7 @@ app.include_router(scenario.router)
 app.include_router(results.router)
 app.include_router(settings.router)
 app.include_router(webcam.router)
+app.include_router(compositor_router.router)
 app.include_router(dlt_router.router)
 app.include_router(serial_log_router.router)
 
@@ -644,16 +645,75 @@ class _WebcamPlaybackSession:
         self.current_cycle: int = 0
         self.current_path: Optional[Path] = None
         self.current_started_at: Optional[str] = None
+        # "webcam" (단일 카메라 — 기본) | "compositor" (다중 소스 합성)
+        self.kind: str = "webcam"
 
     def is_active(self) -> bool:
         return self.temp_dir is not None
 
 
+def _file_prefix_for_kind(kind: str) -> str:
+    """결과 파일명 prefix — 호환성을 위해 webcam은 'webcam_r', compositor는 'composite_r'.
+
+    프론트의 results recordings 목록은 *.mp4를 모두 노출하므로 두 종류 모두 표시된다.
+    """
+    return "composite_r" if kind == "compositor" else "webcam_r"
+
+
+async def _compositor_session_start(iteration: int = 1) -> Optional[_WebcamPlaybackSession]:
+    """Compositor 세션 시작 — 활성 프리셋이 있을 때만.
+
+    1) 활성 프리셋 → CompositorService.configure
+    2) start_capture (소스 오픈 + compose 스레드)
+    3) start_recording (cycle 임시 파일)
+    실패하면 None 반환 → 호출자가 webcam 폴백을 시도.
+    """
+    try:
+        from .routers.compositor import get_active_layout
+        layout = get_active_layout()
+        if not layout:
+            return None
+        from .services.compositor_service import get_compositor_service
+        svc = get_compositor_service()
+        # configure는 가벼움 — 메인 루프에서 처리해도 무방하지만 일관성 위해 thread로
+        await asyncio.to_thread(svc.configure, layout)
+        result = await asyncio.to_thread(svc.start_capture)
+        opened = result.get("opened") or []
+        if not opened:
+            logger.warning("Compositor: no source opened — fall back")
+            await asyncio.to_thread(svc.stop_capture)
+            return None
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        session = _WebcamPlaybackSession()
+        session.kind = "compositor"
+        session.temp_dir = _RESULTS_DIR / f"_tmp_composite_{ts}"
+        session.temp_dir.mkdir(parents=True, exist_ok=True)
+        path = session.temp_dir / f"{_file_prefix_for_kind('compositor')}{iteration}.mp4"
+        started = await asyncio.to_thread(svc.start_recording, str(path))
+        if not started:
+            await asyncio.to_thread(svc.stop_capture)
+            return None
+        session.current_cycle = iteration
+        session.current_path = path
+        session.current_started_at = datetime.now(timezone.utc).isoformat()
+        logger.info("Compositor session started: cycle %d → %s (sources opened=%d)", iteration, path, len(opened))
+        return session
+    except Exception as e:
+        logger.warning("Failed to start compositor session: %s", e)
+        return None
+
+
 async def _webcam_session_start(iteration: int = 1) -> Optional[_WebcamPlaybackSession]:
     """첫 cycle의 녹화를 시작 + 세션 객체 반환. 웹캠 미오픈 시 None.
 
+    Compositor 활성 프리셋이 있으면 우선 시도하고, 실패 시 단일 webcam 폴백.
     start_recording()이 카메라 초기화/코덱 세팅에서 blocking 가능 → thread 이전.
     """
+    # 1) Compositor 우선
+    comp_session = await _compositor_session_start(iteration)
+    if comp_session is not None:
+        return comp_session
+    # 2) 단일 webcam 폴백 (기존 동작)
     try:
         from .services.webcam_service import get_webcam_service
         svc = get_webcam_service()
@@ -661,6 +721,7 @@ async def _webcam_session_start(iteration: int = 1) -> Optional[_WebcamPlaybackS
             return None
         ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         session = _WebcamPlaybackSession()
+        session.kind = "webcam"
         session.temp_dir = _RESULTS_DIR / f"_tmp_webcam_{ts}"
         session.temp_dir.mkdir(parents=True, exist_ok=True)
         path = session.temp_dir / f"webcam_r{iteration}.mp4"
@@ -698,7 +759,8 @@ def _write_recording_meta(video_path: Path, started_at_iso: Optional[str]) -> No
         logger.warning("Failed to write recording meta for %s: %s", video_path, e)
 
 
-def _try_move_cycle_to_final(iteration: int, src: Path, started_at_iso: Optional[str] = None) -> Optional[Path]:
+def _try_move_cycle_to_final(iteration: int, src: Path, started_at_iso: Optional[str] = None,
+                              kind: str = "webcam") -> Optional[Path]:
     """완료된 cycle 녹화 파일을 가능한 경우 즉시 최종 recordings/ 위치로 이동한다.
 
     `_run_output_dir`이 설정되어 있지 않으면 (single-cycle 초기 등) None을 반환하여
@@ -713,7 +775,7 @@ def _try_move_cycle_to_final(iteration: int, src: Path, started_at_iso: Optional
             return None
         final_dir = run_dir / "recordings"
         final_dir.mkdir(parents=True, exist_ok=True)
-        dst = final_dir / f"webcam_r{iteration}.mp4"
+        dst = final_dir / f"{_file_prefix_for_kind(kind)}{iteration}.mp4"
         if not src.exists():
             return None
         if src.resolve() == dst.resolve():
@@ -749,44 +811,59 @@ async def _webcam_session_next_cycle(session: Optional[_WebcamPlaybackSession], 
     if session is None or not session.is_active():
         return
     try:
-        from .services.webcam_service import get_webcam_service
-        svc = get_webcam_service()
+        if session.kind == "compositor":
+            from .services.compositor_service import get_compositor_service
+            svc: Any = get_compositor_service()
+        else:
+            from .services.webcam_service import get_webcam_service
+            svc = get_webcam_service()
         await asyncio.to_thread(svc.stop_recording)
         if session.current_path is not None:
             # 완료된 cycle 파일을 즉시 최종 위치로 이동 시도 (shutil.move = blocking)
             prev_started = session.current_started_at
             moved = await asyncio.to_thread(
-                _try_move_cycle_to_final, session.current_cycle, session.current_path, prev_started
+                _try_move_cycle_to_final,
+                session.current_cycle, session.current_path, prev_started, session.kind,
             )
             session.cycle_files.append((
                 session.current_cycle,
                 moved or session.current_path,
                 prev_started or "",
             ))
-        path = session.temp_dir / f"webcam_r{iteration}.mp4"  # type: ignore[union-attr]
+        path = session.temp_dir / f"{_file_prefix_for_kind(session.kind)}{iteration}.mp4"  # type: ignore[union-attr]
         started = await asyncio.to_thread(svc.start_recording, str(path))
         if started:
             session.current_cycle = iteration
             session.current_path = path
             session.current_started_at = datetime.now(timezone.utc).isoformat()
-            logger.info("Webcam session next cycle %d → %s", iteration, path)
+            logger.info("%s session next cycle %d → %s", session.kind, iteration, path)
         else:
             session.current_path = None
             session.current_started_at = None
     except Exception as e:
-        logger.warning("Failed to rotate webcam recording: %s", e)
+        logger.warning("Failed to rotate %s recording: %s", session.kind, e)
 
 
 def _webcam_session_finalize_sync(session: _WebcamPlaybackSession, result_path: Optional[str]) -> None:
     """Blocking 작업(stop/move/rmdir)을 모은 동기 함수. thread에서 실행."""
     try:
-        from .services.webcam_service import get_webcam_service
-        svc = get_webcam_service()
-        svc.stop_recording()
+        if session.kind == "compositor":
+            from .services.compositor_service import get_compositor_service
+            svc: Any = get_compositor_service()
+            svc.stop_recording()
+            # compositor는 capture도 멈춰야 다음 사용 시 깨끗하게 재구성됨
+            try:
+                svc.stop_capture()
+            except Exception:
+                pass
+        else:
+            from .services.webcam_service import get_webcam_service
+            svc = get_webcam_service()
+            svc.stop_recording()
         if session.current_path is not None:
             prev_started = session.current_started_at
             moved = _try_move_cycle_to_final(
-                session.current_cycle, session.current_path, prev_started
+                session.current_cycle, session.current_path, prev_started, session.kind,
             )
             session.cycle_files.append((
                 session.current_cycle,
@@ -794,7 +871,7 @@ def _webcam_session_finalize_sync(session: _WebcamPlaybackSession, result_path: 
                 prev_started or "",
             ))
     except Exception as e:
-        logger.warning("Failed to stop webcam session: %s", e)
+        logger.warning("Failed to stop %s session: %s", session.kind, e)
 
     import shutil
     try:
@@ -812,7 +889,7 @@ def _webcam_session_finalize_sync(session: _WebcamPlaybackSession, result_path: 
             for iteration, src, started_at_iso in session.cycle_files:
                 if not src.exists():
                     continue
-                dst = final_dir / f"webcam_r{iteration}.mp4"
+                dst = final_dir / f"{_file_prefix_for_kind(session.kind)}{iteration}.mp4"
                 try:
                     if src.resolve() == dst.resolve():
                         # 이미 최종 위치에 있어도 사이드카 갱신
@@ -1380,6 +1457,50 @@ async def websocket_webcam(websocket: WebSocket):
         logger.warning("Webcam preview WS error: %s", e)
     finally:
         logger.info("Webcam preview WS disconnected")
+
+
+@app.websocket("/ws/compositor")
+async def websocket_compositor(websocket: WebSocket):
+    """Compositor 합성 캔버스의 최신 프레임을 JPEG binary로 push.
+
+    클라이언트 옵션 (첫 메시지 JSON): {"fps": 15, "quality": 70}.
+    /ws/webcam과 동일 프로토콜. 캡처 미실행 시 일정 간격으로 wait.
+    """
+    from .services.compositor_service import get_compositor_service
+    await websocket.accept()
+    logger.info("Compositor preview WS connected")
+    fps = 15
+    quality = 70
+    svc = get_compositor_service()
+    try:
+        try:
+            opts = await asyncio.wait_for(websocket.receive_json(), timeout=0.2)
+            if isinstance(opts, dict):
+                fps = max(1, min(30, int(opts.get("fps", fps))))
+                quality = max(1, min(100, int(opts.get("quality", quality))))
+        except (asyncio.TimeoutError, Exception):
+            pass
+        interval = 1.0 / fps
+        while True:
+            t0 = asyncio.get_event_loop().time()
+            jpg = svc.get_latest_jpeg(quality=quality)
+            if jpg is None:
+                await asyncio.sleep(0.5)
+                continue
+            try:
+                await websocket.send_bytes(jpg)
+            except Exception:
+                break
+            elapsed = asyncio.get_event_loop().time() - t0
+            sleep_s = interval - elapsed
+            if sleep_s > 0:
+                await asyncio.sleep(sleep_s)
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.warning("Compositor preview WS error: %s", e)
+    finally:
+        logger.info("Compositor preview WS disconnected")
 
 
 @app.websocket("/ws/playback")

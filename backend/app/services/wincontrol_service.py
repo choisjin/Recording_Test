@@ -643,6 +643,53 @@ class WinControlService:
                 pass
 
     @staticmethod
+    def capture_hwnd_bgr(hwnd: int) -> "Optional['np.ndarray']":  # type: ignore[name-defined]
+        """임의 hwnd를 BGR numpy 배열로 캡처 (UWP/WinUI3 자동 폴백 포함).
+
+        CompositorService 등 attach 상태와 무관하게 여러 윈도우를 동시에 캡처해야 할 때 사용.
+        실패 시 None 반환.
+        """
+        if not _WIN32_AVAILABLE or not hwnd:
+            return None
+        try:
+            import numpy as _np
+        except Exception:
+            return None
+        try:
+            if not win32gui.IsWindow(hwnd):
+                return None
+        except Exception:
+            return None
+
+        # WinControlService 인스턴스 메서드를 stateless 헬퍼로 재사용
+        helper = WinControlService()
+        # 자식 CoreWindow 탐지 (UWP)
+        is_uwp, content_hwnd = helper._detect_uwp(hwnd)
+        first_flag = 0x00000003 if is_uwp else 0x00000001
+        img = helper._capture_with_flag(hwnd, first_flag)
+        if helper._is_blank_image(img) and first_flag != 0x00000003:
+            img = helper._capture_with_flag(hwnd, 0x00000003)
+        if helper._is_blank_image(img) and content_hwnd:
+            try:
+                if win32gui.IsWindow(content_hwnd):
+                    img = helper._capture_with_flag(content_hwnd, 0x00000003)
+                    if helper._is_blank_image(img):
+                        img = helper._capture_with_flag(content_hwnd, 0x00000001)
+            except Exception:
+                pass
+        if img is None:
+            return None
+        # PIL RGB → BGR ndarray (cv2 호환)
+        try:
+            arr = _np.asarray(img)  # RGB
+            if arr.ndim != 3 or arr.shape[2] < 3:
+                return None
+            # RGB → BGR (마지막 채널 순서만 뒤집음)
+            return arr[:, :, ::-1].copy()
+        except Exception:
+            return None
+
+    @staticmethod
     def _is_blank_image(img: Optional[Image.Image]) -> bool:
         """이미지가 사실상 단색(검정/흰색) 인지 — UWP 캡처 실패 감지."""
         if img is None:
