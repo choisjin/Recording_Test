@@ -2,6 +2,27 @@
 
 from __future__ import annotations
 
+# ── DPI 인식 ─────────────────────────────────────────────────────────
+# WinControl 캡처/입력이 DPI-aware 타겟 앱과 좌표/크기를 일치시키려면 백엔드도
+# Per-Monitor V2 로 동작해야 함. 미설정 시 Windows 가 GetClientRect/PrintWindow
+# 결과를 96 DPI 기준으로 가상화 → 캡처가 잘리거나 클릭 좌표가 빗나감.
+# 어떤 Win32 API 보다 먼저 호출되어야 하므로 main 모듈 import 의 가장 처음에 실행.
+import sys as _sys
+if _sys.platform == "win32":
+    import ctypes as _ctypes
+    try:
+        # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4 (Win10 1703+)
+        _ctypes.windll.user32.SetProcessDpiAwarenessContext(-4)
+    except Exception:
+        try:
+            # PROCESS_PER_MONITOR_DPI_AWARE = 2 (Win8.1+)
+            _ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        except Exception:
+            try:
+                _ctypes.windll.user32.SetProcessDPIAware()
+            except Exception:
+                pass
+
 import asyncio
 import base64
 import json
