@@ -1495,16 +1495,16 @@
   },
 
   "SerialLogging": {
-    "_description": "Serial Logging — Captures and saves logs via serial port connection, with keyword-based fail detection",
+    "_description": "Serial Logging — Captures and saves logs via serial port connection, with keyword-based fail detection.\n\n**⚠️ Usage: StartLogging and StopLogging MUST be used as a pair.**\n- If you call StartLogging without StopLogging: logs are NOT saved to file, and the serial port stays open, which can cause port-busy errors on the next run.\n- Place StartLogging at the beginning of your scenario and StopLogging at the end.\n- Cleanup will auto-call StopLogging if the scenario aborts, but you should still call it explicitly in the normal flow.\n\nStandard usage pattern:\n  1) StartLogging()                              ← first step\n  2) SendCommand / SendCommand_*_on_keyword ...  ← middle steps\n  3) StopLogging()                               ← last step (writes log file + releases port)",
     "functions": {
       "StartLogging": {
-        "description": "Connects to the serial port and starts capture (memory only, no file save). Viewer modal opens automatically. The port is stabilized and capture thread is ready by the time this returns. Use StopLogging to flush memory buffer to file when done.",
+        "description": "Connects to the serial port and starts capture (memory only, no file save). Viewer modal opens automatically. The port is stabilized and capture thread is ready by the time this returns.\n\n**⚠️ Must be paired with StopLogging.** Without StopLogging, the in-memory buffer is never flushed to disk and the serial port stays open. Always call StopLogging at the end of the scenario.",
         "params": {
           "settle_ms": "Port stabilization wait after open (ms). Default 500. Ensures USB-Serial driver reset/buffer settle so the next step's SendCommand isn't dropped. Use 1500~2000 for DTR-reset boards (Arduino), 100~200 for fast industrial serial."
         }
       },
       "StopLogging": {
-        "description": "Stops serial capture and writes the memory buffer to a file in one shot. Auto path or explicit path.",
+        "description": "Stops serial capture, writes the memory buffer to a file, and releases the serial port. Auto path or explicit path.\n\n**⚠️ Must be paired with StartLogging.** This call is what:\n  • Flushes the in-memory log buffer to a .log file on disk\n  • Closes the serial port so it can be reused next run\n  • Tears down the capture thread to avoid resource leaks\nEven if the file-save step throws, the finally block guarantees the port is released.",
         "params": {
           "save_path": "Save file path. Auto if empty (during playback: run_dir/logs/serial_*.log, step test: backend/results/Temp_logs/serial_*.log)"
         }
