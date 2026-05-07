@@ -1272,15 +1272,36 @@ class WinControlService:
             time.sleep(hold_s)
         cls._send_input_keybd(vk, 0, KEYEVENTF_KEYUP)
 
-    def send_text(self, text: str) -> None:
+    def send_text(
+        self,
+        text: str,
+        click_first_x: Optional[int] = None,
+        click_first_y: Optional[int] = None,
+    ) -> None:
         """텍스트 입력 — SendInput + KEYEVENTF_UNICODE 로 모든 문자 직접 주입.
 
         ASCII/숫자/기호/한글/일본어 모두 동일 경로. legacy keybd_event 의 무시 문제 회피.
+
+        click_first_x/y 가 지정되면: 텍스트 입력 전 그 client 좌표를 먼저 클릭해서
+        에디트박스 등 입력 컨트롤에 포커스를 부여 후 텍스트 전송. 분리된 win_tap →
+        win_input_text 두 호출로 처리하면 사이의 fg 복원 때문에 자식 다이얼로그의
+        포커스가 풀리는 문제가 있어 atomic 으로 합침.
         """
         self._check()
         ctx = self._save_context()
         try:
             self._focus()
+            # 1) 클릭으로 입력 컨트롤 포커스 — 같은 컨텍스트 안에서 해야 fg 안 풀림.
+            if click_first_x is not None and click_first_y is not None:
+                sx, sy = self._client_to_screen(int(click_first_x), int(click_first_y))
+                self._send_input_mouse_move(sx, sy)
+                time.sleep(0.10)
+                self._send_input_button("left", True)
+                time.sleep(0.08)
+                self._send_input_button("left", False)
+                # 클릭 → 캐럿 안착 + 입력 큐 처리 시간.
+                time.sleep(0.20)
+            # 2) 텍스트 전송.
             for ch in text:
                 # \r\n / \n / \r → Enter 키로 변환 (Unicode 0x0D/0x0A 그대로 보내면
                 # 일부 앱은 무시함)

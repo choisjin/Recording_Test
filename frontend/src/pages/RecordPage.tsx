@@ -1267,21 +1267,18 @@ export default function RecordPage() {
     wcGestureRef.current.active = false;
     const c = wcToWinCoords(e.clientX, e.clientY);
     if (!c) return;
-    // 텍스트 입력 대기 모드 — 좌클릭으로 입력 위치를 지정하면 그 좌표 클릭 후 텍스트 전송.
-    // 우클릭/드래그/롱프레스로는 발동 안 시킴 (오작동 방지).
+    // 텍스트 입력 대기 모드 — 좌클릭으로 입력 위치를 지정하면 그 좌표를 먼저 클릭한
+    // 뒤 텍스트를 전송. 백엔드에서 atomic 으로 실행 (분리하면 사이의 fg 복원이
+    // 자식 다이얼로그 에디트박스 포커스를 풀어버려 입력이 흘러감).
     if (wcPendingText !== null && wcGestureRef.current.button === 'left') {
       const dist0 = Math.hypot(c.x - wcGestureRef.current.startX, c.y - wcGestureRef.current.startY);
       if (dist0 <= 10) {
         const text = wcPendingText;
         setWcPendingText(null);
-        await wcExecuteAction('win_tap',
-          { x: c.x, y: c.y },
-          `win_tap (${c.x},${c.y}) → input "${text.length > 20 ? text.slice(0, 20) + '...' : text}"`);
-        // 클릭 후 포커스가 입력 컨트롤에 안착할 시간 확보.
-        await new Promise(r => setTimeout(r, 150));
+        const preview = text.length > 20 ? text.slice(0, 20) + '...' : text;
         await wcExecuteAction('win_input_text',
-          { text },
-          `win_input_text "${text.length > 20 ? text.slice(0, 20) + '...' : text}"`);
+          { text, click_first_x: c.x, click_first_y: c.y },
+          `win_input_text @(${c.x},${c.y}) "${preview}"`);
         return;
       }
     }

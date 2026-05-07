@@ -2231,8 +2231,12 @@ class PlaybackService:
                                       int(params["x2"]), int(params["y2"]),
                                       int(params.get("duration_ms", 300))))
             elif step.type == StepType.WIN_INPUT_TEXT:
+                cfx = params.get("click_first_x")
+                cfy = params.get("click_first_y")
                 await loop.run_in_executor(None,
-                    functools.partial(wc.send_text, str(params.get("text", ""))))
+                    functools.partial(wc.send_text, str(params.get("text", "")),
+                                      int(cfx) if cfx is not None else None,
+                                      int(cfy) if cfy is not None else None))
             elif step.type == StepType.WIN_KEY:
                 await loop.run_in_executor(None,
                     functools.partial(wc.send_key, str(params.get("key", ""))))

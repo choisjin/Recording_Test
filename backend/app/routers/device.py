@@ -1001,8 +1001,12 @@ async def device_input(req: InputRequest):
                                  int(p["x2"]), int(p["y2"]),
                                  int(p.get("duration_ms", 300))))
             elif req.action == "win_input_text":
+                cfx = p.get("click_first_x")
+                cfy = p.get("click_first_y")
                 await loop.run_in_executor(None,
-                    _ft2.partial(wc.send_text, str(p.get("text", ""))))
+                    _ft2.partial(wc.send_text, str(p.get("text", "")),
+                                 int(cfx) if cfx is not None else None,
+                                 int(cfy) if cfy is not None else None))
             elif req.action == "win_key":
                 await loop.run_in_executor(None,
                     _ft2.partial(wc.send_key, str(p.get("key", ""))))
