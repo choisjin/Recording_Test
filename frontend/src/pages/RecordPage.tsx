@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { Button, Card, Col, Image, Input, Modal, Radio, Row, Segmented, Select, Slider, Space, InputNumber, message, List, Tabs, Tag, Popover, Tooltip, Splitter } from 'antd';
+import { Button, Card, Checkbox, Col, Image, Input, Modal, Radio, Row, Segmented, Select, Slider, Space, InputNumber, message, List, Tabs, Tag, Popover, Tooltip, Splitter } from 'antd';
 import { PlayCircleOutlined, PauseOutlined, PlusOutlined, SwapOutlined, FolderOpenOutlined, SaveOutlined, DeleteOutlined, BranchesOutlined, ScissorOutlined, CameraOutlined, ThunderboltOutlined, CheckCircleOutlined, CloseCircleOutlined, WarningOutlined, EditOutlined, CopyOutlined, ZoomInOutlined, ZoomOutOutlined, HolderOutlined, SettingOutlined, StopOutlined, QuestionCircleOutlined, FundProjectionScreenOutlined, ReloadOutlined } from '@ant-design/icons';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -2775,6 +2775,35 @@ export default function RecordPage() {
   const [importSourceSteps, setImportSourceSteps] = useState<Step[]>([]);
   const [importChecked, setImportChecked] = useState<Set<number>>(new Set());
   const [importLoading, setImportLoading] = useState(false);
+  const [importRangeInput, setImportRangeInput] = useState('');
+
+  const applyImportRange = () => {
+    const total = importSourceSteps.length;
+    const next = new Set<number>();
+    const tokens = importRangeInput.split(',').map(s => s.trim()).filter(Boolean);
+    let invalid = false;
+    for (const tok of tokens) {
+      const m = tok.match(/^(\d+)\s*[~\-]\s*(\d+)$/);
+      if (m) {
+        let a = parseInt(m[1], 10);
+        let b = parseInt(m[2], 10);
+        if (a > b) [a, b] = [b, a];
+        for (let n = a; n <= b; n++) {
+          const idx = n - 1;
+          if (idx >= 0 && idx < total) next.add(idx);
+        }
+      } else if (/^\d+$/.test(tok)) {
+        const idx = parseInt(tok, 10) - 1;
+        if (idx >= 0 && idx < total) next.add(idx);
+      } else {
+        invalid = true;
+      }
+    }
+    if (invalid) {
+      message.warning(t('record.importRangeInvalid'));
+    }
+    setImportChecked(next);
+  };
 
   const openImportStepModal = (afterIndex: number, mode: 'copy' | 'move' = 'copy') => {
     setImportMode(mode);
@@ -2783,12 +2812,14 @@ export default function RecordPage() {
     setImportSourceName('__current__');
     setImportSourceSteps(steps);
     setImportChecked(new Set());
+    setImportRangeInput('');
     setImportStepModalOpen(true);
   };
 
   const loadImportSource = async (name: string) => {
     setImportSourceName(name);
     setImportChecked(new Set());
+    setImportRangeInput('');
     if (name === '__current__') {
       setImportSourceSteps(steps);
       return;
@@ -4968,6 +4999,34 @@ export default function RecordPage() {
             {t('record.importInsertAt', { index: importInsertIndex + 1 })}
             {' · '}{t('record.importSelectHint')}
           </div>
+          {importSourceSteps.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <Checkbox
+                checked={importChecked.size === importSourceSteps.length && importSourceSteps.length > 0}
+                indeterminate={importChecked.size > 0 && importChecked.size < importSourceSteps.length}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setImportChecked(new Set(importSourceSteps.map((_, i) => i)));
+                  } else {
+                    setImportChecked(new Set());
+                  }
+                }}
+              >
+                {t('record.importSelectAll')} ({importChecked.size}/{importSourceSteps.length})
+              </Checkbox>
+              <Input
+                size="small"
+                placeholder={t('record.importRangePlaceholder')}
+                value={importRangeInput}
+                onChange={(e) => setImportRangeInput(e.target.value)}
+                onPressEnter={applyImportRange}
+                style={{ width: 200 }}
+              />
+              <Button size="small" onClick={applyImportRange}>
+                {t('record.importRangeApply')}
+              </Button>
+            </div>
+          )}
           <div style={{ maxHeight: 400, overflow: 'auto', border: '1px solid #303030', borderRadius: 4 }}>
             {importSourceSteps.length === 0 ? (
               <div style={{ padding: 13, textAlign: 'center', color: '#888' }}>{t('record.noSteps')}</div>
