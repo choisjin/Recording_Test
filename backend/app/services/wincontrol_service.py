@@ -995,11 +995,31 @@ class WinControlService:
         return self._hwnd  # type: ignore[return-value]
 
     def _focus(self) -> None:
-        """대상 윈도우를 전면으로 + 포커스. SendInput 모드 전제 조건."""
+        """대상 윈도우를 전면으로 + 포커스. SendInput 모드 전제 조건.
+
+        가드: 이미 타겟 프로세스(또는 그 자식 다이얼로그/팝업) 가 포어그라운드면
+        SetForegroundWindow 를 다시 호출하지 않음. 이 호출이 자식 다이얼로그의 포커스
+        상태(예: 사용자가 방금 클릭한 에디트박스) 를 리셋시켜 텍스트 입력이 빈 곳으로
+        흘러가는 문제 회피. SendInput 은 어차피 포어그라운드의 포커스 컨트롤에 가니
+        같은 프로세스가 이미 활성이면 그대로 둠.
+        """
         hwnd = self._hwnd
         if not hwnd:
             return
         try:
+            # 이미 같은 프로세스가 포어그라운드면 — 자식 다이얼로그에 사용자가 준 포커스
+            # 를 보존해야 하므로 그대로 둔다. (단 최소화 상태면 복원은 필요)
+            try:
+                fg = windll.user32.GetForegroundWindow()
+                if fg and not win32gui.IsIconic(hwnd):
+                    _, fg_pid = win32process.GetWindowThreadProcessId(fg)
+                    if fg_pid and self._pid and int(fg_pid) == int(self._pid):
+                        # 같은 프로세스가 이미 활성 — 추가 포커스 조작 없이 짧은 안정화
+                        # 대기만 (입력 큐 처리 시간).
+                        time.sleep(0.05)
+                        return
+            except Exception:
+                pass
             # 최소화 상태면 복원 — 복원 직후엔 페인팅 시간이 필요하므로 약간 더 대기.
             was_iconic = False
             try:
