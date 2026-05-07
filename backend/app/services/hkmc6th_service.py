@@ -41,7 +41,6 @@ NOTI_CONNECTED = 0x5E
 CMD_MKBD = 0x60
 CMD_SWC = 0x70       # SWRC (기본)
 CMD_SWRC2 = 0x71     # hkccic SWRC2 (CCIC 전용)
-CMD_MKBD2 = 0x72     # hkccic MKBD2 (CCIC 전용)
 CMD_CCP = 0x80
 CMD_RRC = 0x90
 CMD_MIRROR = 0x92
@@ -207,10 +206,6 @@ HKMC_KEYS = {
     "MIRROR_CONCIERGE_POI":          {"cmd": CMD_MIRROR, "key": 0x2B},
     "MIRROR_VOICE_LOCAL_SEARCH":     {"cmd": CMD_MIRROR, "key": 0x2C},
     "MIRROR_ROADSIDE_ASSISTANT":     {"cmd": CMD_MIRROR, "key": 0x2D},
-
-    # ---------- hkccic MKBD2 (CMD_MKBD2=0x72) ----------
-    "MKBD2_TURN_LEFT":  {"cmd": CMD_MKBD2, "key": 0x01},
-    "MKBD2_TURN_RIGHT": {"cmd": CMD_MKBD2, "key": 0x02},
 
     # ---------- CCRC (CMD_CCRC=0x93) — 레거시 CCRC 프로토콜 (BRRC + rear monitor)
     # data format: [key_source, key_type, key_status, monitor]

@@ -3907,7 +3907,7 @@ export default function RecordPage() {
                   // visible=false 키는 숨김. 그룹별로 details로 묶어 표시.
                   // 그룹 순서: HKMC + iSAP + ICAS 통합 순서
                   // rear-only 그룹(RRC/CCRC)은 항상 맨 아래로
-                  const GROUP_ORDER = ['MKBD', 'MKBD2', 'CCP', 'SWRC', 'SWRC2', 'MIRROR', 'OVERHEAD', 'TRIP', 'GRIP', 'OPTICAL', 'RHEOSTAT', 'ICAS', 'RRC', 'CCRC'];
+                  const GROUP_ORDER = ['MKBD', 'CCP', 'SWRC', 'SWRC2', 'MIRROR', 'OVERHEAD', 'TRIP', 'GRIP', 'OPTICAL', 'RHEOSTAT', 'ICAS', 'RRC', 'CCRC'];
                   const visibleKeys = hkmcKeys.filter(k => k.visible !== false);
                   const byGroup: Record<string, HkmcKeyInfo[]> = {};
                   visibleKeys.forEach(k => {
@@ -5202,7 +5202,7 @@ export default function RecordPage() {
             체크박스로 표시할 키를 선택하고, 필요 시 key 값을 차종에 맞게 수정하세요. (cmd는 전문 지식 필요 시에만 변경)
           </div>
           {(() => {
-            const GROUP_ORDER = ['MKBD', 'MKBD2', 'CCP', 'SWRC', 'SWRC2', 'MIRROR', 'OVERHEAD', 'TRIP', 'GRIP', 'OPTICAL', 'RHEOSTAT', 'RRC', 'CCRC'];
+            const GROUP_ORDER = ['MKBD', 'CCP', 'SWRC', 'SWRC2', 'MIRROR', 'OVERHEAD', 'TRIP', 'GRIP', 'OPTICAL', 'RHEOSTAT', 'RRC', 'CCRC'];
             const byGroup: Record<string, { k: HkmcKeyInfo; idx: number }[]> = {};
             isapKeysDraft.forEach((k, idx) => {
               const g = k.group || 'OTHER';
@@ -5320,7 +5320,7 @@ export default function RecordPage() {
             </span>
           </Space>
           {(() => {
-            const GROUP_ORDER = ['MKBD', 'MKBD2', 'CCP', 'SWRC', 'SWRC2', 'MIRROR', 'OVERHEAD', 'TRIP', 'GRIP', 'OPTICAL', 'RHEOSTAT', 'RRC', 'CCRC'];
+            const GROUP_ORDER = ['MKBD', 'CCP', 'SWRC', 'SWRC2', 'MIRROR', 'OVERHEAD', 'TRIP', 'GRIP', 'OPTICAL', 'RHEOSTAT', 'RRC', 'CCRC'];
             const pool = hkmcKeys.filter(k => k.visible !== false && !k.is_dial);
             const byGroup: Record<string, HkmcKeyInfo[]> = {};
             pool.forEach(k => {
