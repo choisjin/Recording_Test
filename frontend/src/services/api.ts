@@ -63,6 +63,8 @@ export const deviceApi = {
   winStatus: () => api.get('/device/wincontrol/status'),
   winAttach: (hwnd: number) => api.post('/device/wincontrol/attach', { hwnd }),
   winDetach: () => api.post('/device/wincontrol/detach'),
+  winResize: (clientW: number, clientH: number) =>
+    api.post('/device/wincontrol/resize', { client_w: clientW, client_h: clientH }),
 };
 
 // Scenario APIs

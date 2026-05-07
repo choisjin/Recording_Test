@@ -1805,6 +1805,12 @@ class WinControlAttachRequest(BaseModel):
     hwnd: int
 
 
+class WinControlResizeRequest(BaseModel):
+    """타겟 윈도우의 client area 를 (client_w, client_h) 로 리사이즈."""
+    client_w: int
+    client_h: int
+
+
 @router.get("/wincontrol/processes")
 async def wincontrol_list_processes():
     """현재 시스템의 가시 윈도우/프로세스 목록 (콤보용)."""
@@ -1844,3 +1850,24 @@ async def wincontrol_detach():
     """임베드만 해제 — WinControl 디바이스 자체의 연결 상태는 유지."""
     dm.get_wincontrol_service().detach()
     return {"result": "detached"}
+
+
+@router.post("/wincontrol/resize")
+async def wincontrol_resize(req: WinControlResizeRequest):
+    """현재 임베드된 윈도우의 client area 를 지정 크기로 리사이즈.
+    웹 위젯 영역에 비율 맞춰 임베드하기 위해 프론트가 측정한 목표 client 크기를 보냄.
+    """
+    wc = dm.get_wincontrol_service()
+    if not wc.is_available():
+        raise HTTPException(status_code=503, detail=f"WinControl unavailable: {wc.import_error()}")
+    if not wc.is_attached():
+        raise HTTPException(status_code=400, detail="WinControl: no window attached")
+    if req.client_w <= 0 or req.client_h <= 0:
+        raise HTTPException(status_code=400, detail="client_w/client_h must be positive")
+    import asyncio
+    loop = asyncio.get_event_loop()
+    import functools as _ft
+    actual_w, actual_h = await loop.run_in_executor(
+        None, _ft.partial(wc.resize_client, int(req.client_w), int(req.client_h)),
+    )
+    return {"result": "resized", "actual_w": actual_w, "actual_h": actual_h, "status": wc.status()}
