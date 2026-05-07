@@ -1008,16 +1008,10 @@ class WinControlService:
         except Exception as e:
             logger.debug("WinControl focus failed: %s", e)
 
-    # ── 액션 전후 컨텍스트(이전 활성 창 + 마우스 위치) 보존 ──────────
+    # ── 액션 전후 컨텍스트(마우스 위치만) 보존 ──────────────────────
     def _save_context(self) -> dict:
-        """현재 포어그라운드 hwnd + 마우스 커서 위치 캡처. 액션 후 복원에 사용."""
-        ctx: dict = {"prev_fg": None, "cursor": None}
-        try:
-            fg = windll.user32.GetForegroundWindow()
-            if fg and fg != self._hwnd and win32gui.IsWindow(fg):
-                ctx["prev_fg"] = int(fg)
-        except Exception:
-            pass
+        """마우스 커서 위치 캡처. 액션 후 커서만 원위치로 복원 (포어그라운드는 그대로)."""
+        ctx: dict = {"cursor": None}
         try:
             ctx["cursor"] = win32api.GetCursorPos()
         except Exception:
@@ -1025,37 +1019,13 @@ class WinControlService:
         return ctx
 
     def _restore_context(self, ctx: dict) -> None:
-        """액션 후 이전 활성 창 + 마우스 커서 위치 복원."""
+        """액션 후 마우스 커서 위치만 복원 (z-order/포어그라운드 복귀는 안 함).
+
+        포어그라운드를 액션 전 창으로 되돌리면 사용자가 타겟 앱과 연속 상호작용할 때
+        매번 포커스가 빼앗기는 문제가 있어 비활성화. 타겟이 포어그라운드 유지.
+        """
         if not ctx:
             return
-        # 1) 이전 활성 창으로 포커스 복귀 (AttachThreadInput 트릭)
-        prev_fg = ctx.get("prev_fg")
-        if prev_fg:
-            try:
-                if win32gui.IsWindow(prev_fg):
-                    cur_thread = win32api.GetCurrentThreadId()
-                    target_thread, _ = win32process.GetWindowThreadProcessId(prev_fg)
-                    attached = False
-                    try:
-                        if target_thread and target_thread != cur_thread:
-                            attached = bool(
-                                windll.user32.AttachThreadInput(cur_thread, target_thread, True)
-                            )
-                        win32gui.SetForegroundWindow(prev_fg)
-                    except Exception:
-                        try:
-                            windll.user32.SetForegroundWindow(prev_fg)
-                        except Exception:
-                            pass
-                    finally:
-                        if attached:
-                            try:
-                                windll.user32.AttachThreadInput(cur_thread, target_thread, False)
-                            except Exception:
-                                pass
-            except Exception as e:
-                logger.debug("WinControl FG restore failed: %s", e)
-        # 2) 마우스 커서 원위치 — SetCursorPos 직접 호출 (mouse_event 보다 깔끔)
         cursor = ctx.get("cursor")
         if cursor:
             try:
