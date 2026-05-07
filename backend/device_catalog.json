@@ -178,7 +178,8 @@
     "CANOE": true,
     "SerialPlugin": false,
     "DLTViewer": false,
-    "VisionCamera": false
+    "VisionCamera": false,
+    "SerialLogging": true
   },
   "agents": [
     {
