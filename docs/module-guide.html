@@ -134,41 +134,22 @@
       <a href="#top" class="toc-h2">모듈 가이드</a>
       <a href="#overview" class="toc-h3">전체 모듈 목록</a>
       <a href="#cat-power" class="toc-h2">전원 제어</a>
-      <a href="#mod-POWER" class="toc-h3">POWER</a>
-      <a href="#mod-RIDEN" class="toc-h3">RIDEN</a>
-      <a href="#mod-KeysightPower" class="toc-h3">KeysightPower</a>
       <a href="#cat-bench" class="toc-h2">벤치 장비</a>
       <a href="#mod-IVIQEBenchIOClient" class="toc-h3">IVIQEBenchIOClient</a>
-      <a href="#mod-CCIC_BENCH" class="toc-h3">CCIC_BENCH</a>
-      <a href="#mod-BENCH" class="toc-h3">BENCH</a>
-      <a href="#mod-SP25Bench" class="toc-h3">SP25Bench</a>
       <a href="#mod-SmartBench" class="toc-h3">SmartBench</a>
       <a href="#cat-can" class="toc-h2">CAN 통신</a>
-      <a href="#mod-CAN" class="toc-h3">CAN</a>
       <a href="#mod-CANOE" class="toc-h3">CANOE</a>
       <a href="#mod-CANAT" class="toc-h3">CANAT</a>
-      <a href="#mod-PCANClient" class="toc-h3">PCANClient</a>
       <a href="#cat-comm" class="toc-h2">통신 (시리얼/SSH/UART)</a>
-      <a href="#mod-SerialPlugin" class="toc-h3">SerialPlugin</a>
       <a href="#mod-SerialLogging" class="toc-h3">SerialLogging</a>
-      <a href="#mod-Uart" class="toc-h3">Uart</a>
-      <a href="#mod-Ignition" class="toc-h3">Ignition</a>
       <a href="#mod-SSHManager" class="toc-h3">SSHManager</a>
       <a href="#cat-log" class="toc-h2">로깅 & 진단</a>
-      <a href="#mod-DLTViewer" class="toc-h3">DLTViewer</a>
       <a href="#mod-DLTLogging" class="toc-h3">DLTLogging</a>
-      <a href="#mod-MLP" class="toc-h3">MLP</a>
-      <a href="#mod-Trace" class="toc-h3">Trace</a>
       <a href="#cat-media" class="toc-h2">미디어 & 이미지</a>
-      <a href="#mod-VisionCamera" class="toc-h3">VisionCamera</a>
-      <a href="#mod-VisionCameraClient" class="toc-h3">VisionCameraClient</a>
-      <a href="#mod-AudioLibrary" class="toc-h3">AudioLibrary</a>
-      <a href="#mod-ImageProcessing" class="toc-h3">ImageProcessing</a>
       <a href="#cat-system" class="toc-h2">시스템 & 유틸리티</a>
-      <a href="#mod-Android" class="toc-h3">Android</a>
       <a href="#mod-CMD" class="toc-h3">CMD</a>
-      <a href="#mod-COMMON_WINDOWS" class="toc-h3">COMMON_WINDOWS</a>
-      <a href="#mod-TigrisCheck" class="toc-h3">TigrisCheck</a>
+      <a href="#cat-etc" class="toc-h2">기타</a>
+      <a href="#mod-WoohyunBench" class="toc-h3">WoohyunBench</a>
     </nav>
   </aside>
 
@@ -183,218 +164,34 @@
     </div>
 
     <h2 id="overview">전체 모듈 목록</h2>
-    <p>총 <strong>29개</strong> 모듈, <strong>359개</strong> 함수가 등록되어 있습니다.</p>
+    <p>총 <strong>9개</strong> 모듈, <strong>205개</strong> 함수가 등록되어 있습니다.</p>
     <table>
       <thead><tr><th>모듈</th><th>설명</th><th>함수 수</th></tr></thead>
       <tbody>
-        <tr><td><a href="#mod-POWER"><strong>POWER</strong></a></td><td>시리얼(RS-232) 연결된 VUPOWER/K3010 전원 공급 장비의 전압/전류를 설정하고 측정하는 모듈</td><td style="text-align:center">6</td></tr>
-<tr><td><a href="#mod-RIDEN"><strong>RIDEN</strong></a></td><td>시리얼 연결된 RIDEN 전원 공급 장비를 제어하는 모듈</td><td style="text-align:center">2</td></tr>
-<tr><td><a href="#mod-CAN"><strong>CAN</strong></a></td><td>PCAN/Vector/Kvaser 등 CAN 인터페이스를 통해 차량 CAN 메시지를 송수신하는 모듈</td><td style="text-align:center">12</td></tr>
-<tr><td><a href="#mod-CANOE"><strong>CANOE</strong></a></td><td>Vector CANoe 시뮬레이션 소프트웨어의 시작/중지, 환경변수/시스템변수 설정을 제어하는 모듈</td><td style="text-align:center">6</td></tr>
+        <tr><td><a href="#mod-CANOE"><strong>CANOE</strong></a></td><td>Vector CANoe 시뮬레이션 소프트웨어의 시작/중지, 환경변수/시스템변수 설정을 제어하는 모듈</td><td style="text-align:center">6</td></tr>
 <tr><td><a href="#mod-CANAT"><strong>CANAT</strong></a></td><td>CANat 하드웨어를 통해 CAN 버스 메시지를 송수신하는 모듈</td><td style="text-align:center">7</td></tr>
-<tr><td><a href="#mod-BENCH"><strong>BENCH</strong></a></td><td>TCP 소켓으로 벤치 장비와 데이터를 주고받고 전류를 측정하는 모듈</td><td style="text-align:center">4</td></tr>
 <tr><td><a href="#mod-IVIQEBenchIOClient"><strong>IVIQEBenchIOClient</strong></a></td><td>시리얼 연결된 QE 테스트 벤치의 릴레이, 전원, 센서, 오디오, LCD, 버튼, USB 등을 종합 제어하는 모듈</td><td style="text-align:center">117</td></tr>
-<tr><td><a href="#mod-SP25Bench"><strong>SP25Bench</strong></a></td><td>SP25 테스트 벤치를 제어하는 모듈 (eCall, 리부팅, 팩토리 리셋)</td><td style="text-align:center">3</td></tr>
-<tr><td><a href="#mod-Uart"><strong>Uart</strong></a></td><td>시리얼 포트로 UART 통신을 수행하고 로그를 저장하는 모듈. 리눅스 콘솔 접속 등에 사용</td><td style="text-align:center">10</td></tr>
-<tr><td><a href="#mod-Ignition"><strong>Ignition</strong></a></td><td>ICAS3/MIB3 장비의 이그니션을 TCP 소켓으로 제어하는 모듈 (기본: 192.168.1.4:15500)</td><td style="text-align:center">4</td></tr>
-<tr><td><a href="#mod-KeysightPower"><strong>KeysightPower</strong></a></td><td>이더넷/GPIB 연결된 Keysight 전원 공급기의 전압 설정, 파형 시퀀스 제어를 수행하는 모듈</td><td style="text-align:center">22</td></tr>
 <tr><td><a href="#mod-SSHManager"><strong>SSHManager</strong></a></td><td>SSH로 원격 장비에 접속하여 명령 실행, 파일 전송을 수행하는 모듈</td><td style="text-align:center">7</td></tr>
-<tr><td><a href="#mod-AudioLibrary"><strong>AudioLibrary</strong></a></td><td>오디오 녹음 및 음소거 판별을 수행하는 모듈. 음악/라디오 소스에서 무음 여부를 확인</td><td style="text-align:center">7</td></tr>
-<tr><td><a href="#mod-ImageProcessing"><strong>ImageProcessing</strong></a></td><td>OCR(문자 인식), 이미지 비교, 템플릿 매칭 등 이미지 분석을 수행하는 모듈. Tesseract-OCR 필요</td><td style="text-align:center">11</td></tr>
-<tr><td><a href="#mod-DLTLogging"><strong>DLTLogging</strong></a></td><td>DLT 데몬에 TCP 직접 연결하여 로그를 캡처·저장하고 키워드 PASS/FAIL 판정하는 모듈 (GUI 불필요)</td><td style="text-align:center">10</td></tr>
-<tr><td><a href="#mod-SerialLogging"><strong>SerialLogging</strong></a></td><td>시리얼 포트에 연결하여 로그를 캡처·저장하고 키워드 PASS/FAIL 판정하는 모듈</td><td style="text-align:center">11</td></tr>
+<tr><td><a href="#mod-DLTLogging"><strong>DLTLogging</strong></a></td><td>DLT 데몬에 TCP 직접 연결하여 로그를 캡처·저장하고 키워드 PASS/FAIL 판정하는 모듈 (GUI 불필요)</td><td style="text-align:center">18</td></tr>
+<tr><td><a href="#mod-SerialLogging"><strong>SerialLogging</strong></a></td><td>시리얼 포트에 연결하여 로그를 캡처·저장하고 키워드 검출하는 모듈.
+
+**⚠️ 사용법: StartLogging과 StopLogging은 반드시 한 셋트로 사용해야 합니다.**
+- StartLogging만 호출하고 StopLogging을 누락하면: 로그가 파일로 저장되지 않고, 시리얼 포트 연결이 종료되지 않아 다음 실행에서 포트 점유 오류가 발생할 수 있습니다.
+- 시나리오의 시작 부분에 StartLogging, 끝 부분에 StopLogging을 배치하여 한 쌍으로 운영하세요.
+- 시나리오 중간에 오류가 나도 cleanup이 자동으로 StopLogging을 호출해 포트를 닫지만, 정상 흐름에서는 명시적으로 StopLogging을 두는 것이 권장됩니다.
+
+표준 사용 패턴:
+  1) StartLogging()                              ← 시나리오 첫 스텝
+  2) SendCommand / SendCommand_*_on_keyword ...  ← 중간 스텝들
+  3) StopLogging()                               ← 시나리오 마지막 스텝 (로그 파일 저장 + 포트 해제)</td><td style="text-align:center">5</td></tr>
 <tr><td><a href="#mod-SmartBench"><strong>SmartBench</strong></a></td><td>TCP 소켓으로 Smart Bench 장비의 전원, 버튼, 전류, LED를 제어하는 모듈</td><td style="text-align:center">15</td></tr>
-<tr><td><a href="#mod-MLP"><strong>MLP</strong></a></td><td>MIB Log Protocol로 IVI/SAFE 시스템의 실시간 로그를 수신하여 저장하는 모듈. ICAS3/MIB3OI 지원</td><td style="text-align:center">5</td></tr>
-<tr><td><a href="#mod-PCANClient"><strong>PCANClient</strong></a></td><td>Peak CAN 디바이스를 통해 CAN 메시지를 송수신하는 모듈</td><td style="text-align:center">3</td></tr>
-<tr><td><a href="#mod-TigrisCheck"><strong>TigrisCheck</strong></a></td><td>특정 ADB 디바이스에서 Tigris 테스트 스위트를 실행하고 결과를 확인하는 모듈</td><td style="text-align:center">1</td></tr>
-<tr><td><a href="#mod-Trace"><strong>Trace</strong></a></td><td>함수 호출 트레이스를 분석하여 예상 호출 순서와 실제 호출 순서를 비교하는 모듈</td><td style="text-align:center">7</td></tr>
-<tr><td><a href="#mod-COMMON_WINDOWS"><strong>COMMON_WINDOWS</strong></a></td><td>Windows 명령어 출력을 파일로 저장하는 유틸리티 모듈</td><td style="text-align:center">3</td></tr>
-<tr><td><a href="#mod-Android"><strong>Android</strong></a></td><td>ADB를 통해 Android 디바이스를 제어하는 모듈. 터치, 스와이프, 앱 설치, 스크린캡처 등</td><td style="text-align:center">19</td></tr>
-<tr><td><a href="#mod-CCIC_BENCH"><strong>CCIC_BENCH</strong></a></td><td>UDP 통신으로 차량 전원(IGN/ACC/배터리)을 제어하는 테스트 벤치 장비</td><td style="text-align:center">16</td></tr>
-<tr><td><a href="#mod-SerialPlugin"><strong>SerialPlugin</strong></a></td><td>RS-232 시리얼 포트로 데이터를 송수신하는 범용 플러그인</td><td style="text-align:center">15</td></tr>
+<tr><td><a href="#mod-WoohyunBench"><strong>WoohyunBench</strong></a></td><td>UDP 통신으로 차량 전원(IGN/ACC/배터리) 제어 + CAN FD 신호 송신을 지원하는 통합 테스트 벤치</td><td style="text-align:center">23</td></tr>
 <tr><td><a href="#mod-CMD"><strong>CMD</strong></a></td><td>Windows 명령 프롬프트(CMD) 명령을 실행하는 모듈. 외부 프로그램 실행이나 시스템 명령에 사용</td><td style="text-align:center">7</td></tr>
-<tr><td><a href="#mod-DLTViewer"><strong>DLTViewer</strong></a></td><td>차량 ECU의 DLT 로그를 실시간으로 수신하고 분석하는 모듈 (TCP 직접 연결)</td><td style="text-align:center">15</td></tr>
-<tr><td><a href="#mod-VisionCamera"><strong>VisionCamera</strong></a></td><td>GigE Vision 산업용 카메라로 화면을 캡처하는 모듈</td><td style="text-align:center">8</td></tr>
-<tr><td><a href="#mod-VisionCameraClient"><strong>VisionCameraClient</strong></a></td><td>VisionCamera 내부에서 사용하는 저수준 카메라 제어 모듈</td><td style="text-align:center">6</td></tr>
       </tbody>
     </table>
 
     
 <h2 id="cat-power">전원 제어</h2>
-
-<h3 id="mod-POWER">POWER</h3>
-<div class="callout callout-info">전원 공급기 제어 — 시리얼(RS-232) 연결된 VUPOWER/K3010 전원 공급 장비의 전압/전류를 설정하고 측정하는 모듈</div>
-<table>
-<thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
-<tbody>
-<tr>
-<td><code>Connect</code></td>
-<td>전원 공급기에 시리얼 포트로 연결합니다. 장비 추가 시 자동 호출됩니다.</td>
-<td style="font-size:12px"><code>port</code>: COM 포트. 예: &#x27;COM1&#x27;, &#x27;COM3&#x27;<br><code>bps</code>: 통신 속도(Baud Rate). 예: 115200</td>
-</tr>
-<tr>
-<td><code>DisConnect</code></td>
-<td>전원 공급기 연결을 해제합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>SetOutput</code></td>
-<td>전원 공급기의 출력을 켜거나 끕니다.</td>
-<td style="font-size:12px"><code>status</code>: &#x27;ON&#x27; = 출력 켜기, &#x27;OFF&#x27; = 출력 끄기</td>
-</tr>
-<tr>
-<td><code>SetValue</code></td>
-<td>전원 공급기의 전압 또는 전류 값을 설정합니다.</td>
-<td style="font-size:12px"><code>set_type</code>: &#x27;VOLT&#x27; = 전압 설정, &#x27;CURR&#x27; = 전류 설정<br><code>value</code>: 설정할 값. 전압: V 단위 (예: 14.4), 전류: A 단위 (예: 3.0)</td>
-</tr>
-<tr>
-<td><code>ReadValue</code></td>
-<td>전원 공급기의 현재 전압 또는 전류를 측정합니다.</td>
-<td style="font-size:12px"><code>set_type</code>: &#x27;VOLT&#x27; = 전압 측정, &#x27;CURR&#x27; = 전류 측정</td>
-</tr>
-<tr>
-<td><code>SendCmd</code></td>
-<td>전원 공급기에 직접 명령어를 전송합니다. 고급 사용자용.</td>
-<td style="font-size:12px"><code>cmd</code>: 전송할 명령어 문자열</td>
-</tr>
-</tbody>
-</table>
-
-<h3 id="mod-RIDEN">RIDEN</h3>
-<div class="callout callout-info">RIDEN 전원 공급기 — 시리얼 연결된 RIDEN 전원 공급 장비를 제어하는 모듈</div>
-<table>
-<thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
-<tbody>
-<tr>
-<td><code>TurnOn</code></td>
-<td>RIDEN 전원 공급기를 켜고 지정 전압으로 설정합니다.</td>
-<td style="font-size:12px"><code>port</code>: COM 포트. 예: &#x27;COM1&#x27;<br><code>voltage</code>: 설정할 전압 (V 단위). 예: 14.4</td>
-</tr>
-<tr>
-<td><code>Turnoff</code></td>
-<td>RIDEN 전원 공급기를 끕니다.</td>
-<td style="font-size:12px"><code>port</code>: COM 포트. 예: &#x27;COM1&#x27;</td>
-</tr>
-</tbody>
-</table>
-
-<h3 id="mod-KeysightPower">KeysightPower</h3>
-<div class="callout callout-info">Keysight 전원 공급기 — 이더넷/GPIB 연결된 Keysight 전원 공급기의 전압 설정, 파형 시퀀스 제어를 수행하는 모듈</div>
-<table>
-<thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
-<tbody>
-<tr>
-<td><code>connectPowerSupply</code></td>
-<td>Keysight 전원 공급기에 이더넷으로 연결합니다.</td>
-<td style="font-size:12px"><code>eth</code>: 이더넷 인터페이스. 기본값: None (자동 감지)</td>
-</tr>
-<tr>
-<td><code>closePowerSupply</code></td>
-<td>전원 공급기 연결을 해제합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>setVoltage</code></td>
-<td>출력 전압을 설정합니다.</td>
-<td style="font-size:12px"><code>volt</code>: 전압 (V 단위). 예: 14.4</td>
-</tr>
-<tr>
-<td><code>setMaxVoltage</code></td>
-<td>최대 전압 제한을 설정합니다.</td>
-<td style="font-size:12px"><code>volt</code>: 최대 전압 (V 단위)</td>
-</tr>
-<tr>
-<td><code>turnOnOutput</code></td>
-<td>전원 출력을 켭니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>turnOffOutput</code></td>
-<td>전원 출력을 끕니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>getCurrentStatus</code></td>
-<td>현재 전원 공급기 상태를 반환합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>getPort</code></td>
-<td>포트 정보를 반환합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>setCurrentRangeAuto</code></td>
-<td>전류 측정 범위를 자동으로 설정합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>setInterface</code></td>
-<td>통신 인터페이스를 선택합니다.</td>
-<td style="font-size:12px"><code>inf_sel</code>: 인터페이스 선택 값</td>
-</tr>
-<tr>
-<td><code>checkMeasCurrentLessThan</code></td>
-<td>측정 전류가 임계값 이하인지 확인합니다.</td>
-<td style="font-size:12px"><code>Threshold</code>: 전류 임계값 (A)</td>
-</tr>
-<tr>
-<td><code>powerSupply_ask</code></td>
-<td>전원 공급기에 직접 SCPI 명령을 보내고 응답을 받습니다.</td>
-<td style="font-size:12px"><code>cmd</code>: SCPI 명령어 문자열</td>
-</tr>
-<tr>
-<td><code>addToSeq_Step</code></td>
-<td>시퀀스에 계단(Step) 파형을 추가합니다. 특정 시점에 전압을 급변시킵니다.</td>
-<td style="font-size:12px"><code>step</code>: 시퀀스 단계 번호<br><code>vStart</code>: 시작 전압 (V)<br><code>vEnd</code>: 종료 전압 (V)<br><code>tStart</code>: 시작 시간 (s)<br><code>tEnd</code>: 종료 시간 (s)</td>
-</tr>
-<tr>
-<td><code>addToSeq_Ramp</code></td>
-<td>시퀀스에 램프(경사) 파형을 추가합니다. 전압을 서서히 변화시킵니다.</td>
-<td style="font-size:12px"><code>step</code>: 시퀀스 단계 번호<br><code>vStart</code>: 시작 전압 (V)<br><code>vEnd</code>: 종료 전압 (V)<br><code>tStart</code>: 시작 시간 (s)<br><code>tRamp</code>: 경사 시간 (s)<br><code>tEnd</code>: 종료 시간 (s)<br><code>repeat</code>: 반복 횟수</td>
-</tr>
-<tr>
-<td><code>addToSeq_Puls</code></td>
-<td>시퀀스에 펄스 파형을 추가합니다.</td>
-<td style="font-size:12px"><code>step</code>: 시퀀스 단계 번호<br><code>vStart</code>: 기저 전압 (V)<br><code>vTop</code>: 펄스 상단 전압 (V)<br><code>tStart</code>: 시작 시간 (s)<br><code>tTop</code>: 상단 유지 시간 (s)<br><code>tEnd</code>: 종료 시간 (s)<br><code>repeat</code>: 반복 횟수</td>
-</tr>
-<tr>
-<td><code>addToSeq_Sine</code></td>
-<td>시퀀스에 정현파(사인) 파형을 추가합니다.</td>
-<td style="font-size:12px"><code>step</code>: 시퀀스 단계 번호<br><code>ampl</code>: 진폭 (V)<br><code>offs</code>: 오프셋 전압 (V)<br><code>freq</code>: 주파수 (Hz)<br><code>repeat</code>: 반복 횟수</td>
-</tr>
-<tr>
-<td><code>addToSeq_Exp</code></td>
-<td>시퀀스에 지수 파형을 추가합니다.</td>
-<td style="font-size:12px"><code>step</code>: 시퀀스 단계 번호<br><code>vStart</code>: 시작 전압 (V)<br><code>vEnd</code>: 종료 전압 (V)<br><code>tStart</code>: 시작 시간 (s)<br><code>tWave</code>: 파형 시간 (s)<br><code>tConst</code>: 시정수 (s)<br><code>repeat</code>: 반복 횟수</td>
-</tr>
-<tr>
-<td><code>addToSeq_Stair</code></td>
-<td>시퀀스에 계단형 파형을 추가합니다. 전압이 단계적으로 변합니다.</td>
-<td style="font-size:12px"><code>step</code>: 시퀀스 단계 번호<br><code>vStart</code>: 시작 전압 (V)<br><code>vEnd</code>: 종료 전압 (V)<br><code>tStart</code>: 시작 시간 (s)<br><code>tStep</code>: 각 단계 시간 (s)<br><code>tEnd</code>: 종료 시간 (s)<br><code>nStep</code>: 단계 수<br><code>repeat</code>: 반복 횟수</td>
-</tr>
-<tr>
-<td><code>addToSeq_Trap</code></td>
-<td>시퀀스에 사다리꼴 파형을 추가합니다.</td>
-<td style="font-size:12px"><code>step</code>: 시퀀스 단계 번호<br><code>vStart</code>: 기저 전압 (V)<br><code>vTop</code>: 상단 전압 (V)<br><code>tStart</code>: 시작 시간 (s)<br><code>tRise</code>: 상승 시간 (s)<br><code>tTop</code>: 상단 유지 시간 (s)<br><code>tFall</code>: 하강 시간 (s)<br><code>tEnd</code>: 종료 시간 (s)<br><code>repeat</code>: 반복 횟수</td>
-</tr>
-<tr>
-<td><code>setSeqArb</code></td>
-<td>임의 파형 시퀀스를 전원 공급기에 설정합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>runSeqArb</code></td>
-<td>설정된 임의 파형 시퀀스를 실행합니다.</td>
-<td style="font-size:12px"><code>repeat</code>: 반복 횟수</td>
-</tr>
-<tr>
-<td><code>isArbSeqStillRun</code></td>
-<td>임의 파형 시퀀스가 아직 실행 중인지 확인합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-</tbody>
-</table>
 
 
 
@@ -993,145 +790,6 @@
 </tbody>
 </table>
 
-<h3 id="mod-CCIC_BENCH">CCIC_BENCH</h3>
-<div class="callout callout-info">CCIC 우현벤치 — UDP 통신으로 차량 전원(IGN/ACC/배터리)을 제어하는 테스트 벤치 장비</div>
-<table>
-<thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
-<tbody>
-<tr>
-<td><code>Connect</code></td>
-<td>벤치 장비에 UDP 네트워크 연결을 수행합니다. 장비 추가 시 자동으로 호출되므로 보통 수동 호출이 필요 없습니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>Disconnect</code></td>
-<td>벤치 장비와의 UDP 네트워크 연결을 해제합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>IsConnected</code></td>
-<td>벤치 장비가 현재 연결되어 있는지 확인합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>IGN1</code></td>
-<td>이그니션 1(IGN1) 전원을 켜거나 끕니다. 차량의 시동 전원에 해당합니다.</td>
-<td style="font-size:12px"><code>on_off</code>: 0 = OFF (전원 끄기), 1 = ON (전원 켜기). 기본값: 1 (ON)</td>
-</tr>
-<tr>
-<td><code>IGN1_Read</code></td>
-<td>이그니션 1(IGN1)의 현재 전원 상태를 읽어옵니다. 반환값: 0=OFF, 1=ON, -1=읽기 실패</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>IGN2</code></td>
-<td>이그니션 2(IGN2) 전원을 켜거나 끕니다. 보조 이그니션 전원에 해당합니다.</td>
-<td style="font-size:12px"><code>on_off</code>: 0 = OFF (전원 끄기), 1 = ON (전원 켜기). 기본값: 1 (ON)</td>
-</tr>
-<tr>
-<td><code>IGN2_Read</code></td>
-<td>이그니션 2(IGN2)의 현재 전원 상태를 읽어옵니다. 반환값: 0=OFF, 1=ON, -1=읽기 실패</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>ACC</code></td>
-<td>ACC(Accessory) 전원을 켜거나 끕니다. 차량의 액세서리 전원(라디오, 내비 등 작동 가능 상태)에 해당합니다.</td>
-<td style="font-size:12px"><code>on_off</code>: 0 = OFF (전원 끄기), 1 = ON (전원 켜기). 기본값: 1 (ON)</td>
-</tr>
-<tr>
-<td><code>ACC_Read</code></td>
-<td>ACC 전원의 현재 상태를 읽어옵니다. 반환값: 0=OFF, 1=ON, -1=읽기 실패</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>BATTERY</code></td>
-<td>배터리 릴레이를 켜거나 끕니다. OFF 시 차량에 배터리 전원이 완전히 차단됩니다.</td>
-<td style="font-size:12px"><code>on_off</code>: 0 = OFF (배터리 차단), 1 = ON (배터리 연결). 기본값: 1 (ON)</td>
-</tr>
-<tr>
-<td><code>BATTERY_Read</code></td>
-<td>배터리 릴레이의 현재 상태를 읽어옵니다. 반환값: 0=OFF, 1=ON, -1=읽기 실패</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>BatterySet</code></td>
-<td>배터리 출력 전압을 설정합니다. 전압 변동 테스트에 사용합니다.</td>
-<td style="font-size:12px"><code>voltage</code>: 설정할 전압 (V 단위, 소수점 가능). 예: 12.0, 14.4, 9.0. 기본값: 14.4V</td>
-</tr>
-<tr>
-<td><code>BatteryCheck</code></td>
-<td>현재 배터리 출력 전압을 측정합니다. 반환값: 전압(V), 실패 시 -1.0</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>AmpereCheck</code></td>
-<td>현재 소비 전류를 측정합니다. 반환값: 전류(A), 실패 시 -1.0</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>SendCommand</code></td>
-<td>벤치에 직접 UDP 명령을 전송합니다. 고급 사용자용이며, 일반적으로 위의 개별 함수 사용을 권장합니다.</td>
-<td style="font-size:12px"><code>cmd1</code>: 명령 코드 1 (정수, 예: 0x24 → 36)<br><code>cmd2</code>: 명령 코드 2 (정수, 예: 0x21 → 33)<br><code>data_hex</code>: 추가 데이터 (공백으로 구분된 16진수 문자열). 예: &#x27;FF 01&#x27;. 기본값: 빈 문자열</td>
-</tr>
-<tr>
-<td><code>GetInfo</code></td>
-<td>벤치의 현재 연결 정보(IP, 포트, 연결 상태)를 반환합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-</tbody>
-</table>
-
-<h3 id="mod-BENCH">BENCH</h3>
-<div class="callout callout-info">벤치 소켓 통신 — TCP 소켓으로 벤치 장비와 데이터를 주고받고 전류를 측정하는 모듈</div>
-<table>
-<thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
-<tbody>
-<tr>
-<td><code>socket_connect</code></td>
-<td>벤치 장비에 소켓 연결합니다.</td>
-<td style="font-size:12px"><code>host</code>: 벤치 장비 IP 주소. 예: &#x27;192.168.1.100&#x27;</td>
-</tr>
-<tr>
-<td><code>socket_close</code></td>
-<td>벤치 장비와의 소켓 연결을 해제합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>SendData</code></td>
-<td>벤치 장비로 데이터를 전송합니다.</td>
-<td style="font-size:12px"><code>data</code>: 전송할 데이터 문자열. 기본값: &#x27;Test&#x27;</td>
-</tr>
-<tr>
-<td><code>check_current</code></td>
-<td>전류가 지정 범위 내에 있는지 측정 시간 동안 확인합니다.</td>
-<td style="font-size:12px"><code>min_current</code>: 최소 전류 (A)<br><code>max_current</code>: 최대 전류 (A)<br><code>meas_time</code>: 측정 시간 (초)</td>
-</tr>
-</tbody>
-</table>
-
-<h3 id="mod-SP25Bench">SP25Bench</h3>
-<div class="callout callout-info">SP25 벤치 — SP25 테스트 벤치를 제어하는 모듈 (eCall, 리부팅, 팩토리 리셋)</div>
-<table>
-<thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
-<tbody>
-<tr>
-<td><code>eCall</code></td>
-<td>eCall(긴급 통화)을 실행합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>factory_reset</code></td>
-<td>장비를 공장 초기화합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>reboot</code></td>
-<td>장비를 재부팅합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-</tbody>
-</table>
-
 <h3 id="mod-SmartBench">SmartBench</h3>
 <div class="callout callout-info">Smart Bench TCP 제어 — TCP 소켓으로 Smart Bench 장비의 전원, 버튼, 전류, LED를 제어하는 모듈</div>
 <table>
@@ -1219,74 +877,6 @@
 
 <h2 id="cat-can">CAN 통신</h2>
 
-<h3 id="mod-CAN">CAN</h3>
-<div class="callout callout-info">CAN 버스 통신 — PCAN/Vector/Kvaser 등 CAN 인터페이스를 통해 차량 CAN 메시지를 송수신하는 모듈</div>
-<table>
-<thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
-<tbody>
-<tr>
-<td><code>Bus</code></td>
-<td>CAN 디바이스에 연결합니다. 장비 추가 시 자동 호출됩니다.</td>
-<td style="font-size:12px"><code>kwargs</code>: 연결 설정 (interface, channel, bitrate, fd 등)</td>
-</tr>
-<tr>
-<td><code>send_msg</code></td>
-<td>CAN 메시지를 전송합니다. 주기적 또는 1회 전송이 가능합니다.</td>
-<td style="font-size:12px"><code>message_id</code>: CAN 메시지 ID (16진수). 예: &#x27;0x123&#x27;<br><code>cycle_time</code>: 전송 주기 (ms). 0이면 1회 전송<br><code>can_message</code>: 메시지 데이터 (16진수). 예: &#x27;00 11 22 33 44 55 66 77&#x27;<br><code>bus_channel</code>: CAN 채널. 예: &#x27;PCAN_USBBUS1&#x27;<br><code>message_type</code>: 메시지 타입. &#x27;FD&#x27; = CAN FD (기본값), &#x27;Classic&#x27; = CAN 2.0</td>
-</tr>
-<tr>
-<td><code>stop_all_periodic_tasks</code></td>
-<td>모든 주기적 CAN 메시지 전송을 중지합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>start_log_save</code></td>
-<td>CAN 로그를 파일로 저장하기 시작합니다.</td>
-<td style="font-size:12px"><code>logpath</code>: 로그 파일 저장 경로</td>
-</tr>
-<tr>
-<td><code>stop_log_save</code></td>
-<td>CAN 로그 저장을 중지합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>status</code></td>
-<td>CAN 디바이스의 현재 상태를 반환합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>status_is_ok</code></td>
-<td>CAN 디바이스 상태가 정상인지 확인합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>status_string</code></td>
-<td>CAN 디바이스 상태를 문자열로 반환합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>shutdown</code></td>
-<td>CAN 디바이스 연결을 해제합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>flush_tx_buffer</code></td>
-<td>송신 버퍼를 비웁니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>get_device_number</code></td>
-<td>연결된 CAN 디바이스 번호를 반환합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>read_thread</code></td>
-<td>CAN 수신 스레드를 시작합니다.</td>
-<td style="font-size:12px"><code>bus</code>: CAN 버스 객체<br><code>logpath</code>: 로그 파일 경로</td>
-</tr>
-</tbody>
-</table>
-
 <h3 id="mod-CANOE">CANOE</h3>
 <div class="callout callout-info">CANoe 제어 — Vector CANoe 시뮬레이션 소프트웨어의 시작/중지, 환경변수/시스템변수 설정을 제어하는 모듈</div>
 <table>
@@ -1368,150 +958,42 @@
 </tbody>
 </table>
 
-<h3 id="mod-PCANClient">PCANClient</h3>
-<div class="callout callout-info">PCAN 클라이언트 — Peak CAN 디바이스를 통해 CAN 메시지를 송수신하는 모듈</div>
-<table>
-<thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
-<tbody>
-<tr>
-<td><code>send_msg</code></td>
-<td>CAN 메시지를 전송합니다.</td>
-<td style="font-size:12px"><code>channel</code>: CAN 채널<br><code>msg_id</code>: 메시지 ID<br><code>type</code>: 메시지 타입<br><code>length</code>: 데이터 길이<br><code>cycle_time</code>: 전송 주기 (ms). 0이면 1회 전송<br><code>msg_data</code>: 메시지 데이터</td>
-</tr>
-<tr>
-<td><code>stop</code></td>
-<td>특정 CAN 메시지의 전송을 중지합니다.</td>
-<td style="font-size:12px"><code>channel</code>: CAN 채널<br><code>msg_id</code>: 중지할 메시지 ID</td>
-</tr>
-<tr>
-<td><code>stop_all</code></td>
-<td>모든 CAN 메시지 전송을 중지합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-</tbody>
-</table>
-
 
 
 <h2 id="cat-comm">통신 (시리얼/SSH/UART)</h2>
 
-<h3 id="mod-SerialPlugin">SerialPlugin</h3>
-<div class="callout callout-info">범용 시리얼 통신 — RS-232 시리얼 포트로 데이터를 송수신하는 범용 플러그인</div>
-<table>
-<thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
-<tbody>
-<tr>
-<td><code>Connect</code></td>
-<td>시리얼 포트를 엽니다. 장비 추가 시 자동으로 호출됩니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>Disconnect</code></td>
-<td>시리얼 포트를 닫습니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>IsConnected</code></td>
-<td>시리얼 포트가 현재 열려있는지 확인합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>SendCommand</code></td>
-<td>시리얼 포트로 텍스트 명령을 전송합니다. 기본적으로 줄바꿈이 자동으로 추가됩니다.</td>
-<td style="font-size:12px"><code>command</code>: 전송할 명령어 텍스트. 예: &#x27;AT+VERSION&#x27;, &#x27;RESET&#x27;<br><code>encoding</code>: 문자 인코딩. 기본값: &#x27;utf-8&#x27;. 특수 장비는 &#x27;ascii&#x27; 사용<br><code>append_newline</code>: 명령 끝에 줄바꿈 추가 여부. True = 추가(기본), False = 추가하지 않음</td>
-</tr>
-<tr>
-<td><code>ReadLine</code></td>
-<td>시리얼 포트에서 한 줄을 읽어옵니다.</td>
-<td style="font-size:12px"><code>timeout</code>: 최대 대기 시간 (초). 기본값: 1.0</td>
-</tr>
-<tr>
-<td><code>ReadAll</code></td>
-<td>시리얼 포트의 수신 버퍼에 있는 모든 데이터를 읽어옵니다.</td>
-<td style="font-size:12px"><code>timeout</code>: 최대 대기 시간 (초). 기본값: 1.0</td>
-</tr>
-<tr>
-<td><code>SendAndRead</code></td>
-<td>명령을 전송하고 응답 한 줄을 읽어 반환합니다.</td>
-<td style="font-size:12px"><code>command</code>: 전송할 명령어 텍스트<br><code>timeout</code>: 응답 대기 시간 (초). 기본값: 1.0<br><code>encoding</code>: 문자 인코딩. 기본값: &#x27;utf-8&#x27;</td>
-</tr>
-<tr>
-<td><code>SendHex</code></td>
-<td>16진수 바이트를 직접 전송합니다.</td>
-<td style="font-size:12px"><code>hex_string</code>: 전송할 16진수 문자열. 예: &#x27;FF 01 A0&#x27;</td>
-</tr>
-<tr>
-<td><code>ReadHex</code></td>
-<td>지정된 바이트 수만큼 읽어 16진수 문자열로 반환합니다.</td>
-<td style="font-size:12px"><code>count</code>: 읽을 바이트 수. 기본값: 1<br><code>timeout</code>: 최대 대기 시간 (초). 기본값: 1.0</td>
-</tr>
-<tr>
-<td><code>SetBaudrate</code></td>
-<td>시리얼 통신 속도(Baud Rate)를 변경합니다.</td>
-<td style="font-size:12px"><code>baudrate</code>: 통신 속도. 예: 9600, 115200</td>
-</tr>
-<tr>
-<td><code>GetPortInfo</code></td>
-<td>현재 시리얼 포트 정보를 반환합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>LOG_SERIAL</code></td>
-<td>시리얼 수신 데이터에서 키워드가 나타날 때까지 대기합니다(블로킹). 수신된 모든 로그를 함께 반환합니다. 공백으로 여러 키워드 지정 시 AND 조건.</td>
-<td style="font-size:12px"><code>keyword</code>: 검색할 키워드. 예: &#x27;Pass&#x27;, &#x27;TTI_PASS&#x27;. 공백 구분 시 AND 조건<br><code>timeout</code>: 최대 대기 시간 (초). 기본값: 30</td>
-</tr>
-<tr>
-<td><code>StartMonitor</code></td>
-<td>백그라운드에서 시리얼 키워드를 감시합니다(논블로킹). 다음 스텝으로 즉시 넘어가며, 결과는 GetMonitorResult로 확인.</td>
-<td style="font-size:12px"><code>keyword</code>: 감시할 키워드. 공백 구분 시 AND 조건<br><code>timeout</code>: 최대 감시 시간 (초). 기본값: 60</td>
-</tr>
-<tr>
-<td><code>StopMonitor</code></td>
-<td>백그라운드 모니터링을 중지합니다.</td>
-<td style="font-size:12px"><code>monitor_id</code>: 모니터 ID (예: &#x27;mon_1&#x27;). 비워두면 전체 중지</td>
-</tr>
-<tr>
-<td><code>GetMonitorResult</code></td>
-<td>백그라운드 모니터링 결과를 확인합니다. PASS/FAIL/RUNNING 상태와 수집된 로그를 반환.</td>
-<td style="font-size:12px"><code>monitor_id</code>: 모니터 ID. 비워두면 전체 결과</td>
-</tr>
-</tbody>
-</table>
-
 <h3 id="mod-SerialLogging">SerialLogging</h3>
-<div class="callout callout-info">시리얼 로깅 — 시리얼 포트에 연결하여 로그를 캡처·저장하고 키워드 PASS/FAIL 판정하는 모듈</div>
+<div class="callout callout-info">시리얼 로깅 — 시리얼 포트에 연결하여 로그를 캡처·저장하고 키워드 검출하는 모듈.
+
+**⚠️ 사용법: StartLogging과 StopLogging은 반드시 한 셋트로 사용해야 합니다.**
+- StartLogging만 호출하고 StopLogging을 누락하면: 로그가 파일로 저장되지 않고, 시리얼 포트 연결이 종료되지 않아 다음 실행에서 포트 점유 오류가 발생할 수 있습니다.
+- 시나리오의 시작 부분에 StartLogging, 끝 부분에 StopLogging을 배치하여 한 쌍으로 운영하세요.
+- 시나리오 중간에 오류가 나도 cleanup이 자동으로 StopLogging을 호출해 포트를 닫지만, 정상 흐름에서는 명시적으로 StopLogging을 두는 것이 권장됩니다.
+
+표준 사용 패턴:
+  1) StartLogging()                              ← 시나리오 첫 스텝
+  2) SendCommand / SendCommand_*_on_keyword ...  ← 중간 스텝들
+  3) StopLogging()                               ← 시나리오 마지막 스텝 (로그 파일 저장 + 포트 해제)</div>
 <table>
 <thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
 <tbody>
 <tr>
-<td><code>StartSave</code></td>
-<td>시리얼 포트에 연결하고 로그 캡처 + 파일 저장을 시작합니다. (연결 → 캡처 → 저장 한번에 수행)</td>
-<td style="font-size:12px"><code>save_path</code>: 저장 파일 경로. 빈 값이면 backend/logs/에 자동 생성</td>
+<td><code>StartLogging</code></td>
+<td>시리얼 연결 + 캡처 시작 (메모리만, 파일 저장 없음). 뷰어 모달이 자동 오픈됩니다. **리턴 시점에 포트가 안정화되고 capture 스레드가 ready 상태**라 다음 스텝의 SendCommand가 씹히지 않음.
+
+**⚠️ 반드시 StopLogging과 한 셋트로 사용하세요.** StopLogging이 호출되어야 메모리 버퍼가 파일로 저장되고 시리얼 포트가 정상적으로 해제됩니다. StopLogging 누락 시 로그가 디스크에 저장되지 않고 포트가 점유 상태로 남습니다.</td>
+<td style="font-size:12px"><code>settle_ms</code>: 포트 open 후 안정화 대기(ms). 기본 500. USB-Serial 어댑터 reset/buffer settle 동안 다음 스텝이 씹히지 않게 확보. Arduino처럼 DTR-reset되는 보드는 1500~2000으로 늘리고, 빠른 산업용 시리얼은 100~200까지 낮출 수 있음.</td>
 </tr>
 <tr>
-<td><code>StopSave</code></td>
-<td>로그 파일 저장을 중단하고 시리얼 연결을 해제합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>MarkStep</code></td>
-<td>현재 로그 위치에 스텝 경계를 표시합니다. SearchRange로 구간 검색할 때 사용합니다.</td>
-<td style="font-size:12px"><code>step_index</code>: 스텝 인덱스 번호</td>
-</tr>
-<tr>
-<td><code>SearchAll</code></td>
-<td>처음부터 현재까지 전체 로그에서 키워드를 검색하여 PASS/FAIL 판정합니다.</td>
-<td style="font-size:12px"><code>keyword</code>: 검색 키워드 (공백 구분 시 AND 조건). 예: &#x27;BootComplete&#x27;, &#x27;ERROR&#x27;<br><code>count</code>: 최대 매칭 결과 수 (기본 5)</td>
-</tr>
-<tr>
-<td><code>SearchRange</code></td>
-<td>MarkStep으로 표시된 스텝 구간 내에서 키워드를 검색하여 PASS/FAIL 판정합니다.</td>
-<td style="font-size:12px"><code>keyword</code>: 검색 키워드 (공백 구분 시 AND 조건)<br><code>from_step</code>: 시작 스텝 인덱스<br><code>to_step</code>: 종료 스텝 인덱스<br><code>count</code>: 최대 매칭 결과 수 (기본 5)</td>
-</tr>
-<tr>
-<td><code>WaitLog</code></td>
-<td>키워드가 포함된 로그가 나타날 때까지 대기합니다 (블로킹). 타임아웃 시 FAIL 반환.</td>
-<td style="font-size:12px"><code>keyword</code>: 검색 키워드 (공백 구분 시 AND 조건)<br><code>timeout</code>: 최대 대기 시간 (초, 기본 30)</td>
+<td><code>StopLogging</code></td>
+<td>시리얼 캡처 종료 + 메모리 버퍼를 파일로 일괄 저장 + 시리얼 포트 해제. 자동 경로 또는 지정 경로로 저장.
+
+**⚠️ StartLogging과 반드시 짝으로 호출하세요.** 이 함수가 호출되어야:
+  • 메모리에 누적된 로그가 .log 파일로 디스크에 저장됨
+  • 시리얼 포트 연결이 정상적으로 닫혀 다음 실행에서 재사용 가능
+  • capture 스레드가 정리되어 리소스 누수 방지
+파일 저장 단계에서 예외가 발생해도 finally에서 포트 해제는 무조건 수행됩니다.</td>
+<td style="font-size:12px"><code>save_path</code>: 저장 파일 경로. 빈 값이면 자동 (재생 중: run_dir/logs/serial_*.log, 스텝 테스트: backend/results/Temp_logs/serial_*.log)</td>
 </tr>
 <tr>
 <td><code>SendCommand</code></td>
@@ -1519,110 +1001,14 @@
 <td style="font-size:12px"><code>command</code>: 전송할 명령어. 예: &#x27;reboot&#x27;, &#x27;cat /proc/version&#x27;<br><code>encoding</code>: 인코딩 (기본 utf-8)<br><code>append_newline</code>: 개행 문자 자동 추가. true/false (기본 true)</td>
 </tr>
 <tr>
-<td><code>SendHex</code></td>
-<td>시리얼 포트로 HEX 바이트를 전송합니다.</td>
-<td style="font-size:12px"><code>hex_string</code>: 전송할 HEX 문자열. 예: &#x27;FF 01 A0&#x27;</td>
+<td><code>SendCommand_fail_on_keyword</code></td>
+<td>명령어 전송 후 응답에 keyword가 **포함되면 FAIL 판정**. &#x27;ERROR&#x27;/&#x27;Fail&#x27;/&#x27;crash&#x27; 등 비정상 키워드 검출용. 전송 직후 &#x27;time&#x27; 초간 새 라인만 모니터링 — 매칭된 라인은 모두 fail row로 누적되어 결과 표에 인라인(Fail_Count_N) 표시됨. 매칭 없으면 PASS 반환.</td>
+<td style="font-size:12px"><code>command</code>: 전송할 명령어. 예: &#x27;status&#x27;, &#x27;self_test&#x27;<br><code>keyword</code>: FAIL을 일으킬 검출 키워드. 예: &#x27;ERROR&#x27;, &#x27;Fail&#x27;, &#x27;crash&#x27;<br><code>time</code>: 응답 모니터링 시간(초). 기본 5<br><code>encoding</code>: 인코딩 (기본 utf-8)<br><code>append_newline</code>: 개행 문자 자동 추가. true/false (기본 true)</td>
 </tr>
 <tr>
-<td><code>SendAndWait</code></td>
-<td>명령어를 전송하고 키워드가 포함된 응답을 대기합니다 (블로킹).</td>
-<td style="font-size:12px"><code>command</code>: 전송할 명령어<br><code>keyword</code>: 응답에서 검색할 키워드 (공백 구분 시 AND 조건)<br><code>timeout</code>: 최대 대기 시간 (초, 기본 10)</td>
-</tr>
-<tr>
-<td><code>GetStatus</code></td>
-<td>현재 모듈 상태를 조회합니다 (포트, 캡처, 저장, 스텝마크 등).</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>ClearLogs</code></td>
-<td>로그 버퍼와 스텝 마킹을 초기화합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-</tbody>
-</table>
-
-<h3 id="mod-Uart">Uart</h3>
-<div class="callout callout-info">UART 통신 — 시리얼 포트로 UART 통신을 수행하고 로그를 저장하는 모듈. 리눅스 콘솔 접속 등에 사용</div>
-<table>
-<thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
-<tbody>
-<tr>
-<td><code>connect</code></td>
-<td>UART 포트에 연결합니다 (로그 저장 없음).</td>
-<td style="font-size:12px"><code>port</code>: 시리얼 포트. 예: &#x27;COM1&#x27;, &#x27;/dev/ttyUSB0&#x27;<br><code>bps</code>: 통신 속도. 예: 115200<br><code>endline</code>: 줄 끝 문자. 기본값: &#x27;\r&#x27;</td>
-</tr>
-<tr>
-<td><code>close</code></td>
-<td>UART 포트 연결을 해제합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>add_uart_port</code></td>
-<td>UART 포트에 연결하면서 로그 파일 저장도 함께 시작합니다.</td>
-<td style="font-size:12px"><code>port</code>: 시리얼 포트. 예: &#x27;COM1&#x27;<br><code>bps</code>: 통신 속도. 예: 115200<br><code>logFilePath</code>: 로그 파일 저장 경로<br><code>endline</code>: 줄 끝 문자. 기본값: &#x27;\r&#x27;</td>
-</tr>
-<tr>
-<td><code>send_string</code></td>
-<td>문자열 명령을 UART로 전송합니다.</td>
-<td style="font-size:12px"><code>command</code>: 전송할 명령어. 예: &#x27;ls -al&#x27;, &#x27;reboot&#x27;</td>
-</tr>
-<tr>
-<td><code>send_char</code></td>
-<td>단일 문자를 전송합니다. 줄바꿈이 추가되지 않습니다.</td>
-<td style="font-size:12px"><code>char</code>: 전송할 문자 (한 글자)</td>
-</tr>
-<tr>
-<td><code>send_control_character</code></td>
-<td>제어 문자를 전송합니다. Ctrl+C 등 특수 키 입력에 사용합니다.</td>
-<td style="font-size:12px"><code>control_character</code>: 제어 문자. 예: &#x27;ETX&#x27; (Ctrl+C)</td>
-</tr>
-<tr>
-<td><code>start_save_file</code></td>
-<td>UART 수신 데이터를 파일로 저장하기 시작합니다.</td>
-<td style="font-size:12px"><code>path_log</code>: 로그 파일 저장 경로</td>
-</tr>
-<tr>
-<td><code>stop_save_file</code></td>
-<td>UART 로그 파일 저장을 중지합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>get_file_path</code></td>
-<td>현재 로그 파일 경로를 반환합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>read_thread</code></td>
-<td>UART 수신 스레드를 시작합니다. 내부적으로 자동 호출됩니다.</td>
-<td style="font-size:12px"><code>connect</code>: 연결 객체<br><code>logfilepath</code>: 로그 파일 경로</td>
-</tr>
-</tbody>
-</table>
-
-<h3 id="mod-Ignition">Ignition</h3>
-<div class="callout callout-info">이그니션 제어 — ICAS3/MIB3 장비의 이그니션을 TCP 소켓으로 제어하는 모듈 (기본: 192.168.1.4:15500)</div>
-<table>
-<thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
-<tbody>
-<tr>
-<td><code>connect</code></td>
-<td>이그니션 장비에 TCP 소켓으로 연결합니다. 주의: testiface가 실행 중이어야 합니다.</td>
-<td style="font-size:12px"><code>host</code>: 장비 IP 주소. 기본값: &#x27;192.168.1.4&#x27;<br><code>port</code>: TCP 포트. 기본값: 15500</td>
-</tr>
-<tr>
-<td><code>close</code></td>
-<td>이그니션 장비 연결을 해제합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>send_packet</code></td>
-<td>HU(Head Unit)에 이그니션 명령 패킷을 전송합니다.</td>
-<td style="font-size:12px"><code>cmd</code>: 16진수 명령어 문자열. 예: &#x27;02 2c 01 09&#x27;</td>
-</tr>
-<tr>
-<td><code>compare_packet</code></td>
-<td>마지막 수신 패킷에 예상 데이터가 포함되어 있는지 비교합니다.</td>
-<td style="font-size:12px"><code>expected</code>: 예상하는 16진수 문자열. 예: &#x27;00 65&#x27;. 포함되면 True, 아니면 False</td>
+<td><code>SendCommand_pass_on_keyword</code></td>
+<td>명령어 전송 후 응답에 keyword가 **포함되면 PASS 판정**. &#x27;OK&#x27;/&#x27;Pass&#x27;/&#x27;BootComplete&#x27; 등 정상 응답 키워드 검출용. 발견 즉시 PASS 반환 (조기 종료). &#x27;time&#x27; 초 안에 발견되지 않으면 fail row 1건 누적 후 FAIL 반환.</td>
+<td style="font-size:12px"><code>command</code>: 전송할 명령어. 예: &#x27;ping&#x27;, &#x27;getversion&#x27;<br><code>keyword</code>: PASS를 만족할 키워드. 예: &#x27;OK&#x27;, &#x27;Pass&#x27;, &#x27;BootComplete&#x27;<br><code>time</code>: 응답 대기 시간(초). 기본 5<br><code>encoding</code>: 인코딩 (기본 utf-8)<br><code>append_newline</code>: 개행 문자 자동 추가. true/false (기본 true)</td>
 </tr>
 </tbody>
 </table>
@@ -1674,94 +1060,51 @@
 
 <h2 id="cat-log">로깅 & 진단</h2>
 
-<h3 id="mod-DLTViewer">DLTViewer</h3>
-<div class="callout callout-info">DLT 로그 뷰어 — 차량 ECU의 DLT 로그를 실시간으로 수신하고 분석하는 모듈 (TCP 직접 연결)</div>
-<table>
-<thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
-<tbody>
-<tr>
-<td><code>Connect</code></td>
-<td>DLT 데몬(ECU)에 TCP 연결하고 실시간 로그 캡처를 시작합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>Disconnect</code></td>
-<td>DLT 데몬과의 연결을 해제하고 로그 캡처를 중지합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>IsConnected</code></td>
-<td>DLT 데몬에 현재 연결되어 있는지 확인합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>WaitLog</code></td>
-<td>키워드가 포함된 로그가 나타날 때까지 기다립니다(블로킹). 공백으로 여러 키워드 지정 시 AND 조건.</td>
-<td style="font-size:12px"><code>keyword</code>: 검색할 키워드. 예: &#x27;BootComplete&#x27;, &#x27;ERROR crash&#x27;<br><code>timeout</code>: 최대 대기 시간 (초). 기본값: 30</td>
-</tr>
-<tr>
-<td><code>StartMonitor</code></td>
-<td>백그라운드에서 키워드를 감시합니다(논블로킹). 결과는 GetMonitorResult로 확인.</td>
-<td style="font-size:12px"><code>keyword</code>: 감시할 키워드<br><code>timeout</code>: 최대 감시 시간 (초). 기본값: 60</td>
-</tr>
-<tr>
-<td><code>StopMonitor</code></td>
-<td>백그라운드 모니터링을 중지합니다.</td>
-<td style="font-size:12px"><code>monitor_id</code>: 모니터 ID. 비워두면 전체 중지</td>
-</tr>
-<tr>
-<td><code>GetMonitorResult</code></td>
-<td>모니터링 결과를 확인합니다. PASS/FAIL/RUNNING 반환.</td>
-<td style="font-size:12px"><code>monitor_id</code>: 모니터 ID. 비워두면 전체 결과</td>
-</tr>
-<tr>
-<td><code>SearchLog</code></td>
-<td>로그 버퍼에서 키워드를 검색합니다.</td>
-<td style="font-size:12px"><code>keyword</code>: 검색할 키워드<br><code>count</code>: 최대 결과 수. 기본값: 10</td>
-</tr>
-<tr>
-<td><code>GetRecentLogs</code></td>
-<td>최근 수신된 로그를 조회합니다.</td>
-<td style="font-size:12px"><code>count</code>: 조회할 줄 수. 기본값: 100</td>
-</tr>
-<tr>
-<td><code>GetLogCount</code></td>
-<td>수신된 총 로그 수를 반환합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>ClearLogs</code></td>
-<td>로그 버퍼를 비웁니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>LaunchViewer</code></td>
-<td>DLT Viewer GUI 프로그램을 실행합니다.</td>
-<td style="font-size:12px"><code>project_file</code>: .dlp 프로젝트 파일 경로 (선택)<br><code>log_file</code>: .dlt 로그 파일 경로 (선택)</td>
-</tr>
-<tr>
-<td><code>CloseViewer</code></td>
-<td>DLT Viewer GUI를 종료합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>CreateProject</code></td>
-<td>DLT Viewer 프로젝트 파일(.dlp)을 생성합니다.</td>
-<td style="font-size:12px"><code>file_path</code>: .dlp 파일 저장 경로<br><code>host</code>: ECU IP 주소 (선택)<br><code>port</code>: DLT 포트. 기본값: 3490</td>
-</tr>
-<tr>
-<td><code>GetStatus</code></td>
-<td>DLT 모듈의 현재 상태를 종합적으로 반환합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-</tbody>
-</table>
-
 <h3 id="mod-DLTLogging">DLTLogging</h3>
 <div class="callout callout-info">DLT 로깅 — DLT 데몬에 TCP 직접 연결하여 로그를 캡처·저장하고 키워드 PASS/FAIL 판정하는 모듈 (GUI 불필요)</div>
 <table>
 <thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
 <tbody>
+<tr>
+<td><code>StartLogging</code></td>
+<td>DLT 연결 + 캡처 시작 (메모리만, 파일 저장 없음). 뷰어 모달이 자동 오픈됩니다. 종료 시 StopLogging으로 일괄 저장.</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
+</tr>
+<tr>
+<td><code>StopLogging</code></td>
+<td>DLT 캡처 종료 + 메모리 버퍼를 파일로 일괄 저장. 자동 경로 또는 지정 경로.</td>
+<td style="font-size:12px"><code>save_path</code>: 저장 파일 경로. 빈 값이면 자동 (재생 중: run_dir/logs/dlt_*.log, 스텝 테스트: backend/results/Temp_logs/dlt_*.log)</td>
+</tr>
+<tr>
+<td><code>count_keyword</code></td>
+<td>로그에서 keyword가 등장할 때마다 실시간 카운트하고 발생 시간을 누적. 같은 name으로 첫 호출=시작, 재호출=결과 반환. 통계 용도 (시나리오 fail에 영향 없음).</td>
+<td style="font-size:12px"><code>keyword</code>: 찾을 부분 문자열. 예: &#x27;Pass&#x27;, &#x27;BootComplete&#x27;<br><code>name</code>: 카운터 식별자. 빈 값이면 keyword 자체. 같은 name 재호출 시 결과 조회</td>
+</tr>
+<tr>
+<td><code>reset_count_keyword</code></td>
+<td>count_keyword 카운터를 리셋합니다. name 빈 값이면 모든 카운터 제거.</td>
+<td style="font-size:12px"><code>name</code>: 리셋할 카운터 이름. 빈 값이면 전체</td>
+</tr>
+<tr>
+<td><code>assert_keyword</code></td>
+<td>캡처되는 모든 라인이 keyword를 **포함해야** 정상. **미포함 라인이 들어오면 fail step row 자동 누적**. 정상 키워드(예: &#x27;OK&#x27;, &#x27;Pass&#x27;, &#x27;BootComplete&#x27;)를 단언할 때 사용. 비정상 키워드 검출은 fail_on_keyword 사용.</td>
+<td style="font-size:12px"><code>keyword</code>: 라인에 반드시 포함되어야 하는 부분 문자열. 예: &#x27;Pass&#x27;, &#x27;OK&#x27;<br><code>name</code>: 단언 식별자. 빈 값이면 &#x27;assert_&lt;keyword&gt;&#x27;. 같은 name 재호출 시 miss 통계 반환</td>
+</tr>
+<tr>
+<td><code>reset_assert_keyword</code></td>
+<td>assert_keyword 단언을 리셋합니다. name 빈 값이면 모든 단언 제거.</td>
+<td style="font-size:12px"><code>name</code>: 리셋할 단언 이름. 빈 값이면 전체</td>
+</tr>
+<tr>
+<td><code>fail_on_keyword</code></td>
+<td>캡처되는 라인에 keyword가 **포함되면 fail row 누적**. assert_keyword의 반대. &#x27;ERROR&#x27;/&#x27;Fail&#x27;/&#x27;crash&#x27; 등 비정상 키워드 검출용. **time&gt;0이면 동기 모드** (해당 시간 동안만 모니터링 후 자동 종료, 검출 fail은 이 스텝 바로 아래 Fail_Count_N으로 인라인 표시). time=0이면 백그라운드 모드.</td>
+<td style="font-size:12px"><code>keyword</code>: 검출할 부분 문자열. 이 단어가 라인에 들어오면 fail로 보고. 예: &#x27;Fail&#x27;, &#x27;ERROR&#x27;<br><code>time</code>: 동기 모니터링 시간(초). &gt;0이면 해당 시간 동안만 감시 후 자동 unregister + 다음 스텝으로. 0(기본)이면 백그라운드.<br><code>name</code>: 검출기 식별자. 빈 값이면 &#x27;fail_&lt;keyword&gt;&#x27;. 같은 name 재호출 시 hit 통계 반환</td>
+</tr>
+<tr>
+<td><code>reset_fail_on_keyword</code></td>
+<td>fail_on_keyword 검출기를 리셋합니다. name 빈 값이면 모든 검출기 제거.</td>
+<td style="font-size:12px"><code>name</code>: 리셋할 검출기 이름. 빈 값이면 전체</td>
+</tr>
 <tr>
 <td><code>StartSave</code></td>
 <td>DLT 데몬에 연결하고 로그 캡처 + 파일 저장을 시작합니다. (연결 → 캡처 → 저장 한번에 수행)</td>
@@ -1815,384 +1158,13 @@
 </tbody>
 </table>
 
-<h3 id="mod-MLP">MLP</h3>
-<div class="callout callout-info">MLP 로깅 — MIB Log Protocol로 IVI/SAFE 시스템의 실시간 로그를 수신하여 저장하는 모듈. ICAS3/MIB3OI 지원</div>
-<table>
-<thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
-<tbody>
-<tr>
-<td><code>set_config</code></td>
-<td>MLP 설정을 구성합니다. 모델과 로그 저장 경로를 설정합니다.</td>
-<td style="font-size:12px"><code>model</code>: 차량 모델. &#x27;ICAS3EU&#x27;, &#x27;ICAS3CN&#x27;, &#x27;MIB3OI&#x27; 중 선택<br><code>mlp_ivi_file_path</code>: IVI 로그 저장 경로 (필수)<br><code>mlp_safe_file_path</code>: SAFE 로그 저장 경로 (ICAS3 전용, 선택)</td>
-</tr>
-<tr>
-<td><code>logging_start</code></td>
-<td>MLP 로그 저장을 시작합니다. set_config을 먼저 호출해야 합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>logging_stop</code></td>
-<td>MLP 로그 저장을 중지합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>MLP_IVI_READ_THREAD</code></td>
-<td>IVI MLP 수신 스레드를 시작합니다. 내부적으로 자동 호출됩니다.</td>
-<td style="font-size:12px"><code>mlp_ivi_file_path</code>: 로그 저장 경로<br><code>host</code>: 연결할 호스트 IP<br><code>port</code>: 연결할 포트</td>
-</tr>
-<tr>
-<td><code>MLP_SAFE_READ_THREAD</code></td>
-<td>SAFE MLP 수신 스레드를 시작합니다. 내부적으로 자동 호출됩니다.</td>
-<td style="font-size:12px"><code>mlp_safe_file_path</code>: 로그 저장 경로<br><code>host</code>: 연결할 호스트 IP<br><code>port</code>: 연결할 포트</td>
-</tr>
-</tbody>
-</table>
-
-<h3 id="mod-Trace">Trace</h3>
-<div class="callout callout-info">트레이스 분석 — 함수 호출 트레이스를 분석하여 예상 호출 순서와 실제 호출 순서를 비교하는 모듈</div>
-<table>
-<thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
-<tbody>
-<tr>
-<td><code>initialize</code></td>
-<td>트레이스 분석기를 초기화합니다. 이전 데이터를 모두 삭제합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>append_expected</code></td>
-<td>예상되는 함수 호출 쌍(caller → callee)을 추가합니다.</td>
-<td style="font-size:12px"><code>caller</code>: 호출자 함수 이름<br><code>callee</code>: 피호출자 함수 이름</td>
-</tr>
-<tr>
-<td><code>set_actual</code></td>
-<td>실제 트레이스 파일이 있는 디렉토리를 설정합니다. 파일을 파싱하여 시간순으로 정렬합니다.</td>
-<td style="font-size:12px"><code>path</code>: 트레이스 파일이 있는 PC 디렉토리 경로</td>
-</tr>
-<tr>
-<td><code>set_start_timestamp</code></td>
-<td>트레이스 시작 타임스탬프를 설정합니다.</td>
-<td style="font-size:12px"><code>timestamp</code>: 시작 시간 (에포크 초 단위)</td>
-</tr>
-<tr>
-<td><code>compare</code></td>
-<td>예상 호출과 실제 호출을 비교합니다. 각 호출 쌍의 일치 여부를 반환합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>timeliness</code></td>
-<td>마지막 예상 결과가 시간 제한 내에 호출되었는지 확인합니다. compare() 이후에 호출해야 합니다.</td>
-<td style="font-size:12px"><code>time_diff</code>: 허용 시간 차이 (ms)</td>
-</tr>
-<tr>
-<td><code>get_basename</code></td>
-<td>트레이스 파일의 기본 이름을 반환합니다.</td>
-<td style="font-size:12px"><code>trace_file</code>: 트레이스 파일 경로</td>
-</tr>
-</tbody>
-</table>
-
 
 
 <h2 id="cat-media">미디어 & 이미지</h2>
 
-<h3 id="mod-VisionCamera">VisionCamera</h3>
-<div class="callout callout-info">비전 카메라 — GigE Vision 산업용 카메라로 화면을 캡처하는 모듈</div>
-<table>
-<thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
-<tbody>
-<tr>
-<td><code>Connect</code></td>
-<td>비전 카메라에 연결합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>Disconnect</code></td>
-<td>비전 카메라 연결을 해제합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>IsConnected</code></td>
-<td>연결 상태를 확인합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>Capture</code></td>
-<td>화면을 캡처하여 이미지 파일로 저장합니다.</td>
-<td style="font-size:12px"><code>save_path</code>: 이미지 저장 경로. 비워두면 임시 폴더에 저장</td>
-</tr>
-<tr>
-<td><code>CaptureBytes</code></td>
-<td>화면을 캡처하여 바이트 데이터로 반환합니다.</td>
-<td style="font-size:12px"><code>fmt</code>: &#x27;png&#x27; (고품질) 또는 &#x27;jpeg&#x27; (빠름). 기본값: &#x27;png&#x27;</td>
-</tr>
-<tr>
-<td><code>CaptureToFile</code></td>
-<td>지정 경로에 PNG 이미지를 캡처합니다.</td>
-<td style="font-size:12px"><code>save_path</code>: 저장 경로 (필수)</td>
-</tr>
-<tr>
-<td><code>CropCapture</code></td>
-<td>특정 영역만 잘라서 캡처합니다.</td>
-<td style="font-size:12px"><code>save_path</code>: 저장 경로 (필수)<br><code>left</code>: 왼쪽 좌표 (px)<br><code>top</code>: 위쪽 좌표 (px)<br><code>right</code>: 오른쪽 좌표 (px)<br><code>bottom</code>: 아래쪽 좌표 (px)</td>
-</tr>
-<tr>
-<td><code>GetInfo</code></td>
-<td>카메라 정보를 반환합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-</tbody>
-</table>
-
-<h3 id="mod-VisionCameraClient">VisionCameraClient</h3>
-<div class="callout callout-info">비전 카메라 클라이언트 — VisionCamera 내부에서 사용하는 저수준 카메라 제어 모듈</div>
-<table>
-<thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
-<tbody>
-<tr>
-<td><code>md_VisionConnect</code></td>
-<td>비전 카메라에 저수준 연결을 수행합니다. 일반적으로 VisionCamera.Connect()를 사용하세요.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>md_VisionDisconnect</code></td>
-<td>비전 카메라 연결을 해제합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>md_IsConnect</code></td>
-<td>연결 상태를 확인합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>md_VisionCapture</code></td>
-<td>이미지를 캡처하여 파일로 저장합니다.</td>
-<td style="font-size:12px"><code>szPath</code>: 저장 경로 (필수)<br><code>left</code>: 크롭 왼쪽 좌표. -1이면 전체. 기본값: -1<br><code>top</code>: 크롭 위쪽 좌표. 기본값: -1<br><code>right</code>: 크롭 오른쪽 좌표. 기본값: -1<br><code>bottom</code>: 크롭 아래쪽 좌표. 기본값: -1</td>
-</tr>
-<tr>
-<td><code>md_CaptureBytes</code></td>
-<td>이미지를 바이트 데이터로 반환합니다.</td>
-<td style="font-size:12px"><code>fmt</code>: &#x27;png&#x27; 또는 &#x27;jpeg&#x27;. 기본값: &#x27;jpeg&#x27;</td>
-</tr>
-<tr>
-<td><code>dispose</code></td>
-<td>카메라 리소스를 정리합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-</tbody>
-</table>
-
-<h3 id="mod-AudioLibrary">AudioLibrary</h3>
-<div class="callout callout-info">오디오 분석 — 오디오 녹음 및 음소거 판별을 수행하는 모듈. 음악/라디오 소스에서 무음 여부를 확인</div>
-<table>
-<thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
-<tbody>
-<tr>
-<td><code>select_channels</code></td>
-<td>오디오 입력 디바이스를 선택합니다.</td>
-<td style="font-size:12px"><code>audio_device_s</code>: 오디오 디바이스 이름의 일부. 예: &#x27;USB&#x27;, &#x27;PnP&#x27;, &#x27;pulse&#x27;. 기본값: &#x27;pulse&#x27;</td>
-</tr>
-<tr>
-<td><code>start_recording</code></td>
-<td>오디오 녹음을 시작합니다.</td>
-<td style="font-size:12px"><code>record_seconds</code>: 녹음 시간 (초). 예: 5 = 5초, 0.5 = 500ms. 기본값: 5<br><code>rate</code>: 샘플링 레이트. 기본값: 44100<br><code>chunk</code>: 버퍼 크기. 기본값: 1024<br><code>format</code>: 오디오 포맷. 기본값: 8</td>
-</tr>
-<tr>
-<td><code>stop_recording</code></td>
-<td>오디오 녹음을 중지합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>isMute</code></td>
-<td>현재 오디오가 음소거 상태인지 확인합니다. 음악/라디오 소스용입니다 (단일 톤, 화이트 노이즈는 정확하지 않음). 신호/노이즈 비율이 25dB 이하이면 TRUE(음소거)를 반환합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>get_max_value</code></td>
-<td>녹음된 오디오의 최대 진폭 값을 반환합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>get_min_max_local_maxima</code></td>
-<td>녹음된 오디오의 국소 최대/최소값을 반환합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>close</code></td>
-<td>AudioLibrary를 종료하고 리소스를 해제합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-</tbody>
-</table>
-
-<h3 id="mod-ImageProcessing">ImageProcessing</h3>
-<div class="callout callout-info">이미지 처리 — OCR(문자 인식), 이미지 비교, 템플릿 매칭 등 이미지 분석을 수행하는 모듈. Tesseract-OCR 필요</div>
-<table>
-<thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
-<tbody>
-<tr>
-<td><code>image_compare</code></td>
-<td>두 이미지 파일을 비교합니다. 일치 여부와 일치율을 반환합니다.</td>
-<td style="font-size:12px"><code>origin</code>: 비교할 원본 이미지 경로 (jpg)<br><code>expected</code>: 기대 이미지 경로 (jpg)</td>
-</tr>
-<tr>
-<td><code>imagesearch</code></td>
-<td>원본 이미지 안에서 대상 이미지를 찾습니다 (템플릿 매칭). 위치와 일치율을 반환합니다.</td>
-<td style="font-size:12px"><code>origin</code>: 원본 이미지 경로 (캡처된 화면)<br><code>expected</code>: 찾을 이미지 경로 (아이콘, 버튼 등)<br><code>threshold</code>: 일치 임계값 (0~100). 기본값: 99</td>
-</tr>
-<tr>
-<td><code>image_cut</code></td>
-<td>이미지의 특정 영역을 잘라냅니다 (크롭).</td>
-<td style="font-size:12px"><code>origin</code>: 원본 이미지 경로<br><code>cut_img</code>: 잘라낸 이미지 저장 경로<br><code>x1</code>: 좌상단 X 좌표<br><code>y1</code>: 좌상단 Y 좌표<br><code>x2</code>: 우하단 X 좌표<br><code>y2</code>: 우하단 Y 좌표</td>
-</tr>
-<tr>
-<td><code>image_valid</code></td>
-<td>캡처된 이미지가 유효한지 (OpenCV로 읽을 수 있는지) 확인합니다.</td>
-<td style="font-size:12px"><code>image</code>: 확인할 이미지 경로 (jpg)</td>
-</tr>
-<tr>
-<td><code>ocr</code></td>
-<td>이미지에서 텍스트를 인식합니다 (OCR). Tesseract-OCR이 설치되어 있어야 합니다.</td>
-<td style="font-size:12px"><code>img_path</code>: 이미지 경로 (jpg)<br><code>language</code>: 인식 언어. 기본값: &#x27;eng&#x27;. 한국어: &#x27;kor&#x27;<br><code>psm</code>: 페이지 세그먼트 모드. 기본값: 6 (단일 블록)</td>
-</tr>
-<tr>
-<td><code>ocr_coordinate</code></td>
-<td>이미지에서 특정 문자열의 좌표를 찾습니다.</td>
-<td style="font-size:12px"><code>img_path</code>: 이미지 경로<br><code>string</code>: 찾을 문자열<br><code>language</code>: 인식 언어. 기본값: &#x27;eng&#x27;<br><code>rect_size</code>: 인식 영역 크기. 기본값: 15<br><code>full_screen_check</code>: 전체 화면 검색 여부. 기본값: True</td>
-</tr>
-<tr>
-<td><code>ocr_sentence</code></td>
-<td>이미지에서 문장을 찾아 좌표를 반환합니다.</td>
-<td style="font-size:12px"><code>img_path</code>: 이미지 경로<br><code>string</code>: 찾을 문장<br><code>output_suffix</code>: 출력 파일 접미사<br><code>language</code>: 인식 언어. 기본값: &#x27;eng&#x27;<br><code>rect_size</code>: 인식 영역 크기. 기본값: 15<br><code>full_screen_check</code>: 전체 화면 검색. 기본값: True</td>
-</tr>
-<tr>
-<td><code>is_similar</code></td>
-<td>두 텍스트가 유사한지 비교합니다.</td>
-<td style="font-size:12px"><code>text1</code>: 비교할 텍스트 1<br><code>text2</code>: 비교할 텍스트 2<br><code>tolerance</code>: 허용 오차. 기본값: 0 (정확히 일치)</td>
-</tr>
-<tr>
-<td><code>calculate_coordinate</code></td>
-<td>OCR 결과에서 좌표를 계산합니다.</td>
-<td style="font-size:12px"><code>boxes</code>: OCR 박스 데이터<br><code>height</code>: 이미지 높이<br><code>string</code>: 찾을 문자열</td>
-</tr>
-<tr>
-<td><code>calculate_sentence</code></td>
-<td>OCR 결과에서 문장 위치를 계산합니다.</td>
-<td style="font-size:12px"><code>boxes</code>: OCR 박스 데이터<br><code>height</code>: 이미지 높이<br><code>string</code>: 찾을 문장<br><code>image</code>: 이미지 객체</td>
-</tr>
-<tr>
-<td><code>preprocess_image</code></td>
-<td>OCR 인식률 향상을 위해 이미지를 전처리합니다.</td>
-<td style="font-size:12px"><code>image</code>: 전처리할 이미지 객체</td>
-</tr>
-</tbody>
-</table>
-
 
 
 <h2 id="cat-system">시스템 & 유틸리티</h2>
-
-<h3 id="mod-Android">Android</h3>
-<div class="callout callout-info">Android ADB 제어 — ADB를 통해 Android 디바이스를 제어하는 모듈. 터치, 스와이프, 앱 설치, 스크린캡처 등</div>
-<table>
-<thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
-<tbody>
-<tr>
-<td><code>connect_adb_server</code></td>
-<td>ADB 서버에 연결합니다. &#x27;adb start-server&#x27;와 동일합니다.</td>
-<td style="font-size:12px"><code>host</code>: ADB 서버 호스트. 기본값: &#x27;127.0.0.1&#x27;<br><code>port</code>: ADB 서버 포트. 기본값: 5037</td>
-</tr>
-<tr>
-<td><code>adb_devices</code></td>
-<td>연결된 ADB 디바이스 목록을 반환합니다. &#x27;adb devices&#x27;와 동일합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>select_adb_device</code></td>
-<td>명령을 실행할 대상 디바이스를 선택합니다. &#x27;adb -s&#x27; 옵션과 동일합니다.</td>
-<td style="font-size:12px"><code>serial</code>: 디바이스 시리얼 번호</td>
-</tr>
-<tr>
-<td><code>adb_tap</code></td>
-<td>화면의 특정 좌표를 터치합니다.</td>
-<td style="font-size:12px"><code>x</code>: 터치할 X 좌표<br><code>y</code>: 터치할 Y 좌표<br><code>serial</code>: 디바이스 시리얼 (선택). 비워두면 기본 디바이스 사용</td>
-</tr>
-<tr>
-<td><code>adb_swipe</code></td>
-<td>화면을 스와이프(드래그)합니다.</td>
-<td style="font-size:12px"><code>x1</code>: 시작 X 좌표<br><code>y1</code>: 시작 Y 좌표<br><code>x2</code>: 끝 X 좌표<br><code>y2</code>: 끝 Y 좌표<br><code>duration</code>: 스와이프 시간 (ms). 기본값: 300<br><code>serial</code>: 디바이스 시리얼 (선택)</td>
-</tr>
-<tr>
-<td><code>key_event</code></td>
-<td>키 이벤트를 전송합니다. 홈, 뒤로가기, 볼륨 등의 하드웨어 키를 제어합니다.</td>
-<td style="font-size:12px"><code>keycode</code>: 키코드. 예: &#x27;KEYCODE_HOME&#x27;, &#x27;KEYCODE_BACK&#x27;, &#x27;KEYCODE_VOLUME_UP&#x27;<br><code>long_press</code>: 길게 누르기 여부. 기본값: False<br><code>serial</code>: 디바이스 시리얼 (선택)</td>
-</tr>
-<tr>
-<td><code>TypingtoScrenn</code></td>
-<td>화면에 텍스트를 입력합니다.</td>
-<td style="font-size:12px"><code>text</code>: 입력할 텍스트<br><code>serial</code>: 디바이스 시리얼 (선택)</td>
-</tr>
-<tr>
-<td><code>adb_shell</code></td>
-<td>ADB 셸 명령을 실행합니다. 결과를 반환합니다.</td>
-<td style="font-size:12px"><code>cmd</code>: 셸 명령어. 예: &#x27;getprop ro.build.version.release&#x27;, &#x27;pm list packages&#x27;<br><code>serial</code>: 디바이스 시리얼 (선택)</td>
-</tr>
-<tr>
-<td><code>Send_adb_command</code></td>
-<td>ReplayKit 자체 ADBService를 통해 임의의 adb 명령을 실행합니다 (선택된 ADB 디바이스 자동 적용). 출력 반환. 예: &#x27;shell pm list packages&#x27;, &#x27;install foo.apk&#x27;, &#x27;push file /sdcard/&#x27;</td>
-<td style="font-size:12px"><code>command</code>: 실행할 adb 명령 (adb -s {serial} 부분은 자동 추가). 예: &#x27;shell input keyevent KEYCODE_HOME&#x27;</td>
-</tr>
-<tr>
-<td><code>adb_screencap</code></td>
-<td>화면을 캡처하여 PC에 이미지 파일로 저장합니다.</td>
-<td style="font-size:12px"><code>img_path</code>: PC에 저장할 이미지 경로<br><code>serial</code>: 디바이스 시리얼 (선택)</td>
-</tr>
-<tr>
-<td><code>adb_push</code></td>
-<td>PC의 파일을 디바이스로 전송합니다.</td>
-<td style="font-size:12px"><code>src</code>: PC의 파일 경로<br><code>dest</code>: 디바이스의 저장 경로<br><code>serial</code>: 디바이스 시리얼 (선택)</td>
-</tr>
-<tr>
-<td><code>adb_pull</code></td>
-<td>디바이스의 파일을 PC로 가져옵니다.</td>
-<td style="font-size:12px"><code>src</code>: 디바이스의 파일 경로<br><code>dest</code>: PC의 저장 경로<br><code>serial</code>: 디바이스 시리얼 (선택)</td>
-</tr>
-<tr>
-<td><code>install_apk</code></td>
-<td>APK 파일을 디바이스에 설치합니다.</td>
-<td style="font-size:12px"><code>apk_path</code>: APK 파일 경로<br><code>serial</code>: 디바이스 시리얼 (선택)</td>
-</tr>
-<tr>
-<td><code>uninstall_apk</code></td>
-<td>앱을 디바이스에서 제거합니다.</td>
-<td style="font-size:12px"><code>apk_package</code>: 앱 패키지명. 예: &#x27;com.example.app&#x27;<br><code>serial</code>: 디바이스 시리얼 (선택)</td>
-</tr>
-<tr>
-<td><code>adb_reboot</code></td>
-<td>디바이스를 재부팅합니다.</td>
-<td style="font-size:12px"><code>serial</code>: 디바이스 시리얼 (선택)</td>
-</tr>
-<tr>
-<td><code>IncomingCall</code></td>
-<td>수신 전화를 시뮬레이션합니다.</td>
-<td style="font-size:12px"><code>number</code>: 전화번호<br><code>serial</code>: 디바이스 시리얼 (선택)</td>
-</tr>
-<tr>
-<td><code>start_logcat</code></td>
-<td>로그캣을 파일로 저장하기 시작합니다.</td>
-<td style="font-size:12px"><code>logpath</code>: 로그 파일 저장 경로<br><code>serial</code>: 디바이스 시리얼 (선택)</td>
-</tr>
-<tr>
-<td><code>stop_logcat</code></td>
-<td>로그캣 저장을 중지합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>read_thread</code></td>
-<td>디바이스 로그 수신 스레드를 시작합니다.</td>
-<td style="font-size:12px"><code>device</code>: 디바이스 객체<br><code>logpath</code>: 로그 파일 경로</td>
-</tr>
-</tbody>
-</table>
 
 <h3 id="mod-CMD">CMD</h3>
 <div class="callout callout-info">명령어 실행 — Windows 명령 프롬프트(CMD) 명령을 실행하는 모듈. 외부 프로그램 실행이나 시스템 명령에 사용</div>
@@ -2237,38 +1209,129 @@
 </tbody>
 </table>
 
-<h3 id="mod-COMMON_WINDOWS">COMMON_WINDOWS</h3>
-<div class="callout callout-info">Windows 유틸리티 — Windows 명령어 출력을 파일로 저장하는 유틸리티 모듈</div>
-<table>
-<thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
-<tbody>
-<tr>
-<td><code>start_save_file_from_command</code></td>
-<td>명령어를 실행하고 출력을 로그 파일로 저장합니다.</td>
-<td style="font-size:12px"><code>command</code>: 실행할 명령어<br><code>path_dir_log</code>: 로그 저장 디렉토리 경로</td>
-</tr>
-<tr>
-<td><code>stop_save_file</code></td>
-<td>로그 파일 저장을 중지합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>get_file_path</code></td>
-<td>현재 로그 파일 경로를 반환합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-</tbody>
-</table>
 
-<h3 id="mod-TigrisCheck">TigrisCheck</h3>
-<div class="callout callout-info">Tigris 검사 — 특정 ADB 디바이스에서 Tigris 테스트 스위트를 실행하고 결과를 확인하는 모듈</div>
+
+<h2 id="cat-etc">기타</h2>
+
+<h3 id="mod-WoohyunBench">WoohyunBench</h3>
+<div class="callout callout-info">우현벤치 — UDP 통신으로 차량 전원(IGN/ACC/배터리) 제어 + CAN FD 신호 송신을 지원하는 통합 테스트 벤치</div>
 <table>
 <thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
 <tbody>
 <tr>
-<td><code>checkTigris</code></td>
-<td>Tigris 검사를 실행합니다.</td>
-<td style="font-size:12px"><code>ADBID</code>: ADB 디바이스 시리얼 번호<br><code>TIGRIS_FOLDER</code>: Tigris 폴더 경로<br><code>SUITE_NAME</code>: 실행할 테스트 스위트 이름</td>
+<td><code>Connect</code></td>
+<td>벤치 장비에 UDP 네트워크 연결을 수행합니다. 장비 추가 시 자동으로 호출되므로 보통 수동 호출이 필요 없습니다.</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
+</tr>
+<tr>
+<td><code>Disconnect</code></td>
+<td>벤치 장비와의 UDP 네트워크 연결을 해제합니다.</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
+</tr>
+<tr>
+<td><code>IsConnected</code></td>
+<td>벤치 장비가 현재 연결되어 있는지 확인합니다.</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
+</tr>
+<tr>
+<td><code>IGN1</code></td>
+<td>이그니션 1(IGN1) 전원을 켜거나 끕니다. 차량의 시동 전원에 해당합니다.</td>
+<td style="font-size:12px"><code>on_off</code>: 0 = OFF (전원 끄기), 1 = ON (전원 켜기). 기본값: 1 (ON)</td>
+</tr>
+<tr>
+<td><code>IGN1_Read</code></td>
+<td>이그니션 1(IGN1)의 현재 전원 상태를 읽어옵니다. 반환값: 0=OFF, 1=ON, -1=읽기 실패</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
+</tr>
+<tr>
+<td><code>IGN2</code></td>
+<td>이그니션 2(IGN2) 전원을 켜거나 끕니다. 보조 이그니션 전원에 해당합니다.</td>
+<td style="font-size:12px"><code>on_off</code>: 0 = OFF (전원 끄기), 1 = ON (전원 켜기). 기본값: 1 (ON)</td>
+</tr>
+<tr>
+<td><code>IGN2_Read</code></td>
+<td>이그니션 2(IGN2)의 현재 전원 상태를 읽어옵니다. 반환값: 0=OFF, 1=ON, -1=읽기 실패</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
+</tr>
+<tr>
+<td><code>ACC</code></td>
+<td>ACC(Accessory) 전원을 켜거나 끕니다. 차량의 액세서리 전원(라디오, 내비 등 작동 가능 상태)에 해당합니다.</td>
+<td style="font-size:12px"><code>on_off</code>: 0 = OFF (전원 끄기), 1 = ON (전원 켜기). 기본값: 1 (ON)</td>
+</tr>
+<tr>
+<td><code>ACC_Read</code></td>
+<td>ACC 전원의 현재 상태를 읽어옵니다. 반환값: 0=OFF, 1=ON, -1=읽기 실패</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
+</tr>
+<tr>
+<td><code>BATTERY</code></td>
+<td>배터리 릴레이를 켜거나 끕니다. OFF 시 차량에 배터리 전원이 완전히 차단됩니다.</td>
+<td style="font-size:12px"><code>on_off</code>: 0 = OFF (배터리 차단), 1 = ON (배터리 연결). 기본값: 1 (ON)</td>
+</tr>
+<tr>
+<td><code>BATTERY_Read</code></td>
+<td>배터리 릴레이의 현재 상태를 읽어옵니다. 반환값: 0=OFF, 1=ON, -1=읽기 실패</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
+</tr>
+<tr>
+<td><code>BatterySet</code></td>
+<td>배터리 출력 전압을 설정합니다. 전압 변동 테스트에 사용합니다.</td>
+<td style="font-size:12px"><code>voltage</code>: 설정할 전압 (V 단위, 소수점 가능). 예: 12.0, 14.4, 9.0. 기본값: 14.4V</td>
+</tr>
+<tr>
+<td><code>BatteryCheck</code></td>
+<td>현재 배터리 출력 전압을 측정합니다. 반환값: 전압(V), 실패 시 -1.0</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
+</tr>
+<tr>
+<td><code>AmpereCheck</code></td>
+<td>현재 소비 전류를 측정합니다. 반환값: 전류(A), 실패 시 -1.0</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
+</tr>
+<tr>
+<td><code>SendCommand</code></td>
+<td>벤치에 직접 UDP 명령을 전송합니다. 고급 사용자용이며, 일반적으로 위의 개별 함수 사용을 권장합니다.</td>
+<td style="font-size:12px"><code>cmd1</code>: 명령 코드 1 (정수, 예: 0x24 → 36)<br><code>cmd2</code>: 명령 코드 2 (정수, 예: 0x21 → 33)<br><code>data_hex</code>: 추가 데이터 (공백으로 구분된 16진수 문자열). 예: &#x27;FF 01&#x27;. 기본값: 빈 문자열</td>
+</tr>
+<tr>
+<td><code>GetInfo</code></td>
+<td>벤치의 현재 연결 정보(IP, 포트, signal_file, 로드된 신호 수, 연결 상태)를 반환합니다.</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
+</tr>
+<tr>
+<td><code>LoadSignals</code></td>
+<td>CAN FD 신호 정의를 Excel(.xls/.xlsx) 또는 XML(.CAN)에서 런타임에 로드합니다.</td>
+<td style="font-size:12px"><code>file_path</code>: 신호 정의 파일 절대 경로</td>
+</tr>
+<tr>
+<td><code>SendSignal</code></td>
+<td>이름으로 지정한 CAN FD 신호를 physical value로 송신합니다. 200ms 간격으로 5회 반복. 신호 정의 파일이 로드되어 있어야 합니다.</td>
+<td style="font-size:12px"><code>signal_name</code>: 신호 이름 (예: &#x27;Warn_DrvDrSwSta&#x27;)<br><code>physical_value</code>: 물리값 (정수/실수/hex 문자열 &#x27;0xAB&#x27;)</td>
+</tr>
+<tr>
+<td><code>DoorTest</code></td>
+<td>운전석 도어 스위치 신호(Warn_DrvDrSwSta)를 ON/OFF 반복 송신하여 도어 동작을 테스트합니다.</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
+</tr>
+<tr>
+<td><code>TestAllSignals</code></td>
+<td>로드된 모든 CAN FD 신호를 중간값으로 순차 송신합니다. 부하/연결 확인용.</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
+</tr>
+<tr>
+<td><code>CheckSignals</code></td>
+<td>로드된 CAN FD 신호 정의 목록을 로그로 덤프합니다.</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
+</tr>
+<tr>
+<td><code>SendCanFd</code></td>
+<td>Raw CAN FD 프레임을 직접 송신합니다 (신호 정의 불필요, 저수준 디버깅용).</td>
+<td style="font-size:12px"><code>can_id</code>: CAN ID (정수, 예: 0x411 → 1041)<br><code>payload_hex</code>: 페이로드 (공백/쉼표 허용 hex 문자열, 예: &#x27;01 02 03&#x27;)</td>
+</tr>
+<tr>
+<td><code>ReinitCanFd</code></td>
+<td>CAN FD 버스 재초기화 (baudrate/data bit time 변경 시). 기본 500k/2M.</td>
+<td style="font-size:12px"><code>baudrate</code>: arbitration phase baudrate (2바이트 정수, 기본 0x1F4)<br><code>databit_time</code>: data phase bit time (2바이트 정수, 기본 0x7D0)</td>
 </tr>
 </tbody>
 </table>

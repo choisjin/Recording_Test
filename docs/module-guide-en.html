@@ -134,41 +134,22 @@
       <a href="#top" class="toc-h2">Module Guide</a>
       <a href="#overview" class="toc-h3">All Modules</a>
       <a href="#cat-power" class="toc-h2">Power Control</a>
-      <a href="#mod-POWER" class="toc-h3">POWER</a>
-      <a href="#mod-RIDEN" class="toc-h3">RIDEN</a>
-      <a href="#mod-KeysightPower" class="toc-h3">KeysightPower</a>
       <a href="#cat-bench" class="toc-h2">Test Bench</a>
       <a href="#mod-IVIQEBenchIOClient" class="toc-h3">IVIQEBenchIOClient</a>
-      <a href="#mod-CCIC_BENCH" class="toc-h3">CCIC_BENCH</a>
-      <a href="#mod-BENCH" class="toc-h3">BENCH</a>
-      <a href="#mod-SP25Bench" class="toc-h3">SP25Bench</a>
       <a href="#mod-SmartBench" class="toc-h3">SmartBench</a>
       <a href="#cat-can" class="toc-h2">CAN Communication</a>
-      <a href="#mod-CAN" class="toc-h3">CAN</a>
       <a href="#mod-CANOE" class="toc-h3">CANOE</a>
       <a href="#mod-CANAT" class="toc-h3">CANAT</a>
-      <a href="#mod-PCANClient" class="toc-h3">PCANClient</a>
       <a href="#cat-comm" class="toc-h2">Communication (Serial/SSH/UART)</a>
-      <a href="#mod-SerialPlugin" class="toc-h3">SerialPlugin</a>
       <a href="#mod-SerialLogging" class="toc-h3">SerialLogging</a>
-      <a href="#mod-Uart" class="toc-h3">Uart</a>
-      <a href="#mod-Ignition" class="toc-h3">Ignition</a>
       <a href="#mod-SSHManager" class="toc-h3">SSHManager</a>
       <a href="#cat-log" class="toc-h2">Logging & Diagnostics</a>
-      <a href="#mod-DLTViewer" class="toc-h3">DLTViewer</a>
       <a href="#mod-DLTLogging" class="toc-h3">DLTLogging</a>
-      <a href="#mod-MLP" class="toc-h3">MLP</a>
-      <a href="#mod-Trace" class="toc-h3">Trace</a>
       <a href="#cat-media" class="toc-h2">Media & Image</a>
-      <a href="#mod-VisionCamera" class="toc-h3">VisionCamera</a>
-      <a href="#mod-VisionCameraClient" class="toc-h3">VisionCameraClient</a>
-      <a href="#mod-AudioLibrary" class="toc-h3">AudioLibrary</a>
-      <a href="#mod-ImageProcessing" class="toc-h3">ImageProcessing</a>
       <a href="#cat-system" class="toc-h2">System & Utilities</a>
-      <a href="#mod-Android" class="toc-h3">Android</a>
       <a href="#mod-CMD" class="toc-h3">CMD</a>
-      <a href="#mod-COMMON_WINDOWS" class="toc-h3">COMMON_WINDOWS</a>
-      <a href="#mod-TigrisCheck" class="toc-h3">TigrisCheck</a>
+      <a href="#cat-etc" class="toc-h2">Others</a>
+      <a href="#mod-WoohyunBench" class="toc-h3">WoohyunBench</a>
     </nav>
   </aside>
 
@@ -183,218 +164,34 @@
     </div>
 
     <h2 id="overview">All Modules</h2>
-    <p>Total <strong>29</strong> modules, <strong>359</strong> functions registered.</p>
+    <p>Total <strong>9</strong> modules, <strong>197</strong> functions registered.</p>
     <table>
       <thead><tr><th>Module</th><th>Description</th><th>Functions</th></tr></thead>
       <tbody>
-        <tr><td><a href="#mod-POWER"><strong>POWER</strong></a></td><td>Controls voltage/current settings and measurements for VUPOWER/K3010 power supplies connected via serial (RS-232)</td><td style="text-align:center">6</td></tr>
-<tr><td><a href="#mod-RIDEN"><strong>RIDEN</strong></a></td><td>Controls RIDEN power supply devices connected via serial</td><td style="text-align:center">2</td></tr>
-<tr><td><a href="#mod-CAN"><strong>CAN</strong></a></td><td>Sends and receives vehicle CAN messages via PCAN/Vector/Kvaser CAN interfaces</td><td style="text-align:center">12</td></tr>
-<tr><td><a href="#mod-CANOE"><strong>CANOE</strong></a></td><td>Controls Vector CANoe simulation software: start/stop, environment variables, and system variables</td><td style="text-align:center">6</td></tr>
+        <tr><td><a href="#mod-CANOE"><strong>CANOE</strong></a></td><td>Controls Vector CANoe simulation software: start/stop, environment variables, and system variables</td><td style="text-align:center">6</td></tr>
 <tr><td><a href="#mod-CANAT"><strong>CANAT</strong></a></td><td>Sends and receives CAN bus messages via CANat hardware</td><td style="text-align:center">7</td></tr>
-<tr><td><a href="#mod-BENCH"><strong>BENCH</strong></a></td><td>Sends/receives data and measures current via TCP socket with bench equipment</td><td style="text-align:center">4</td></tr>
 <tr><td><a href="#mod-IVIQEBenchIOClient"><strong>IVIQEBenchIOClient</strong></a></td><td>Comprehensive control of relays, power, sensors, audio, LCD, buttons, and USB on the serial-connected QE test bench</td><td style="text-align:center">117</td></tr>
-<tr><td><a href="#mod-SP25Bench"><strong>SP25Bench</strong></a></td><td>Controls SP25 test bench (eCall, reboot, factory reset)</td><td style="text-align:center">3</td></tr>
-<tr><td><a href="#mod-Uart"><strong>Uart</strong></a></td><td>Performs UART serial communication and saves logs. Used for Linux console access, etc.</td><td style="text-align:center">10</td></tr>
-<tr><td><a href="#mod-Ignition"><strong>Ignition</strong></a></td><td>Controls ICAS3/MIB3 device ignition via TCP socket (default: 192.168.1.4:15500)</td><td style="text-align:center">4</td></tr>
-<tr><td><a href="#mod-KeysightPower"><strong>KeysightPower</strong></a></td><td>Controls voltage settings and waveform sequences for Keysight power supplies connected via Ethernet/GPIB</td><td style="text-align:center">22</td></tr>
 <tr><td><a href="#mod-SSHManager"><strong>SSHManager</strong></a></td><td>Connects to remote devices via SSH for command execution and file transfer</td><td style="text-align:center">7</td></tr>
-<tr><td><a href="#mod-AudioLibrary"><strong>AudioLibrary</strong></a></td><td>Performs audio recording and mute detection. Checks for silence from music/radio sources</td><td style="text-align:center">7</td></tr>
-<tr><td><a href="#mod-ImageProcessing"><strong>ImageProcessing</strong></a></td><td>Performs OCR (text recognition), image comparison, and template matching. Requires Tesseract-OCR</td><td style="text-align:center">11</td></tr>
 <tr><td><a href="#mod-DLTLogging"><strong>DLTLogging</strong></a></td><td>Captures and saves logs via direct TCP connection to the DLT daemon, with keyword-based PASS/FAIL evaluation (no GUI required)</td><td style="text-align:center">10</td></tr>
-<tr><td><a href="#mod-SerialLogging"><strong>SerialLogging</strong></a></td><td>Captures and saves logs via serial port connection, with keyword-based PASS/FAIL evaluation</td><td style="text-align:center">11</td></tr>
+<tr><td><a href="#mod-SerialLogging"><strong>SerialLogging</strong></a></td><td>Captures and saves logs via serial port connection, with keyword-based fail detection.
+
+**⚠️ Usage: StartLogging and StopLogging MUST be used as a pair.**
+- If you call StartLogging without StopLogging: logs are NOT saved to file, and the serial port stays open, which can cause port-busy errors on the next run.
+- Place StartLogging at the beginning of your scenario and StopLogging at the end.
+- Cleanup will auto-call StopLogging if the scenario aborts, but you should still call it explicitly in the normal flow.
+
+Standard usage pattern:
+  1) StartLogging()                              ← first step
+  2) SendCommand / SendCommand_*_on_keyword ...  ← middle steps
+  3) StopLogging()                               ← last step (writes log file + releases port)</td><td style="text-align:center">5</td></tr>
 <tr><td><a href="#mod-SmartBench"><strong>SmartBench</strong></a></td><td>Controls power, buttons, current, and LEDs on Smart Bench equipment via TCP socket</td><td style="text-align:center">15</td></tr>
-<tr><td><a href="#mod-MLP"><strong>MLP</strong></a></td><td>Receives and saves real-time logs from IVI/SAFE systems via MIB Log Protocol. Supports ICAS3/MIB3OI</td><td style="text-align:center">5</td></tr>
-<tr><td><a href="#mod-PCANClient"><strong>PCANClient</strong></a></td><td>Sends and receives CAN messages via Peak CAN devices</td><td style="text-align:center">3</td></tr>
-<tr><td><a href="#mod-TigrisCheck"><strong>TigrisCheck</strong></a></td><td>Runs the Tigris test suite on a specific ADB device and checks results</td><td style="text-align:center">1</td></tr>
-<tr><td><a href="#mod-Trace"><strong>Trace</strong></a></td><td>Analyzes function call traces by comparing expected vs. actual call sequences</td><td style="text-align:center">7</td></tr>
-<tr><td><a href="#mod-COMMON_WINDOWS"><strong>COMMON_WINDOWS</strong></a></td><td>Utility module for saving Windows command output to files</td><td style="text-align:center">3</td></tr>
-<tr><td><a href="#mod-Android"><strong>Android</strong></a></td><td>Controls Android devices via ADB: touch, swipe, app install, screen capture, etc.</td><td style="text-align:center">19</td></tr>
-<tr><td><a href="#mod-CCIC_BENCH"><strong>CCIC_BENCH</strong></a></td><td>Test bench equipment that controls vehicle power (IGN/ACC/Battery) via UDP communication</td><td style="text-align:center">16</td></tr>
-<tr><td><a href="#mod-SerialPlugin"><strong>SerialPlugin</strong></a></td><td>General-purpose plugin for sending and receiving data via RS-232 serial port</td><td style="text-align:center">15</td></tr>
+<tr><td><a href="#mod-WoohyunBench"><strong>WoohyunBench</strong></a></td><td>Integrated UDP test bench: vehicle power control (IGN/ACC/Battery) + CAN FD signal transmission</td><td style="text-align:center">23</td></tr>
 <tr><td><a href="#mod-CMD"><strong>CMD</strong></a></td><td>Executes Windows command prompt (CMD) commands. Used for running external programs or system commands</td><td style="text-align:center">7</td></tr>
-<tr><td><a href="#mod-DLTViewer"><strong>DLTViewer</strong></a></td><td>Receives and analyzes real-time DLT logs from vehicle ECUs via direct TCP connection</td><td style="text-align:center">15</td></tr>
-<tr><td><a href="#mod-VisionCamera"><strong>VisionCamera</strong></a></td><td>Captures screens using a GigE Vision industrial camera</td><td style="text-align:center">8</td></tr>
-<tr><td><a href="#mod-VisionCameraClient"><strong>VisionCameraClient</strong></a></td><td>Low-level camera control module used internally by VisionCamera</td><td style="text-align:center">6</td></tr>
       </tbody>
     </table>
 
     
 <h2 id="cat-power">Power Control</h2>
-
-<h3 id="mod-POWER">POWER</h3>
-<div class="callout callout-info">Power Supply Control — Controls voltage/current settings and measurements for VUPOWER/K3010 power supplies connected via serial (RS-232)</div>
-<table>
-<thead><tr><th style="width:180px">Function</th><th style="width:280px">Description</th><th>Parameters</th></tr></thead>
-<tbody>
-<tr>
-<td><code>Connect</code></td>
-<td>Connects to the power supply via serial port. Automatically called when adding the device.</td>
-<td style="font-size:12px"><code>port</code>: COM port. e.g. &#x27;COM1&#x27;, &#x27;COM3&#x27;<br><code>bps</code>: Baud rate. e.g. 115200</td>
-</tr>
-<tr>
-<td><code>DisConnect</code></td>
-<td>Disconnects from the power supply.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>SetOutput</code></td>
-<td>Turns the power supply output on or off.</td>
-<td style="font-size:12px"><code>status</code>: &#x27;ON&#x27; = enable output, &#x27;OFF&#x27; = disable output</td>
-</tr>
-<tr>
-<td><code>SetValue</code></td>
-<td>Sets the voltage or current value of the power supply.</td>
-<td style="font-size:12px"><code>set_type</code>: &#x27;VOLT&#x27; = set voltage, &#x27;CURR&#x27; = set current<br><code>value</code>: Value to set. Voltage in V (e.g. 14.4), current in A (e.g. 3.0)</td>
-</tr>
-<tr>
-<td><code>ReadValue</code></td>
-<td>Measures the current voltage or current from the power supply.</td>
-<td style="font-size:12px"><code>set_type</code>: &#x27;VOLT&#x27; = measure voltage, &#x27;CURR&#x27; = measure current</td>
-</tr>
-<tr>
-<td><code>SendCmd</code></td>
-<td>Sends a raw command to the power supply. For advanced users.</td>
-<td style="font-size:12px"><code>cmd</code>: Command string to send</td>
-</tr>
-</tbody>
-</table>
-
-<h3 id="mod-RIDEN">RIDEN</h3>
-<div class="callout callout-info">RIDEN Power Supply — Controls RIDEN power supply devices connected via serial</div>
-<table>
-<thead><tr><th style="width:180px">Function</th><th style="width:280px">Description</th><th>Parameters</th></tr></thead>
-<tbody>
-<tr>
-<td><code>TurnOn</code></td>
-<td>Turns on the RIDEN power supply and sets the specified voltage.</td>
-<td style="font-size:12px"><code>port</code>: COM port. e.g. &#x27;COM1&#x27;<br><code>voltage</code>: Voltage to set (V). e.g. 14.4</td>
-</tr>
-<tr>
-<td><code>Turnoff</code></td>
-<td>Turns off the RIDEN power supply.</td>
-<td style="font-size:12px"><code>port</code>: COM port. e.g. &#x27;COM1&#x27;</td>
-</tr>
-</tbody>
-</table>
-
-<h3 id="mod-KeysightPower">KeysightPower</h3>
-<div class="callout callout-info">Keysight Power Supply — Controls voltage settings and waveform sequences for Keysight power supplies connected via Ethernet/GPIB</div>
-<table>
-<thead><tr><th style="width:180px">Function</th><th style="width:280px">Description</th><th>Parameters</th></tr></thead>
-<tbody>
-<tr>
-<td><code>connectPowerSupply</code></td>
-<td>Connects to the Keysight power supply via Ethernet.</td>
-<td style="font-size:12px"><code>eth</code>: Ethernet interface. Default: None (auto-detect)</td>
-</tr>
-<tr>
-<td><code>closePowerSupply</code></td>
-<td>Disconnects from the power supply.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>setVoltage</code></td>
-<td>Sets the output voltage.</td>
-<td style="font-size:12px"><code>volt</code>: Voltage (V). e.g. 14.4</td>
-</tr>
-<tr>
-<td><code>setMaxVoltage</code></td>
-<td>Sets the maximum voltage limit.</td>
-<td style="font-size:12px"><code>volt</code>: Maximum voltage (V)</td>
-</tr>
-<tr>
-<td><code>turnOnOutput</code></td>
-<td>Turns on the power output.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>turnOffOutput</code></td>
-<td>Turns off the power output.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>getCurrentStatus</code></td>
-<td>Returns the current power supply status.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>getPort</code></td>
-<td>Returns port information.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>setCurrentRangeAuto</code></td>
-<td>Sets the current measurement range to auto.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>setInterface</code></td>
-<td>Selects the communication interface.</td>
-<td style="font-size:12px"><code>inf_sel</code>: Interface selection value</td>
-</tr>
-<tr>
-<td><code>checkMeasCurrentLessThan</code></td>
-<td>Checks whether the measured current is below the threshold.</td>
-<td style="font-size:12px"><code>Threshold</code>: Current threshold (A)</td>
-</tr>
-<tr>
-<td><code>powerSupply_ask</code></td>
-<td>Sends a SCPI command to the power supply and receives a response.</td>
-<td style="font-size:12px"><code>cmd</code>: SCPI command string</td>
-</tr>
-<tr>
-<td><code>addToSeq_Step</code></td>
-<td>Adds a step waveform to the sequence. Produces an abrupt voltage change at a specific time.</td>
-<td style="font-size:12px"><code>step</code>: Sequence step number<br><code>vStart</code>: Start voltage (V)<br><code>vEnd</code>: End voltage (V)<br><code>tStart</code>: Start time (s)<br><code>tEnd</code>: End time (s)</td>
-</tr>
-<tr>
-<td><code>addToSeq_Ramp</code></td>
-<td>Adds a ramp waveform to the sequence. Gradually changes the voltage.</td>
-<td style="font-size:12px"><code>step</code>: Sequence step number<br><code>vStart</code>: Start voltage (V)<br><code>vEnd</code>: End voltage (V)<br><code>tStart</code>: Start time (s)<br><code>tRamp</code>: Ramp time (s)<br><code>tEnd</code>: End time (s)<br><code>repeat</code>: Number of repetitions</td>
-</tr>
-<tr>
-<td><code>addToSeq_Puls</code></td>
-<td>Adds a pulse waveform to the sequence.</td>
-<td style="font-size:12px"><code>step</code>: Sequence step number<br><code>vStart</code>: Base voltage (V)<br><code>vTop</code>: Pulse top voltage (V)<br><code>tStart</code>: Start time (s)<br><code>tTop</code>: Top hold time (s)<br><code>tEnd</code>: End time (s)<br><code>repeat</code>: Number of repetitions</td>
-</tr>
-<tr>
-<td><code>addToSeq_Sine</code></td>
-<td>Adds a sine waveform to the sequence.</td>
-<td style="font-size:12px"><code>step</code>: Sequence step number<br><code>ampl</code>: Amplitude (V)<br><code>offs</code>: Offset voltage (V)<br><code>freq</code>: Frequency (Hz)<br><code>repeat</code>: Number of repetitions</td>
-</tr>
-<tr>
-<td><code>addToSeq_Exp</code></td>
-<td>Adds an exponential waveform to the sequence.</td>
-<td style="font-size:12px"><code>step</code>: Sequence step number<br><code>vStart</code>: Start voltage (V)<br><code>vEnd</code>: End voltage (V)<br><code>tStart</code>: Start time (s)<br><code>tWave</code>: Waveform time (s)<br><code>tConst</code>: Time constant (s)<br><code>repeat</code>: Number of repetitions</td>
-</tr>
-<tr>
-<td><code>addToSeq_Stair</code></td>
-<td>Adds a staircase waveform to the sequence. Voltage changes in discrete steps.</td>
-<td style="font-size:12px"><code>step</code>: Sequence step number<br><code>vStart</code>: Start voltage (V)<br><code>vEnd</code>: End voltage (V)<br><code>tStart</code>: Start time (s)<br><code>tStep</code>: Time per step (s)<br><code>tEnd</code>: End time (s)<br><code>nStep</code>: Number of steps<br><code>repeat</code>: Number of repetitions</td>
-</tr>
-<tr>
-<td><code>addToSeq_Trap</code></td>
-<td>Adds a trapezoidal waveform to the sequence.</td>
-<td style="font-size:12px"><code>step</code>: Sequence step number<br><code>vStart</code>: Base voltage (V)<br><code>vTop</code>: Top voltage (V)<br><code>tStart</code>: Start time (s)<br><code>tRise</code>: Rise time (s)<br><code>tTop</code>: Top hold time (s)<br><code>tFall</code>: Fall time (s)<br><code>tEnd</code>: End time (s)<br><code>repeat</code>: Number of repetitions</td>
-</tr>
-<tr>
-<td><code>setSeqArb</code></td>
-<td>Uploads the arbitrary waveform sequence to the power supply.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>runSeqArb</code></td>
-<td>Runs the configured arbitrary waveform sequence.</td>
-<td style="font-size:12px"><code>repeat</code>: Number of repetitions</td>
-</tr>
-<tr>
-<td><code>isArbSeqStillRun</code></td>
-<td>Checks whether the arbitrary waveform sequence is still running.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-</tbody>
-</table>
 
 
 
@@ -993,145 +790,6 @@
 </tbody>
 </table>
 
-<h3 id="mod-CCIC_BENCH">CCIC_BENCH</h3>
-<div class="callout callout-info">CCIC Bench — Test bench equipment that controls vehicle power (IGN/ACC/Battery) via UDP communication</div>
-<table>
-<thead><tr><th style="width:180px">Function</th><th style="width:280px">Description</th><th>Parameters</th></tr></thead>
-<tbody>
-<tr>
-<td><code>Connect</code></td>
-<td>Establishes a UDP network connection to the bench equipment. Automatically called when adding the device, so manual invocation is usually unnecessary.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>Disconnect</code></td>
-<td>Disconnects the UDP network connection from the bench equipment.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>IsConnected</code></td>
-<td>Checks whether the bench equipment is currently connected.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>IGN1</code></td>
-<td>Turns IGN1 (Ignition 1) power on or off. Corresponds to the vehicle&#x27;s ignition power.</td>
-<td style="font-size:12px"><code>on_off</code>: 0 = OFF, 1 = ON. Default: 1 (ON)</td>
-</tr>
-<tr>
-<td><code>IGN1_Read</code></td>
-<td>Reads the current IGN1 power state. Returns: 0=OFF, 1=ON, -1=read failure</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>IGN2</code></td>
-<td>Turns IGN2 (Ignition 2) power on or off. Corresponds to auxiliary ignition power.</td>
-<td style="font-size:12px"><code>on_off</code>: 0 = OFF, 1 = ON. Default: 1 (ON)</td>
-</tr>
-<tr>
-<td><code>IGN2_Read</code></td>
-<td>Reads the current IGN2 power state. Returns: 0=OFF, 1=ON, -1=read failure</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>ACC</code></td>
-<td>Turns ACC (Accessory) power on or off. Corresponds to the vehicle&#x27;s accessory power (radio, navigation, etc.).</td>
-<td style="font-size:12px"><code>on_off</code>: 0 = OFF, 1 = ON. Default: 1 (ON)</td>
-</tr>
-<tr>
-<td><code>ACC_Read</code></td>
-<td>Reads the current ACC power state. Returns: 0=OFF, 1=ON, -1=read failure</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>BATTERY</code></td>
-<td>Turns the battery relay on or off. When OFF, battery power is completely cut from the vehicle.</td>
-<td style="font-size:12px"><code>on_off</code>: 0 = OFF (disconnect battery), 1 = ON (connect battery). Default: 1 (ON)</td>
-</tr>
-<tr>
-<td><code>BATTERY_Read</code></td>
-<td>Reads the current battery relay state. Returns: 0=OFF, 1=ON, -1=read failure</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>BatterySet</code></td>
-<td>Sets the battery output voltage. Used for voltage fluctuation testing.</td>
-<td style="font-size:12px"><code>voltage</code>: Voltage to set (V, decimal allowed). e.g. 12.0, 14.4, 9.0. Default: 14.4V</td>
-</tr>
-<tr>
-<td><code>BatteryCheck</code></td>
-<td>Measures the current battery output voltage. Returns: voltage (V), -1.0 on failure</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>AmpereCheck</code></td>
-<td>Measures the current power consumption. Returns: current (A), -1.0 on failure</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>SendCommand</code></td>
-<td>Sends a raw UDP command to the bench. For advanced users; using the individual functions above is recommended.</td>
-<td style="font-size:12px"><code>cmd1</code>: Command code 1 (integer, e.g. 0x24 = 36)<br><code>cmd2</code>: Command code 2 (integer, e.g. 0x21 = 33)<br><code>data_hex</code>: Additional data (space-separated hex string). e.g. &#x27;FF 01&#x27;. Default: empty string</td>
-</tr>
-<tr>
-<td><code>GetInfo</code></td>
-<td>Returns the bench&#x27;s current connection information (IP, port, connection state).</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-</tbody>
-</table>
-
-<h3 id="mod-BENCH">BENCH</h3>
-<div class="callout callout-info">Bench Socket Communication — Sends/receives data and measures current via TCP socket with bench equipment</div>
-<table>
-<thead><tr><th style="width:180px">Function</th><th style="width:280px">Description</th><th>Parameters</th></tr></thead>
-<tbody>
-<tr>
-<td><code>socket_connect</code></td>
-<td>Connects to the bench equipment via socket.</td>
-<td style="font-size:12px"><code>host</code>: Bench equipment IP address. e.g. &#x27;192.168.1.100&#x27;</td>
-</tr>
-<tr>
-<td><code>socket_close</code></td>
-<td>Disconnects the socket connection from the bench equipment.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>SendData</code></td>
-<td>Sends data to the bench equipment.</td>
-<td style="font-size:12px"><code>data</code>: Data string to send. Default: &#x27;Test&#x27;</td>
-</tr>
-<tr>
-<td><code>check_current</code></td>
-<td>Checks whether current stays within the specified range during the measurement period.</td>
-<td style="font-size:12px"><code>min_current</code>: Minimum current (A)<br><code>max_current</code>: Maximum current (A)<br><code>meas_time</code>: Measurement duration (seconds)</td>
-</tr>
-</tbody>
-</table>
-
-<h3 id="mod-SP25Bench">SP25Bench</h3>
-<div class="callout callout-info">SP25 Bench — Controls SP25 test bench (eCall, reboot, factory reset)</div>
-<table>
-<thead><tr><th style="width:180px">Function</th><th style="width:280px">Description</th><th>Parameters</th></tr></thead>
-<tbody>
-<tr>
-<td><code>eCall</code></td>
-<td>Executes an eCall (emergency call).</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>factory_reset</code></td>
-<td>Performs a factory reset on the device.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>reboot</code></td>
-<td>Reboots the device.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-</tbody>
-</table>
-
 <h3 id="mod-SmartBench">SmartBench</h3>
 <div class="callout callout-info">Smart Bench TCP Control — Controls power, buttons, current, and LEDs on Smart Bench equipment via TCP socket</div>
 <table>
@@ -1219,74 +877,6 @@
 
 <h2 id="cat-can">CAN Communication</h2>
 
-<h3 id="mod-CAN">CAN</h3>
-<div class="callout callout-info">CAN Bus Communication — Sends and receives vehicle CAN messages via PCAN/Vector/Kvaser CAN interfaces</div>
-<table>
-<thead><tr><th style="width:180px">Function</th><th style="width:280px">Description</th><th>Parameters</th></tr></thead>
-<tbody>
-<tr>
-<td><code>Bus</code></td>
-<td>Connects to the CAN device. Automatically called when adding the device.</td>
-<td style="font-size:12px"><code>kwargs</code>: Connection settings (interface, channel, bitrate, fd, etc.)</td>
-</tr>
-<tr>
-<td><code>send_msg</code></td>
-<td>Sends a CAN message. Supports periodic or one-shot transmission.</td>
-<td style="font-size:12px"><code>message_id</code>: CAN message ID (hex). e.g. &#x27;0x123&#x27;<br><code>cycle_time</code>: Transmission interval (ms). 0 for one-shot<br><code>can_message</code>: Message data (hex). e.g. &#x27;00 11 22 33 44 55 66 77&#x27;<br><code>bus_channel</code>: CAN channel. e.g. &#x27;PCAN_USBBUS1&#x27;<br><code>message_type</code>: Message type. &#x27;FD&#x27; = CAN FD (default), &#x27;Classic&#x27; = CAN 2.0</td>
-</tr>
-<tr>
-<td><code>stop_all_periodic_tasks</code></td>
-<td>Stops all periodic CAN message transmissions.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>start_log_save</code></td>
-<td>Starts saving CAN logs to a file.</td>
-<td style="font-size:12px"><code>logpath</code>: Log file save path</td>
-</tr>
-<tr>
-<td><code>stop_log_save</code></td>
-<td>Stops CAN log saving.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>status</code></td>
-<td>Returns the current status of the CAN device.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>status_is_ok</code></td>
-<td>Checks whether the CAN device status is OK.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>status_string</code></td>
-<td>Returns the CAN device status as a string.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>shutdown</code></td>
-<td>Disconnects from the CAN device.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>flush_tx_buffer</code></td>
-<td>Flushes the transmit buffer.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>get_device_number</code></td>
-<td>Returns the connected CAN device number.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>read_thread</code></td>
-<td>Starts the CAN receive thread.</td>
-<td style="font-size:12px"><code>bus</code>: CAN bus object<br><code>logpath</code>: Log file path</td>
-</tr>
-</tbody>
-</table>
-
 <h3 id="mod-CANOE">CANOE</h3>
 <div class="callout callout-info">CANoe Control — Controls Vector CANoe simulation software: start/stop, environment variables, and system variables</div>
 <table>
@@ -1368,150 +958,42 @@
 </tbody>
 </table>
 
-<h3 id="mod-PCANClient">PCANClient</h3>
-<div class="callout callout-info">PCAN Client — Sends and receives CAN messages via Peak CAN devices</div>
-<table>
-<thead><tr><th style="width:180px">Function</th><th style="width:280px">Description</th><th>Parameters</th></tr></thead>
-<tbody>
-<tr>
-<td><code>send_msg</code></td>
-<td>Sends a CAN message.</td>
-<td style="font-size:12px"><code>channel</code>: CAN channel<br><code>msg_id</code>: Message ID<br><code>type</code>: Message type<br><code>length</code>: Data length<br><code>cycle_time</code>: Transmission interval (ms). 0 for one-shot<br><code>msg_data</code>: Message data</td>
-</tr>
-<tr>
-<td><code>stop</code></td>
-<td>Stops transmission of a specific CAN message.</td>
-<td style="font-size:12px"><code>channel</code>: CAN channel<br><code>msg_id</code>: Message ID to stop</td>
-</tr>
-<tr>
-<td><code>stop_all</code></td>
-<td>Stops all CAN message transmissions.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-</tbody>
-</table>
-
 
 
 <h2 id="cat-comm">Communication (Serial/SSH/UART)</h2>
 
-<h3 id="mod-SerialPlugin">SerialPlugin</h3>
-<div class="callout callout-info">Generic Serial Communication — General-purpose plugin for sending and receiving data via RS-232 serial port</div>
-<table>
-<thead><tr><th style="width:180px">Function</th><th style="width:280px">Description</th><th>Parameters</th></tr></thead>
-<tbody>
-<tr>
-<td><code>Connect</code></td>
-<td>Opens the serial port. Automatically called when adding the device.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>Disconnect</code></td>
-<td>Closes the serial port.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>IsConnected</code></td>
-<td>Checks whether the serial port is currently open.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>SendCommand</code></td>
-<td>Sends a text command via the serial port. A newline is appended by default.</td>
-<td style="font-size:12px"><code>command</code>: Command text to send. e.g. &#x27;AT+VERSION&#x27;, &#x27;RESET&#x27;<br><code>encoding</code>: Character encoding. Default: &#x27;utf-8&#x27;. Use &#x27;ascii&#x27; for special equipment<br><code>append_newline</code>: Append newline at end of command. True = append (default), False = do not append</td>
-</tr>
-<tr>
-<td><code>ReadLine</code></td>
-<td>Reads a single line from the serial port.</td>
-<td style="font-size:12px"><code>timeout</code>: Max wait time in seconds. Default: 1.0</td>
-</tr>
-<tr>
-<td><code>ReadAll</code></td>
-<td>Reads all data from the serial port receive buffer.</td>
-<td style="font-size:12px"><code>timeout</code>: Max wait time in seconds. Default: 1.0</td>
-</tr>
-<tr>
-<td><code>SendAndRead</code></td>
-<td>Sends a command and reads one line of the response.</td>
-<td style="font-size:12px"><code>command</code>: Command text to send<br><code>timeout</code>: Response wait time in seconds. Default: 1.0<br><code>encoding</code>: Character encoding. Default: &#x27;utf-8&#x27;</td>
-</tr>
-<tr>
-<td><code>SendHex</code></td>
-<td>Sends raw hex bytes directly.</td>
-<td style="font-size:12px"><code>hex_string</code>: Hex string to send. e.g. &#x27;FF 01 A0&#x27;</td>
-</tr>
-<tr>
-<td><code>ReadHex</code></td>
-<td>Reads the specified number of bytes and returns them as a hex string.</td>
-<td style="font-size:12px"><code>count</code>: Number of bytes to read. Default: 1<br><code>timeout</code>: Max wait time in seconds. Default: 1.0</td>
-</tr>
-<tr>
-<td><code>SetBaudrate</code></td>
-<td>Changes the serial communication baud rate.</td>
-<td style="font-size:12px"><code>baudrate</code>: Baud rate. e.g. 9600, 115200</td>
-</tr>
-<tr>
-<td><code>GetPortInfo</code></td>
-<td>Returns the current serial port information.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>LOG_SERIAL</code></td>
-<td>Waits (blocking) until a keyword appears in serial received data. Returns all collected logs. Space-separated keywords use AND condition.</td>
-<td style="font-size:12px"><code>keyword</code>: Keyword to search. e.g. &#x27;Pass&#x27;, &#x27;TTI_PASS&#x27;. Space-separated = AND condition<br><code>timeout</code>: Max wait time in seconds. Default: 30</td>
-</tr>
-<tr>
-<td><code>StartMonitor</code></td>
-<td>Monitors serial for a keyword in the background (non-blocking). Proceeds to the next step immediately; check result with GetMonitorResult.</td>
-<td style="font-size:12px"><code>keyword</code>: Keyword to monitor. Space-separated = AND condition<br><code>timeout</code>: Max monitoring time in seconds. Default: 60</td>
-</tr>
-<tr>
-<td><code>StopMonitor</code></td>
-<td>Stops background monitoring.</td>
-<td style="font-size:12px"><code>monitor_id</code>: Monitor ID (e.g. &#x27;mon_1&#x27;). Stops all if empty</td>
-</tr>
-<tr>
-<td><code>GetMonitorResult</code></td>
-<td>Checks the background monitoring result. Returns PASS/FAIL/RUNNING status and collected logs.</td>
-<td style="font-size:12px"><code>monitor_id</code>: Monitor ID. Returns all results if empty</td>
-</tr>
-</tbody>
-</table>
-
 <h3 id="mod-SerialLogging">SerialLogging</h3>
-<div class="callout callout-info">Serial Logging — Captures and saves logs via serial port connection, with keyword-based PASS/FAIL evaluation</div>
+<div class="callout callout-info">Serial Logging — Captures and saves logs via serial port connection, with keyword-based fail detection.
+
+**⚠️ Usage: StartLogging and StopLogging MUST be used as a pair.**
+- If you call StartLogging without StopLogging: logs are NOT saved to file, and the serial port stays open, which can cause port-busy errors on the next run.
+- Place StartLogging at the beginning of your scenario and StopLogging at the end.
+- Cleanup will auto-call StopLogging if the scenario aborts, but you should still call it explicitly in the normal flow.
+
+Standard usage pattern:
+  1) StartLogging()                              ← first step
+  2) SendCommand / SendCommand_*_on_keyword ...  ← middle steps
+  3) StopLogging()                               ← last step (writes log file + releases port)</div>
 <table>
 <thead><tr><th style="width:180px">Function</th><th style="width:280px">Description</th><th>Parameters</th></tr></thead>
 <tbody>
 <tr>
-<td><code>StartSave</code></td>
-<td>Connects to the serial port and starts log capture + file saving in one step (connect -&gt; capture -&gt; save).</td>
-<td style="font-size:12px"><code>save_path</code>: Save file path. Auto-generates in backend/logs/ if empty</td>
+<td><code>StartLogging</code></td>
+<td>Connects to the serial port and starts capture (memory only, no file save). Viewer modal opens automatically. The port is stabilized and capture thread is ready by the time this returns.
+
+**⚠️ Must be paired with StopLogging.** Without StopLogging, the in-memory buffer is never flushed to disk and the serial port stays open. Always call StopLogging at the end of the scenario.</td>
+<td style="font-size:12px"><code>settle_ms</code>: Port stabilization wait after open (ms). Default 500. Ensures USB-Serial driver reset/buffer settle so the next step&#x27;s SendCommand isn&#x27;t dropped. Use 1500~2000 for DTR-reset boards (Arduino), 100~200 for fast industrial serial.</td>
 </tr>
 <tr>
-<td><code>StopSave</code></td>
-<td>Stops log file saving and disconnects from the serial port.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>MarkStep</code></td>
-<td>Marks a step boundary at the current log position. Used with SearchRange for range-based searching.</td>
-<td style="font-size:12px"><code>step_index</code>: Step index number</td>
-</tr>
-<tr>
-<td><code>SearchAll</code></td>
-<td>Searches the entire log from the beginning to the current position for a keyword, returning PASS/FAIL.</td>
-<td style="font-size:12px"><code>keyword</code>: Search keyword (space-separated = AND condition). e.g. &#x27;BootComplete&#x27;, &#x27;ERROR&#x27;<br><code>count</code>: Maximum number of matching results (default: 5)</td>
-</tr>
-<tr>
-<td><code>SearchRange</code></td>
-<td>Searches for a keyword within the step range marked by MarkStep, returning PASS/FAIL.</td>
-<td style="font-size:12px"><code>keyword</code>: Search keyword (space-separated = AND condition)<br><code>from_step</code>: Start step index<br><code>to_step</code>: End step index<br><code>count</code>: Maximum number of matching results (default: 5)</td>
-</tr>
-<tr>
-<td><code>WaitLog</code></td>
-<td>Waits (blocking) until a log containing the keyword appears. Returns FAIL on timeout.</td>
-<td style="font-size:12px"><code>keyword</code>: Search keyword (space-separated = AND condition)<br><code>timeout</code>: Max wait time in seconds (default: 30)</td>
+<td><code>StopLogging</code></td>
+<td>Stops serial capture, writes the memory buffer to a file, and releases the serial port. Auto path or explicit path.
+
+**⚠️ Must be paired with StartLogging.** This call is what:
+  • Flushes the in-memory log buffer to a .log file on disk
+  • Closes the serial port so it can be reused next run
+  • Tears down the capture thread to avoid resource leaks
+Even if the file-save step throws, the finally block guarantees the port is released.</td>
+<td style="font-size:12px"><code>save_path</code>: Save file path. Auto if empty (during playback: run_dir/logs/serial_*.log, step test: backend/results/Temp_logs/serial_*.log)</td>
 </tr>
 <tr>
 <td><code>SendCommand</code></td>
@@ -1519,110 +1001,14 @@
 <td style="font-size:12px"><code>command</code>: Command to send. e.g. &#x27;reboot&#x27;, &#x27;cat /proc/version&#x27;<br><code>encoding</code>: Encoding (default: utf-8)<br><code>append_newline</code>: Auto-append newline. true/false (default: true)</td>
 </tr>
 <tr>
-<td><code>SendHex</code></td>
-<td>Sends HEX bytes via the serial port.</td>
-<td style="font-size:12px"><code>hex_string</code>: HEX string to send. e.g. &#x27;FF 01 A0&#x27;</td>
+<td><code>SendCommand_fail_on_keyword</code></td>
+<td>Sends a command, then **FAILS if the keyword appears** in the response. Used to detect abnormal keywords like &#x27;ERROR&#x27;/&#x27;Fail&#x27;/&#x27;crash&#x27;. After sending, monitors only newly captured lines for &#x27;time&#x27; seconds; every matching line is appended as a fail row and displayed inline (Fail_Count_N). Returns PASS if no match.</td>
+<td style="font-size:12px"><code>command</code>: Command to send. e.g. &#x27;status&#x27;, &#x27;self_test&#x27;<br><code>keyword</code>: Substring that triggers FAIL. e.g. &#x27;ERROR&#x27;, &#x27;Fail&#x27;, &#x27;crash&#x27;<br><code>time</code>: Response monitoring duration (seconds). Default 5<br><code>encoding</code>: Encoding (default: utf-8)<br><code>append_newline</code>: Auto-append newline. true/false (default: true)</td>
 </tr>
 <tr>
-<td><code>SendAndWait</code></td>
-<td>Sends a command and waits (blocking) for a response containing the keyword.</td>
-<td style="font-size:12px"><code>command</code>: Command to send<br><code>keyword</code>: Keyword to search in the response (space-separated = AND condition)<br><code>timeout</code>: Max wait time in seconds (default: 10)</td>
-</tr>
-<tr>
-<td><code>GetStatus</code></td>
-<td>Returns the current module status (port, capture, save, step marks, etc.).</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>ClearLogs</code></td>
-<td>Clears the log buffer and step markings.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-</tbody>
-</table>
-
-<h3 id="mod-Uart">Uart</h3>
-<div class="callout callout-info">UART Communication — Performs UART serial communication and saves logs. Used for Linux console access, etc.</div>
-<table>
-<thead><tr><th style="width:180px">Function</th><th style="width:280px">Description</th><th>Parameters</th></tr></thead>
-<tbody>
-<tr>
-<td><code>connect</code></td>
-<td>Connects to a UART port (without log saving).</td>
-<td style="font-size:12px"><code>port</code>: Serial port. e.g. &#x27;COM1&#x27;, &#x27;/dev/ttyUSB0&#x27;<br><code>bps</code>: Baud rate. e.g. 115200<br><code>endline</code>: Line ending character. Default: &#x27;\r&#x27;</td>
-</tr>
-<tr>
-<td><code>close</code></td>
-<td>Disconnects from the UART port.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>add_uart_port</code></td>
-<td>Connects to a UART port and starts log file saving simultaneously.</td>
-<td style="font-size:12px"><code>port</code>: Serial port. e.g. &#x27;COM1&#x27;<br><code>bps</code>: Baud rate. e.g. 115200<br><code>logFilePath</code>: Log file save path<br><code>endline</code>: Line ending character. Default: &#x27;\r&#x27;</td>
-</tr>
-<tr>
-<td><code>send_string</code></td>
-<td>Sends a string command via UART.</td>
-<td style="font-size:12px"><code>command</code>: Command to send. e.g. &#x27;ls -al&#x27;, &#x27;reboot&#x27;</td>
-</tr>
-<tr>
-<td><code>send_char</code></td>
-<td>Sends a single character. No newline is appended.</td>
-<td style="font-size:12px"><code>char</code>: Character to send (single character)</td>
-</tr>
-<tr>
-<td><code>send_control_character</code></td>
-<td>Sends a control character. Used for special key inputs like Ctrl+C.</td>
-<td style="font-size:12px"><code>control_character</code>: Control character. e.g. &#x27;ETX&#x27; (Ctrl+C)</td>
-</tr>
-<tr>
-<td><code>start_save_file</code></td>
-<td>Starts saving UART received data to a file.</td>
-<td style="font-size:12px"><code>path_log</code>: Log file save path</td>
-</tr>
-<tr>
-<td><code>stop_save_file</code></td>
-<td>Stops UART log file saving.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>get_file_path</code></td>
-<td>Returns the current log file path.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>read_thread</code></td>
-<td>Starts the UART receive thread. Called automatically internally.</td>
-<td style="font-size:12px"><code>connect</code>: Connection object<br><code>logfilepath</code>: Log file path</td>
-</tr>
-</tbody>
-</table>
-
-<h3 id="mod-Ignition">Ignition</h3>
-<div class="callout callout-info">Ignition Control — Controls ICAS3/MIB3 device ignition via TCP socket (default: 192.168.1.4:15500)</div>
-<table>
-<thead><tr><th style="width:180px">Function</th><th style="width:280px">Description</th><th>Parameters</th></tr></thead>
-<tbody>
-<tr>
-<td><code>connect</code></td>
-<td>Connects to the ignition device via TCP socket. Note: testiface must be running.</td>
-<td style="font-size:12px"><code>host</code>: Device IP address. Default: &#x27;192.168.1.4&#x27;<br><code>port</code>: TCP port. Default: 15500</td>
-</tr>
-<tr>
-<td><code>close</code></td>
-<td>Disconnects from the ignition device.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>send_packet</code></td>
-<td>Sends an ignition command packet to the HU (Head Unit).</td>
-<td style="font-size:12px"><code>cmd</code>: Hex command string. e.g. &#x27;02 2c 01 09&#x27;</td>
-</tr>
-<tr>
-<td><code>compare_packet</code></td>
-<td>Checks whether the last received packet contains the expected data.</td>
-<td style="font-size:12px"><code>expected</code>: Expected hex string. e.g. &#x27;00 65&#x27;. Returns True if found, False otherwise</td>
+<td><code>SendCommand_pass_on_keyword</code></td>
+<td>Sends a command, then **PASSES if the keyword appears** in the response. Used for normal-response keywords like &#x27;OK&#x27;/&#x27;Pass&#x27;/&#x27;BootComplete&#x27;. Returns PASS immediately on first match (early exit). If not found within &#x27;time&#x27; seconds, appends one fail row and returns FAIL.</td>
+<td style="font-size:12px"><code>command</code>: Command to send. e.g. &#x27;ping&#x27;, &#x27;getversion&#x27;<br><code>keyword</code>: Substring required for PASS. e.g. &#x27;OK&#x27;, &#x27;Pass&#x27;, &#x27;BootComplete&#x27;<br><code>time</code>: Response wait duration (seconds). Default 5<br><code>encoding</code>: Encoding (default: utf-8)<br><code>append_newline</code>: Auto-append newline. true/false (default: true)</td>
 </tr>
 </tbody>
 </table>
@@ -1673,89 +1059,6 @@
 
 
 <h2 id="cat-log">Logging & Diagnostics</h2>
-
-<h3 id="mod-DLTViewer">DLTViewer</h3>
-<div class="callout callout-info">DLT Log Viewer — Receives and analyzes real-time DLT logs from vehicle ECUs via direct TCP connection</div>
-<table>
-<thead><tr><th style="width:180px">Function</th><th style="width:280px">Description</th><th>Parameters</th></tr></thead>
-<tbody>
-<tr>
-<td><code>Connect</code></td>
-<td>Connects to the DLT daemon (ECU) via TCP and starts real-time log capture.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>Disconnect</code></td>
-<td>Disconnects from the DLT daemon and stops log capture.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>IsConnected</code></td>
-<td>Checks whether currently connected to the DLT daemon.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>WaitLog</code></td>
-<td>Waits (blocking) until a log containing the keyword appears. Space-separated keywords use AND condition.</td>
-<td style="font-size:12px"><code>keyword</code>: Keyword to search. e.g. &#x27;BootComplete&#x27;, &#x27;ERROR crash&#x27;<br><code>timeout</code>: Max wait time in seconds. Default: 30</td>
-</tr>
-<tr>
-<td><code>StartMonitor</code></td>
-<td>Monitors for a keyword in the background (non-blocking). Check result with GetMonitorResult.</td>
-<td style="font-size:12px"><code>keyword</code>: Keyword to monitor<br><code>timeout</code>: Max monitoring time in seconds. Default: 60</td>
-</tr>
-<tr>
-<td><code>StopMonitor</code></td>
-<td>Stops background monitoring.</td>
-<td style="font-size:12px"><code>monitor_id</code>: Monitor ID. Stops all if empty</td>
-</tr>
-<tr>
-<td><code>GetMonitorResult</code></td>
-<td>Checks the monitoring result. Returns PASS/FAIL/RUNNING.</td>
-<td style="font-size:12px"><code>monitor_id</code>: Monitor ID. Returns all results if empty</td>
-</tr>
-<tr>
-<td><code>SearchLog</code></td>
-<td>Searches the log buffer for a keyword.</td>
-<td style="font-size:12px"><code>keyword</code>: Keyword to search<br><code>count</code>: Maximum number of results. Default: 10</td>
-</tr>
-<tr>
-<td><code>GetRecentLogs</code></td>
-<td>Retrieves recently received logs.</td>
-<td style="font-size:12px"><code>count</code>: Number of lines to retrieve. Default: 100</td>
-</tr>
-<tr>
-<td><code>GetLogCount</code></td>
-<td>Returns the total number of received logs.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>ClearLogs</code></td>
-<td>Clears the log buffer.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>LaunchViewer</code></td>
-<td>Launches the DLT Viewer GUI application.</td>
-<td style="font-size:12px"><code>project_file</code>: .dlp project file path (optional)<br><code>log_file</code>: .dlt log file path (optional)</td>
-</tr>
-<tr>
-<td><code>CloseViewer</code></td>
-<td>Closes the DLT Viewer GUI.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>CreateProject</code></td>
-<td>Creates a DLT Viewer project file (.dlp).</td>
-<td style="font-size:12px"><code>file_path</code>: .dlp file save path<br><code>host</code>: ECU IP address (optional)<br><code>port</code>: DLT port. Default: 3490</td>
-</tr>
-<tr>
-<td><code>GetStatus</code></td>
-<td>Returns the comprehensive current status of the DLT module.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-</tbody>
-</table>
 
 <h3 id="mod-DLTLogging">DLTLogging</h3>
 <div class="callout callout-info">DLT Logging — Captures and saves logs via direct TCP connection to the DLT daemon, with keyword-based PASS/FAIL evaluation (no GUI required)</div>
@@ -1815,384 +1118,13 @@
 </tbody>
 </table>
 
-<h3 id="mod-MLP">MLP</h3>
-<div class="callout callout-info">MLP Logging — Receives and saves real-time logs from IVI/SAFE systems via MIB Log Protocol. Supports ICAS3/MIB3OI</div>
-<table>
-<thead><tr><th style="width:180px">Function</th><th style="width:280px">Description</th><th>Parameters</th></tr></thead>
-<tbody>
-<tr>
-<td><code>set_config</code></td>
-<td>Configures MLP settings. Sets the model and log save paths.</td>
-<td style="font-size:12px"><code>model</code>: Vehicle model. Choose from &#x27;ICAS3EU&#x27;, &#x27;ICAS3CN&#x27;, &#x27;MIB3OI&#x27;<br><code>mlp_ivi_file_path</code>: IVI log save path (required)<br><code>mlp_safe_file_path</code>: SAFE log save path (ICAS3 only, optional)</td>
-</tr>
-<tr>
-<td><code>logging_start</code></td>
-<td>Starts MLP log saving. Must call set_config first.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>logging_stop</code></td>
-<td>Stops MLP log saving.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>MLP_IVI_READ_THREAD</code></td>
-<td>Starts the IVI MLP receive thread. Called automatically internally.</td>
-<td style="font-size:12px"><code>mlp_ivi_file_path</code>: Log save path<br><code>host</code>: Host IP to connect<br><code>port</code>: Port to connect</td>
-</tr>
-<tr>
-<td><code>MLP_SAFE_READ_THREAD</code></td>
-<td>Starts the SAFE MLP receive thread. Called automatically internally.</td>
-<td style="font-size:12px"><code>mlp_safe_file_path</code>: Log save path<br><code>host</code>: Host IP to connect<br><code>port</code>: Port to connect</td>
-</tr>
-</tbody>
-</table>
-
-<h3 id="mod-Trace">Trace</h3>
-<div class="callout callout-info">Trace Analysis — Analyzes function call traces by comparing expected vs. actual call sequences</div>
-<table>
-<thead><tr><th style="width:180px">Function</th><th style="width:280px">Description</th><th>Parameters</th></tr></thead>
-<tbody>
-<tr>
-<td><code>initialize</code></td>
-<td>Initializes the trace analyzer. Deletes all previous data.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>append_expected</code></td>
-<td>Adds an expected function call pair (caller -&gt; callee).</td>
-<td style="font-size:12px"><code>caller</code>: Caller function name<br><code>callee</code>: Callee function name</td>
-</tr>
-<tr>
-<td><code>set_actual</code></td>
-<td>Sets the directory containing actual trace files. Parses files and sorts by timestamp.</td>
-<td style="font-size:12px"><code>path</code>: PC directory path containing trace files</td>
-</tr>
-<tr>
-<td><code>set_start_timestamp</code></td>
-<td>Sets the trace start timestamp.</td>
-<td style="font-size:12px"><code>timestamp</code>: Start time (epoch seconds)</td>
-</tr>
-<tr>
-<td><code>compare</code></td>
-<td>Compares expected calls with actual calls. Returns match status for each call pair.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>timeliness</code></td>
-<td>Checks whether the last expected result was called within the time limit. Must be called after compare().</td>
-<td style="font-size:12px"><code>time_diff</code>: Allowed time difference (ms)</td>
-</tr>
-<tr>
-<td><code>get_basename</code></td>
-<td>Returns the base name of a trace file.</td>
-<td style="font-size:12px"><code>trace_file</code>: Trace file path</td>
-</tr>
-</tbody>
-</table>
-
 
 
 <h2 id="cat-media">Media & Image</h2>
 
-<h3 id="mod-VisionCamera">VisionCamera</h3>
-<div class="callout callout-info">Vision Camera — Captures screens using a GigE Vision industrial camera</div>
-<table>
-<thead><tr><th style="width:180px">Function</th><th style="width:280px">Description</th><th>Parameters</th></tr></thead>
-<tbody>
-<tr>
-<td><code>Connect</code></td>
-<td>Connects to the vision camera.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>Disconnect</code></td>
-<td>Disconnects from the vision camera.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>IsConnected</code></td>
-<td>Checks the connection status.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>Capture</code></td>
-<td>Captures the screen and saves it as an image file.</td>
-<td style="font-size:12px"><code>save_path</code>: Image save path. Saves to temp folder if empty</td>
-</tr>
-<tr>
-<td><code>CaptureBytes</code></td>
-<td>Captures the screen and returns it as byte data.</td>
-<td style="font-size:12px"><code>fmt</code>: &#x27;png&#x27; (high quality) or &#x27;jpeg&#x27; (fast). Default: &#x27;png&#x27;</td>
-</tr>
-<tr>
-<td><code>CaptureToFile</code></td>
-<td>Captures a PNG image to the specified path.</td>
-<td style="font-size:12px"><code>save_path</code>: Save path (required)</td>
-</tr>
-<tr>
-<td><code>CropCapture</code></td>
-<td>Captures only a specific region (cropped).</td>
-<td style="font-size:12px"><code>save_path</code>: Save path (required)<br><code>left</code>: Left coordinate (px)<br><code>top</code>: Top coordinate (px)<br><code>right</code>: Right coordinate (px)<br><code>bottom</code>: Bottom coordinate (px)</td>
-</tr>
-<tr>
-<td><code>GetInfo</code></td>
-<td>Returns camera information.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-</tbody>
-</table>
-
-<h3 id="mod-VisionCameraClient">VisionCameraClient</h3>
-<div class="callout callout-info">Vision Camera Client — Low-level camera control module used internally by VisionCamera</div>
-<table>
-<thead><tr><th style="width:180px">Function</th><th style="width:280px">Description</th><th>Parameters</th></tr></thead>
-<tbody>
-<tr>
-<td><code>md_VisionConnect</code></td>
-<td>Performs a low-level connection to the vision camera. Use VisionCamera.Connect() instead for normal usage.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>md_VisionDisconnect</code></td>
-<td>Disconnects from the vision camera.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>md_IsConnect</code></td>
-<td>Checks the connection status.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>md_VisionCapture</code></td>
-<td>Captures an image and saves it to a file.</td>
-<td style="font-size:12px"><code>szPath</code>: Save path (required)<br><code>left</code>: Crop left coordinate. -1 for full image. Default: -1<br><code>top</code>: Crop top coordinate. Default: -1<br><code>right</code>: Crop right coordinate. Default: -1<br><code>bottom</code>: Crop bottom coordinate. Default: -1</td>
-</tr>
-<tr>
-<td><code>md_CaptureBytes</code></td>
-<td>Returns the captured image as byte data.</td>
-<td style="font-size:12px"><code>fmt</code>: &#x27;png&#x27; or &#x27;jpeg&#x27;. Default: &#x27;jpeg&#x27;</td>
-</tr>
-<tr>
-<td><code>dispose</code></td>
-<td>Releases camera resources.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-</tbody>
-</table>
-
-<h3 id="mod-AudioLibrary">AudioLibrary</h3>
-<div class="callout callout-info">Audio Analysis — Performs audio recording and mute detection. Checks for silence from music/radio sources</div>
-<table>
-<thead><tr><th style="width:180px">Function</th><th style="width:280px">Description</th><th>Parameters</th></tr></thead>
-<tbody>
-<tr>
-<td><code>select_channels</code></td>
-<td>Selects the audio input device.</td>
-<td style="font-size:12px"><code>audio_device_s</code>: Partial audio device name. e.g. &#x27;USB&#x27;, &#x27;PnP&#x27;, &#x27;pulse&#x27;. Default: &#x27;pulse&#x27;</td>
-</tr>
-<tr>
-<td><code>start_recording</code></td>
-<td>Starts audio recording.</td>
-<td style="font-size:12px"><code>record_seconds</code>: Recording duration (seconds). e.g. 5 = 5 sec, 0.5 = 500ms. Default: 5<br><code>rate</code>: Sample rate. Default: 44100<br><code>chunk</code>: Buffer size. Default: 1024<br><code>format</code>: Audio format. Default: 8</td>
-</tr>
-<tr>
-<td><code>stop_recording</code></td>
-<td>Stops audio recording.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>isMute</code></td>
-<td>Checks whether audio is currently muted. Designed for music/radio sources (not accurate for single tones or white noise). Returns TRUE (muted) if signal-to-noise ratio is 25dB or below.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>get_max_value</code></td>
-<td>Returns the maximum amplitude value of the recorded audio.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>get_min_max_local_maxima</code></td>
-<td>Returns the local min/max values of the recorded audio.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>close</code></td>
-<td>Closes AudioLibrary and releases resources.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-</tbody>
-</table>
-
-<h3 id="mod-ImageProcessing">ImageProcessing</h3>
-<div class="callout callout-info">Image Processing — Performs OCR (text recognition), image comparison, and template matching. Requires Tesseract-OCR</div>
-<table>
-<thead><tr><th style="width:180px">Function</th><th style="width:280px">Description</th><th>Parameters</th></tr></thead>
-<tbody>
-<tr>
-<td><code>image_compare</code></td>
-<td>Compares two image files. Returns match status and match percentage.</td>
-<td style="font-size:12px"><code>origin</code>: Source image path (jpg)<br><code>expected</code>: Expected image path (jpg)</td>
-</tr>
-<tr>
-<td><code>imagesearch</code></td>
-<td>Searches for a target image within the source image (template matching). Returns position and match percentage.</td>
-<td style="font-size:12px"><code>origin</code>: Source image path (captured screen)<br><code>expected</code>: Target image path (icon, button, etc.)<br><code>threshold</code>: Match threshold (0-100). Default: 99</td>
-</tr>
-<tr>
-<td><code>image_cut</code></td>
-<td>Crops a specific region from an image.</td>
-<td style="font-size:12px"><code>origin</code>: Source image path<br><code>cut_img</code>: Cropped image save path<br><code>x1</code>: Top-left X coordinate<br><code>y1</code>: Top-left Y coordinate<br><code>x2</code>: Bottom-right X coordinate<br><code>y2</code>: Bottom-right Y coordinate</td>
-</tr>
-<tr>
-<td><code>image_valid</code></td>
-<td>Checks whether a captured image is valid (readable by OpenCV).</td>
-<td style="font-size:12px"><code>image</code>: Image path to check (jpg)</td>
-</tr>
-<tr>
-<td><code>ocr</code></td>
-<td>Recognizes text in an image (OCR). Requires Tesseract-OCR to be installed.</td>
-<td style="font-size:12px"><code>img_path</code>: Image path (jpg)<br><code>language</code>: Recognition language. Default: &#x27;eng&#x27;. Korean: &#x27;kor&#x27;<br><code>psm</code>: Page segmentation mode. Default: 6 (single block)</td>
-</tr>
-<tr>
-<td><code>ocr_coordinate</code></td>
-<td>Finds the coordinates of a specific text string in an image.</td>
-<td style="font-size:12px"><code>img_path</code>: Image path<br><code>string</code>: Text string to find<br><code>language</code>: Recognition language. Default: &#x27;eng&#x27;<br><code>rect_size</code>: Recognition area size. Default: 15<br><code>full_screen_check</code>: Full screen search. Default: True</td>
-</tr>
-<tr>
-<td><code>ocr_sentence</code></td>
-<td>Finds a sentence in an image and returns its coordinates.</td>
-<td style="font-size:12px"><code>img_path</code>: Image path<br><code>string</code>: Sentence to find<br><code>output_suffix</code>: Output file suffix<br><code>language</code>: Recognition language. Default: &#x27;eng&#x27;<br><code>rect_size</code>: Recognition area size. Default: 15<br><code>full_screen_check</code>: Full screen search. Default: True</td>
-</tr>
-<tr>
-<td><code>is_similar</code></td>
-<td>Compares whether two text strings are similar.</td>
-<td style="font-size:12px"><code>text1</code>: Text 1 to compare<br><code>text2</code>: Text 2 to compare<br><code>tolerance</code>: Tolerance. Default: 0 (exact match)</td>
-</tr>
-<tr>
-<td><code>calculate_coordinate</code></td>
-<td>Calculates coordinates from OCR results.</td>
-<td style="font-size:12px"><code>boxes</code>: OCR box data<br><code>height</code>: Image height<br><code>string</code>: Text string to find</td>
-</tr>
-<tr>
-<td><code>calculate_sentence</code></td>
-<td>Calculates sentence position from OCR results.</td>
-<td style="font-size:12px"><code>boxes</code>: OCR box data<br><code>height</code>: Image height<br><code>string</code>: Sentence to find<br><code>image</code>: Image object</td>
-</tr>
-<tr>
-<td><code>preprocess_image</code></td>
-<td>Preprocesses an image to improve OCR recognition accuracy.</td>
-<td style="font-size:12px"><code>image</code>: Image object to preprocess</td>
-</tr>
-</tbody>
-</table>
-
 
 
 <h2 id="cat-system">System & Utilities</h2>
-
-<h3 id="mod-Android">Android</h3>
-<div class="callout callout-info">Android ADB Control — Controls Android devices via ADB: touch, swipe, app install, screen capture, etc.</div>
-<table>
-<thead><tr><th style="width:180px">Function</th><th style="width:280px">Description</th><th>Parameters</th></tr></thead>
-<tbody>
-<tr>
-<td><code>connect_adb_server</code></td>
-<td>Connects to the ADB server. Equivalent to &#x27;adb start-server&#x27;.</td>
-<td style="font-size:12px"><code>host</code>: ADB server host. Default: &#x27;127.0.0.1&#x27;<br><code>port</code>: ADB server port. Default: 5037</td>
-</tr>
-<tr>
-<td><code>adb_devices</code></td>
-<td>Returns the list of connected ADB devices. Equivalent to &#x27;adb devices&#x27;.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>select_adb_device</code></td>
-<td>Selects the target device for commands. Equivalent to &#x27;adb -s&#x27; option.</td>
-<td style="font-size:12px"><code>serial</code>: Device serial number</td>
-</tr>
-<tr>
-<td><code>adb_tap</code></td>
-<td>Taps at a specific coordinate on the screen.</td>
-<td style="font-size:12px"><code>x</code>: X coordinate to tap<br><code>y</code>: Y coordinate to tap<br><code>serial</code>: Device serial (optional). Uses default device if empty</td>
-</tr>
-<tr>
-<td><code>adb_swipe</code></td>
-<td>Swipes (drags) on the screen.</td>
-<td style="font-size:12px"><code>x1</code>: Start X coordinate<br><code>y1</code>: Start Y coordinate<br><code>x2</code>: End X coordinate<br><code>y2</code>: End Y coordinate<br><code>duration</code>: Swipe duration (ms). Default: 300<br><code>serial</code>: Device serial (optional)</td>
-</tr>
-<tr>
-<td><code>key_event</code></td>
-<td>Sends a key event. Controls hardware keys such as Home, Back, Volume, etc.</td>
-<td style="font-size:12px"><code>keycode</code>: Key code. e.g. &#x27;KEYCODE_HOME&#x27;, &#x27;KEYCODE_BACK&#x27;, &#x27;KEYCODE_VOLUME_UP&#x27;<br><code>long_press</code>: Long press. Default: False<br><code>serial</code>: Device serial (optional)</td>
-</tr>
-<tr>
-<td><code>TypingtoScrenn</code></td>
-<td>Types text on the screen.</td>
-<td style="font-size:12px"><code>text</code>: Text to input<br><code>serial</code>: Device serial (optional)</td>
-</tr>
-<tr>
-<td><code>adb_shell</code></td>
-<td>Executes an ADB shell command. Returns the result.</td>
-<td style="font-size:12px"><code>cmd</code>: Shell command. e.g. &#x27;getprop ro.build.version.release&#x27;, &#x27;pm list packages&#x27;<br><code>serial</code>: Device serial (optional)</td>
-</tr>
-<tr>
-<td><code>Send_adb_command</code></td>
-<td>Runs an arbitrary adb command via ReplayKit&#x27;s own ADBService (selected ADB device auto-applied). Returns the output. e.g. &#x27;shell pm list packages&#x27;, &#x27;install foo.apk&#x27;, &#x27;push file /sdcard/&#x27;</td>
-<td style="font-size:12px"><code>command</code>: adb command to run (the &#x27;adb -s {serial}&#x27; prefix is added automatically). e.g. &#x27;shell input keyevent KEYCODE_HOME&#x27;</td>
-</tr>
-<tr>
-<td><code>adb_screencap</code></td>
-<td>Captures the screen and saves it as an image file on the PC.</td>
-<td style="font-size:12px"><code>img_path</code>: Image save path on PC<br><code>serial</code>: Device serial (optional)</td>
-</tr>
-<tr>
-<td><code>adb_push</code></td>
-<td>Pushes a file from the PC to the device.</td>
-<td style="font-size:12px"><code>src</code>: File path on PC<br><code>dest</code>: Destination path on device<br><code>serial</code>: Device serial (optional)</td>
-</tr>
-<tr>
-<td><code>adb_pull</code></td>
-<td>Pulls a file from the device to the PC.</td>
-<td style="font-size:12px"><code>src</code>: File path on device<br><code>dest</code>: Destination path on PC<br><code>serial</code>: Device serial (optional)</td>
-</tr>
-<tr>
-<td><code>install_apk</code></td>
-<td>Installs an APK file on the device.</td>
-<td style="font-size:12px"><code>apk_path</code>: APK file path<br><code>serial</code>: Device serial (optional)</td>
-</tr>
-<tr>
-<td><code>uninstall_apk</code></td>
-<td>Uninstalls an app from the device.</td>
-<td style="font-size:12px"><code>apk_package</code>: App package name. e.g. &#x27;com.example.app&#x27;<br><code>serial</code>: Device serial (optional)</td>
-</tr>
-<tr>
-<td><code>adb_reboot</code></td>
-<td>Reboots the device.</td>
-<td style="font-size:12px"><code>serial</code>: Device serial (optional)</td>
-</tr>
-<tr>
-<td><code>IncomingCall</code></td>
-<td>Simulates an incoming call.</td>
-<td style="font-size:12px"><code>number</code>: Phone number<br><code>serial</code>: Device serial (optional)</td>
-</tr>
-<tr>
-<td><code>start_logcat</code></td>
-<td>Starts saving logcat output to a file.</td>
-<td style="font-size:12px"><code>logpath</code>: Log file save path<br><code>serial</code>: Device serial (optional)</td>
-</tr>
-<tr>
-<td><code>stop_logcat</code></td>
-<td>Stops logcat saving.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>read_thread</code></td>
-<td>Starts the device log receive thread.</td>
-<td style="font-size:12px"><code>device</code>: Device object<br><code>logpath</code>: Log file path</td>
-</tr>
-</tbody>
-</table>
 
 <h3 id="mod-CMD">CMD</h3>
 <div class="callout callout-info">Command Execution — Executes Windows command prompt (CMD) commands. Used for running external programs or system commands</div>
@@ -2237,38 +1169,129 @@
 </tbody>
 </table>
 
-<h3 id="mod-COMMON_WINDOWS">COMMON_WINDOWS</h3>
-<div class="callout callout-info">Windows Utility — Utility module for saving Windows command output to files</div>
-<table>
-<thead><tr><th style="width:180px">Function</th><th style="width:280px">Description</th><th>Parameters</th></tr></thead>
-<tbody>
-<tr>
-<td><code>start_save_file_from_command</code></td>
-<td>Executes a command and saves the output to a log file.</td>
-<td style="font-size:12px"><code>command</code>: Command to execute<br><code>path_dir_log</code>: Log save directory path</td>
-</tr>
-<tr>
-<td><code>stop_save_file</code></td>
-<td>Stops log file saving.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-<tr>
-<td><code>get_file_path</code></td>
-<td>Returns the current log file path.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
-</tr>
-</tbody>
-</table>
 
-<h3 id="mod-TigrisCheck">TigrisCheck</h3>
-<div class="callout callout-info">Tigris Check — Runs the Tigris test suite on a specific ADB device and checks results</div>
+
+<h2 id="cat-etc">Others</h2>
+
+<h3 id="mod-WoohyunBench">WoohyunBench</h3>
+<div class="callout callout-info">Woohyun Bench — Integrated UDP test bench: vehicle power control (IGN/ACC/Battery) + CAN FD signal transmission</div>
 <table>
 <thead><tr><th style="width:180px">Function</th><th style="width:280px">Description</th><th>Parameters</th></tr></thead>
 <tbody>
 <tr>
-<td><code>checkTigris</code></td>
-<td>Runs the Tigris check.</td>
-<td style="font-size:12px"><code>ADBID</code>: ADB device serial number<br><code>TIGRIS_FOLDER</code>: Tigris folder path<br><code>SUITE_NAME</code>: Test suite name to run</td>
+<td><code>Connect</code></td>
+<td>Establishes a UDP network connection to the bench equipment. Automatically called when adding the device, so manual invocation is usually unnecessary.</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
+</tr>
+<tr>
+<td><code>Disconnect</code></td>
+<td>Disconnects the UDP network connection from the bench equipment.</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
+</tr>
+<tr>
+<td><code>IsConnected</code></td>
+<td>Checks whether the bench equipment is currently connected.</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
+</tr>
+<tr>
+<td><code>IGN1</code></td>
+<td>Turns IGN1 (Ignition 1) power on or off. Corresponds to the vehicle&#x27;s ignition power.</td>
+<td style="font-size:12px"><code>on_off</code>: 0 = OFF, 1 = ON. Default: 1 (ON)</td>
+</tr>
+<tr>
+<td><code>IGN1_Read</code></td>
+<td>Reads the current IGN1 power state. Returns: 0=OFF, 1=ON, -1=read failure</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
+</tr>
+<tr>
+<td><code>IGN2</code></td>
+<td>Turns IGN2 (Ignition 2) power on or off. Corresponds to auxiliary ignition power.</td>
+<td style="font-size:12px"><code>on_off</code>: 0 = OFF, 1 = ON. Default: 1 (ON)</td>
+</tr>
+<tr>
+<td><code>IGN2_Read</code></td>
+<td>Reads the current IGN2 power state. Returns: 0=OFF, 1=ON, -1=read failure</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
+</tr>
+<tr>
+<td><code>ACC</code></td>
+<td>Turns ACC (Accessory) power on or off. Corresponds to the vehicle&#x27;s accessory power (radio, navigation, etc.).</td>
+<td style="font-size:12px"><code>on_off</code>: 0 = OFF, 1 = ON. Default: 1 (ON)</td>
+</tr>
+<tr>
+<td><code>ACC_Read</code></td>
+<td>Reads the current ACC power state. Returns: 0=OFF, 1=ON, -1=read failure</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
+</tr>
+<tr>
+<td><code>BATTERY</code></td>
+<td>Turns the battery relay on or off. When OFF, battery power is completely cut from the vehicle.</td>
+<td style="font-size:12px"><code>on_off</code>: 0 = OFF (disconnect battery), 1 = ON (connect battery). Default: 1 (ON)</td>
+</tr>
+<tr>
+<td><code>BATTERY_Read</code></td>
+<td>Reads the current battery relay state. Returns: 0=OFF, 1=ON, -1=read failure</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
+</tr>
+<tr>
+<td><code>BatterySet</code></td>
+<td>Sets the battery output voltage. Used for voltage fluctuation testing.</td>
+<td style="font-size:12px"><code>voltage</code>: Voltage to set (V, decimal allowed). e.g. 12.0, 14.4, 9.0. Default: 14.4V</td>
+</tr>
+<tr>
+<td><code>BatteryCheck</code></td>
+<td>Measures the current battery output voltage. Returns: voltage (V), -1.0 on failure</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
+</tr>
+<tr>
+<td><code>AmpereCheck</code></td>
+<td>Measures the current power consumption. Returns: current (A), -1.0 on failure</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
+</tr>
+<tr>
+<td><code>SendCommand</code></td>
+<td>Sends a raw UDP command to the bench. For advanced users; using the individual functions above is recommended.</td>
+<td style="font-size:12px"><code>cmd1</code>: Command code 1 (integer, e.g. 0x24 = 36)<br><code>cmd2</code>: Command code 2 (integer, e.g. 0x21 = 33)<br><code>data_hex</code>: Additional data (space-separated hex string). e.g. &#x27;FF 01&#x27;. Default: empty string</td>
+</tr>
+<tr>
+<td><code>GetInfo</code></td>
+<td>Returns the bench&#x27;s current connection information (IP, port, signal_file, loaded signal count, connection state).</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
+</tr>
+<tr>
+<td><code>LoadSignals</code></td>
+<td>Loads CAN FD signal definitions from an Excel (.xls/.xlsx) or XML (.CAN) file at runtime.</td>
+<td style="font-size:12px"><code>file_path</code>: Absolute path to the signal definition file</td>
+</tr>
+<tr>
+<td><code>SendSignal</code></td>
+<td>Sends a named CAN FD signal with the given physical value. Repeats 5 times at 200ms interval. Requires signal definitions to be loaded.</td>
+<td style="font-size:12px"><code>signal_name</code>: Signal name (e.g. &#x27;Warn_DrvDrSwSta&#x27;)<br><code>physical_value</code>: Physical value (int/float/hex string like &#x27;0xAB&#x27;)</td>
+</tr>
+<tr>
+<td><code>DoorTest</code></td>
+<td>Cycles the driver door switch signal (Warn_DrvDrSwSta) ON/OFF to verify door handling.</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
+</tr>
+<tr>
+<td><code>TestAllSignals</code></td>
+<td>Sends every loaded CAN FD signal with its midpoint value. Useful for load/sanity testing.</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
+</tr>
+<tr>
+<td><code>CheckSignals</code></td>
+<td>Dumps the loaded CAN FD signal definitions to the log.</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(none)</span></td>
+</tr>
+<tr>
+<td><code>SendCanFd</code></td>
+<td>Sends a raw CAN FD frame directly (no signal definition needed). For low-level debugging.</td>
+<td style="font-size:12px"><code>can_id</code>: CAN ID (integer, e.g. 0x411 = 1041)<br><code>payload_hex</code>: Payload (hex string, spaces/commas allowed; e.g. &#x27;01 02 03&#x27;)</td>
+</tr>
+<tr>
+<td><code>ReinitCanFd</code></td>
+<td>Re-initialises the CAN FD bus (when baudrate / data bit time needs to change). Defaults 500k/2M.</td>
+<td style="font-size:12px"><code>baudrate</code>: Arbitration phase baudrate (2-byte integer, default 0x1F4)<br><code>databit_time</code>: Data phase bit time (2-byte integer, default 0x7D0)</td>
 </tr>
 </tbody>
 </table>
