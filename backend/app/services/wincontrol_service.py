@@ -11,9 +11,45 @@ import ctypes
 import io
 import logging
 import time
-from ctypes import windll
-from ctypes.wintypes import HANDLE, HWND
+from ctypes import windll, Structure, Union, c_long, c_short
+from ctypes.wintypes import DWORD, HANDLE, HWND, LONG, WORD
 from typing import Optional
+
+
+# SendInput 용 구조체 (keybd_event 대체).
+# keybd_event 는 KEYEVENTF_UNICODE 를 제대로 처리 못 해서 일부 앱(IME-aware,
+# DirectInput 사용 등) 에 입력이 안 들어감. SendInput 이 표준.
+ULONG_PTR = ctypes.c_size_t  # 32/64bit 자동
+
+
+class _MOUSEINPUT(Structure):
+    _fields_ = [("dx", LONG), ("dy", LONG), ("mouseData", DWORD),
+                ("dwFlags", DWORD), ("time", DWORD), ("dwExtraInfo", ULONG_PTR)]
+
+
+class _KEYBDINPUT(Structure):
+    _fields_ = [("wVk", WORD), ("wScan", WORD), ("dwFlags", DWORD),
+                ("time", DWORD), ("dwExtraInfo", ULONG_PTR)]
+
+
+class _HARDWAREINPUT(Structure):
+    _fields_ = [("uMsg", DWORD), ("wParamL", WORD), ("wParamH", WORD)]
+
+
+class _INPUT_UNION(Union):
+    _fields_ = [("mi", _MOUSEINPUT), ("ki", _KEYBDINPUT), ("hi", _HARDWAREINPUT)]
+
+
+class _INPUT(Structure):
+    _anonymous_ = ("u",)
+    _fields_ = [("type", DWORD), ("u", _INPUT_UNION)]
+
+
+INPUT_KEYBOARD = 1
+KEYEVENTF_KEYUP = 0x0002
+KEYEVENTF_UNICODE = 0x0004
+KEYEVENTF_SCANCODE = 0x0008
+KEYEVENTF_EXTENDEDKEY = 0x0001
 
 logger = logging.getLogger(__name__)
 
@@ -1184,31 +1220,67 @@ class WinControlService:
         finally:
             self._restore_context(ctx)
 
+    @staticmethod
+    def _send_input_keybd(wVk: int, wScan: int, flags: int) -> bool:
+        """SendInput 으로 키보드 이벤트 1개 전송. True=성공.
+
+        legacy keybd_event 는 KEYEVENTF_UNICODE 를 제대로 처리 못 함 → SendInput 필수.
+        """
+        inp = _INPUT()
+        inp.type = INPUT_KEYBOARD
+        inp.ki = _KEYBDINPUT(int(wVk), int(wScan), int(flags), 0, 0)
+        n = windll.user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(_INPUT))
+        return n == 1
+
+    @classmethod
+    def _send_unicode_char(cls, ch: str) -> None:
+        """Unicode 문자 1개 입력 (down + up). SendInput + KEYEVENTF_UNICODE.
+
+        IME 가 없는 ASCII/숫자/기호도 안전하게 동작 — wScan 자리에 Unicode codepoint
+        를 넣으면 OS 가 해당 문자를 직접 입력 큐에 넣음.
+        """
+        code = ord(ch)
+        cls._send_input_keybd(0, code, KEYEVENTF_UNICODE)
+        time.sleep(0.005)
+        cls._send_input_keybd(0, code, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP)
+
+    @classmethod
+    def _send_vk(cls, vk: int, hold_s: float = 0.0) -> None:
+        """가상키 down/up. 일반 가상키(VK_*) — wVk 사용, KEYEVENTF_UNICODE 안 씀."""
+        cls._send_input_keybd(vk, 0, 0)
+        if hold_s > 0:
+            time.sleep(hold_s)
+        cls._send_input_keybd(vk, 0, KEYEVENTF_KEYUP)
+
     def send_text(self, text: str) -> None:
+        """텍스트 입력 — SendInput + KEYEVENTF_UNICODE 로 모든 문자 직접 주입.
+
+        ASCII/숫자/기호/한글/일본어 모두 동일 경로. legacy keybd_event 의 무시 문제 회피.
+        """
         self._check()
         ctx = self._save_context()
         try:
             self._focus()
             for ch in text:
-                # KEYEVENTF_UNICODE=0x0004
-                win32api.keybd_event(0, ord(ch), 0x0004, 0)
-                time.sleep(0.015)
-                win32api.keybd_event(0, ord(ch), 0x0004 | 0x0002, 0)
-                time.sleep(0.015)
+                # \r\n / \n / \r → Enter 키로 변환 (Unicode 0x0D/0x0A 그대로 보내면
+                # 일부 앱은 무시함)
+                if ch in ("\r", "\n"):
+                    self._send_vk(win32con.VK_RETURN)
+                else:
+                    self._send_unicode_char(ch)
+                time.sleep(0.020)
             time.sleep(0.10)
         finally:
             self._restore_context(ctx)
 
     def send_key(self, key: str) -> None:
-        """가상키 한 번 누르고 떼기 (modifier 미지원 — 단일 키만)."""
+        """가상키 한 번 누르고 떼기 (modifier 미지원 — 단일 키만). SendInput 사용."""
         self._check()
         vk = _resolve_vk(key)
         ctx = self._save_context()
         try:
             self._focus()
-            win32api.keybd_event(vk, 0, 0, 0)
-            time.sleep(0.05)
-            win32api.keybd_event(vk, 0, 0x0002, 0)  # KEYEVENTF_KEYUP
+            self._send_vk(vk, hold_s=0.05)
             time.sleep(0.10)
         finally:
             self._restore_context(ctx)
