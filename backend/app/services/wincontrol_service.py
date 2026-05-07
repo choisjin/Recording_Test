@@ -171,19 +171,14 @@ class WinControlService:
     def list_processes(self) -> list[dict]:
         """가시 최상위 윈도우 + PID/프로세스명 목록.
 
-        같은 PID의 여러 창은 첫 번째(가장 의미 있는) 창만 노출 — UI 콤보 표시용.
+        같은 PID 라도 별개의 최상위 창(예: VS_BASE 메인 + CANDB TX CONTROL 자식 툴윈도우)이
+        있으면 모두 노출 — 사용자가 임베드할 창을 직접 선택할 수 있게.
+        프로세스명/타이틀 순으로 정렬.
         """
         if not _WIN32_AVAILABLE:
             return []
-        seen: set[int] = set()
-        out: list[dict] = []
-        for w in self._enum_windows():
-            if w["pid"] in seen:
-                continue
-            seen.add(w["pid"])
-            out.append(w)
-        # 보기 좋게 프로세스명/타이틀 순 정렬
-        return sorted(out, key=lambda d: (d["name"].lower(), d["title"].lower()))
+        return sorted(self._enum_windows(),
+                      key=lambda d: (d["name"].lower(), d["title"].lower()))
 
     def find_window(
         self,
