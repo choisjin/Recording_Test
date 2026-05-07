@@ -36,7 +36,18 @@ interface WindowProcess {
   title: string; class_name: string; width: number; height: number;
 }
 
-const DEFAULT_CANVAS = { width: 1280, height: 720, fps: 30, background: '#000000', show_labels: true, show_timestamp: true };
+const DEFAULT_CANVAS = {
+  width: 1280, height: 720, fps: 30, background: '#000000',
+  show_labels: true, show_timestamp: true,
+  timestamp_position: 'top-right' as 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right',
+};
+
+const TIMESTAMP_POSITIONS: { value: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'; label: string }[] = [
+  { value: 'top-left', label: '↖ 좌상단' },
+  { value: 'top-right', label: '↗ 우상단' },
+  { value: 'bottom-left', label: '↙ 좌하단' },
+  { value: 'bottom-right', label: '↘ 우하단' },
+];
 
 function genId() {
   return 'src_' + Math.random().toString(36).slice(2, 9);
@@ -85,6 +96,7 @@ export default function CompositorEditor({ open, onClose, isDark }: Props) {
   const [canvas, setCanvas] = useState({ ...DEFAULT_CANVAS });
   const [sources, setSources] = useState<CompositorSourceConfig[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   // ── Source picker state ───────────────────────────────────
   const [webcamDevices, setWebcamDevices] = useState<WebcamDevice[]>([]);
@@ -172,6 +184,7 @@ export default function CompositorEditor({ open, onClose, isDark }: Props) {
           background: lt.data.canvas.background || DEFAULT_CANVAS.background,
           show_labels: lt.data.canvas.show_labels !== false,
           show_timestamp: lt.data.canvas.show_timestamp !== false,
+          timestamp_position: lt.data.canvas.timestamp_position || DEFAULT_CANVAS.timestamp_position,
         });
       }
       if (Array.isArray(lt.data?.sources)) setSources(lt.data.sources);
@@ -187,6 +200,7 @@ export default function CompositorEditor({ open, onClose, isDark }: Props) {
           background: lt.data?.canvas?.background || DEFAULT_CANVAS.background,
           show_labels: lt.data?.canvas?.show_labels !== false,
           show_timestamp: lt.data?.canvas?.show_timestamp !== false,
+          timestamp_position: lt.data?.canvas?.timestamp_position || DEFAULT_CANVAS.timestamp_position,
         },
         sources: Array.isArray(lt.data?.sources) ? lt.data.sources : [],
       });
@@ -516,6 +530,12 @@ export default function CompositorEditor({ open, onClose, isDark }: Props) {
               <Switch size="small" checked={canvas.show_labels} onChange={v => setCanvas(c => ({ ...c, show_labels: v }))} />
               <span>{t('compositor.showTimestamp')}</span>
               <Switch size="small" checked={canvas.show_timestamp} onChange={v => setCanvas(c => ({ ...c, show_timestamp: v }))} />
+              <span>{t('compositor.timestampPosition')}</span>
+              <Select size="small" value={canvas.timestamp_position} disabled={!canvas.show_timestamp}
+                options={TIMESTAMP_POSITIONS.map(p => ({ value: p.value, label: p.label }))}
+                onChange={v => setCanvas(c => ({ ...c, timestamp_position: v as typeof DEFAULT_CANVAS.timestamp_position }))}
+                style={{ width: '100%' }}
+              />
             </div>
           </Card>
 
@@ -578,35 +598,46 @@ export default function CompositorEditor({ open, onClose, isDark }: Props) {
                 <img src={previewUrl} alt="preview"
                   style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }} />
               )}
-              {/* 박스 오버레이 (드래그/리사이즈) */}
-              {sources.map(s => (
-                <div
-                  key={s.id}
-                  onMouseDown={(e) => startDrag(e, s, 'move')}
-                  style={{
-                    position: 'absolute',
-                    left: s.x * scaleX, top: s.y * scaleY,
-                    width: s.width * scaleX, height: s.height * scaleY,
-                    border: `2px solid ${selectedId === s.id ? '#52c41a' : (s.type === 'webcam' ? '#13c2c2' : '#faad14')}`,
-                    boxSizing: 'border-box',
-                    cursor: 'move',
-                    color: '#fff', fontSize: 11, padding: 2,
-                    background: selectedId === s.id ? 'rgba(82,196,26,0.08)' : 'transparent',
-                  }}
-                >
-                  <div style={{ background: 'rgba(0,0,0,0.5)', padding: '0 4px', display: 'inline-block' }}>
-                    {s.label || s.id}
-                  </div>
-                  {/* 우하단 리사이즈 핸들 */}
+              {/* 박스 오버레이 (드래그/리사이즈)
+                  라벨은 백엔드가 캔버스에 그릴 수 있으므로 (show_labels=true),
+                  여기서는 중복을 피하려고 hover/선택일 때 또는 백엔드가 안 그릴 때만 노출. */}
+              {sources.map(s => {
+                const isSelected = selectedId === s.id;
+                const isHovered = hoveredId === s.id;
+                const showLabel = isSelected || isHovered || !canvas.show_labels;
+                return (
                   <div
-                    onMouseDown={(e) => startDrag(e, s, 'resize')}
+                    key={s.id}
+                    onMouseDown={(e) => startDrag(e, s, 'move')}
+                    onMouseEnter={() => setHoveredId(s.id)}
+                    onMouseLeave={() => setHoveredId(prev => (prev === s.id ? null : prev))}
                     style={{
-                      position: 'absolute', right: -1, bottom: -1, width: 14, height: 14,
-                      background: '#52c41a', cursor: 'nwse-resize',
+                      position: 'absolute',
+                      left: s.x * scaleX, top: s.y * scaleY,
+                      width: s.width * scaleX, height: s.height * scaleY,
+                      border: `2px solid ${isSelected ? '#52c41a' : (s.type === 'webcam' ? '#13c2c2' : '#faad14')}`,
+                      boxSizing: 'border-box',
+                      cursor: 'move',
+                      color: '#fff', fontSize: 11, padding: 2,
+                      background: isSelected ? 'rgba(82,196,26,0.08)' : 'transparent',
                     }}
-                  />
-                </div>
-              ))}
+                  >
+                    {showLabel && (
+                      <div style={{ background: 'rgba(0,0,0,0.6)', padding: '0 4px', display: 'inline-block', borderRadius: 2 }}>
+                        {s.label || s.id}
+                      </div>
+                    )}
+                    {/* 우하단 리사이즈 핸들 */}
+                    <div
+                      onMouseDown={(e) => startDrag(e, s, 'resize')}
+                      style={{
+                        position: 'absolute', right: -1, bottom: -1, width: 14, height: 14,
+                        background: '#52c41a', cursor: 'nwse-resize',
+                      }}
+                    />
+                  </div>
+                );
+              })}
             </div>
           </div>
           {/* 캡처/녹화 버튼 — 변경사항은 자동 반영, 캡처 정지/녹화는 명시 조작 */}

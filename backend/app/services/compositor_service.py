@@ -298,6 +298,8 @@ class CompositorService:
         self._bg_bgr: tuple[int, int, int] = (0, 0, 0)
         self._show_labels: bool = True
         self._show_timestamp: bool = True
+        # 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+        self._timestamp_position: str = "top-right"
 
         self._compose_thread: Optional[threading.Thread] = None
         self._stop_flag = threading.Event()
@@ -337,6 +339,10 @@ class CompositorService:
         self._bg_bgr = self._hex_to_bgr(bg_hex)
         self._show_labels = bool(canvas.get("show_labels", True))
         self._show_timestamp = bool(canvas.get("show_timestamp", True))
+        ts_pos = str(canvas.get("timestamp_position") or "top-right").lower()
+        if ts_pos not in ("top-left", "top-right", "bottom-left", "bottom-right"):
+            ts_pos = "top-right"
+        self._timestamp_position = ts_pos
 
         capturing = self.is_capturing()
         opened: list[str] = []
@@ -505,6 +511,7 @@ class CompositorService:
                 "background": "#%02x%02x%02x" % (self._bg_bgr[2], self._bg_bgr[1], self._bg_bgr[0]),
                 "show_labels": self._show_labels,
                 "show_timestamp": self._show_timestamp,
+                "timestamp_position": self._timestamp_position,
             },
             "sources": sources_out,
         }
@@ -718,11 +725,20 @@ class CompositorService:
         thickness = max(1, int(scale * 2))
         (tw, th), _ = cv2.getTextSize(ts, font, scale, thickness)
         pad = 5
-        bx = w - tw - pad * 2 - 8
-        by = 8
+        margin = 8
         bw = tw + pad * 2
         bh = th + pad * 2
-        bx = max(0, bx)
+        pos = self._timestamp_position
+        if pos == "top-left":
+            bx, by = margin, margin
+        elif pos == "bottom-left":
+            bx, by = margin, h - bh - margin
+        elif pos == "bottom-right":
+            bx, by = w - bw - margin, h - bh - margin
+        else:  # top-right (default)
+            bx, by = w - bw - margin, margin
+        bx = max(0, min(w - bw, bx))
+        by = max(0, min(h - bh, by))
         sub = canvas[by:by + bh, bx:bx + bw]
         if sub.shape[0] == bh and sub.shape[1] == bw:
             black = np.zeros_like(sub)
