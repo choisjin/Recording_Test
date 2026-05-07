@@ -6,11 +6,13 @@ PrintWindow + PostMessage 기반으로 다른 Windows 프로세스의 윈도우�
 
 from __future__ import annotations
 
+import contextlib
 import ctypes
 import io
 import logging
 import time
 from ctypes import windll
+from ctypes.wintypes import HANDLE, HWND
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -29,6 +31,20 @@ try:
     _WIN32_AVAILABLE = True
 except Exception as _e:  # pragma: no cover — non-Windows
     _IMPORT_ERROR = str(_e)
+
+
+# Per-Window DPI 컨텍스트 API (Win10 1607+) — DPI-unaware 타겟을 캡처할 때
+# 스레드 awareness 를 타겟에 맞춰 GetClientRect/PrintWindow/ClientToScreen 를
+# 일관된 좌표계로 동작시키기 위함. argtype/restype 미지정 시 64bit 핸들이 잘림.
+if _WIN32_AVAILABLE:
+    try:
+        windll.user32.GetWindowDpiAwarenessContext.argtypes = [HWND]
+        windll.user32.GetWindowDpiAwarenessContext.restype = HANDLE
+        windll.user32.SetThreadDpiAwarenessContext.argtypes = [HANDLE]
+        windll.user32.SetThreadDpiAwarenessContext.restype = HANDLE
+    except (AttributeError, OSError):
+        # Win10 1607 미만 — 타겟 매칭 불가, 프로세스 기본 awareness 그대로 사용.
+        pass
 
 
 # 가상키 매핑 (대표 키만 노출 — 추후 필요시 확장)
@@ -533,12 +549,47 @@ class WinControlService:
             "aumid": self._aumid,
         }
 
+    @contextlib.contextmanager
+    def _target_dpi_ctx(self):
+        """스레드 DPI 컨텍스트를 타겟 윈도우의 것과 일시적으로 일치시킴.
+
+        백엔드 프로세스는 Per-Monitor V2(고DPI 타겟용) 인데 타겟 앱이 DPI-unaware
+        면 GetClientRect 가 반환하는 크기와 PrintWindow 가 실제로 칠하는 영역이
+        어긋나서 캡처 비트맵 우/하단이 잘린다. 스레드 awareness 를 타겟에 맞추면
+        GetClientRect/PrintWindow/ClientToScreen/GetSystemMetrics 가 모두 같은
+        단위(타겟 좌표계)로 동작 → 캡처가 잘리지 않고 입력 좌표도 정확.
+        """
+        if not _WIN32_AVAILABLE or self._hwnd is None:
+            yield
+            return
+        user32 = windll.user32
+        prev_ctx = None
+        target_ctx = None
+        try:
+            target_ctx = user32.GetWindowDpiAwarenessContext(self._hwnd)
+        except Exception:
+            target_ctx = None
+        if target_ctx:
+            try:
+                prev_ctx = user32.SetThreadDpiAwarenessContext(target_ctx)
+            except Exception:
+                prev_ctx = None
+        try:
+            yield
+        finally:
+            if prev_ctx:
+                try:
+                    user32.SetThreadDpiAwarenessContext(prev_ctx)
+                except Exception:
+                    pass
+
     def get_window_size(self) -> tuple[int, int]:
         """Client area 크기 (좌표계 기준)."""
         if not self.is_attached():
             return (0, 0)
         try:
-            rect = win32gui.GetClientRect(self._hwnd)
+            with self._target_dpi_ctx():
+                rect = win32gui.GetClientRect(self._hwnd)
             return (rect[2] - rect[0], rect[3] - rect[1])
         except Exception:
             return (0, 0)
@@ -557,34 +608,35 @@ class WinControlService:
             return self.get_window_size()
         hwnd = self._hwnd
         try:
-            # 최대화/최소화 상태면 정상 크기로 복원 — 그래야 SetWindowPos 가 먹힘.
-            try:
-                if win32gui.IsZoomed(hwnd) or win32gui.IsIconic(hwnd):
-                    win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-                    time.sleep(0.05)
-            except Exception:
-                pass
-            # 외곽-클라이언트 차이(보더/타이틀바)를 측정해서 outer 목표 크기 산출.
-            cur_window = win32gui.GetWindowRect(hwnd)
-            cur_outer_w = cur_window[2] - cur_window[0]
-            cur_outer_h = cur_window[3] - cur_window[1]
-            cur_client = win32gui.GetClientRect(hwnd)
-            cur_client_w = cur_client[2] - cur_client[0]
-            cur_client_h = cur_client[3] - cur_client[1]
-            dx = cur_outer_w - cur_client_w
-            dy = cur_outer_h - cur_client_h
-            new_outer_w = max(1, int(target_w) + dx)
-            new_outer_h = max(1, int(target_h) + dy)
-            # SWP_NOMOVE: 위치 유지, SWP_NOZORDER: z-order 유지, SWP_NOACTIVATE: 포커스 안 뺏음.
-            SWP_NOMOVE = 0x0002
-            SWP_NOZORDER = 0x0004
-            SWP_NOACTIVATE = 0x0010
-            win32gui.SetWindowPos(
-                hwnd, 0, 0, 0, new_outer_w, new_outer_h,
-                SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE,
-            )
-            # 레이아웃 반영 시간.
-            time.sleep(0.05)
+            with self._target_dpi_ctx():
+                # 최대화/최소화 상태면 정상 크기로 복원 — 그래야 SetWindowPos 가 먹힘.
+                try:
+                    if win32gui.IsZoomed(hwnd) or win32gui.IsIconic(hwnd):
+                        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+                        time.sleep(0.05)
+                except Exception:
+                    pass
+                # 외곽-클라이언트 차이(보더/타이틀바)를 측정해서 outer 목표 크기 산출.
+                cur_window = win32gui.GetWindowRect(hwnd)
+                cur_outer_w = cur_window[2] - cur_window[0]
+                cur_outer_h = cur_window[3] - cur_window[1]
+                cur_client = win32gui.GetClientRect(hwnd)
+                cur_client_w = cur_client[2] - cur_client[0]
+                cur_client_h = cur_client[3] - cur_client[1]
+                dx = cur_outer_w - cur_client_w
+                dy = cur_outer_h - cur_client_h
+                new_outer_w = max(1, int(target_w) + dx)
+                new_outer_h = max(1, int(target_h) + dy)
+                # SWP_NOMOVE: 위치 유지, SWP_NOZORDER: z-order 유지, SWP_NOACTIVATE: 포커스 안 뺏음.
+                SWP_NOMOVE = 0x0002
+                SWP_NOZORDER = 0x0004
+                SWP_NOACTIVATE = 0x0010
+                win32gui.SetWindowPos(
+                    hwnd, 0, 0, 0, new_outer_w, new_outer_h,
+                    SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE,
+                )
+                # 레이아웃 반영 시간.
+                time.sleep(0.05)
         except Exception as e:
             logger.debug("WinControl resize_client failed: %s", e)
         return self.get_window_size()
@@ -724,19 +776,20 @@ class WinControlService:
         host_hwnd = self._hwnd
         # UWP 면 처음부터 PW_RENDERFULLCONTENT 사용
         first_flag = 0x00000003 if (render_full_content or self._is_uwp) else 0x00000001
-        img = self._capture_with_flag(host_hwnd, first_flag)
-        if self._is_blank_image(img) and first_flag != 0x00000003:
-            # 검은 화면 → render_full_content 강제 재시도
-            img = self._capture_with_flag(host_hwnd, 0x00000003)
-        # 그래도 실패하면 콘텐츠 자식(CoreWindow)으로 폴백
-        if self._is_blank_image(img) and self._content_hwnd:
-            try:
-                if win32gui.IsWindow(self._content_hwnd):
-                    img = self._capture_with_flag(self._content_hwnd, 0x00000003)
-                    if self._is_blank_image(img):
-                        img = self._capture_with_flag(self._content_hwnd, 0x00000001)
-            except Exception:
-                pass
+        with self._target_dpi_ctx():
+            img = self._capture_with_flag(host_hwnd, first_flag)
+            if self._is_blank_image(img) and first_flag != 0x00000003:
+                # 검은 화면 → render_full_content 강제 재시도
+                img = self._capture_with_flag(host_hwnd, 0x00000003)
+            # 그래도 실패하면 콘텐츠 자식(CoreWindow)으로 폴백
+            if self._is_blank_image(img) and self._content_hwnd:
+                try:
+                    if win32gui.IsWindow(self._content_hwnd):
+                        img = self._capture_with_flag(self._content_hwnd, 0x00000003)
+                        if self._is_blank_image(img):
+                            img = self._capture_with_flag(self._content_hwnd, 0x00000001)
+                except Exception:
+                    pass
         if img is None:
             raise RuntimeError("PrintWindow failed for all flags")
 
@@ -900,38 +953,40 @@ class WinControlService:
     # finally 에서 복원 — 사용자가 작업 중이던 다른 창과 커서 위치를 방해하지 않는다.
     def send_tap(self, x: int, y: int, button: str = "left") -> None:
         self._check()
-        ctx = self._save_context()
-        try:
-            self._focus()
-            sx, sy = self._client_to_screen(int(x), int(y))
-            self._send_input_mouse_move(sx, sy)
-            # 마우스 이동 후 hover 인식 시간 — UWP/WinUI 컨트롤은 mousemove 처리 후
-            # 클릭을 받아야 정상 동작.
-            time.sleep(0.04)
-            self._send_input_button(button, True)
-            time.sleep(0.04)
-            self._send_input_button(button, False)
-            # OS 가 클릭을 처리할 시간 — 다음 액션(또는 컨텍스트 복원) 전 대기.
-            time.sleep(0.06)
-        finally:
-            self._restore_context(ctx)
+        with self._target_dpi_ctx():
+            ctx = self._save_context()
+            try:
+                self._focus()
+                sx, sy = self._client_to_screen(int(x), int(y))
+                self._send_input_mouse_move(sx, sy)
+                # 마우스 이동 후 hover 인식 시간 — UWP/WinUI 컨트롤은 mousemove 처리 후
+                # 클릭을 받아야 정상 동작.
+                time.sleep(0.04)
+                self._send_input_button(button, True)
+                time.sleep(0.04)
+                self._send_input_button(button, False)
+                # OS 가 클릭을 처리할 시간 — 다음 액션(또는 컨텍스트 복원) 전 대기.
+                time.sleep(0.06)
+            finally:
+                self._restore_context(ctx)
 
     def send_double_click(self, x: int, y: int) -> None:
         self._check()
-        ctx = self._save_context()
-        try:
-            self._focus()
-            sx, sy = self._client_to_screen(int(x), int(y))
-            self._send_input_mouse_move(sx, sy)
-            time.sleep(0.04)
-            for _ in range(2):
-                self._send_input_button("left", True)
+        with self._target_dpi_ctx():
+            ctx = self._save_context()
+            try:
+                self._focus()
+                sx, sy = self._client_to_screen(int(x), int(y))
+                self._send_input_mouse_move(sx, sy)
                 time.sleep(0.04)
-                self._send_input_button("left", False)
-                time.sleep(0.04)
-            time.sleep(0.06)
-        finally:
-            self._restore_context(ctx)
+                for _ in range(2):
+                    self._send_input_button("left", True)
+                    time.sleep(0.04)
+                    self._send_input_button("left", False)
+                    time.sleep(0.04)
+                time.sleep(0.06)
+            finally:
+                self._restore_context(ctx)
 
     def send_long_press(self, x: int, y: int, duration_ms: int = 500, button: str = "left") -> None:
         """버튼을 누른 채로 duration_ms 만큼 유지 후 떼기.
@@ -940,47 +995,49 @@ class WinControlService:
         예) 우클릭 길게 = right 메뉴 트리거 (대부분의 앱은 mouse-up 시 컨텍스트 메뉴).
         """
         self._check()
-        ctx = self._save_context()
-        try:
-            self._focus()
-            sx, sy = self._client_to_screen(int(x), int(y))
-            self._send_input_mouse_move(sx, sy)
-            time.sleep(0.04)
-            self._send_input_button(button, True)
+        with self._target_dpi_ctx():
+            ctx = self._save_context()
             try:
-                time.sleep(max(0.0, duration_ms / 1000.0))
+                self._focus()
+                sx, sy = self._client_to_screen(int(x), int(y))
+                self._send_input_mouse_move(sx, sy)
+                time.sleep(0.04)
+                self._send_input_button(button, True)
+                try:
+                    time.sleep(max(0.0, duration_ms / 1000.0))
+                finally:
+                    self._send_input_button(button, False)
+                time.sleep(0.06)
             finally:
-                self._send_input_button(button, False)
-            time.sleep(0.06)
-        finally:
-            self._restore_context(ctx)
+                self._restore_context(ctx)
 
     def send_swipe(self, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 300) -> None:
         self._check()
-        ctx = self._save_context()
-        try:
-            self._focus()
-            steps = max(2, int(max(50, duration_ms) / 25))
-            delay = max(0.0, duration_ms / 1000.0 / steps)
-            sx1, sy1 = self._client_to_screen(int(x1), int(y1))
-            self._send_input_mouse_move(sx1, sy1)
-            time.sleep(0.04)
-            self._send_input_button("left", True)
-            for i in range(1, steps):
-                t = i / steps
-                x = int(x1 + (x2 - x1) * t)
-                y = int(y1 + (y2 - y1) * t)
-                sx, sy = self._client_to_screen(x, y)
-                self._send_input_mouse_move(sx, sy)
-                if delay > 0:
-                    time.sleep(delay)
-            sx2, sy2 = self._client_to_screen(int(x2), int(y2))
-            self._send_input_mouse_move(sx2, sy2)
-            time.sleep(0.04)
-            self._send_input_button("left", False)
-            time.sleep(0.06)
-        finally:
-            self._restore_context(ctx)
+        with self._target_dpi_ctx():
+            ctx = self._save_context()
+            try:
+                self._focus()
+                steps = max(2, int(max(50, duration_ms) / 25))
+                delay = max(0.0, duration_ms / 1000.0 / steps)
+                sx1, sy1 = self._client_to_screen(int(x1), int(y1))
+                self._send_input_mouse_move(sx1, sy1)
+                time.sleep(0.04)
+                self._send_input_button("left", True)
+                for i in range(1, steps):
+                    t = i / steps
+                    x = int(x1 + (x2 - x1) * t)
+                    y = int(y1 + (y2 - y1) * t)
+                    sx, sy = self._client_to_screen(x, y)
+                    self._send_input_mouse_move(sx, sy)
+                    if delay > 0:
+                        time.sleep(delay)
+                sx2, sy2 = self._client_to_screen(int(x2), int(y2))
+                self._send_input_mouse_move(sx2, sy2)
+                time.sleep(0.04)
+                self._send_input_button("left", False)
+                time.sleep(0.06)
+            finally:
+                self._restore_context(ctx)
 
     def send_text(self, text: str) -> None:
         self._check()
