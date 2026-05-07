@@ -290,6 +290,8 @@ class CompositorService:
         # {id: {"x":..,"y":..,"w":..,"h":..,"crop":{"x","y","w","h"}|None,"z":int,"opacity":float,
         #        "label":str}}
         self._layout: dict[str, dict] = {}
+        # _sources 와 _layout 동시 변경/순회 시 race 방지 (compose 스레드는 매 프레임 _sources를 순회)
+        self._sources_lock = threading.RLock()
         self._canvas_w: int = 1280
         self._canvas_h: int = 720
         self._fps: float = 30.0
@@ -311,61 +313,74 @@ class CompositorService:
         self._frames_written: int = 0
 
     # ------------------------------------------------------------
-    # Layout config
+    # Layout config — diff-update (capture 중에도 무중단 적용)
     # ------------------------------------------------------------
-    def configure(self, layout: dict) -> None:
-        """레이아웃 설정. 이미 capture 중이면 stop 후 재시작 필요 (호출자 책임)."""
+    def configure(self, layout: dict) -> dict:
+        """레이아웃 적용. capture 중이라도 멈추지 않고 차분 업데이트한다.
+
+        - 캔버스 설정(W/H/FPS/배경/라벨/타임스탬프)은 즉시 반영.
+        - 소스: id 기준으로 diff
+            * 신규 → 생성 + (이미 capture 중이면) start
+            * 제거 → stop
+            * 동일 id + 캡처 파라미터(type/device_index/capture_w/h or process_name/title_pattern/hwnd) 동일
+              → 인스턴스 유지, 레이아웃만 업데이트
+            * 동일 id + 캡처 파라미터 변경 → 기존 stop, 새 인스턴스 start
+        - 레이아웃 변경(x/y/w/h/crop/opacity/z_order/label)은 항상 즉시 반영.
+
+        Returns: {"opened": [...], "failed": [...]} — 신규/재시작된 소스의 결과.
+        """
         canvas = layout.get("canvas") or {}
         self._canvas_w = max(2, int(canvas.get("width") or 1280))
         self._canvas_h = max(2, int(canvas.get("height") or 720))
-        self._fps = float(canvas.get("fps") or 30.0)
+        new_fps = float(canvas.get("fps") or 30.0)
         bg_hex = canvas.get("background") or "#000000"
         self._bg_bgr = self._hex_to_bgr(bg_hex)
         self._show_labels = bool(canvas.get("show_labels", True))
         self._show_timestamp = bool(canvas.get("show_timestamp", True))
 
-        # 새 sources 정의
-        new_sources: list[_SourceBase] = []
-        new_layout: dict[str, dict] = {}
+        capturing = self.is_capturing()
+        opened: list[str] = []
+        failed: list[str] = []
+
+        # 새 layout 입력을 (id → norm) 맵으로 정리
+        incoming: list[tuple[str, str, dict, dict]] = []  # (id, type, source_kwargs, layout_entry)
         for idx, item in enumerate(layout.get("sources") or []):
             src_id = str(item.get("id") or f"src_{idx}")
             stype = (item.get("type") or "").lower()
             label = str(item.get("label") or "")
             if stype == "webcam":
-                src = WebcamCapture(
-                    src_id=src_id,
-                    device_index=int(item.get("device_index") or 0),
-                    capture_w=int(item.get("capture_width") or 0),
-                    capture_h=int(item.get("capture_height") or 0),
-                    label=label,
-                )
-                new_sources.append(src)
+                src_kwargs = {
+                    "src_id": src_id,
+                    "device_index": int(item.get("device_index") or 0),
+                    "capture_w": int(item.get("capture_width") or 0),
+                    "capture_h": int(item.get("capture_height") or 0),
+                    "label": label,
+                }
             elif stype == "window":
-                src = WindowCapture(
-                    src_id=src_id,
-                    process_name=str(item.get("process_name") or ""),
-                    title_pattern=str(item.get("title_pattern") or ""),
-                    hwnd=int(item.get("hwnd") or 0),
-                    capture_fps=float(item.get("capture_fps") or 15.0),
-                    label=label,
-                )
-                new_sources.append(src)
+                src_kwargs = {
+                    "src_id": src_id,
+                    "process_name": str(item.get("process_name") or ""),
+                    "title_pattern": str(item.get("title_pattern") or ""),
+                    "hwnd": int(item.get("hwnd") or 0),
+                    "capture_fps": float(item.get("capture_fps") or 15.0),
+                    "label": label,
+                }
             else:
                 logger.warning("Compositor: unknown source type %r — skip", stype)
                 continue
             crop = item.get("crop") or None
             if crop:
-                crop_norm = {
+                crop_norm: Optional[dict] = {
                     "x": int(crop.get("x") or 0),
                     "y": int(crop.get("y") or 0),
                     "w": int(crop.get("w") or crop.get("width") or 0),
                     "h": int(crop.get("h") or crop.get("height") or 0),
                 }
-                if crop_norm["w"] <= 0 or crop_norm["h"] <= 0:
-                    crop_norm = None  # 무효 → full
+                if crop_norm and (crop_norm["w"] <= 0 or crop_norm["h"] <= 0):
+                    crop_norm = None
             else:
                 crop_norm = None
-            new_layout[src_id] = {
+            layout_entry = {
                 "x": int(item.get("x") or 0),
                 "y": int(item.get("y") or 0),
                 "w": int(item.get("width") or 320),
@@ -375,13 +390,88 @@ class CompositorService:
                 "opacity": float(item.get("opacity") if item.get("opacity") is not None else 1.0),
                 "label": label,
             }
-        self._sources = new_sources
-        self._layout = new_layout
+            incoming.append((src_id, stype, src_kwargs, layout_entry))
+
+        with self._sources_lock:
+            existing_by_id = {s.id: s for s in self._sources}
+            incoming_ids = {sid for sid, _, _, _ in incoming}
+
+            # 1) 제거된 소스 stop
+            removed_ids: list[str] = []
+            for sid, src in list(existing_by_id.items()):
+                if sid not in incoming_ids:
+                    try:
+                        src.stop()
+                    except Exception:
+                        pass
+                    removed_ids.append(sid)
+            if removed_ids:
+                logger.info("Compositor: removed sources %s", removed_ids)
+
+            new_sources_ordered: list[_SourceBase] = []
+            new_layout: dict[str, dict] = {}
+            for sid, stype, kwargs, l_entry in incoming:
+                existing = existing_by_id.get(sid) if sid not in removed_ids else None
+                # 캡처 파라미터 변경 검사 — 변경되면 stop+재생성
+                replace = False
+                if existing is None:
+                    replace = True
+                elif stype == "webcam" and isinstance(existing, WebcamCapture):
+                    if (existing.device_index != kwargs["device_index"]
+                            or existing.capture_w != kwargs["capture_w"]
+                            or existing.capture_h != kwargs["capture_h"]):
+                        replace = True
+                elif stype == "window" and isinstance(existing, WindowCapture):
+                    # process_name/title/hwnd 중 하나라도 바뀌면 재시작
+                    if (existing.process_name != kwargs["process_name"]
+                            or existing.title_pattern != kwargs["title_pattern"]
+                            or existing.preferred_hwnd != kwargs["hwnd"]
+                            or existing.capture_fps != kwargs["capture_fps"]):
+                        replace = True
+                else:
+                    # type 자체가 바뀐 경우
+                    replace = True
+
+                if replace:
+                    if existing is not None:
+                        try:
+                            existing.stop()
+                        except Exception:
+                            pass
+                    if stype == "webcam":
+                        new_src: _SourceBase = WebcamCapture(**kwargs)
+                    else:
+                        new_src = WindowCapture(**kwargs)
+                    if capturing:
+                        try:
+                            if new_src.start():
+                                opened.append(sid)
+                            else:
+                                failed.append(sid)
+                        except Exception as e:
+                            logger.warning("Compositor: source %s start failed: %s", sid, e)
+                            failed.append(sid)
+                    new_sources_ordered.append(new_src)
+                else:
+                    # 재사용 — 라벨만 업데이트
+                    existing.label = kwargs.get("label") or existing.label
+                    new_sources_ordered.append(existing)
+                new_layout[sid] = l_entry
+
+            self._sources = new_sources_ordered
+            self._layout = new_layout
+
+        # FPS 변경 — compose 루프는 다음 iteration에서 새 _fps 사용 (즉시 반영)
+        self._fps = new_fps
+        return {"opened": opened, "failed": failed, "removed": removed_ids}
 
     def get_layout(self) -> dict:
         sources_out = []
-        for src in self._sources:
-            l = self._layout.get(src.id, {})
+        with self._sources_lock:
+            sources_snapshot = list(self._sources)
+            layout_snapshot = dict(self._layout)
+        for src in sources_snapshot:
+            l = layout_snapshot.get(src.id, {})
             common = {
                 "id": src.id,
                 "label": l.get("label") or src.label,
@@ -437,24 +527,32 @@ class CompositorService:
         return self._compose_thread is not None and self._compose_thread.is_alive()
 
     def start_capture(self) -> dict:
-        """모든 소스 + compose 스레드 시작. 이미 실행 중이면 stop 후 재시작."""
-        self.stop_capture()
+        """모든 소스 + compose 스레드 시작. 이미 실행 중이면 미실행 소스만 추가 start.
+
+        멱등 — 캡처 중 호출 시 새로 추가된 소스만 시작하고 기존 소스/스레드는 유지.
+        """
         opened: list[str] = []
         failed: list[str] = []
-        for src in self._sources:
-            try:
-                if src.start():
-                    opened.append(src.id)
-                else:
+        with self._sources_lock:
+            for src in self._sources:
+                # 이미 시작된 소스는 중복 start 회피 — _thread 살아있으면 skip
+                if src._thread is not None and src._thread.is_alive():
+                    continue
+                try:
+                    if src.start():
+                        opened.append(src.id)
+                    else:
+                        failed.append(src.id)
+                except Exception as e:
+                    logger.warning("Compositor source %s start failed: %s", src.id, e)
                     failed.append(src.id)
-            except Exception as e:
-                logger.warning("Compositor source %s start failed: %s", src.id, e)
-                failed.append(src.id)
-        self._stop_flag.clear()
-        self._compose_thread = threading.Thread(
-            target=self._compose_loop, daemon=True, name="compositor-compose",
-        )
-        self._compose_thread.start()
+        # compose 스레드 1회만 기동
+        if not (self._compose_thread is not None and self._compose_thread.is_alive()):
+            self._stop_flag.clear()
+            self._compose_thread = threading.Thread(
+                target=self._compose_loop, daemon=True, name="compositor-compose",
+            )
+            self._compose_thread.start()
         return {"opened": opened, "failed": failed}
 
     def stop_capture(self) -> None:
@@ -468,11 +566,12 @@ class CompositorService:
             except Exception:
                 pass
         self._compose_thread = None
-        for src in self._sources:
-            try:
-                src.stop()
-            except Exception:
-                pass
+        with self._sources_lock:
+            for src in self._sources:
+                try:
+                    src.stop()
+                except Exception:
+                    pass
         with self._latest_canvas_lock:
             self._latest_canvas = None
 
@@ -504,13 +603,16 @@ class CompositorService:
         canvas = np.zeros((self._canvas_h, self._canvas_w, 3), dtype=np.uint8)
         if self._bg_bgr != (0, 0, 0):
             canvas[:] = self._bg_bgr
-        # z-order 정렬
+        # _sources / _layout snapshot (race 방지) + z-order 정렬
+        with self._sources_lock:
+            sources_snapshot = list(self._sources)
+            layout_snapshot = dict(self._layout)
         ordered = sorted(
-            self._sources,
-            key=lambda s: self._layout.get(s.id, {}).get("z", 0),
+            sources_snapshot,
+            key=lambda s: layout_snapshot.get(s.id, {}).get("z", 0),
         )
         for src in ordered:
-            l = self._layout.get(src.id)
+            l = layout_snapshot.get(src.id)
             if not l:
                 continue
             frame = src.get_latest_frame()

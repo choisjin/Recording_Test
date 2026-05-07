@@ -111,13 +111,14 @@ class LayoutConfig(BaseModel):
 
 @router.post("/configure")
 async def configure(layout: LayoutConfig):
-    """레이아웃 적용 (capture 중이면 stop 후 재구성 필요)."""
+    """레이아웃 적용 — capture 중에도 무중단으로 차분 업데이트.
+
+    소스 추가/제거/캡처 파라미터 변경 시 해당 소스만 start/stop.
+    레이아웃 변경(x/y/w/h/crop/opacity/z/label/캔버스/FPS)은 즉시 반영.
+    """
     svc = get_compositor_service()
-    if svc.is_capturing():
-        # 자동 stop → 재시작은 호출자가 결정
-        svc.stop_capture()
-    svc.configure(layout.dict())
-    return svc.get_layout()
+    diff = svc.configure(layout.model_dump() if hasattr(layout, "model_dump") else layout.dict())
+    return {"layout": svc.get_layout(), "diff": diff}
 
 
 @router.get("/layout")

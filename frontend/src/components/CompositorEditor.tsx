@@ -17,7 +17,7 @@ import {
 import type { ColorPickerProps } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, VideoCameraOutlined, DesktopOutlined,
-  PlayCircleOutlined, PauseCircleOutlined, SaveOutlined, ReloadOutlined,
+  PlayCircleOutlined, PauseCircleOutlined, SaveOutlined,
 } from '@ant-design/icons';
 import {
   compositorApi, CompositorLayout, CompositorSourceConfig,
@@ -110,6 +110,47 @@ export default function CompositorEditor({ open, onClose, isDark }: Props) {
 
   const layout: CompositorLayout = useMemo(() => ({ canvas, sources }), [canvas, sources]);
 
+  // ── Auto-apply: 레이아웃 변경 시 backend로 즉시 반영 ──────
+  // - 모달 첫 진입(loadAll 직후)에는 적용하지 않도록 ready 플래그로 차단
+  // - 빠른 연속 변경(드래그/리사이즈)은 debounce로 1회로 압축
+  // - 캡처가 미실행이고 소스가 1개 이상이면 자동으로 start_capture 호출
+  const readyRef = useRef(false);
+  const applyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSentRef = useRef<string>('');
+  const capturingRef = useRef(false);
+  useEffect(() => { capturingRef.current = capturing; }, [capturing]);
+
+  useEffect(() => {
+    if (!open) {
+      readyRef.current = false;
+      return;
+    }
+    if (!readyRef.current) return;  // 초기 동기화 중에는 patch 발사 안 함
+    if (applyTimerRef.current) clearTimeout(applyTimerRef.current);
+    applyTimerRef.current = setTimeout(async () => {
+      const payload = JSON.stringify(layout);
+      if (payload === lastSentRef.current) return;  // 변화 없음
+      lastSentRef.current = payload;
+      try {
+        await compositorApi.configure(layout);
+        // 캡처 미실행 + 소스 존재 → 자동 시작
+        if (!capturingRef.current && layout.sources.length > 0) {
+          const r = await compositorApi.startCapture();
+          setCapturing(true);
+          const failed: string[] = r.data?.failed || [];
+          if (failed.length) {
+            message.warning(t('compositor.someSourcesFailed', { count: failed.length }));
+          }
+        }
+      } catch (e: any) {
+        message.error(t('compositor.applyFailed') + ': ' + (e?.response?.data?.detail || e?.message || e));
+      }
+    }, 200);
+    return () => {
+      if (applyTimerRef.current) clearTimeout(applyTimerRef.current);
+    };
+  }, [layout, open, message, t]);
+
   // ── Initial load ──────────────────────────────────────────
   const loadAll = useCallback(async () => {
     try {
@@ -136,6 +177,21 @@ export default function CompositorEditor({ open, onClose, isDark }: Props) {
       if (Array.isArray(lt.data?.sources)) setSources(lt.data.sources);
       setCapturing(!!st.data?.capturing);
       setRecording(!!st.data?.recording);
+      // lastSent를 현재 백엔드 상태로 동기화 — 초기 setSources/setCanvas로 인한
+      // 불필요한 재전송 방지 (auto-apply는 readyRef 가드 + lastSent 비교로 두 단계 차단)
+      lastSentRef.current = JSON.stringify({
+        canvas: {
+          width: lt.data?.canvas?.width || DEFAULT_CANVAS.width,
+          height: lt.data?.canvas?.height || DEFAULT_CANVAS.height,
+          fps: lt.data?.canvas?.fps || DEFAULT_CANVAS.fps,
+          background: lt.data?.canvas?.background || DEFAULT_CANVAS.background,
+          show_labels: lt.data?.canvas?.show_labels !== false,
+          show_timestamp: lt.data?.canvas?.show_timestamp !== false,
+        },
+        sources: Array.isArray(lt.data?.sources) ? lt.data.sources : [],
+      });
+      // 다음 렌더 사이클에서 auto-apply 활성화
+      setTimeout(() => { readyRef.current = true; }, 0);
     } catch (e: any) {
       message.error(t('compositor.loadFailed') + ': ' + (e?.message || e));
     }
@@ -231,20 +287,6 @@ export default function CompositorEditor({ open, onClose, isDark }: Props) {
     setSources(prev => [...prev, newWindowSource(p, canvas.width, canvas.height)]);
     setWindowPickerOpen(false);
   }, [canvas]);
-
-  // ── Configure → backend ───────────────────────────────────
-  const applyToBackend = useCallback(async () => {
-    try {
-      await compositorApi.configure(layout);
-      message.success(t('compositor.applied'));
-      // 캡처 중이면 새 설정으로 다시 시작
-      if (capturing) {
-        await compositorApi.startCapture();
-      }
-    } catch (e: any) {
-      message.error(t('compositor.applyFailed') + ': ' + (e?.response?.data?.detail || e?.message || e));
-    }
-  }, [layout, capturing, message, t]);
 
   // ── Capture/preview lifecycle ─────────────────────────────
   const startCapture = useCallback(async () => {
@@ -567,33 +609,31 @@ export default function CompositorEditor({ open, onClose, isDark }: Props) {
               ))}
             </div>
           </div>
-          {/* 캡처/녹화 버튼 */}
+          {/* 캡처/녹화 버튼 — 변경사항은 자동 반영, 캡처 정지/녹화는 명시 조작 */}
           <div style={{ display: 'flex', gap: 6, padding: '6px 0', alignItems: 'center', flexWrap: 'wrap' }}>
-            {!capturing ? (
-              <Button type="primary" icon={<PlayCircleOutlined />} onClick={startCapture}>
-                {t('compositor.startCapture')}
-              </Button>
-            ) : (
-              <Button danger icon={<PauseCircleOutlined />} onClick={stopCapture}>
+            {capturing ? (
+              <Button danger size="small" icon={<PauseCircleOutlined />} onClick={stopCapture}>
                 {t('compositor.stopCapture')}
               </Button>
+            ) : (
+              <Button type="primary" size="small" icon={<PlayCircleOutlined />} onClick={startCapture} disabled={!sources.length}>
+                {t('compositor.startCapture')}
+              </Button>
             )}
-            <Button icon={<ReloadOutlined />} onClick={applyToBackend} disabled={!sources.length}>
-              {t('compositor.apply')}
-            </Button>
             <Divider type="vertical" />
             {!recording ? (
-              <Button icon={<VideoCameraOutlined />} onClick={startRecord} disabled={!capturing}>
+              <Button size="small" icon={<VideoCameraOutlined />} onClick={startRecord} disabled={!capturing}>
                 {t('compositor.recordTest')}
               </Button>
             ) : (
-              <Button danger icon={<VideoCameraOutlined />} onClick={stopRecord}>
+              <Button danger size="small" icon={<VideoCameraOutlined />} onClick={stopRecord}>
                 {t('compositor.recordStop')}
               </Button>
             )}
             <span style={{ marginLeft: 'auto', fontSize: 11, color: '#888' }}>
               {capturing ? t('compositor.statusCapturing') : t('compositor.statusIdle')}
               {recording ? ` • ${t('compositor.statusRecording')}` : ''}
+              {capturing && <Tag color="blue" style={{ marginLeft: 6 }}>{t('compositor.autoApply')}</Tag>}
             </span>
           </div>
         </div>

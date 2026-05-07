@@ -478,6 +478,7 @@ const translations = {
     'compositor.loadFailed': '레이아웃 로드 실패',
     'compositor.enabledTag': '재생 시 사용',
     'compositor.disabledTag': '미사용',
+    'compositor.autoApply': '실시간 반영',
 
     // === Record Page (additional) ===
     'record.expectedSaved': '스텝 #{index} 기대이미지 저장 완료',
@@ -1274,6 +1275,7 @@ const translations = {
     'compositor.loadFailed': 'Failed to load layout',
     'compositor.enabledTag': 'Use on playback',
     'compositor.disabledTag': 'Disabled',
+    'compositor.autoApply': 'Live update',
 
     // === Record Page (additional) ===
     'record.expectedSaved': 'Step #{index} expected image saved',
