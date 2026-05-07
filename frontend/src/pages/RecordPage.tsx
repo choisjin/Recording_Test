@@ -357,8 +357,6 @@ export default function RecordPage() {
   const [wcLoadingProcs, setWcLoadingProcs] = useState(false);
   const [wcInputText, setWcInputText] = useState('');
   const wcCanvasRef = useRef<HTMLCanvasElement>(null);
-  // 캔버스를 감싸는 컨테이너 — 임베드 시 사용 가능한 위젯 영역 측정용.
-  const wcCanvasWrapRef = useRef<HTMLDivElement>(null);
   // button: 'left' | 'right' — 좌/우 클릭 모두 동일 제스처 흐름 처리.
   const wcGestureRef = useRef<{ startX: number; startY: number; startTime: number; active: boolean; button: 'left' | 'right' }>(
     { startX: 0, startY: 0, startTime: 0, active: false, button: 'left' }
@@ -1067,56 +1065,18 @@ export default function RecordPage() {
     }).catch(() => {});
   }, [leftPanelTab, wcConnected, wcRefreshProcesses]);
 
-  // 현재 임베드된 윈도우의 outer 비율을 유지한 채 위젯 가용 영역에 맞춰 리사이즈.
-  // - outer 비율로 fit 계산 → outer 변화량을 client 에 적용 → 정확히 맞는 client 크기 도출.
-  // - 위젯 영역이 너무 작으면(예: 측정 실패) 호출 무시.
-  const wcFitToWidget = useCallback(async (status: WinAttachStatus) => {
-    const wrap = wcCanvasWrapRef.current;
-    if (!wrap) return;
-    const ow = status.outer_width || 0;
-    const oh = status.outer_height || 0;
-    const cw = status.width || 0;
-    const ch = status.height || 0;
-    if (ow <= 0 || oh <= 0 || cw <= 0 || ch <= 0) return;
-    // 컨테이너의 부모(Card body) 가용 영역 — wrap 자신은 inline-block 이라 작을 수 있음.
-    const parent = wrap.parentElement || wrap;
-    const r = parent.getBoundingClientRect();
-    // 보더/패딩 여유 — 캔버스 보더 1px + 안전 여유 8px.
-    const availW = Math.max(100, Math.floor(r.width - 18));
-    const availH = Math.max(100, Math.floor(r.height - 18));
-    const ratio = Math.min(availW / ow, availH / oh);
-    if (!isFinite(ratio) || ratio <= 0) return;
-    const targetOuterW = Math.max(50, Math.floor(ow * ratio));
-    const targetOuterH = Math.max(50, Math.floor(oh * ratio));
-    // outer 변화량을 client 에 동일하게 적용 (외곽-client 차이는 보더/타이틀바 두께로 일정).
-    const dx = ow - cw;
-    const dy = oh - ch;
-    const targetClientW = Math.max(50, targetOuterW - dx);
-    const targetClientH = Math.max(50, targetOuterH - dy);
-    // 이미 거의 같은 크기면 호출 생략 (불필요한 리사이즈 방지).
-    if (Math.abs(targetClientW - cw) <= 2 && Math.abs(targetClientH - ch) <= 2) return;
-    try {
-      const r2 = await deviceApi.winResize(targetClientW, targetClientH);
-      if (r2.data?.status?.attached) setWcAttached(r2.data.status as WinAttachStatus);
-    } catch {
-      // 리사이즈 실패는 치명적이지 않음 (일부 앱은 최소/최대 크기 제약) — 무시.
-    }
-  }, []);
-
   const wcAttach = useCallback(async () => {
     if (!wcSelectedHwnd) return;
     try {
       const res = await deviceApi.winAttach(wcSelectedHwnd);
-      const s = res.data.status as WinAttachStatus;
-      setWcAttached(s);
-      // 임베드 직후 위젯 영역에 비율 맞춰 자동 리사이즈 — 그러면 이후 캡처 비트맵이
-      // 캔버스 크기와 거의 1:1 이라 CSS 스케일 없이 깔끔하게 표시됨.
-      // setTimeout: 캔버스가 마운트되어 측정 가능해질 때까지 살짝 대기.
-      setTimeout(() => { void wcFitToWidget(s); }, 50);
+      setWcAttached(res.data.status as WinAttachStatus);
+      // 표시 비율은 CSS(maxWidth/maxHeight 100%) 가 캔버스 intrinsic aspect 를 유지하며
+      // 처리하고, 클릭 좌표는 wcToWinCoords 가 rect 크기 vs 자연 크기 비율로 자동 보정.
+      // 사용자 데스크톱의 실제 윈도우 크기는 건드리지 않음 (침습적 자동 리사이즈 제거).
     } catch (e: any) {
       message.error(e.response?.data?.detail || t('record.winControlAttachFailed'));
     }
-  }, [wcSelectedHwnd, t, wcFitToWidget]);
+  }, [wcSelectedHwnd, t]);
 
   const wcDetach = useCallback(async () => {
     try {
@@ -4217,7 +4177,7 @@ export default function RecordPage() {
                         title: wcAttached.title || '',
                       })}
                     </Tag>
-                    <div ref={wcCanvasWrapRef} style={{ position: 'relative', display: 'inline-block', maxWidth: '100%', maxHeight: '100%' }}>
+                    <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%', maxHeight: '100%' }}>
                       <canvas
                         ref={wcCanvasRef}
                         onMouseDown={wcMouseDown}
