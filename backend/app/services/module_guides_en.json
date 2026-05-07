@@ -1495,45 +1495,26 @@
   },
 
   "SerialLogging": {
-    "_description": "Serial Logging — Captures and saves logs via serial port connection, with keyword-based PASS/FAIL evaluation",
+    "_description": "Serial Logging — Captures and saves logs via serial port connection, with keyword-based fail detection",
     "functions": {
-      "StartSave": {
-        "description": "Connects to the serial port and starts log capture + file saving in one step (connect -> capture -> save).",
+      "StartLogging": {
+        "description": "Connects to the serial port and starts capture (memory only, no file save). Viewer modal opens automatically. The port is stabilized and capture thread is ready by the time this returns. Use StopLogging to flush memory buffer to file when done.",
         "params": {
-          "save_path": "Save file path. Auto-generates in backend/logs/ if empty"
+          "settle_ms": "Port stabilization wait after open (ms). Default 500. Ensures USB-Serial driver reset/buffer settle so the next step's SendCommand isn't dropped. Use 1500~2000 for DTR-reset boards (Arduino), 100~200 for fast industrial serial."
         }
       },
-      "StopSave": {
-        "description": "Stops log file saving and disconnects from the serial port.",
-        "params": {}
-      },
-      "MarkStep": {
-        "description": "Marks a step boundary at the current log position. Used with SearchRange for range-based searching.",
+      "StopLogging": {
+        "description": "Stops serial capture and writes the memory buffer to a file in one shot. Auto path or explicit path.",
         "params": {
-          "step_index": "Step index number"
+          "save_path": "Save file path. Auto if empty (during playback: run_dir/logs/serial_*.log, step test: backend/results/Temp_logs/serial_*.log)"
         }
       },
-      "SearchAll": {
-        "description": "Searches the entire log from the beginning to the current position for a keyword, returning PASS/FAIL.",
+      "fail_on_keyword": {
+        "description": "If the keyword is **contained** in any captured line, a fail row is appended to the scenario result. Used for detecting abnormal words like 'ERROR'/'Fail'/'crash'. **time>0 is sync mode** (monitors for the given duration then auto-unregisters; detected fails appear inline as Fail_Count_N just below this step). time=0 is background mode.",
         "params": {
-          "keyword": "Search keyword (space-separated = AND condition). e.g. 'BootComplete', 'ERROR'",
-          "count": "Maximum number of matching results (default: 5)"
-        }
-      },
-      "SearchRange": {
-        "description": "Searches for a keyword within the step range marked by MarkStep, returning PASS/FAIL.",
-        "params": {
-          "keyword": "Search keyword (space-separated = AND condition)",
-          "from_step": "Start step index",
-          "to_step": "End step index",
-          "count": "Maximum number of matching results (default: 5)"
-        }
-      },
-      "WaitLog": {
-        "description": "Waits (blocking) until a log containing the keyword appears. Returns FAIL on timeout.",
-        "params": {
-          "keyword": "Search keyword (space-separated = AND condition)",
-          "timeout": "Max wait time in seconds (default: 30)"
+          "keyword": "Substring to detect. Reported as fail if contained in a line. e.g. 'Fail', 'ERROR'",
+          "time": "Sync monitoring duration (seconds). >0 monitors for that duration then auto-unregisters and proceeds. 0 (default) is background.",
+          "name": "Detector ID. Defaults to 'fail_<keyword>'. Re-call with same name returns hit statistics."
         }
       },
       "SendCommand": {
@@ -1543,28 +1524,6 @@
           "encoding": "Encoding (default: utf-8)",
           "append_newline": "Auto-append newline. true/false (default: true)"
         }
-      },
-      "SendHex": {
-        "description": "Sends HEX bytes via the serial port.",
-        "params": {
-          "hex_string": "HEX string to send. e.g. 'FF 01 A0'"
-        }
-      },
-      "SendAndWait": {
-        "description": "Sends a command and waits (blocking) for a response containing the keyword.",
-        "params": {
-          "command": "Command to send",
-          "keyword": "Keyword to search in the response (space-separated = AND condition)",
-          "timeout": "Max wait time in seconds (default: 10)"
-        }
-      },
-      "GetStatus": {
-        "description": "Returns the current module status (port, capture, save, step marks, etc.).",
-        "params": {}
-      },
-      "ClearLogs": {
-        "description": "Clears the log buffer and step markings.",
-        "params": {}
       }
     }
   },

@@ -1,11 +1,8 @@
-"""Serial 뷰어 REST + WebSocket 라우터 (DLTLogging과 동일한 인터페이스).
+"""Serial 뷰어 REST + WebSocket 라우터.
 
 엔드포인트:
   GET  /api/serial-log/sessions                  — 활성 로깅 세션 목록
   GET  /api/serial-log/{session_id}/logs         — 백필용 최근 로그 조회
-  GET  /api/serial-log/{session_id}/step-marks   — 스텝 마킹 위치
-  POST /api/serial-log/{session_id}/search-all   — 전체 로그 검색
-  POST /api/serial-log/{session_id}/search-section — 스텝 구간 검색
   WS   /ws/serial-log/{session_id}               — 실시간 로그 스트리밍
   WS   /ws/serial-lifecycle                      — 세션 시작/종료 이벤트
 """
@@ -19,7 +16,6 @@ import queue
 import urllib.parse
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel
 
 from ..plugins.SerialLogging import SERIAL_HUB, get_active_session
 
@@ -45,70 +41,8 @@ async def get_recent_logs(session_id: str, limit: int = 1000):
         raise HTTPException(404, f"Serial session '{sid}' not active")
     return {
         "session_id": sid,
-        "logs": inst.GetRecentLogs(limit),
+        "logs": inst._GetRecentLogs(limit),
         "total": inst._line_counter,
-    }
-
-
-@router.get("/{session_id}/step-marks")
-async def get_step_marks(session_id: str):
-    sid = _decode_session(session_id)
-    inst = get_active_session(sid)
-    if not inst:
-        raise HTTPException(404, f"Serial session '{sid}' not active")
-    marks = inst.GetStepMarks()
-    return {"session_id": sid, "marks": [{"step": k, "index": v} for k, v in sorted(marks.items())]}
-
-
-class SearchAllRequest(BaseModel):
-    keyword: str
-    max_results: int = 500
-
-
-@router.post("/{session_id}/search-all")
-async def search_all(session_id: str, req: SearchAllRequest):
-    sid = _decode_session(session_id)
-    inst = get_active_session(sid)
-    if not inst:
-        raise HTTPException(404, f"Serial session '{sid}' not active")
-    matches = inst.SearchAllDetailed(req.keyword, req.max_results)
-    return {
-        "session_id": sid,
-        "keyword": req.keyword,
-        "count": len(matches),
-        "matches": matches,
-    }
-
-
-class SearchSectionRequest(BaseModel):
-    keyword: str
-    from_step: int
-    to_step: int
-    max_results: int = 500
-
-
-@router.post("/{session_id}/search-section")
-async def search_section(session_id: str, req: SearchSectionRequest):
-    sid = _decode_session(session_id)
-    inst = get_active_session(sid)
-    if not inst:
-        raise HTTPException(404, f"Serial session '{sid}' not active")
-    if req.from_step not in inst._step_marks:
-        return {
-            "session_id": sid,
-            "keyword": req.keyword,
-            "error": f"step {req.from_step} not marked",
-            "matches": [],
-            "count": 0,
-        }
-    matches = inst.SearchSectionDetailed(req.keyword, req.from_step, req.to_step, req.max_results)
-    return {
-        "session_id": sid,
-        "keyword": req.keyword,
-        "from_step": req.from_step,
-        "to_step": req.to_step,
-        "count": len(matches),
-        "matches": matches,
     }
 
 
@@ -126,7 +60,7 @@ async def ws_serial_stream(websocket: WebSocket, session_id: str):
             await websocket.send_json({
                 "type": "backfill",
                 "session_id": sid,
-                "logs": inst.GetRecentLogs(2000),
+                "logs": inst._GetRecentLogs(2000),
             })
         except Exception:
             pass

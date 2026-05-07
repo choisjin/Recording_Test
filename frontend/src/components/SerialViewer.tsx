@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Input, InputNumber, Space, Tabs, Tag, Tooltip, message } from 'antd';
-import { CloseOutlined, DownloadOutlined, SearchOutlined, ClearOutlined } from '@ant-design/icons';
+import { Button, Tabs, Tag, Tooltip } from 'antd';
+import { CloseOutlined, DownloadOutlined, ClearOutlined } from '@ant-design/icons';
 import { useTranslation } from '../i18n';
 
 export interface SerialSessionInfo {
@@ -18,25 +18,13 @@ export interface SerialViewerProps {
   theme?: 'light' | 'dark';
 }
 
-type SearchMode = 'all' | 'section';
-
-interface SearchResult {
-  keyword: string;
-  count: number;
-  matches: string[];
-  mode: SearchMode;
-  from_step?: number;
-  to_step?: number;
-}
-
 const MAX_LOG_LINES = 50000;
 
 /**
- * Serial 로그 뷰어. DLTViewer와 동일 인터페이스.
+ * Serial 로그 뷰어.
  *
  * - sessions 배열로 활성 세션을 받아 탭으로 표시
  * - 각 세션 탭 선택 시 /ws/serial-log/{session_id} 구독
- * - 상단 검색바: SearchAll / SearchSection(스텝 구간)
  * - AutoScroll 토글, 라인 ring buffer(MAX_LOG_LINES)
  */
 const SerialViewer: React.FC<SerialViewerProps> = ({ sessions, onClose, mode = 'modal', theme = 'dark' }) => {
@@ -45,12 +33,6 @@ const SerialViewer: React.FC<SerialViewerProps> = ({ sessions, onClose, mode = '
   const [activeSid, setActiveSid] = useState<string | null>(sessions[0]?.session_id ?? null);
   const [logsBySession, setLogsBySession] = useState<Record<string, string[]>>({});
   const [autoScroll, setAutoScroll] = useState(true);
-  const [searchKw, setSearchKw] = useState('');
-  const [searchMode, setSearchMode] = useState<SearchMode>('all');
-  const [fromStep, setFromStep] = useState<number>(1);
-  const [toStep, setToStep] = useState<number>(999);
-  const [searchResult, setSearchResult] = useState<SearchResult | null>(null);
-  const [searching, setSearching] = useState(false);
 
   const logEndRef = useRef<HTMLDivElement>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
@@ -113,51 +95,9 @@ const SerialViewer: React.FC<SerialViewerProps> = ({ sessions, onClose, mode = '
 
   const currentLogs = useMemo(() => (activeSid ? logsBySession[activeSid] || [] : []), [logsBySession, activeSid]);
 
-  const runSearch = useCallback(async () => {
-    if (!activeSid || !searchKw.trim()) {
-      setSearchResult(null);
-      return;
-    }
-    setSearching(true);
-    try {
-      const encSid = encodeURIComponent(activeSid);
-      const url = searchMode === 'all' ? `/api/serial-log/${encSid}/search-all` : `/api/serial-log/${encSid}/search-section`;
-      const body: any = { keyword: searchKw.trim(), max_results: 500 };
-      if (searchMode === 'section') {
-        body.from_step = fromStep;
-        body.to_step = toStep;
-      }
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const errText = await res.text();
-        message.error(errText || 'Serial search failed');
-        setSearchResult(null);
-        return;
-      }
-      const json = await res.json();
-      setSearchResult({
-        keyword: json.keyword || searchKw,
-        count: json.count || 0,
-        matches: json.matches || [],
-        mode: searchMode,
-        from_step: searchMode === 'section' ? fromStep : undefined,
-        to_step: searchMode === 'section' ? toStep : undefined,
-      });
-    } catch (e: any) {
-      message.error(e?.message || 'Serial search error');
-    } finally {
-      setSearching(false);
-    }
-  }, [activeSid, searchKw, searchMode, fromStep, toStep]);
-
   const clearLogs = useCallback(() => {
     if (!activeSid) return;
     setLogsBySession((prev) => ({ ...prev, [activeSid]: [] }));
-    setSearchResult(null);
   }, [activeSid]);
 
   const downloadLogs = useCallback(() => {
@@ -243,50 +183,6 @@ const SerialViewer: React.FC<SerialViewerProps> = ({ sessions, onClose, mode = '
       />
 
       <div
-        style={{
-          padding: '8px 12px',
-          borderBottom: `1px solid ${borderColor}`,
-          display: 'flex',
-          gap: 6,
-          alignItems: 'center',
-          flexWrap: 'wrap',
-        }}
-      >
-        <Space.Compact size="small">
-          <Button type={searchMode === 'all' ? 'primary' : 'default'} onClick={() => setSearchMode('all')}>
-            {t('dltViewer.searchAll') || 'Search All'}
-          </Button>
-          <Button type={searchMode === 'section' ? 'primary' : 'default'} onClick={() => setSearchMode('section')}>
-            {t('dltViewer.searchSection') || 'Search Section'}
-          </Button>
-        </Space.Compact>
-        {searchMode === 'section' && (
-          <Space.Compact size="small">
-            <InputNumber size="small" min={0} value={fromStep} onChange={(v) => setFromStep(v || 0)} style={{ width: 70 }} placeholder="from" />
-            <InputNumber size="small" min={0} value={toStep} onChange={(v) => setToStep(v || 0)} style={{ width: 70 }} placeholder="to" />
-          </Space.Compact>
-        )}
-        <Input
-          size="small"
-          style={{ flex: 1, minWidth: 200 }}
-          value={searchKw}
-          onChange={(e) => setSearchKw(e.target.value)}
-          onPressEnter={runSearch}
-          placeholder={t('dltViewer.keywordPlaceholder') || '키워드 (공백=AND)'}
-          prefix={<SearchOutlined />}
-          allowClear
-        />
-        <Button size="small" type="primary" loading={searching} onClick={runSearch} disabled={!searchKw.trim()}>
-          {t('dltViewer.search') || '검색'}
-        </Button>
-        {searchResult && (
-          <Tag color={searchResult.count > 0 ? 'success' : 'default'}>
-            {searchResult.count} {t('dltViewer.matches') || '건'}
-          </Tag>
-        )}
-      </div>
-
-      <div
         ref={logContainerRef}
         style={{
           flex: 1,
@@ -300,32 +196,12 @@ const SerialViewer: React.FC<SerialViewerProps> = ({ sessions, onClose, mode = '
           lineHeight: 1.4,
         }}
       >
-        {searchResult ? (
-          <>
-            <div style={{ color: '#888', marginBottom: 3, whiteSpace: 'normal' }}>
-              {searchResult.mode === 'section'
-                ? `[Section ${searchResult.from_step}~${searchResult.to_step}] '${searchResult.keyword}' — ${searchResult.count} 건`
-                : `[All] '${searchResult.keyword}' — ${searchResult.count} 건`}
-              <Button size="small" type="link" onClick={() => setSearchResult(null)}>
-                {t('dltViewer.backToLive') || '실시간으로 복귀'}
-              </Button>
-            </div>
-            {searchResult.matches.length === 0 ? (
-              <div style={{ color: '#888' }}>{t('dltViewer.noMatches') || '매칭된 로그가 없습니다.'}</div>
-            ) : (
-              searchResult.matches.map((ln, i) => <div key={i}>{ln}</div>)
-            )}
-          </>
+        {currentLogs.length === 0 ? (
+          <div style={{ color: '#888' }}>{t('dltViewer.waiting') || '로그 수신 대기 중…'}</div>
         ) : (
-          <>
-            {currentLogs.length === 0 ? (
-              <div style={{ color: '#888' }}>{t('dltViewer.waiting') || '로그 수신 대기 중…'}</div>
-            ) : (
-              currentLogs.map((ln, i) => <div key={i}>{ln}</div>)
-            )}
-            <div ref={logEndRef} />
-          </>
+          currentLogs.map((ln, i) => <div key={i}>{ln}</div>)
         )}
+        <div ref={logEndRef} />
       </div>
     </div>
   );
