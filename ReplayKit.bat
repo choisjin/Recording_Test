@@ -32,7 +32,7 @@ if not exist ".git" (
 ) else (
     where git.exe >nul 2>nul
     if not errorlevel 1 (
-        call :fix_remote
+        if /i not "%~1"=="--home" call :fix_remote
         call :git_pull
     )
 )
@@ -67,16 +67,8 @@ if not "!CUR_REMOTE!"=="!CANONICAL_REMOTE!" (
 goto :eof
 
 :git_pull
+:: --home 옵션일 때는 origin URL을 건드리지 않고 현재 설정 그대로 fetch+reset
 set "SAFE_DIR=%CD:\=/%"
-:: --home 시 remote URL 갱신
-if "%~1"=="--home" (
-    set /p GIT_REMOTE=<%GIT_REMOTE_FILE%
-    for /f "delims=" %%u in ('git -c safe.directory="%SAFE_DIR%" remote get-url origin') do set "CUR_REMOTE=%%u"
-    if not "!CUR_REMOTE!"=="!GIT_REMOTE!" (
-        git -c safe.directory="%SAFE_DIR%" remote set-url origin "!GIT_REMOTE!"
-        echo [GIT] Remote updated to: !GIT_REMOTE!
-    )
-)
 git -c safe.directory="%SAFE_DIR%" fetch origin main
 git -c safe.directory="%SAFE_DIR%" reset --hard origin/main
 echo [GIT] Updated.
