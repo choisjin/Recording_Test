@@ -45,6 +45,13 @@ if _WIN32_AVAILABLE:
     except (AttributeError, OSError):
         # Win10 1607 미만 — 타겟 매칭 불가, 프로세스 기본 awareness 그대로 사용.
         pass
+    # DWM API — Win10/11 의 invisible drop shadow 제외한 visible bounds 조회용.
+    try:
+        from ctypes.wintypes import DWORD, LPVOID
+        windll.dwmapi.DwmGetWindowAttribute.argtypes = [HWND, DWORD, LPVOID, DWORD]
+        windll.dwmapi.DwmGetWindowAttribute.restype = ctypes.c_long  # HRESULT
+    except (AttributeError, OSError):
+        pass
 
 
 # 가상키 매핑 (대표 키만 노출 — 추후 필요시 확장)
@@ -587,6 +594,31 @@ class WinControlService:
                 except Exception:
                     pass
 
+    @staticmethod
+    def _get_visible_window_rect(hwnd: int) -> Optional[tuple[int, int, int, int]]:
+        """Shadow 제외한 실제 visible 윈도우 rect (left, top, right, bottom).
+
+        Win10/11 의 GetWindowRect 는 invisible drop shadow(각 모서리 ~7px)까지 포함하는
+        extended frame bounds 를 반환 → BitBlt 시 가장자리에 shadow 너머의 화면이 섞임.
+        DWM 의 DWMWA_EXTENDED_FRAME_BOUNDS(=9) 가 shadow 제외한 실제 visible bounds 반환.
+        실패 시 None — 호출자가 GetWindowRect 폴백.
+        """
+        if not _WIN32_AVAILABLE or not hwnd:
+            return None
+        try:
+            from ctypes.wintypes import RECT
+            r = RECT()
+            DWMWA_EXTENDED_FRAME_BOUNDS = 9
+            hr = windll.dwmapi.DwmGetWindowAttribute(
+                int(hwnd), DWMWA_EXTENDED_FRAME_BOUNDS,
+                ctypes.byref(r), ctypes.sizeof(r),
+            )
+            if hr == 0:  # S_OK
+                return (int(r.left), int(r.top), int(r.right), int(r.bottom))
+        except Exception:
+            pass
+        return None
+
     def get_window_size(self) -> tuple[int, int]:
         """Client area 크기 (물리 픽셀, Per-Monitor V2 기준)."""
         if not self.is_attached():
@@ -598,27 +630,32 @@ class WinControlService:
             return (0, 0)
 
     def get_outer_size(self) -> tuple[int, int]:
-        """Window 외곽(타이틀바/보더 포함) 크기 — 풀 윈도우 캡처 비트맵 크기."""
+        """Visible 윈도우(타이틀바/보더 포함, shadow 제외) 크기 = BitBlt 비트맵 크기."""
         if not self.is_attached():
             return (0, 0)
         try:
-            rect = win32gui.GetWindowRect(self._hwnd)
-            return (rect[2] - rect[0], rect[3] - rect[1])
+            vr = self._get_visible_window_rect(self._hwnd)
+            if vr is None:
+                vr = win32gui.GetWindowRect(self._hwnd)
+            return (vr[2] - vr[0], vr[3] - vr[1])
         except Exception:
             return (0, 0)
 
     def get_client_offset(self) -> tuple[int, int]:
-        """Window 외곽 비트맵 기준 client 좌상단의 오프셋 (물리 픽셀).
+        """Visible 윈도우 비트맵 기준 client 좌상단 오프셋 (물리 픽셀).
 
         프론트가 풀 윈도우 캔버스에서 받은 클릭 좌표를 client-space 로 변환할 때
-        빼는 값. 일반적으로 (왼쪽 보더 두께, 타이틀바+상단 보더 두께).
+        빼는 값. shadow 제외 visible bounds 의 left/top 을 기준점으로 사용 →
+        bitmap pixel (0,0) = 실제 윈도우 외곽 좌상단 코너.
         """
         if not self.is_attached():
             return (0, 0)
         try:
-            wr = win32gui.GetWindowRect(self._hwnd)
+            vr = self._get_visible_window_rect(self._hwnd)
+            if vr is None:
+                vr = win32gui.GetWindowRect(self._hwnd)
             cx, cy = win32gui.ClientToScreen(self._hwnd, (0, 0))
-            return (cx - wr[0], cy - wr[1])
+            return (cx - vr[0], cy - vr[1])
         except Exception:
             return (0, 0)
 
@@ -669,77 +706,14 @@ class WinControlService:
         return self.get_window_size()
 
     # ── 캡처 ─────────────────────────────────────────────────────────
-    def _capture_via_screen(self, hwnd: int) -> Optional[Image.Image]:
-        """Screen DC 에서 윈도우 영역을 BitBlt 로 복사.
-
-        WYSIWYG: 사용자가 화면에서 보는 그대로 (DWM 업스케일/DPI 가상화 반영).
-        PrintWindow 의 DPI 가상화 문제(레거시 앱 우/하단 잘림) 회피.
-        - 풀 윈도우(타이틀바 포함) 캡처 — GetWindowRect 영역 그대로 BitBlt.
-        - 윈도우가 occluded(가려짐) 상태면 위에 있는 픽셀이 섞일 수 있음 → 호출자가
-          blank/이상 감지 시 PrintWindow 로 폴백.
-        - 최소화/오프스크린 상태면 None 반환.
-        """
-        try:
-            if not win32gui.IsWindow(hwnd):
-                return None
-            if win32gui.IsIconic(hwnd):
-                return None  # 최소화 상태 — 화면에 안 보이므로 BitBlt 무의미
-            wr = win32gui.GetWindowRect(hwnd)
-        except Exception:
-            return None
-        sx, sy = wr[0], wr[1]
-        w, h = wr[2] - wr[0], wr[3] - wr[1]
-        if w <= 0 or h <= 0:
-            return None
-        screen_dc_handle = windll.user32.GetDC(0)
-        if not screen_dc_handle:
-            return None
-        mfc_screen = None
-        save_dc = None
-        bmp = None
-        try:
-            mfc_screen = win32ui.CreateDCFromHandle(screen_dc_handle)
-            save_dc = mfc_screen.CreateCompatibleDC()
-            bmp = win32ui.CreateBitmap()
-            bmp.CreateCompatibleBitmap(mfc_screen, w, h)
-            save_dc.SelectObject(bmp)
-            # SRCCOPY = 0x00CC0020. (0,0) 비트맵 좌상단으로 (sx, sy) 화면 영역 복사.
-            save_dc.BitBlt((0, 0), (w, h), mfc_screen, (sx, sy), win32con.SRCCOPY)
-            info = bmp.GetInfo()
-            bits = bmp.GetBitmapBits(True)
-            return Image.frombuffer(
-                "RGB",
-                (info["bmWidth"], info["bmHeight"]),
-                bits, "raw", "BGRX", 0, 1,
-            )
-        except Exception:
-            return None
-        finally:
-            if bmp is not None:
-                try:
-                    win32gui.DeleteObject(bmp.GetHandle())
-                except Exception:
-                    pass
-            if save_dc is not None:
-                try:
-                    save_dc.DeleteDC()
-                except Exception:
-                    pass
-            if mfc_screen is not None:
-                try:
-                    mfc_screen.DeleteDC()
-                except Exception:
-                    pass
-            try:
-                windll.user32.ReleaseDC(0, screen_dc_handle)
-            except Exception:
-                pass
-
     def _capture_with_flag(self, hwnd: int, flag: int) -> Optional[Image.Image]:
         """주어진 PrintWindow 플래그로 hwnd 를 캡처해 PIL Image 반환. 실패 시 None.
 
-        flag 에 PW_CLIENTONLY(0x1) 가 빠져있으면 비트맵을 GetWindowRect 크기로 잡아
-        타이틀바/보더 까지 포함한 풀 윈도우를 캡처한다 (그렇지 않으면 GetClientRect).
+        flag 에 PW_CLIENTONLY(0x1) 가 빠져있으면 비트맵을 visible bounds(shadow 제외)
+        크기로 잡아 타이틀바/보더 까지 포함한 풀 윈도우를 캡처한다 (그렇지 않으면
+        GetClientRect). visible bounds 를 쓰는 이유: GetWindowRect 는 Win10/11 의
+        invisible drop shadow 까지 포함 → PrintWindow 가 그리는 실제 영역(=shadow 제외)
+        보다 비트맵이 커져서 우/하단에 빈 padding 이 생김.
         """
         is_client_only = bool(flag & 0x00000001)
         try:
@@ -747,8 +721,10 @@ class WinControlService:
                 rect = win32gui.GetClientRect(hwnd)
                 w, h = rect[2] - rect[0], rect[3] - rect[1]
             else:
-                wr = win32gui.GetWindowRect(hwnd)
-                w, h = wr[2] - wr[0], wr[3] - wr[1]
+                vr = self._get_visible_window_rect(hwnd)
+                if vr is None:
+                    vr = win32gui.GetWindowRect(hwnd)
+                w, h = vr[2] - vr[0], vr[3] - vr[1]
         except Exception:
             return None
         if w <= 0 or h <= 0:
@@ -865,43 +841,36 @@ class WinControlService:
             return False
 
     def capture_window(self, fmt: str = "jpeg", render_full_content: bool = False) -> bytes:
-        """대상 윈도우 캡처 (타이틀바 포함 풀 윈도우).
+        """대상 윈도우 캡처 (타이틀바 포함 풀 윈도우, PrintWindow 기반).
+
+        Alt+PrintScreen 처럼 PrintWindow 로 윈도우 자체에 redraw 요청 → occlusion 무시
+        하고 윈도우의 모든 컨텐츠 캡처. 화면 BitBlt 와 달리 다른 윈도우가 위에 있어도
+        영향 없음 (단점: DPI 가상화 레거시 앱은 native unscaled 좌표계로 그릴 수 있음).
 
         시도 순서:
-          1) Screen BitBlt (Per-Monitor V2 컨텍스트) — WYSIWYG, DPI 가상화/DWM 업스케일
-             반영된 실제 렌더 픽셀. 가장 정확한 크기/내용. 단 occluded 시 위 윈도우가 섞임.
-          2) PrintWindow (target DPI 컨텍스트) — occluded/blank 폴백.
-          3) UWP/WinUI3 는 host 외곽이 의미 없어 client-only render 우선 + content_hwnd 폴백.
+          1) PW_RENDERFULLCONTENT(2) — 풀 윈도우. target DPI 컨텍스트로 좌표계 일치.
+          2) 단색이면 PW_RENDERFULLCONTENT|PW_CLIENTONLY(3) 로 재시도.
+          3) UWP 는 (3) 우선 + content_hwnd(CoreWindow) 폴백.
         """
         if not self.is_attached():
             raise RuntimeError("No window attached")
         host_hwnd = self._hwnd
 
-        img: Optional[Image.Image] = None
-        # 1) UWP 가 아니면 BitBlt 우선 — DPI-virtualized 레거시 앱도 정확한 크기로 캡처.
-        #    BitBlt 는 우리 프로세스 기본 awareness(Per-Monitor V2) 에서 실행해야 DWM
-        #    업스케일 후 픽셀이 잡힘. 따라서 _target_dpi_ctx 밖에서 호출.
-        if not self._is_uwp:
-            img = self._capture_via_screen(host_hwnd)
-
-        # 2) BitBlt 가 None/단색이면 PrintWindow 폴백 (target DPI 컨텍스트 안에서).
-        if img is None or self._is_blank_image(img):
-            first_flag = 0x00000003 if (render_full_content or self._is_uwp) else 0x00000002
-            with self._target_dpi_ctx():
-                img = self._capture_with_flag(host_hwnd, first_flag)
-                if self._is_blank_image(img):
-                    img = self._capture_with_flag(host_hwnd, 0x00000003)
-                # UWP 는 콘텐츠 자식(CoreWindow) 으로 추가 폴백
-                if self._is_blank_image(img) and self._content_hwnd:
-                    try:
-                        if win32gui.IsWindow(self._content_hwnd):
-                            img = self._capture_with_flag(self._content_hwnd, 0x00000003)
-                            if self._is_blank_image(img):
-                                img = self._capture_with_flag(self._content_hwnd, 0x00000001)
-                    except Exception:
-                        pass
+        first_flag = 0x00000003 if (render_full_content or self._is_uwp) else 0x00000002
+        with self._target_dpi_ctx():
+            img = self._capture_with_flag(host_hwnd, first_flag)
+            if self._is_blank_image(img) and first_flag != 0x00000003:
+                img = self._capture_with_flag(host_hwnd, 0x00000003)
+            if self._is_blank_image(img) and self._content_hwnd:
+                try:
+                    if win32gui.IsWindow(self._content_hwnd):
+                        img = self._capture_with_flag(self._content_hwnd, 0x00000003)
+                        if self._is_blank_image(img):
+                            img = self._capture_with_flag(self._content_hwnd, 0x00000001)
+                except Exception:
+                    pass
         if img is None:
-            raise RuntimeError("Capture failed (BitBlt + PrintWindow all paths)")
+            raise RuntimeError("PrintWindow failed for all flags")
 
         buf = io.BytesIO()
         if fmt.lower() == "png":
