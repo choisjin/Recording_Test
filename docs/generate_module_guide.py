@@ -21,12 +21,9 @@ OUTPUT_PATH_EN = Path(__file__).resolve().parent / "module-guide-en.html"
 
 # 모듈 카테고리 분류 (id, ko_label, en_label, modules)
 CATEGORIES = [
-    ("power", "전원 제어", "Power Control", ["POWER", "RIDEN", "KeysightPower"]),
-    ("bench", "벤치 장비", "Test Bench", ["IVIQEBenchIOClient", "CCIC_BENCH", "BENCH", "SP25Bench", "SmartBench"]),
+    ("bench", "벤치 장비", "Test Bench", ["IVIQEBenchIOClient", "CCIC_BENCH", "BENCH", "SP25Bench", "SmartBench", "WoohyunBench"]),
     ("can", "CAN 통신", "CAN Communication", ["CAN", "CANOE", "CANAT", "PCANClient"]),
-    ("comm", "통신 (시리얼/SSH/UART)", "Communication (Serial/SSH/UART)", ["SerialPlugin", "SerialLogging", "Uart", "Ignition", "SSHManager"]),
-    ("log", "로깅 & 진단", "Logging & Diagnostics", ["DLTViewer", "DLTLogging", "MLP", "Trace"]),
-    ("media", "미디어 & 이미지", "Media & Image", ["VisionCamera", "VisionCameraClient", "AudioLibrary", "ImageProcessing"]),
+    ("comm", "통신 (시리얼/SSH/UART/DLT)", "Communication (Serial/SSH/UART/DLT)", ["SerialPlugin", "SerialLogging", "Uart", "Ignition", "SSHManager", "DLTLogging", "DLTViewer"]),
     ("system", "시스템 & 유틸리티", "System & Utilities", ["Android", "CMD", "COMMON_WINDOWS", "TigrisCheck"]),
 ]
 
@@ -100,6 +97,9 @@ def generate_html(data: dict, lang: str = "ko") -> str:
     if uncategorized:
         cats.append(["etc", "기타", "Others", uncategorized])
 
+    # 빈 카테고리(현재 활성 모듈이 하나도 없는) 제거 — 사이드바에 hollow 항목 방지
+    cats = [c for c in cats if any(name in modules for name in c[3])]
+
     # --- TOC 생성 ---
     toc_lines = []
     toc_lines.append(f'<a href="#top" class="toc-h2">{t["heading"]}</a>')
@@ -162,7 +162,7 @@ def generate_html(data: dict, lang: str = "ko") -> str:
 <h3 id="mod-{name}">{name}</h3>
 <div class="callout callout-info">{desc}</div>
 <table>
-<thead><tr><th style="width:180px">{t["th_func"]}</th><th style="width:280px">{t["th_desc"]}</th><th>{t["th_param"]}</th></tr></thead>
+<thead><tr><th style="width:220px">{t["th_func"]}</th><th>{t["th_desc"]}</th><th style="width:40%">{t["th_param"]}</th></tr></thead>
 <tbody>
 {func_table}
 </tbody>
@@ -238,7 +238,7 @@ def generate_html(data: dict, lang: str = "ko") -> str:
   .sidebar nav a:hover, .sidebar nav a.active {{ background: var(--accent-light); color: var(--accent); }}
   .sidebar nav .toc-h2 {{ font-weight: 600; margin-top: 12px; }}
   .sidebar nav .toc-h3 {{ padding-left: 22px; font-size: 12.5px; }}
-  .main {{ margin-left: 280px; max-width: 960px; padding: 40px 48px 80px; flex: 1; }}
+  .main {{ margin-left: 280px; max-width: 1600px; padding: 40px 48px 80px; flex: 1; }}
   .theme-toggle {{
     position: fixed; top: 16px; right: 20px; background: var(--bg-alt);
     border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px;

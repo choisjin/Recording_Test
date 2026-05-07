@@ -60,7 +60,7 @@
   .sidebar nav a:hover, .sidebar nav a.active { background: var(--accent-light); color: var(--accent); }
   .sidebar nav .toc-h2 { font-weight: 600; margin-top: 12px; }
   .sidebar nav .toc-h3 { padding-left: 22px; font-size: 12.5px; }
-  .main { margin-left: 280px; max-width: 960px; padding: 40px 48px 80px; flex: 1; }
+  .main { margin-left: 280px; max-width: 1600px; padding: 40px 48px 80px; flex: 1; }
   .theme-toggle {
     position: fixed; top: 16px; right: 20px; background: var(--bg-alt);
     border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px;
@@ -133,23 +133,19 @@
     <nav id="toc">
       <a href="#top" class="toc-h2">모듈 가이드</a>
       <a href="#overview" class="toc-h3">전체 모듈 목록</a>
-      <a href="#cat-power" class="toc-h2">전원 제어</a>
       <a href="#cat-bench" class="toc-h2">벤치 장비</a>
       <a href="#mod-IVIQEBenchIOClient" class="toc-h3">IVIQEBenchIOClient</a>
       <a href="#mod-SmartBench" class="toc-h3">SmartBench</a>
+      <a href="#mod-WoohyunBench" class="toc-h3">WoohyunBench</a>
       <a href="#cat-can" class="toc-h2">CAN 통신</a>
       <a href="#mod-CANOE" class="toc-h3">CANOE</a>
       <a href="#mod-CANAT" class="toc-h3">CANAT</a>
-      <a href="#cat-comm" class="toc-h2">통신 (시리얼/SSH/UART)</a>
+      <a href="#cat-comm" class="toc-h2">통신 (시리얼/SSH/UART/DLT)</a>
       <a href="#mod-SerialLogging" class="toc-h3">SerialLogging</a>
       <a href="#mod-SSHManager" class="toc-h3">SSHManager</a>
-      <a href="#cat-log" class="toc-h2">로깅 & 진단</a>
       <a href="#mod-DLTLogging" class="toc-h3">DLTLogging</a>
-      <a href="#cat-media" class="toc-h2">미디어 & 이미지</a>
       <a href="#cat-system" class="toc-h2">시스템 & 유틸리티</a>
       <a href="#mod-CMD" class="toc-h3">CMD</a>
-      <a href="#cat-etc" class="toc-h2">기타</a>
-      <a href="#mod-WoohyunBench" class="toc-h3">WoohyunBench</a>
     </nav>
   </aside>
 
@@ -191,16 +187,12 @@
     </table>
 
     
-<h2 id="cat-power">전원 제어</h2>
-
-
-
 <h2 id="cat-bench">벤치 장비</h2>
 
 <h3 id="mod-IVIQEBenchIOClient">IVIQEBenchIOClient</h3>
 <div class="callout callout-info">IVI QE 벤치 — 시리얼 연결된 QE 테스트 벤치의 릴레이, 전원, 센서, 오디오, LCD, 버튼, USB 등을 종합 제어하는 모듈</div>
 <table>
-<thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
+<thead><tr><th style="width:220px">함수</th><th>설명</th><th style="width:40%">파라미터</th></tr></thead>
 <tbody>
 <tr>
 <td><code>Connect</code></td>
@@ -793,7 +785,7 @@
 <h3 id="mod-SmartBench">SmartBench</h3>
 <div class="callout callout-info">Smart Bench TCP 제어 — TCP 소켓으로 Smart Bench 장비의 전원, 버튼, 전류, LED를 제어하는 모듈</div>
 <table>
-<thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
+<thead><tr><th style="width:220px">함수</th><th>설명</th><th style="width:40%">파라미터</th></tr></thead>
 <tbody>
 <tr>
 <td><code>Connect</code></td>
@@ -873,350 +865,10 @@
 </tbody>
 </table>
 
-
-
-<h2 id="cat-can">CAN 통신</h2>
-
-<h3 id="mod-CANOE">CANOE</h3>
-<div class="callout callout-info">CANoe 제어 — Vector CANoe 시뮬레이션 소프트웨어의 시작/중지, 환경변수/시스템변수 설정을 제어하는 모듈</div>
-<table>
-<thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
-<tbody>
-<tr>
-<td><code>open_simulation</code></td>
-<td>CANoe 시뮬레이션을 엽니다 (.cfg 파일 로드).</td>
-<td style="font-size:12px"><code>cfgname</code>: CANoe 설정 파일(.cfg) 경로. 예: &#x27;C:/canoe/project.cfg&#x27;</td>
-</tr>
-<tr>
-<td><code>close_simulation</code></td>
-<td>CANoe 시뮬레이션을 닫고 프로그램을 종료합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>start_Measurement</code></td>
-<td>CANoe 측정(Measurement)을 시작합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>stop_Measurement</code></td>
-<td>CANoe 측정(Measurement)을 중지합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>get_EnvVar</code></td>
-<td>CANoe 환경 변수 값을 읽습니다.</td>
-<td style="font-size:12px"><code>var</code>: 환경 변수 이름</td>
-</tr>
-<tr>
-<td><code>set_EnvVar</code></td>
-<td>CANoe 환경 변수 값을 설정합니다.</td>
-<td style="font-size:12px"><code>var</code>: 환경 변수 이름<br><code>value</code>: 설정할 값 (숫자)</td>
-</tr>
-</tbody>
-</table>
-
-<h3 id="mod-CANAT">CANAT</h3>
-<div class="callout callout-info">CANat 디바이스 — CANat 하드웨어를 통해 CAN 버스 메시지를 송수신하는 모듈</div>
-<table>
-<thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
-<tbody>
-<tr>
-<td><code>init</code></td>
-<td>CANat 디바이스를 초기화하고 연결합니다.</td>
-<td style="font-size:12px"><code>comport</code>: COM 포트. 예: &#x27;COM3&#x27;<br><code>log_path</code>: 로그 파일 저장 경로<br><code>ch1_fd</code>: 채널 1 CAN FD 사용 여부. True(기본) = FD, False = Classic<br><code>ch2_fd</code>: 채널 2 CAN FD 사용 여부. True = FD, False(기본) = Classic</td>
-</tr>
-<tr>
-<td><code>disconnect</code></td>
-<td>CANat 디바이스 연결을 해제합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>send_can_message</code></td>
-<td>CAN 메시지를 전송합니다.</td>
-<td style="font-size:12px"><code>message_id</code>: CAN 메시지 ID<br><code>cycle_time</code>: 전송 주기 (ms). 0이면 1회 전송<br><code>can_message</code>: 메시지 데이터 (16진수)<br><code>bus_channel</code>: CAN 채널<br><code>message_type</code>: &#x27;FD&#x27;(기본) 또는 &#x27;Classic&#x27;</td>
-</tr>
-<tr>
-<td><code>stop_can_message</code></td>
-<td>특정 CAN 메시지의 주기적 전송을 중지합니다.</td>
-<td style="font-size:12px"><code>message_id</code>: 중지할 메시지 ID<br><code>cycle_time</code>: 주기<br><code>can_message</code>: 메시지 데이터<br><code>bus_channel</code>: CAN 채널<br><code>message_type</code>: &#x27;FD&#x27; 또는 &#x27;Classic&#x27;</td>
-</tr>
-<tr>
-<td><code>send_cam_message_all_stop</code></td>
-<td>모든 CAN 메시지 전송을 중지합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>can_message_save_start</code></td>
-<td>CAN 메시지를 파일로 저장하기 시작합니다.</td>
-<td style="font-size:12px"><code>save_path</code>: 저장 경로. 비워두면 기본 경로 사용</td>
-</tr>
-<tr>
-<td><code>can_message_save_stop</code></td>
-<td>CAN 메시지 저장을 중지합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-</tbody>
-</table>
-
-
-
-<h2 id="cat-comm">통신 (시리얼/SSH/UART)</h2>
-
-<h3 id="mod-SerialLogging">SerialLogging</h3>
-<div class="callout callout-info">시리얼 로깅 — 시리얼 포트에 연결하여 로그를 캡처·저장하고 키워드 검출하는 모듈.
-
-**⚠️ 사용법: StartLogging과 StopLogging은 반드시 한 셋트로 사용해야 합니다.**
-- StartLogging만 호출하고 StopLogging을 누락하면: 로그가 파일로 저장되지 않고, 시리얼 포트 연결이 종료되지 않아 다음 실행에서 포트 점유 오류가 발생할 수 있습니다.
-- 시나리오의 시작 부분에 StartLogging, 끝 부분에 StopLogging을 배치하여 한 쌍으로 운영하세요.
-- 시나리오 중간에 오류가 나도 cleanup이 자동으로 StopLogging을 호출해 포트를 닫지만, 정상 흐름에서는 명시적으로 StopLogging을 두는 것이 권장됩니다.
-
-표준 사용 패턴:
-  1) StartLogging()                              ← 시나리오 첫 스텝
-  2) SendCommand / SendCommand_*_on_keyword ...  ← 중간 스텝들
-  3) StopLogging()                               ← 시나리오 마지막 스텝 (로그 파일 저장 + 포트 해제)</div>
-<table>
-<thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
-<tbody>
-<tr>
-<td><code>StartLogging</code></td>
-<td>시리얼 연결 + 캡처 시작 (메모리만, 파일 저장 없음). 뷰어 모달이 자동 오픈됩니다. **리턴 시점에 포트가 안정화되고 capture 스레드가 ready 상태**라 다음 스텝의 SendCommand가 씹히지 않음.
-
-**⚠️ 반드시 StopLogging과 한 셋트로 사용하세요.** StopLogging이 호출되어야 메모리 버퍼가 파일로 저장되고 시리얼 포트가 정상적으로 해제됩니다. StopLogging 누락 시 로그가 디스크에 저장되지 않고 포트가 점유 상태로 남습니다.</td>
-<td style="font-size:12px"><code>settle_ms</code>: 포트 open 후 안정화 대기(ms). 기본 500. USB-Serial 어댑터 reset/buffer settle 동안 다음 스텝이 씹히지 않게 확보. Arduino처럼 DTR-reset되는 보드는 1500~2000으로 늘리고, 빠른 산업용 시리얼은 100~200까지 낮출 수 있음.</td>
-</tr>
-<tr>
-<td><code>StopLogging</code></td>
-<td>시리얼 캡처 종료 + 메모리 버퍼를 파일로 일괄 저장 + 시리얼 포트 해제. 자동 경로 또는 지정 경로로 저장.
-
-**⚠️ StartLogging과 반드시 짝으로 호출하세요.** 이 함수가 호출되어야:
-  • 메모리에 누적된 로그가 .log 파일로 디스크에 저장됨
-  • 시리얼 포트 연결이 정상적으로 닫혀 다음 실행에서 재사용 가능
-  • capture 스레드가 정리되어 리소스 누수 방지
-파일 저장 단계에서 예외가 발생해도 finally에서 포트 해제는 무조건 수행됩니다.</td>
-<td style="font-size:12px"><code>save_path</code>: 저장 파일 경로. 빈 값이면 자동 (재생 중: run_dir/logs/serial_*.log, 스텝 테스트: backend/results/Temp_logs/serial_*.log)</td>
-</tr>
-<tr>
-<td><code>SendCommand</code></td>
-<td>시리얼 포트로 문자열 명령어를 전송합니다.</td>
-<td style="font-size:12px"><code>command</code>: 전송할 명령어. 예: &#x27;reboot&#x27;, &#x27;cat /proc/version&#x27;<br><code>encoding</code>: 인코딩 (기본 utf-8)<br><code>append_newline</code>: 개행 문자 자동 추가. true/false (기본 true)</td>
-</tr>
-<tr>
-<td><code>SendCommand_fail_on_keyword</code></td>
-<td>명령어 전송 후 응답에 keyword가 **포함되면 FAIL 판정**. &#x27;ERROR&#x27;/&#x27;Fail&#x27;/&#x27;crash&#x27; 등 비정상 키워드 검출용. 전송 직후 &#x27;time&#x27; 초간 새 라인만 모니터링 — 매칭된 라인은 모두 fail row로 누적되어 결과 표에 인라인(Fail_Count_N) 표시됨. 매칭 없으면 PASS 반환.</td>
-<td style="font-size:12px"><code>command</code>: 전송할 명령어. 예: &#x27;status&#x27;, &#x27;self_test&#x27;<br><code>keyword</code>: FAIL을 일으킬 검출 키워드. 예: &#x27;ERROR&#x27;, &#x27;Fail&#x27;, &#x27;crash&#x27;<br><code>time</code>: 응답 모니터링 시간(초). 기본 5<br><code>encoding</code>: 인코딩 (기본 utf-8)<br><code>append_newline</code>: 개행 문자 자동 추가. true/false (기본 true)</td>
-</tr>
-<tr>
-<td><code>SendCommand_pass_on_keyword</code></td>
-<td>명령어 전송 후 응답에 keyword가 **포함되면 PASS 판정**. &#x27;OK&#x27;/&#x27;Pass&#x27;/&#x27;BootComplete&#x27; 등 정상 응답 키워드 검출용. 발견 즉시 PASS 반환 (조기 종료). &#x27;time&#x27; 초 안에 발견되지 않으면 fail row 1건 누적 후 FAIL 반환.</td>
-<td style="font-size:12px"><code>command</code>: 전송할 명령어. 예: &#x27;ping&#x27;, &#x27;getversion&#x27;<br><code>keyword</code>: PASS를 만족할 키워드. 예: &#x27;OK&#x27;, &#x27;Pass&#x27;, &#x27;BootComplete&#x27;<br><code>time</code>: 응답 대기 시간(초). 기본 5<br><code>encoding</code>: 인코딩 (기본 utf-8)<br><code>append_newline</code>: 개행 문자 자동 추가. true/false (기본 true)</td>
-</tr>
-</tbody>
-</table>
-
-<h3 id="mod-SSHManager">SSHManager</h3>
-<div class="callout callout-info">SSH 접속 — SSH로 원격 장비에 접속하여 명령 실행, 파일 전송을 수행하는 모듈</div>
-<table>
-<thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
-<tbody>
-<tr>
-<td><code>create_ssh_client</code></td>
-<td>SSH 연결을 생성합니다.</td>
-<td style="font-size:12px"><code>hostname</code>: 원격 장비 IP 또는 호스트명. 예: &#x27;192.168.1.100&#x27;<br><code>username</code>: SSH 사용자 이름. 예: &#x27;root&#x27;<br><code>password</code>: SSH 비밀번호<br><code>key_filePath</code>: SSH 키 파일 경로 (비밀번호 대신 사용). 기본값: None</td>
-</tr>
-<tr>
-<td><code>close_ssh_client</code></td>
-<td>SSH 연결을 종료합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>send_command</code></td>
-<td>SSH로 명령어를 실행하고 완료 후 전체 출력을 반환합니다 (블로킹). 한국어 Windows 출력은 cp949/euc-kr 인코딩으로 자동 처리.</td>
-<td style="font-size:12px"><code>command</code>: 실행할 명령어. 예: &#x27;ls -al&#x27;, &#x27;cat /etc/version&#x27;</td>
-</tr>
-<tr>
-<td><code>send_command_stream</code></td>
-<td>SSH로 명령어를 실행하고 즉시 [BG_TASK:bg_x] placeholder를 반환 (논블로킹). 결과는 실시간으로 스트리밍되며 폴링 엔드포인트로 진행 상황을 볼 수 있습니다. 오래 걸리는 명령(netstat, tail -f 등)에 유용.</td>
-<td style="font-size:12px"><code>command</code>: 실행할 명령어. 예: &#x27;netstat -a&#x27;, &#x27;tail -f /var/log/syslog&#x27;</td>
-</tr>
-<tr>
-<td><code>send_file</code></td>
-<td>로컬 파일을 원격 장비로 전송합니다.</td>
-<td style="font-size:12px"><code>local_path</code>: PC의 파일 경로<br><code>remote_path</code>: 원격 장비의 저장 경로</td>
-</tr>
-<tr>
-<td><code>get_file</code></td>
-<td>원격 장비의 파일을 PC로 가져옵니다.</td>
-<td style="font-size:12px"><code>remote_path</code>: 원격 장비의 파일 경로<br><code>local_path</code>: PC의 저장 경로</td>
-</tr>
-<tr>
-<td><code>get_file_list_in_dir</code></td>
-<td>원격 장비의 디렉토리 내 파일 목록을 조회합니다.</td>
-<td style="font-size:12px"><code>path</code>: 조회할 디렉토리 경로<br><code>_filter</code>: 파일 필터 패턴. 기본값: &#x27;*&#x27; (전체). 예: &#x27;*.log&#x27;</td>
-</tr>
-</tbody>
-</table>
-
-
-
-<h2 id="cat-log">로깅 & 진단</h2>
-
-<h3 id="mod-DLTLogging">DLTLogging</h3>
-<div class="callout callout-info">DLT 로깅 — DLT 데몬에 TCP 직접 연결하여 로그를 캡처·저장하고 키워드 PASS/FAIL 판정하는 모듈 (GUI 불필요)</div>
-<table>
-<thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
-<tbody>
-<tr>
-<td><code>StartLogging</code></td>
-<td>DLT 연결 + 캡처 시작 (메모리만, 파일 저장 없음). 뷰어 모달이 자동 오픈됩니다. 종료 시 StopLogging으로 일괄 저장.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>StopLogging</code></td>
-<td>DLT 캡처 종료 + 메모리 버퍼를 파일로 일괄 저장. 자동 경로 또는 지정 경로.</td>
-<td style="font-size:12px"><code>save_path</code>: 저장 파일 경로. 빈 값이면 자동 (재생 중: run_dir/logs/dlt_*.log, 스텝 테스트: backend/results/Temp_logs/dlt_*.log)</td>
-</tr>
-<tr>
-<td><code>count_keyword</code></td>
-<td>로그에서 keyword가 등장할 때마다 실시간 카운트하고 발생 시간을 누적. 같은 name으로 첫 호출=시작, 재호출=결과 반환. 통계 용도 (시나리오 fail에 영향 없음).</td>
-<td style="font-size:12px"><code>keyword</code>: 찾을 부분 문자열. 예: &#x27;Pass&#x27;, &#x27;BootComplete&#x27;<br><code>name</code>: 카운터 식별자. 빈 값이면 keyword 자체. 같은 name 재호출 시 결과 조회</td>
-</tr>
-<tr>
-<td><code>reset_count_keyword</code></td>
-<td>count_keyword 카운터를 리셋합니다. name 빈 값이면 모든 카운터 제거.</td>
-<td style="font-size:12px"><code>name</code>: 리셋할 카운터 이름. 빈 값이면 전체</td>
-</tr>
-<tr>
-<td><code>assert_keyword</code></td>
-<td>캡처되는 모든 라인이 keyword를 **포함해야** 정상. **미포함 라인이 들어오면 fail step row 자동 누적**. 정상 키워드(예: &#x27;OK&#x27;, &#x27;Pass&#x27;, &#x27;BootComplete&#x27;)를 단언할 때 사용. 비정상 키워드 검출은 fail_on_keyword 사용.</td>
-<td style="font-size:12px"><code>keyword</code>: 라인에 반드시 포함되어야 하는 부분 문자열. 예: &#x27;Pass&#x27;, &#x27;OK&#x27;<br><code>name</code>: 단언 식별자. 빈 값이면 &#x27;assert_&lt;keyword&gt;&#x27;. 같은 name 재호출 시 miss 통계 반환</td>
-</tr>
-<tr>
-<td><code>reset_assert_keyword</code></td>
-<td>assert_keyword 단언을 리셋합니다. name 빈 값이면 모든 단언 제거.</td>
-<td style="font-size:12px"><code>name</code>: 리셋할 단언 이름. 빈 값이면 전체</td>
-</tr>
-<tr>
-<td><code>fail_on_keyword</code></td>
-<td>캡처되는 라인에 keyword가 **포함되면 fail row 누적**. assert_keyword의 반대. &#x27;ERROR&#x27;/&#x27;Fail&#x27;/&#x27;crash&#x27; 등 비정상 키워드 검출용. **time&gt;0이면 동기 모드** (해당 시간 동안만 모니터링 후 자동 종료, 검출 fail은 이 스텝 바로 아래 Fail_Count_N으로 인라인 표시). time=0이면 백그라운드 모드.</td>
-<td style="font-size:12px"><code>keyword</code>: 검출할 부분 문자열. 이 단어가 라인에 들어오면 fail로 보고. 예: &#x27;Fail&#x27;, &#x27;ERROR&#x27;<br><code>time</code>: 동기 모니터링 시간(초). &gt;0이면 해당 시간 동안만 감시 후 자동 unregister + 다음 스텝으로. 0(기본)이면 백그라운드.<br><code>name</code>: 검출기 식별자. 빈 값이면 &#x27;fail_&lt;keyword&gt;&#x27;. 같은 name 재호출 시 hit 통계 반환</td>
-</tr>
-<tr>
-<td><code>reset_fail_on_keyword</code></td>
-<td>fail_on_keyword 검출기를 리셋합니다. name 빈 값이면 모든 검출기 제거.</td>
-<td style="font-size:12px"><code>name</code>: 리셋할 검출기 이름. 빈 값이면 전체</td>
-</tr>
-<tr>
-<td><code>StartSave</code></td>
-<td>DLT 데몬에 연결하고 로그 캡처 + 파일 저장을 시작합니다. (연결 → 캡처 → 저장 한번에 수행)</td>
-<td style="font-size:12px"><code>save_path</code>: 저장 파일 경로. 빈 값이면 backend/logs/에 자동 생성</td>
-</tr>
-<tr>
-<td><code>StopSave</code></td>
-<td>로그 파일 저장을 중단하고 DLT 연결을 해제합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>MarkStep</code></td>
-<td>현재 로그 위치에 스텝 경계를 표시합니다. SearchRange로 구간 검색할 때 사용합니다.</td>
-<td style="font-size:12px"><code>step_index</code>: 스텝 인덱스 번호</td>
-</tr>
-<tr>
-<td><code>SearchAll</code></td>
-<td>처음부터 현재까지 전체 로그에서 키워드를 검색하여 PASS/FAIL 판정합니다.</td>
-<td style="font-size:12px"><code>keyword</code>: 검색 키워드 (공백 구분 시 AND 조건). 예: &#x27;BootComplete&#x27;, &#x27;ERROR crash&#x27;<br><code>count</code>: 최대 매칭 결과 수 (기본 5)</td>
-</tr>
-<tr>
-<td><code>SearchRange</code></td>
-<td>MarkStep으로 표시된 스텝 구간 내에서 키워드를 검색하여 PASS/FAIL 판정합니다.</td>
-<td style="font-size:12px"><code>keyword</code>: 검색 키워드 (공백 구분 시 AND 조건)<br><code>from_step</code>: 시작 스텝 인덱스<br><code>to_step</code>: 종료 스텝 인덱스<br><code>count</code>: 최대 매칭 결과 수 (기본 5)</td>
-</tr>
-<tr>
-<td><code>WaitLog</code></td>
-<td>키워드가 포함된 로그가 나타날 때까지 대기합니다 (블로킹). 타임아웃 시 FAIL 반환.</td>
-<td style="font-size:12px"><code>keyword</code>: 검색 키워드 (공백 구분 시 AND 조건)<br><code>timeout</code>: 최대 대기 시간 (초, 기본 30)</td>
-</tr>
-<tr>
-<td><code>ExpectFound</code></td>
-<td>키워드가 나타날 때까지 전체 로그를 주기적으로 검색합니다. 즉시 검색 후 없으면 간격(timeout/max_retries)마다 재시도. 발견 시 PASS, 끝까지 없으면 FAIL.</td>
-<td style="font-size:12px"><code>keyword</code>: 검색 키워드 (공백 구분 시 AND 조건)<br><code>timeout</code>: 총 대기 시간 (초, 기본 60)<br><code>max_retries</code>: 최대 재시도 횟수 (기본 5). 간격 = timeout ÷ max_retries</td>
-</tr>
-<tr>
-<td><code>ExpectNotFound</code></td>
-<td>키워드가 끝까지 없는지 전체 로그를 주기적으로 확인합니다. 즉시 검색 후 발견 시 즉시 FAIL. 없으면 간격(timeout/max_retries)마다 재확인. 끝까지 없으면 PASS.</td>
-<td style="font-size:12px"><code>keyword</code>: 검색 키워드 (공백 구분 시 AND 조건)<br><code>timeout</code>: 총 확인 시간 (초, 기본 60)<br><code>max_retries</code>: 최대 확인 횟수 (기본 5). 간격 = timeout ÷ max_retries</td>
-</tr>
-<tr>
-<td><code>GetStatus</code></td>
-<td>현재 모듈 상태를 조회합니다 (연결, 캡처, 저장, 스텝마크 등).</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-<tr>
-<td><code>ClearLogs</code></td>
-<td>로그 버퍼와 스텝 마킹을 초기화합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-</tbody>
-</table>
-
-
-
-<h2 id="cat-media">미디어 & 이미지</h2>
-
-
-
-<h2 id="cat-system">시스템 & 유틸리티</h2>
-
-<h3 id="mod-CMD">CMD</h3>
-<div class="callout callout-info">명령어 실행 — Windows 명령 프롬프트(CMD) 명령을 실행하는 모듈. 외부 프로그램 실행이나 시스템 명령에 사용</div>
-<table>
-<thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
-<tbody>
-<tr>
-<td><code>Run</code></td>
-<td>명령어를 실행하고 완료될 때까지 기다립니다(블로킹). 실행 결과를 반환합니다.</td>
-<td style="font-size:12px"><code>command</code>: 실행할 명령어. 예: &#x27;ping 127.0.0.1 -n 3&#x27;, &#x27;ipconfig&#x27;<br><code>timeout</code>: 최대 대기 시간 (초). 기본값: 300초</td>
-</tr>
-<tr>
-<td><code>Check</code></td>
-<td>명령어를 실행하고 출력 결과를 기대값과 비교합니다(블로킹). 실패 시 &#x27;FAIL:&#x27; 접두사를 반환하여 스텝이 fail로 판정됩니다.</td>
-<td style="font-size:12px"><code>command</code>: 실행할 명령어<br><code>expected</code>: 출력에 포함되거나 완전히 일치해야 할 기대 문자열<br><code>match_mode</code>: 비교 방식: &#x27;contains&#x27;(부분 일치) 또는 &#x27;exact&#x27;(완전 일치). 기본값: contains<br><code>timeout</code>: 최대 대기 시간 (초). 기본값: 300초</td>
-</tr>
-<tr>
-<td><code>RunCapture</code></td>
-<td>명령어를 백그라운드로 실행하고 즉시 &#x27;[BG_TASK:bg_x]&#x27; placeholder를 반환합니다(논블로킹). 폴링 엔드포인트를 통해 나중에 실제 결과를 회수할 수 있습니다.</td>
-<td style="font-size:12px"><code>command</code>: 실행할 명령어</td>
-</tr>
-<tr>
-<td><code>CheckCapture</code></td>
-<td>명령어를 백그라운드로 실행하고 &#x27;[BG_TASK:bg_x]&#x27; placeholder를 반환합니다. 완료 시 서버가 expected/match_mode로 최종 pass/fail을 판정합니다.</td>
-<td style="font-size:12px"><code>command</code>: 실행할 명령어<br><code>expected</code>: 기대 문자열<br><code>match_mode</code>: &#x27;contains&#x27; 또는 &#x27;exact&#x27;. 기본값: contains</td>
-</tr>
-<tr>
-<td><code>RunBackground</code></td>
-<td>명령어를 서브프로세스로 실행합니다(fire-and-forget). PID가 반환되지만 결과는 회수할 수 없습니다.</td>
-<td style="font-size:12px"><code>command</code>: 실행할 명령어. 예: &#x27;notepad&#x27;, &#x27;python script.py&#x27;</td>
-</tr>
-<tr>
-<td><code>Kill</code></td>
-<td>백그라운드 프로세스를 종료합니다.</td>
-<td style="font-size:12px"><code>pid</code>: 종료할 프로세스 PID</td>
-</tr>
-<tr>
-<td><code>ListBackground</code></td>
-<td>실행 중인 백그라운드 프로세스 목록을 반환합니다.</td>
-<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
-</tr>
-</tbody>
-</table>
-
-
-
-<h2 id="cat-etc">기타</h2>
-
 <h3 id="mod-WoohyunBench">WoohyunBench</h3>
 <div class="callout callout-info">우현벤치 — UDP 통신으로 차량 전원(IGN/ACC/배터리) 제어 + CAN FD 신호 송신을 지원하는 통합 테스트 벤치</div>
 <table>
-<thead><tr><th style="width:180px">함수</th><th style="width:280px">설명</th><th>파라미터</th></tr></thead>
+<thead><tr><th style="width:220px">함수</th><th>설명</th><th style="width:40%">파라미터</th></tr></thead>
 <tbody>
 <tr>
 <td><code>Connect</code></td>
@@ -1332,6 +984,334 @@
 <td><code>ReinitCanFd</code></td>
 <td>CAN FD 버스 재초기화 (baudrate/data bit time 변경 시). 기본 500k/2M.</td>
 <td style="font-size:12px"><code>baudrate</code>: arbitration phase baudrate (2바이트 정수, 기본 0x1F4)<br><code>databit_time</code>: data phase bit time (2바이트 정수, 기본 0x7D0)</td>
+</tr>
+</tbody>
+</table>
+
+
+
+<h2 id="cat-can">CAN 통신</h2>
+
+<h3 id="mod-CANOE">CANOE</h3>
+<div class="callout callout-info">CANoe 제어 — Vector CANoe 시뮬레이션 소프트웨어의 시작/중지, 환경변수/시스템변수 설정을 제어하는 모듈</div>
+<table>
+<thead><tr><th style="width:220px">함수</th><th>설명</th><th style="width:40%">파라미터</th></tr></thead>
+<tbody>
+<tr>
+<td><code>open_simulation</code></td>
+<td>CANoe 시뮬레이션을 엽니다 (.cfg 파일 로드).</td>
+<td style="font-size:12px"><code>cfgname</code>: CANoe 설정 파일(.cfg) 경로. 예: &#x27;C:/canoe/project.cfg&#x27;</td>
+</tr>
+<tr>
+<td><code>close_simulation</code></td>
+<td>CANoe 시뮬레이션을 닫고 프로그램을 종료합니다.</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
+</tr>
+<tr>
+<td><code>start_Measurement</code></td>
+<td>CANoe 측정(Measurement)을 시작합니다.</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
+</tr>
+<tr>
+<td><code>stop_Measurement</code></td>
+<td>CANoe 측정(Measurement)을 중지합니다.</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
+</tr>
+<tr>
+<td><code>get_EnvVar</code></td>
+<td>CANoe 환경 변수 값을 읽습니다.</td>
+<td style="font-size:12px"><code>var</code>: 환경 변수 이름</td>
+</tr>
+<tr>
+<td><code>set_EnvVar</code></td>
+<td>CANoe 환경 변수 값을 설정합니다.</td>
+<td style="font-size:12px"><code>var</code>: 환경 변수 이름<br><code>value</code>: 설정할 값 (숫자)</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="mod-CANAT">CANAT</h3>
+<div class="callout callout-info">CANat 디바이스 — CANat 하드웨어를 통해 CAN 버스 메시지를 송수신하는 모듈</div>
+<table>
+<thead><tr><th style="width:220px">함수</th><th>설명</th><th style="width:40%">파라미터</th></tr></thead>
+<tbody>
+<tr>
+<td><code>init</code></td>
+<td>CANat 디바이스를 초기화하고 연결합니다.</td>
+<td style="font-size:12px"><code>comport</code>: COM 포트. 예: &#x27;COM3&#x27;<br><code>log_path</code>: 로그 파일 저장 경로<br><code>ch1_fd</code>: 채널 1 CAN FD 사용 여부. True(기본) = FD, False = Classic<br><code>ch2_fd</code>: 채널 2 CAN FD 사용 여부. True = FD, False(기본) = Classic</td>
+</tr>
+<tr>
+<td><code>disconnect</code></td>
+<td>CANat 디바이스 연결을 해제합니다.</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
+</tr>
+<tr>
+<td><code>send_can_message</code></td>
+<td>CAN 메시지를 전송합니다.</td>
+<td style="font-size:12px"><code>message_id</code>: CAN 메시지 ID<br><code>cycle_time</code>: 전송 주기 (ms). 0이면 1회 전송<br><code>can_message</code>: 메시지 데이터 (16진수)<br><code>bus_channel</code>: CAN 채널<br><code>message_type</code>: &#x27;FD&#x27;(기본) 또는 &#x27;Classic&#x27;</td>
+</tr>
+<tr>
+<td><code>stop_can_message</code></td>
+<td>특정 CAN 메시지의 주기적 전송을 중지합니다.</td>
+<td style="font-size:12px"><code>message_id</code>: 중지할 메시지 ID<br><code>cycle_time</code>: 주기<br><code>can_message</code>: 메시지 데이터<br><code>bus_channel</code>: CAN 채널<br><code>message_type</code>: &#x27;FD&#x27; 또는 &#x27;Classic&#x27;</td>
+</tr>
+<tr>
+<td><code>send_cam_message_all_stop</code></td>
+<td>모든 CAN 메시지 전송을 중지합니다.</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
+</tr>
+<tr>
+<td><code>can_message_save_start</code></td>
+<td>CAN 메시지를 파일로 저장하기 시작합니다.</td>
+<td style="font-size:12px"><code>save_path</code>: 저장 경로. 비워두면 기본 경로 사용</td>
+</tr>
+<tr>
+<td><code>can_message_save_stop</code></td>
+<td>CAN 메시지 저장을 중지합니다.</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
+</tr>
+</tbody>
+</table>
+
+
+
+<h2 id="cat-comm">통신 (시리얼/SSH/UART/DLT)</h2>
+
+<h3 id="mod-SerialLogging">SerialLogging</h3>
+<div class="callout callout-info">시리얼 로깅 — 시리얼 포트에 연결하여 로그를 캡처·저장하고 키워드 검출하는 모듈.
+
+**⚠️ 사용법: StartLogging과 StopLogging은 반드시 한 셋트로 사용해야 합니다.**
+- StartLogging만 호출하고 StopLogging을 누락하면: 로그가 파일로 저장되지 않고, 시리얼 포트 연결이 종료되지 않아 다음 실행에서 포트 점유 오류가 발생할 수 있습니다.
+- 시나리오의 시작 부분에 StartLogging, 끝 부분에 StopLogging을 배치하여 한 쌍으로 운영하세요.
+- 시나리오 중간에 오류가 나도 cleanup이 자동으로 StopLogging을 호출해 포트를 닫지만, 정상 흐름에서는 명시적으로 StopLogging을 두는 것이 권장됩니다.
+
+표준 사용 패턴:
+  1) StartLogging()                              ← 시나리오 첫 스텝
+  2) SendCommand / SendCommand_*_on_keyword ...  ← 중간 스텝들
+  3) StopLogging()                               ← 시나리오 마지막 스텝 (로그 파일 저장 + 포트 해제)</div>
+<table>
+<thead><tr><th style="width:220px">함수</th><th>설명</th><th style="width:40%">파라미터</th></tr></thead>
+<tbody>
+<tr>
+<td><code>StartLogging</code></td>
+<td>시리얼 연결 + 캡처 시작 (메모리만, 파일 저장 없음). 뷰어 모달이 자동 오픈됩니다. **리턴 시점에 포트가 안정화되고 capture 스레드가 ready 상태**라 다음 스텝의 SendCommand가 씹히지 않음.
+
+**⚠️ 반드시 StopLogging과 한 셋트로 사용하세요.** StopLogging이 호출되어야 메모리 버퍼가 파일로 저장되고 시리얼 포트가 정상적으로 해제됩니다. StopLogging 누락 시 로그가 디스크에 저장되지 않고 포트가 점유 상태로 남습니다.</td>
+<td style="font-size:12px"><code>settle_ms</code>: 포트 open 후 안정화 대기(ms). 기본 500. USB-Serial 어댑터 reset/buffer settle 동안 다음 스텝이 씹히지 않게 확보. Arduino처럼 DTR-reset되는 보드는 1500~2000으로 늘리고, 빠른 산업용 시리얼은 100~200까지 낮출 수 있음.</td>
+</tr>
+<tr>
+<td><code>StopLogging</code></td>
+<td>시리얼 캡처 종료 + 메모리 버퍼를 파일로 일괄 저장 + 시리얼 포트 해제. 자동 경로 또는 지정 경로로 저장.
+
+**⚠️ StartLogging과 반드시 짝으로 호출하세요.** 이 함수가 호출되어야:
+  • 메모리에 누적된 로그가 .log 파일로 디스크에 저장됨
+  • 시리얼 포트 연결이 정상적으로 닫혀 다음 실행에서 재사용 가능
+  • capture 스레드가 정리되어 리소스 누수 방지
+파일 저장 단계에서 예외가 발생해도 finally에서 포트 해제는 무조건 수행됩니다.</td>
+<td style="font-size:12px"><code>save_path</code>: 저장 파일 경로. 빈 값이면 자동 (재생 중: run_dir/logs/serial_*.log, 스텝 테스트: backend/results/Temp_logs/serial_*.log)</td>
+</tr>
+<tr>
+<td><code>SendCommand</code></td>
+<td>시리얼 포트로 문자열 명령어를 전송합니다.</td>
+<td style="font-size:12px"><code>command</code>: 전송할 명령어. 예: &#x27;reboot&#x27;, &#x27;cat /proc/version&#x27;<br><code>encoding</code>: 인코딩 (기본 utf-8)<br><code>append_newline</code>: 개행 문자 자동 추가. true/false (기본 true)</td>
+</tr>
+<tr>
+<td><code>SendCommand_fail_on_keyword</code></td>
+<td>명령어 전송 후 응답에 keyword가 **포함되면 FAIL 판정**. &#x27;ERROR&#x27;/&#x27;Fail&#x27;/&#x27;crash&#x27; 등 비정상 키워드 검출용. 전송 직후 &#x27;time&#x27; 초간 새 라인만 모니터링 — 매칭된 라인은 모두 fail row로 누적되어 결과 표에 인라인(Fail_Count_N) 표시됨. 매칭 없으면 PASS 반환.</td>
+<td style="font-size:12px"><code>command</code>: 전송할 명령어. 예: &#x27;status&#x27;, &#x27;self_test&#x27;<br><code>keyword</code>: FAIL을 일으킬 검출 키워드. 예: &#x27;ERROR&#x27;, &#x27;Fail&#x27;, &#x27;crash&#x27;<br><code>time</code>: 응답 모니터링 시간(초). 기본 5<br><code>encoding</code>: 인코딩 (기본 utf-8)<br><code>append_newline</code>: 개행 문자 자동 추가. true/false (기본 true)</td>
+</tr>
+<tr>
+<td><code>SendCommand_pass_on_keyword</code></td>
+<td>명령어 전송 후 응답에 keyword가 **포함되면 PASS 판정**. &#x27;OK&#x27;/&#x27;Pass&#x27;/&#x27;BootComplete&#x27; 등 정상 응답 키워드 검출용. 발견 즉시 PASS 반환 (조기 종료). &#x27;time&#x27; 초 안에 발견되지 않으면 fail row 1건 누적 후 FAIL 반환.</td>
+<td style="font-size:12px"><code>command</code>: 전송할 명령어. 예: &#x27;ping&#x27;, &#x27;getversion&#x27;<br><code>keyword</code>: PASS를 만족할 키워드. 예: &#x27;OK&#x27;, &#x27;Pass&#x27;, &#x27;BootComplete&#x27;<br><code>time</code>: 응답 대기 시간(초). 기본 5<br><code>encoding</code>: 인코딩 (기본 utf-8)<br><code>append_newline</code>: 개행 문자 자동 추가. true/false (기본 true)</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="mod-SSHManager">SSHManager</h3>
+<div class="callout callout-info">SSH 접속 — SSH로 원격 장비에 접속하여 명령 실행, 파일 전송을 수행하는 모듈</div>
+<table>
+<thead><tr><th style="width:220px">함수</th><th>설명</th><th style="width:40%">파라미터</th></tr></thead>
+<tbody>
+<tr>
+<td><code>create_ssh_client</code></td>
+<td>SSH 연결을 생성합니다.</td>
+<td style="font-size:12px"><code>hostname</code>: 원격 장비 IP 또는 호스트명. 예: &#x27;192.168.1.100&#x27;<br><code>username</code>: SSH 사용자 이름. 예: &#x27;root&#x27;<br><code>password</code>: SSH 비밀번호<br><code>key_filePath</code>: SSH 키 파일 경로 (비밀번호 대신 사용). 기본값: None</td>
+</tr>
+<tr>
+<td><code>close_ssh_client</code></td>
+<td>SSH 연결을 종료합니다.</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
+</tr>
+<tr>
+<td><code>send_command</code></td>
+<td>SSH로 명령어를 실행하고 완료 후 전체 출력을 반환합니다 (블로킹). 한국어 Windows 출력은 cp949/euc-kr 인코딩으로 자동 처리.</td>
+<td style="font-size:12px"><code>command</code>: 실행할 명령어. 예: &#x27;ls -al&#x27;, &#x27;cat /etc/version&#x27;</td>
+</tr>
+<tr>
+<td><code>send_command_stream</code></td>
+<td>SSH로 명령어를 실행하고 즉시 [BG_TASK:bg_x] placeholder를 반환 (논블로킹). 결과는 실시간으로 스트리밍되며 폴링 엔드포인트로 진행 상황을 볼 수 있습니다. 오래 걸리는 명령(netstat, tail -f 등)에 유용.</td>
+<td style="font-size:12px"><code>command</code>: 실행할 명령어. 예: &#x27;netstat -a&#x27;, &#x27;tail -f /var/log/syslog&#x27;</td>
+</tr>
+<tr>
+<td><code>send_file</code></td>
+<td>로컬 파일을 원격 장비로 전송합니다.</td>
+<td style="font-size:12px"><code>local_path</code>: PC의 파일 경로<br><code>remote_path</code>: 원격 장비의 저장 경로</td>
+</tr>
+<tr>
+<td><code>get_file</code></td>
+<td>원격 장비의 파일을 PC로 가져옵니다.</td>
+<td style="font-size:12px"><code>remote_path</code>: 원격 장비의 파일 경로<br><code>local_path</code>: PC의 저장 경로</td>
+</tr>
+<tr>
+<td><code>get_file_list_in_dir</code></td>
+<td>원격 장비의 디렉토리 내 파일 목록을 조회합니다.</td>
+<td style="font-size:12px"><code>path</code>: 조회할 디렉토리 경로<br><code>_filter</code>: 파일 필터 패턴. 기본값: &#x27;*&#x27; (전체). 예: &#x27;*.log&#x27;</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="mod-DLTLogging">DLTLogging</h3>
+<div class="callout callout-info">DLT 로깅 — DLT 데몬에 TCP 직접 연결하여 로그를 캡처·저장하고 키워드 PASS/FAIL 판정하는 모듈 (GUI 불필요)</div>
+<table>
+<thead><tr><th style="width:220px">함수</th><th>설명</th><th style="width:40%">파라미터</th></tr></thead>
+<tbody>
+<tr>
+<td><code>StartLogging</code></td>
+<td>DLT 연결 + 캡처 시작 (메모리만, 파일 저장 없음). 뷰어 모달이 자동 오픈됩니다. 종료 시 StopLogging으로 일괄 저장.</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
+</tr>
+<tr>
+<td><code>StopLogging</code></td>
+<td>DLT 캡처 종료 + 메모리 버퍼를 파일로 일괄 저장. 자동 경로 또는 지정 경로.</td>
+<td style="font-size:12px"><code>save_path</code>: 저장 파일 경로. 빈 값이면 자동 (재생 중: run_dir/logs/dlt_*.log, 스텝 테스트: backend/results/Temp_logs/dlt_*.log)</td>
+</tr>
+<tr>
+<td><code>count_keyword</code></td>
+<td>로그에서 keyword가 등장할 때마다 실시간 카운트하고 발생 시간을 누적. 같은 name으로 첫 호출=시작, 재호출=결과 반환. 통계 용도 (시나리오 fail에 영향 없음).</td>
+<td style="font-size:12px"><code>keyword</code>: 찾을 부분 문자열. 예: &#x27;Pass&#x27;, &#x27;BootComplete&#x27;<br><code>name</code>: 카운터 식별자. 빈 값이면 keyword 자체. 같은 name 재호출 시 결과 조회</td>
+</tr>
+<tr>
+<td><code>reset_count_keyword</code></td>
+<td>count_keyword 카운터를 리셋합니다. name 빈 값이면 모든 카운터 제거.</td>
+<td style="font-size:12px"><code>name</code>: 리셋할 카운터 이름. 빈 값이면 전체</td>
+</tr>
+<tr>
+<td><code>assert_keyword</code></td>
+<td>캡처되는 모든 라인이 keyword를 **포함해야** 정상. **미포함 라인이 들어오면 fail step row 자동 누적**. 정상 키워드(예: &#x27;OK&#x27;, &#x27;Pass&#x27;, &#x27;BootComplete&#x27;)를 단언할 때 사용. 비정상 키워드 검출은 fail_on_keyword 사용.</td>
+<td style="font-size:12px"><code>keyword</code>: 라인에 반드시 포함되어야 하는 부분 문자열. 예: &#x27;Pass&#x27;, &#x27;OK&#x27;<br><code>name</code>: 단언 식별자. 빈 값이면 &#x27;assert_&lt;keyword&gt;&#x27;. 같은 name 재호출 시 miss 통계 반환</td>
+</tr>
+<tr>
+<td><code>reset_assert_keyword</code></td>
+<td>assert_keyword 단언을 리셋합니다. name 빈 값이면 모든 단언 제거.</td>
+<td style="font-size:12px"><code>name</code>: 리셋할 단언 이름. 빈 값이면 전체</td>
+</tr>
+<tr>
+<td><code>fail_on_keyword</code></td>
+<td>캡처되는 라인에 keyword가 **포함되면 fail row 누적**. assert_keyword의 반대. &#x27;ERROR&#x27;/&#x27;Fail&#x27;/&#x27;crash&#x27; 등 비정상 키워드 검출용. **time&gt;0이면 동기 모드** (해당 시간 동안만 모니터링 후 자동 종료, 검출 fail은 이 스텝 바로 아래 Fail_Count_N으로 인라인 표시). time=0이면 백그라운드 모드.</td>
+<td style="font-size:12px"><code>keyword</code>: 검출할 부분 문자열. 이 단어가 라인에 들어오면 fail로 보고. 예: &#x27;Fail&#x27;, &#x27;ERROR&#x27;<br><code>time</code>: 동기 모니터링 시간(초). &gt;0이면 해당 시간 동안만 감시 후 자동 unregister + 다음 스텝으로. 0(기본)이면 백그라운드.<br><code>name</code>: 검출기 식별자. 빈 값이면 &#x27;fail_&lt;keyword&gt;&#x27;. 같은 name 재호출 시 hit 통계 반환</td>
+</tr>
+<tr>
+<td><code>reset_fail_on_keyword</code></td>
+<td>fail_on_keyword 검출기를 리셋합니다. name 빈 값이면 모든 검출기 제거.</td>
+<td style="font-size:12px"><code>name</code>: 리셋할 검출기 이름. 빈 값이면 전체</td>
+</tr>
+<tr>
+<td><code>StartSave</code></td>
+<td>DLT 데몬에 연결하고 로그 캡처 + 파일 저장을 시작합니다. (연결 → 캡처 → 저장 한번에 수행)</td>
+<td style="font-size:12px"><code>save_path</code>: 저장 파일 경로. 빈 값이면 backend/logs/에 자동 생성</td>
+</tr>
+<tr>
+<td><code>StopSave</code></td>
+<td>로그 파일 저장을 중단하고 DLT 연결을 해제합니다.</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
+</tr>
+<tr>
+<td><code>MarkStep</code></td>
+<td>현재 로그 위치에 스텝 경계를 표시합니다. SearchRange로 구간 검색할 때 사용합니다.</td>
+<td style="font-size:12px"><code>step_index</code>: 스텝 인덱스 번호</td>
+</tr>
+<tr>
+<td><code>SearchAll</code></td>
+<td>처음부터 현재까지 전체 로그에서 키워드를 검색하여 PASS/FAIL 판정합니다.</td>
+<td style="font-size:12px"><code>keyword</code>: 검색 키워드 (공백 구분 시 AND 조건). 예: &#x27;BootComplete&#x27;, &#x27;ERROR crash&#x27;<br><code>count</code>: 최대 매칭 결과 수 (기본 5)</td>
+</tr>
+<tr>
+<td><code>SearchRange</code></td>
+<td>MarkStep으로 표시된 스텝 구간 내에서 키워드를 검색하여 PASS/FAIL 판정합니다.</td>
+<td style="font-size:12px"><code>keyword</code>: 검색 키워드 (공백 구분 시 AND 조건)<br><code>from_step</code>: 시작 스텝 인덱스<br><code>to_step</code>: 종료 스텝 인덱스<br><code>count</code>: 최대 매칭 결과 수 (기본 5)</td>
+</tr>
+<tr>
+<td><code>WaitLog</code></td>
+<td>키워드가 포함된 로그가 나타날 때까지 대기합니다 (블로킹). 타임아웃 시 FAIL 반환.</td>
+<td style="font-size:12px"><code>keyword</code>: 검색 키워드 (공백 구분 시 AND 조건)<br><code>timeout</code>: 최대 대기 시간 (초, 기본 30)</td>
+</tr>
+<tr>
+<td><code>ExpectFound</code></td>
+<td>키워드가 나타날 때까지 전체 로그를 주기적으로 검색합니다. 즉시 검색 후 없으면 간격(timeout/max_retries)마다 재시도. 발견 시 PASS, 끝까지 없으면 FAIL.</td>
+<td style="font-size:12px"><code>keyword</code>: 검색 키워드 (공백 구분 시 AND 조건)<br><code>timeout</code>: 총 대기 시간 (초, 기본 60)<br><code>max_retries</code>: 최대 재시도 횟수 (기본 5). 간격 = timeout ÷ max_retries</td>
+</tr>
+<tr>
+<td><code>ExpectNotFound</code></td>
+<td>키워드가 끝까지 없는지 전체 로그를 주기적으로 확인합니다. 즉시 검색 후 발견 시 즉시 FAIL. 없으면 간격(timeout/max_retries)마다 재확인. 끝까지 없으면 PASS.</td>
+<td style="font-size:12px"><code>keyword</code>: 검색 키워드 (공백 구분 시 AND 조건)<br><code>timeout</code>: 총 확인 시간 (초, 기본 60)<br><code>max_retries</code>: 최대 확인 횟수 (기본 5). 간격 = timeout ÷ max_retries</td>
+</tr>
+<tr>
+<td><code>GetStatus</code></td>
+<td>현재 모듈 상태를 조회합니다 (연결, 캡처, 저장, 스텝마크 등).</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
+</tr>
+<tr>
+<td><code>ClearLogs</code></td>
+<td>로그 버퍼와 스텝 마킹을 초기화합니다.</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
+</tr>
+</tbody>
+</table>
+
+
+
+<h2 id="cat-system">시스템 & 유틸리티</h2>
+
+<h3 id="mod-CMD">CMD</h3>
+<div class="callout callout-info">명령어 실행 — Windows 명령 프롬프트(CMD) 명령을 실행하는 모듈. 외부 프로그램 실행이나 시스템 명령에 사용</div>
+<table>
+<thead><tr><th style="width:220px">함수</th><th>설명</th><th style="width:40%">파라미터</th></tr></thead>
+<tbody>
+<tr>
+<td><code>Run</code></td>
+<td>명령어를 실행하고 완료될 때까지 기다립니다(블로킹). 실행 결과를 반환합니다.</td>
+<td style="font-size:12px"><code>command</code>: 실행할 명령어. 예: &#x27;ping 127.0.0.1 -n 3&#x27;, &#x27;ipconfig&#x27;<br><code>timeout</code>: 최대 대기 시간 (초). 기본값: 300초</td>
+</tr>
+<tr>
+<td><code>Check</code></td>
+<td>명령어를 실행하고 출력 결과를 기대값과 비교합니다(블로킹). 실패 시 &#x27;FAIL:&#x27; 접두사를 반환하여 스텝이 fail로 판정됩니다.</td>
+<td style="font-size:12px"><code>command</code>: 실행할 명령어<br><code>expected</code>: 출력에 포함되거나 완전히 일치해야 할 기대 문자열<br><code>match_mode</code>: 비교 방식: &#x27;contains&#x27;(부분 일치) 또는 &#x27;exact&#x27;(완전 일치). 기본값: contains<br><code>timeout</code>: 최대 대기 시간 (초). 기본값: 300초</td>
+</tr>
+<tr>
+<td><code>RunCapture</code></td>
+<td>명령어를 백그라운드로 실행하고 즉시 &#x27;[BG_TASK:bg_x]&#x27; placeholder를 반환합니다(논블로킹). 폴링 엔드포인트를 통해 나중에 실제 결과를 회수할 수 있습니다.</td>
+<td style="font-size:12px"><code>command</code>: 실행할 명령어</td>
+</tr>
+<tr>
+<td><code>CheckCapture</code></td>
+<td>명령어를 백그라운드로 실행하고 &#x27;[BG_TASK:bg_x]&#x27; placeholder를 반환합니다. 완료 시 서버가 expected/match_mode로 최종 pass/fail을 판정합니다.</td>
+<td style="font-size:12px"><code>command</code>: 실행할 명령어<br><code>expected</code>: 기대 문자열<br><code>match_mode</code>: &#x27;contains&#x27; 또는 &#x27;exact&#x27;. 기본값: contains</td>
+</tr>
+<tr>
+<td><code>RunBackground</code></td>
+<td>명령어를 서브프로세스로 실행합니다(fire-and-forget). PID가 반환되지만 결과는 회수할 수 없습니다.</td>
+<td style="font-size:12px"><code>command</code>: 실행할 명령어. 예: &#x27;notepad&#x27;, &#x27;python script.py&#x27;</td>
+</tr>
+<tr>
+<td><code>Kill</code></td>
+<td>백그라운드 프로세스를 종료합니다.</td>
+<td style="font-size:12px"><code>pid</code>: 종료할 프로세스 PID</td>
+</tr>
+<tr>
+<td><code>ListBackground</code></td>
+<td>실행 중인 백그라운드 프로세스 목록을 반환합니다.</td>
+<td style="font-size:12px"><span style="color:var(--text-muted)">(없음)</span></td>
 </tr>
 </tbody>
 </table>
