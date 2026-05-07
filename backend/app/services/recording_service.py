@@ -1036,7 +1036,8 @@ class RecordingService:
                 await loop.run_in_executor(None,
                     _ft3.partial(wc.send_long_press,
                                  int(params["x"]), int(params["y"]),
-                                 int(params.get("duration_ms", 500))))
+                                 int(params.get("duration_ms", 500)),
+                                 params.get("button", "left")))
             elif step_type == StepType.WIN_SWIPE:
                 await loop.run_in_executor(None,
                     _ft3.partial(wc.send_swipe,

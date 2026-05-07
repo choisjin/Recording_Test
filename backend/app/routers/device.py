@@ -993,7 +993,8 @@ async def device_input(req: InputRequest):
             elif req.action == "win_long_press":
                 await loop.run_in_executor(None,
                     _ft2.partial(wc.send_long_press, int(p["x"]), int(p["y"]),
-                                 int(p.get("duration_ms", 500))))
+                                 int(p.get("duration_ms", 500)),
+                                 p.get("button", "left")))
             elif req.action == "win_swipe":
                 await loop.run_in_executor(None,
                     _ft2.partial(wc.send_swipe, int(p["x1"]), int(p["y1"]),

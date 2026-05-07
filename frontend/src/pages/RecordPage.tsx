@@ -357,8 +357,9 @@ export default function RecordPage() {
   const [wcLoadingProcs, setWcLoadingProcs] = useState(false);
   const [wcInputText, setWcInputText] = useState('');
   const wcCanvasRef = useRef<HTMLCanvasElement>(null);
-  const wcGestureRef = useRef<{ startX: number; startY: number; startTime: number; active: boolean }>(
-    { startX: 0, startY: 0, startTime: 0, active: false }
+  // button: 'left' | 'right' — 좌/우 클릭 모두 동일 제스처 흐름 처리.
+  const wcGestureRef = useRef<{ startX: number; startY: number; startTime: number; active: boolean; button: 'left' | 'right' }>(
+    { startX: 0, startY: 0, startTime: 0, active: false, button: 'left' }
   );
   const wcImageRef = useRef<HTMLImageElement | null>(null);
 
@@ -1231,30 +1232,40 @@ export default function RecordPage() {
   }, [wcAttached, recording, delayMs, steps, t]);
 
   const wcMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    // 좌(0)/우(2) 버튼만 처리 — 가운데 버튼은 무시.
+    if (e.button !== 0 && e.button !== 2) return;
     const c = wcToWinCoords(e.clientX, e.clientY);
     if (!c) return;
-    wcGestureRef.current = { startX: c.x, startY: c.y, startTime: Date.now(), active: true };
+    const button: 'left' | 'right' = e.button === 2 ? 'right' : 'left';
+    wcGestureRef.current = { startX: c.x, startY: c.y, startTime: Date.now(), active: true, button };
   }, [wcToWinCoords]);
 
   const wcMouseUp = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!wcGestureRef.current.active) return;
+    // mouse-down 과 같은 버튼의 up 만 처리 — 좌/우 동시 누름 같은 케이스 방어.
+    const upButton: 'left' | 'right' | 'other' =
+      e.button === 0 ? 'left' : e.button === 2 ? 'right' : 'other';
+    if (upButton !== wcGestureRef.current.button) return;
     wcGestureRef.current.active = false;
     const c = wcToWinCoords(e.clientX, e.clientY);
     if (!c) return;
-    const { startX, startY, startTime } = wcGestureRef.current;
+    const { startX, startY, startTime, button } = wcGestureRef.current;
     const dist = Math.hypot(c.x - startX, c.y - startY);
     const elapsed = Date.now() - startTime;
-    if (dist > 10) {
+    // 우클릭 드래그(swipe) 는 일반적이지 않으므로 좌클릭일 때만 swipe 로 분기.
+    if (button === 'left' && dist > 10) {
       const duration = Math.max(200, Math.min(elapsed, 3000));
       wcExecuteAction('win_swipe',
         { x1: startX, y1: startY, x2: c.x, y2: c.y, duration_ms: duration },
         `win_swipe (${startX},${startY})→(${c.x},${c.y}) ${duration}ms`);
     } else if (elapsed >= 500) {
       wcExecuteAction('win_long_press',
-        { x: startX, y: startY, duration_ms: elapsed },
-        `win_long_press (${startX},${startY}) ${elapsed}ms`);
+        { x: startX, y: startY, duration_ms: elapsed, button },
+        `win_long_press${button === 'right' ? ' [right]' : ''} (${startX},${startY}) ${elapsed}ms`);
     } else {
-      wcExecuteAction('win_tap', { x: startX, y: startY }, `win_tap (${startX},${startY})`);
+      wcExecuteAction('win_tap',
+        { x: startX, y: startY, button },
+        `win_tap${button === 'right' ? ' [right]' : ''} (${startX},${startY})`);
     }
   }, [wcToWinCoords, wcExecuteAction]);
 
@@ -4165,6 +4176,8 @@ export default function RecordPage() {
                         onMouseDown={wcMouseDown}
                         onMouseUp={wcMouseUp}
                         onDoubleClick={wcDoubleClick}
+                        // 우클릭을 win_tap[right] 으로 보내야 하므로 브라우저 컨텍스트 메뉴 차단.
+                        onContextMenu={(e) => e.preventDefault()}
                         style={{
                           maxWidth: '100%', maxHeight: '100%',
                           border: isDark ? '1px solid #333' : '1px solid #d9d9d9',

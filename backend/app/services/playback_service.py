@@ -1263,13 +1263,17 @@ class PlaybackService:
             return f"all_random ×{rc} @{iv}ms"
         elif step.type == StepType.WIN_TAP:
             tgt = p.get("process_name") or p.get("window_title") or ""
-            return f"win_tap ({p.get('x', 0)}, {p.get('y', 0)}) [{tgt}]"
+            btn = p.get("button", "left")
+            btn_tag = "" if btn == "left" else f" [{btn}]"
+            return f"win_tap{btn_tag} ({p.get('x', 0)}, {p.get('y', 0)}) [{tgt}]"
         elif step.type == StepType.WIN_DOUBLE_CLICK:
             tgt = p.get("process_name") or p.get("window_title") or ""
             return f"win_double_click ({p.get('x', 0)}, {p.get('y', 0)}) [{tgt}]"
         elif step.type == StepType.WIN_LONG_PRESS:
             tgt = p.get("process_name") or p.get("window_title") or ""
-            return f"win_long_press ({p.get('x', 0)}, {p.get('y', 0)}) {p.get('duration_ms', 500)}ms [{tgt}]"
+            btn = p.get("button", "left")
+            btn_tag = "" if btn == "left" else f" [{btn}]"
+            return f"win_long_press{btn_tag} ({p.get('x', 0)}, {p.get('y', 0)}) {p.get('duration_ms', 500)}ms [{tgt}]"
         elif step.type == StepType.WIN_SWIPE:
             tgt = p.get("process_name") or p.get("window_title") or ""
             return f"win_swipe ({p.get('x1', 0)},{p.get('y1', 0)})→({p.get('x2', 0)},{p.get('y2', 0)}) [{tgt}]"
@@ -2218,7 +2222,8 @@ class PlaybackService:
                 await loop.run_in_executor(None,
                     functools.partial(wc.send_long_press,
                                       int(params["x"]), int(params["y"]),
-                                      int(params.get("duration_ms", 500))))
+                                      int(params.get("duration_ms", 500)),
+                                      params.get("button", "left")))
             elif step.type == StepType.WIN_SWIPE:
                 await loop.run_in_executor(None,
                     functools.partial(wc.send_swipe,

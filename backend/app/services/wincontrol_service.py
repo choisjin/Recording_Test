@@ -933,7 +933,12 @@ class WinControlService:
         finally:
             self._restore_context(ctx)
 
-    def send_long_press(self, x: int, y: int, duration_ms: int = 500) -> None:
+    def send_long_press(self, x: int, y: int, duration_ms: int = 500, button: str = "left") -> None:
+        """버튼을 누른 채로 duration_ms 만큼 유지 후 떼기.
+
+        button: "left"(기본) / "right" / "middle".
+        예) 우클릭 길게 = right 메뉴 트리거 (대부분의 앱은 mouse-up 시 컨텍스트 메뉴).
+        """
         self._check()
         ctx = self._save_context()
         try:
@@ -941,11 +946,11 @@ class WinControlService:
             sx, sy = self._client_to_screen(int(x), int(y))
             self._send_input_mouse_move(sx, sy)
             time.sleep(0.04)
-            self._send_input_button("left", True)
+            self._send_input_button(button, True)
             try:
                 time.sleep(max(0.0, duration_ms / 1000.0))
             finally:
-                self._send_input_button("left", False)
+                self._send_input_button(button, False)
             time.sleep(0.06)
         finally:
             self._restore_context(ctx)
