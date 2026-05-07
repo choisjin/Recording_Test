@@ -356,6 +356,9 @@ export default function RecordPage() {
   const [wcAttached, setWcAttached] = useState<WinAttachStatus | null>(null);
   const [wcLoadingProcs, setWcLoadingProcs] = useState(false);
   const [wcInputText, setWcInputText] = useState('');
+  // 텍스트 입력 대기 모드 — '입력' 버튼 클릭 시 보낼 텍스트가 여기에 저장되고,
+  // 다음 캔버스 클릭이 win_tap → win_input_text 시퀀스로 처리됨.
+  const [wcPendingText, setWcPendingText] = useState<string | null>(null);
   const wcCanvasRef = useRef<HTMLCanvasElement>(null);
   // button: 'left' | 'right' — 좌/우 클릭 모두 동일 제스처 흐름 처리.
   const wcGestureRef = useRef<{ startX: number; startY: number; startTime: number; active: boolean; button: 'left' | 'right' }>(
@@ -1255,7 +1258,7 @@ export default function RecordPage() {
     wcGestureRef.current = { startX: c.x, startY: c.y, startTime: Date.now(), active: true, button };
   }, [wcToWinCoords]);
 
-  const wcMouseUp = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+  const wcMouseUp = useCallback(async (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!wcGestureRef.current.active) return;
     // mouse-down 과 같은 버튼의 up 만 처리 — 좌/우 동시 누름 같은 케이스 방어.
     const upButton: 'left' | 'right' | 'other' =
@@ -1264,6 +1267,24 @@ export default function RecordPage() {
     wcGestureRef.current.active = false;
     const c = wcToWinCoords(e.clientX, e.clientY);
     if (!c) return;
+    // 텍스트 입력 대기 모드 — 좌클릭으로 입력 위치를 지정하면 그 좌표 클릭 후 텍스트 전송.
+    // 우클릭/드래그/롱프레스로는 발동 안 시킴 (오작동 방지).
+    if (wcPendingText !== null && wcGestureRef.current.button === 'left') {
+      const dist0 = Math.hypot(c.x - wcGestureRef.current.startX, c.y - wcGestureRef.current.startY);
+      if (dist0 <= 10) {
+        const text = wcPendingText;
+        setWcPendingText(null);
+        await wcExecuteAction('win_tap',
+          { x: c.x, y: c.y },
+          `win_tap (${c.x},${c.y}) → input "${text.length > 20 ? text.slice(0, 20) + '...' : text}"`);
+        // 클릭 후 포커스가 입력 컨트롤에 안착할 시간 확보.
+        await new Promise(r => setTimeout(r, 150));
+        await wcExecuteAction('win_input_text',
+          { text },
+          `win_input_text "${text.length > 20 ? text.slice(0, 20) + '...' : text}"`);
+        return;
+      }
+    }
     const { startX, startY, startTime, button } = wcGestureRef.current;
     const dist = Math.hypot(c.x - startX, c.y - startY);
     const elapsed = Date.now() - startTime;
@@ -1282,7 +1303,7 @@ export default function RecordPage() {
         { x: startX, y: startY, button },
         `win_tap${button === 'right' ? ' [right]' : ''} (${startX},${startY})`);
     }
-  }, [wcToWinCoords, wcExecuteAction]);
+  }, [wcToWinCoords, wcExecuteAction, wcPendingText]);
 
   const wcDoubleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const c = wcToWinCoords(e.clientX, e.clientY);
@@ -1292,12 +1313,22 @@ export default function RecordPage() {
     wcExecuteAction('win_double_click', { x: c.x, y: c.y }, `win_double_click (${c.x},${c.y})`);
   }, [wcToWinCoords, wcExecuteAction]);
 
+  // 텍스트 보내기: 즉시 전송하지 않고 '입력 위치를 클릭하세요' 모드로 진입.
+  // 사용자가 캔버스의 입력 컨트롤(에디트박스 등) 을 좌클릭하면, 백엔드가 해당 좌표를
+  // 먼저 클릭해 포커스를 보낸 뒤 텍스트를 전송 → 입력 누락 방지.
+  // 다시 누르면 토글 취소.
   const wcSendText = useCallback(() => {
+    if (wcPendingText !== null) {
+      setWcPendingText(null);
+      message.info('텍스트 입력 취소됨');
+      return;
+    }
     const txt = wcInputText;
     if (!txt) return;
-    wcExecuteAction('win_input_text', { text: txt }, `win_input_text "${txt.length > 20 ? txt.slice(0, 20) + '...' : txt}"`);
+    setWcPendingText(txt);
     setWcInputText('');
-  }, [wcInputText, wcExecuteAction]);
+    message.info('입력 위치를 클릭하세요');
+  }, [wcInputText, wcPendingText]);
 
   // ----------------------------------------------------------------
   // Random stress helpers (HKMC/iSAP 전용)
@@ -4195,8 +4226,13 @@ export default function RecordPage() {
                         onContextMenu={(e) => e.preventDefault()}
                         style={{
                           maxWidth: '100%', maxHeight: '100%',
-                          border: isDark ? '1px solid #333' : '1px solid #d9d9d9',
-                          borderRadius: 4, cursor: 'crosshair', userSelect: 'none',
+                          // 텍스트 입력 대기 중이면 text 커서 + 노란 보더로 시각 안내.
+                          border: wcPendingText !== null
+                            ? '2px solid #faad14'
+                            : (isDark ? '1px solid #333' : '1px solid #d9d9d9'),
+                          borderRadius: 4,
+                          cursor: wcPendingText !== null ? 'text' : 'crosshair',
+                          userSelect: 'none',
                         }}
                       />
                     </div>
@@ -4208,10 +4244,21 @@ export default function RecordPage() {
                         onChange={(e) => setWcInputText(e.target.value)}
                         onPressEnter={wcSendText}
                       />
-                      <Button size="small" type="primary" onClick={wcSendText} disabled={!wcInputText}>
-                        {t('record.winControlInputTextSend')}
+                      <Button
+                        size="small"
+                        type="primary"
+                        danger={wcPendingText !== null}
+                        onClick={wcSendText}
+                        disabled={!wcInputText && wcPendingText === null}
+                      >
+                        {wcPendingText !== null ? '취소' : t('record.winControlInputTextSend')}
                       </Button>
                     </Space.Compact>
+                    {wcPendingText !== null && (
+                      <Tag color="orange" style={{ alignSelf: 'flex-start' }}>
+                        {`입력 위치를 클릭하세요 — "${wcPendingText.length > 30 ? wcPendingText.slice(0, 30) + '...' : wcPendingText}"`}
+                      </Tag>
+                    )}
                   </>
                 ) : (
                   <div style={{ color: mutedTextColor, textAlign: 'center', padding: 19 }}>
