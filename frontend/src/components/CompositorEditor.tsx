@@ -38,7 +38,7 @@ interface WindowProcess {
 
 const DEFAULT_CANVAS = {
   width: 1280, height: 720, fps: 30, background: '#000000',
-  show_labels: true, show_timestamp: true,
+  show_timestamp: true,
   timestamp_position: 'top-right' as 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right',
 };
 
@@ -182,7 +182,6 @@ export default function CompositorEditor({ open, onClose, isDark }: Props) {
           height: lt.data.canvas.height || DEFAULT_CANVAS.height,
           fps: lt.data.canvas.fps || DEFAULT_CANVAS.fps,
           background: lt.data.canvas.background || DEFAULT_CANVAS.background,
-          show_labels: lt.data.canvas.show_labels !== false,
           show_timestamp: lt.data.canvas.show_timestamp !== false,
           timestamp_position: lt.data.canvas.timestamp_position || DEFAULT_CANVAS.timestamp_position,
         });
@@ -198,7 +197,6 @@ export default function CompositorEditor({ open, onClose, isDark }: Props) {
           height: lt.data?.canvas?.height || DEFAULT_CANVAS.height,
           fps: lt.data?.canvas?.fps || DEFAULT_CANVAS.fps,
           background: lt.data?.canvas?.background || DEFAULT_CANVAS.background,
-          show_labels: lt.data?.canvas?.show_labels !== false,
           show_timestamp: lt.data?.canvas?.show_timestamp !== false,
           timestamp_position: lt.data?.canvas?.timestamp_position || DEFAULT_CANVAS.timestamp_position,
         },
@@ -526,8 +524,6 @@ export default function CompositorEditor({ open, onClose, isDark }: Props) {
                 onChange={v => setCanvas(c => ({ ...c, fps: Number(v) || c.fps }))} style={{ width: '100%' }} />
               <span>{t('compositor.background')}</span>
               <ColorPicker size="small" value={canvas.background} onChange={onPickColor} />
-              <span>{t('compositor.showLabels')}</span>
-              <Switch size="small" checked={canvas.show_labels} onChange={v => setCanvas(c => ({ ...c, show_labels: v }))} />
               <span>{t('compositor.showTimestamp')}</span>
               <Switch size="small" checked={canvas.show_timestamp} onChange={v => setCanvas(c => ({ ...c, show_timestamp: v }))} />
               <span>{t('compositor.timestampPosition')}</span>
@@ -599,12 +595,11 @@ export default function CompositorEditor({ open, onClose, isDark }: Props) {
                   style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }} />
               )}
               {/* 박스 오버레이 (드래그/리사이즈)
-                  라벨은 백엔드가 캔버스에 그릴 수 있으므로 (show_labels=true),
-                  여기서는 중복을 피하려고 hover/선택일 때 또는 백엔드가 안 그릴 때만 노출. */}
+                  라벨은 영상에 burn-in 되지 않음 — hover/선택 시에만 편집용으로 표시. */}
               {sources.map(s => {
                 const isSelected = selectedId === s.id;
                 const isHovered = hoveredId === s.id;
-                const showLabel = isSelected || isHovered || !canvas.show_labels;
+                const showLabel = isSelected || isHovered;
                 return (
                   <div
                     key={s.id}

@@ -296,7 +296,6 @@ class CompositorService:
         self._canvas_h: int = 720
         self._fps: float = 30.0
         self._bg_bgr: tuple[int, int, int] = (0, 0, 0)
-        self._show_labels: bool = True
         self._show_timestamp: bool = True
         # 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
         self._timestamp_position: str = "top-right"
@@ -337,7 +336,6 @@ class CompositorService:
         new_fps = float(canvas.get("fps") or 30.0)
         bg_hex = canvas.get("background") or "#000000"
         self._bg_bgr = self._hex_to_bgr(bg_hex)
-        self._show_labels = bool(canvas.get("show_labels", True))
         self._show_timestamp = bool(canvas.get("show_timestamp", True))
         ts_pos = str(canvas.get("timestamp_position") or "top-right").lower()
         if ts_pos not in ("top-left", "top-right", "bottom-left", "bottom-right"):
@@ -509,7 +507,6 @@ class CompositorService:
                 "height": self._canvas_h,
                 "fps": self._fps,
                 "background": "#%02x%02x%02x" % (self._bg_bgr[2], self._bg_bgr[1], self._bg_bgr[0]),
-                "show_labels": self._show_labels,
                 "show_timestamp": self._show_timestamp,
                 "timestamp_position": self._timestamp_position,
             },
@@ -667,10 +664,7 @@ class CompositorService:
             else:
                 roi = canvas[dy:dy + dh, dx:dx + dw]
                 cv2.addWeighted(resized, opacity, roi, 1.0 - opacity, 0, roi)
-            # 4) 라벨
-            if self._show_labels and (label or l.get("label")):
-                text = label or l.get("label") or ""
-                self._draw_label(canvas, dx, dy, dw, dh, text)
+            # 라벨은 영상에 그리지 않음 — 편집용 라벨은 프론트 오버레이에서만 표시
         except Exception as e:
             logger.debug("Compositor blit failed (%s): %s", label, e)
 
@@ -696,26 +690,6 @@ class CompositorService:
                         font, scale, (200, 200, 200), 1, cv2.LINE_AA)
         except Exception:
             pass
-
-    def _draw_label(self, canvas: np.ndarray, dx: int, dy: int, dw: int, dh: int, text: str) -> None:
-        if not text:
-            return
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        scale = max(0.4, min(dw, dh) * 0.0028)
-        thickness = max(1, int(scale * 1.6))
-        (tw, th), _ = cv2.getTextSize(text, font, scale, thickness)
-        pad = 4
-        bx = dx + 4
-        by = dy + 4
-        bw = tw + pad * 2
-        bh = th + pad * 2
-        # 반투명 박스
-        sub = canvas[by:by + bh, bx:bx + bw]
-        if sub.shape[0] == bh and sub.shape[1] == bw:
-            black = np.zeros_like(sub)
-            cv2.addWeighted(black, 0.5, sub, 0.5, 0, sub)
-        cv2.putText(canvas, text, (bx + pad, by + pad + th),
-                    font, scale, (255, 255, 255), thickness, cv2.LINE_AA)
 
     def _draw_timestamp(self, canvas: np.ndarray) -> None:
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
