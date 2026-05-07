@@ -533,6 +533,8 @@ class WinControlService:
             return {"attached": False, "available": _WIN32_AVAILABLE,
                     "import_error": _IMPORT_ERROR}
         w, h = self.get_window_size()
+        ow, oh = self.get_outer_size()
+        ox, oy = self.get_client_offset()
         return {
             "attached": True,
             "available": True,
@@ -544,6 +546,13 @@ class WinControlService:
             "title": self._window_title,
             "width": w,
             "height": h,
+            # outer (타이틀바 포함) 크기 — 풀 윈도우 캡처 비트맵의 자연 크기.
+            "outer_width": ow,
+            "outer_height": oh,
+            # client 영역의 outer 비트맵 내 좌상단 오프셋 — 프론트가 클릭 좌표를
+            # client-space 로 변환할 때 빼는 값. (보더/타이틀바 두께)
+            "client_offset_x": ox,
+            "client_offset_y": oy,
             "is_uwp": self._is_uwp,
             "content_hwnd": self._content_hwnd,
             "aumid": self._aumid,
@@ -591,6 +600,33 @@ class WinControlService:
             with self._target_dpi_ctx():
                 rect = win32gui.GetClientRect(self._hwnd)
             return (rect[2] - rect[0], rect[3] - rect[1])
+        except Exception:
+            return (0, 0)
+
+    def get_outer_size(self) -> tuple[int, int]:
+        """Window 외곽(타이틀바/보더 포함) 크기 — 풀 윈도우 캡처 비트맵 크기."""
+        if not self.is_attached():
+            return (0, 0)
+        try:
+            with self._target_dpi_ctx():
+                rect = win32gui.GetWindowRect(self._hwnd)
+            return (rect[2] - rect[0], rect[3] - rect[1])
+        except Exception:
+            return (0, 0)
+
+    def get_client_offset(self) -> tuple[int, int]:
+        """Window 외곽 비트맵 기준 client 좌상단의 오프셋 (px).
+
+        프론트가 풀 윈도우 캔버스에서 받은 클릭 좌표를 client-space 로 변환할 때
+        빼는 값. 일반적으로 (왼쪽 보더 두께, 타이틀바+상단 보더 두께).
+        """
+        if not self.is_attached():
+            return (0, 0)
+        try:
+            with self._target_dpi_ctx():
+                wr = win32gui.GetWindowRect(self._hwnd)
+                cx, cy = win32gui.ClientToScreen(self._hwnd, (0, 0))
+            return (cx - wr[0], cy - wr[1])
         except Exception:
             return (0, 0)
 
@@ -643,12 +679,21 @@ class WinControlService:
 
     # ── 캡처 ─────────────────────────────────────────────────────────
     def _capture_with_flag(self, hwnd: int, flag: int) -> Optional[Image.Image]:
-        """주어진 PrintWindow 플래그로 hwnd 를 캡처해 PIL Image 반환. 실패 시 None."""
+        """주어진 PrintWindow 플래그로 hwnd 를 캡처해 PIL Image 반환. 실패 시 None.
+
+        flag 에 PW_CLIENTONLY(0x1) 가 빠져있으면 비트맵을 GetWindowRect 크기로 잡아
+        타이틀바/보더 까지 포함한 풀 윈도우를 캡처한다 (그렇지 않으면 GetClientRect).
+        """
+        is_client_only = bool(flag & 0x00000001)
         try:
-            rect = win32gui.GetClientRect(hwnd)
+            if is_client_only:
+                rect = win32gui.GetClientRect(hwnd)
+                w, h = rect[2] - rect[0], rect[3] - rect[1]
+            else:
+                wr = win32gui.GetWindowRect(hwnd)
+                w, h = wr[2] - wr[0], wr[3] - wr[1]
         except Exception:
             return None
-        w, h = rect[2] - rect[0], rect[3] - rect[1]
         if w <= 0 or h <= 0:
             return None
         hwndDC = win32gui.GetWindowDC(hwnd)
@@ -763,23 +808,24 @@ class WinControlService:
             return False
 
     def capture_window(self, fmt: str = "jpeg", render_full_content: bool = False) -> bytes:
-        """대상 윈도우 캡처.
+        """대상 윈도우 캡처 (타이틀바 포함 풀 윈도우).
 
-        시도 순서 (가장 안정적인 결과 자동 선택):
-          1) 일반 윈도우: PW_CLIENTONLY(1) — Chrome 등 깜박임 없음
-          2) UWP/WinUI3: PW_RENDERFULLCONTENT|PW_CLIENTONLY(3) — 검은 화면 회피
-          3) 1차 결과가 단색(검정)이면 자동으로 (3) 으로 재시도
-          4) host 캡처 실패 시 content_hwnd(CoreWindow)로 폴백
+        일반 Win32 앱은 PW_RENDERFULLCONTENT(2) 만 사용 → 비트맵 = GetWindowRect 크기,
+        타이틀바/최소화·최대화·닫기 버튼/보더가 모두 보임. PW_CLIENTONLY 가 빠진
+        결과로 비트맵 크기가 GetClientRect 의 DPI 가상화 함정에서도 자유로워짐.
+
+        UWP/WinUI3 는 호스트 윈도우(ApplicationFrameWindow) 외곽이 의미 없는 영역이라
+        client-only(3) 로 캡처. 최후의 폴백은 content_hwnd(CoreWindow).
         """
         if not self.is_attached():
             raise RuntimeError("No window attached")
         host_hwnd = self._hwnd
-        # UWP 면 처음부터 PW_RENDERFULLCONTENT 사용
-        first_flag = 0x00000003 if (render_full_content or self._is_uwp) else 0x00000001
+        # 일반 앱: PW_RENDERFULLCONTENT(2) — 풀 윈도우. UWP: client-only render(3).
+        first_flag = 0x00000003 if (render_full_content or self._is_uwp) else 0x00000002
         with self._target_dpi_ctx():
             img = self._capture_with_flag(host_hwnd, first_flag)
-            if self._is_blank_image(img) and first_flag != 0x00000003:
-                # 검은 화면 → render_full_content 강제 재시도
+            if self._is_blank_image(img):
+                # 단색이면 client-only render 로 재시도 — 일부 앱은 외곽 캡처 실패.
                 img = self._capture_with_flag(host_hwnd, 0x00000003)
             # 그래도 실패하면 콘텐츠 자식(CoreWindow)으로 폴백
             if self._is_blank_image(img) and self._content_hwnd:

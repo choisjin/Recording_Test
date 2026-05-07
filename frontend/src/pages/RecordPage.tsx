@@ -350,7 +350,7 @@ export default function RecordPage() {
   // 좌측 패널 탭: 'device' | 'wincontrol'. WinControl 디바이스가 연결된 경우에만 wincontrol 탭 노출.
   const [leftPanelTab, setLeftPanelTab] = useState<'device' | 'wincontrol'>('device');
   type WinProcess = { pid: number; hwnd: number; name: string; exe_path?: string; title: string; class_name?: string; width: number; height: number };
-  type WinAttachStatus = { attached: boolean; available?: boolean; hwnd?: number; pid?: number; name?: string; exe_path?: string; class_name?: string; title?: string; width?: number; height?: number; is_uwp?: boolean; content_hwnd?: number; aumid?: string; import_error?: string };
+  type WinAttachStatus = { attached: boolean; available?: boolean; hwnd?: number; pid?: number; name?: string; exe_path?: string; class_name?: string; title?: string; width?: number; height?: number; outer_width?: number; outer_height?: number; client_offset_x?: number; client_offset_y?: number; is_uwp?: boolean; content_hwnd?: number; aumid?: string; import_error?: string };
   const [wcProcesses, setWcProcesses] = useState<WinProcess[]>([]);
   const [wcSelectedHwnd, setWcSelectedHwnd] = useState<number | null>(null);
   const [wcAttached, setWcAttached] = useState<WinAttachStatus | null>(null);
@@ -1163,16 +1163,20 @@ export default function RecordPage() {
     return () => { alive = false; };
   }, [leftPanelTab, wcAttached?.attached, wcAttached?.exe_path, wcAttached?.name]);
 
-  // 캔버스 클라이언트 좌표 → 윈도우 client 좌표 변환
+  // 캔버스 클라이언트 좌표 → 윈도우 client 좌표 변환.
+  // 캔버스는 풀 윈도우(타이틀바 포함) 비트맵을 표시하므로 client_offset 만큼 빼서
+  // client-space 로 변환해 저장 — 기존 시나리오/재생 로직과 호환.
   const wcToWinCoords = useCallback((clientX: number, clientY: number): { x: number; y: number } | null => {
     const cv = wcCanvasRef.current;
     if (!cv || cv.width <= 0 || cv.height <= 0) return null;
     const rect = cv.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return null;
-    const x = ((clientX - rect.left) / rect.width) * cv.width;
-    const y = ((clientY - rect.top) / rect.height) * cv.height;
-    return { x: Math.round(x), y: Math.round(y) };
-  }, []);
+    const px = ((clientX - rect.left) / rect.width) * cv.width;
+    const py = ((clientY - rect.top) / rect.height) * cv.height;
+    const ox = wcAttached?.client_offset_x ?? 0;
+    const oy = wcAttached?.client_offset_y ?? 0;
+    return { x: Math.round(px - ox), y: Math.round(py - oy) };
+  }, [wcAttached?.client_offset_x, wcAttached?.client_offset_y]);
 
   // win 액션 실행 + 녹화 중이면 step 추가 (executeAction의 wincontrol 전용 버전)
   // 모든 win_* 스텝은 임베드된 프로세스 정보를 params 에 함께 저장 — 재생/테스트 시
