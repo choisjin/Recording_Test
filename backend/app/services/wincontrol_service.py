@@ -706,6 +706,72 @@ class WinControlService:
         return self.get_window_size()
 
     # ── 캡처 ─────────────────────────────────────────────────────────
+    def _capture_via_window_dc(self, hwnd: int) -> Optional[Image.Image]:
+        """타겟 윈도우 자신의 DC 에서 BitBlt 로 직접 복사 — paint 메시지 미디스패치.
+
+        PrintWindow 는 WM_PRINT/WM_PAINT 를 타겟에 보내서 redraw 트리거 → 깜박임/IME
+        composition 풀림. 윈도우 DC 에서 직접 BitBlt 하면 메시지 없이 현재 백버퍼만
+        복사 → 타겟 무영향. 단점: 더블버퍼 안 쓰는 일부 앱은 stale 콘텐츠가 잡힐 수
+        있어 호출자가 blank 검사 시 PrintWindow 폴백.
+        """
+        if not _WIN32_AVAILABLE or not hwnd:
+            return None
+        try:
+            if not win32gui.IsWindow(hwnd) or win32gui.IsIconic(hwnd):
+                return None
+            vr = self._get_visible_window_rect(hwnd)
+            if vr is None:
+                vr = win32gui.GetWindowRect(hwnd)
+            w, h = vr[2] - vr[0], vr[3] - vr[1]
+        except Exception:
+            return None
+        if w <= 0 or h <= 0:
+            return None
+        # 윈도우 외곽까지 포함된 DC (타이틀바/보더 + 클라이언트). GetDC 는 클라이언트만.
+        hwnd_dc = win32gui.GetWindowDC(hwnd)
+        if not hwnd_dc:
+            return None
+        mfc_dc = None
+        save_dc = None
+        bmp = None
+        try:
+            mfc_dc = win32ui.CreateDCFromHandle(hwnd_dc)
+            save_dc = mfc_dc.CreateCompatibleDC()
+            bmp = win32ui.CreateBitmap()
+            bmp.CreateCompatibleBitmap(mfc_dc, w, h)
+            save_dc.SelectObject(bmp)
+            # SRCCOPY = 0x00CC0020. 윈도우 DC 의 (0,0) 부터 (w,h) 를 비트맵에 복사.
+            save_dc.BitBlt((0, 0), (w, h), mfc_dc, (0, 0), win32con.SRCCOPY)
+            info = bmp.GetInfo()
+            bits = bmp.GetBitmapBits(True)
+            return Image.frombuffer(
+                "RGB",
+                (info["bmWidth"], info["bmHeight"]),
+                bits, "raw", "BGRX", 0, 1,
+            )
+        except Exception:
+            return None
+        finally:
+            if bmp is not None:
+                try:
+                    win32gui.DeleteObject(bmp.GetHandle())
+                except Exception:
+                    pass
+            if save_dc is not None:
+                try:
+                    save_dc.DeleteDC()
+                except Exception:
+                    pass
+            if mfc_dc is not None:
+                try:
+                    mfc_dc.DeleteDC()
+                except Exception:
+                    pass
+            try:
+                win32gui.ReleaseDC(hwnd, hwnd_dc)
+            except Exception:
+                pass
+
     def _capture_with_flag(self, hwnd: int, flag: int) -> Optional[Image.Image]:
         """주어진 PrintWindow 플래그로 hwnd 를 캡처해 PIL Image 반환. 실패 시 None.
 
@@ -841,39 +907,40 @@ class WinControlService:
             return False
 
     def capture_window(self, fmt: str = "jpeg", render_full_content: bool = False) -> bytes:
-        """대상 윈도우 캡처 (타이틀바 포함 풀 윈도우, PrintWindow 기반).
-
-        flag=0 (no PW_CLIENTONLY, no PW_RENDERFULLCONTENT) 로 윈도우의 현재 DC 버퍼를
-        그대로 복사 → redraw 트리거 없음 → 깜박임/IME 포커스 풀림 없음.
-        Alt+PrintScreen 과 유사한 동작. 일반 Win32 GDI 앱에서 안정적.
+        """대상 윈도우 캡처 (타이틀바 포함 풀 윈도우).
 
         시도 순서:
-          1) flag=0 — 풀 윈도우, redraw 없음. target DPI 컨텍스트로 좌표계 일치.
-          2) 단색(DWM 컴포지션 콘텐츠 누락)이면 PW_RENDERFULLCONTENT|PW_CLIENTONLY(3).
-          3) UWP/WinUI3 는 (3) 우선 + content_hwnd(CoreWindow) 폴백.
+          1) 윈도우 자신의 DC 에서 BitBlt 직접 복사 (paint 메시지 무발신) — 깜박임/
+             IME 포커스 풀림 없음. 일반 GDI 앱에서 안정적. occluded 여도 OK
+             (윈도우 자신의 백버퍼에서 가져오므로 화면 위 다른 창 영향 없음).
+          2) blank/단색이면 PrintWindow PW_RENDERFULLCONTENT|PW_CLIENTONLY(3) 폴백
+             — DWM 컴포지션 앱(WPF 등) 또는 더블버퍼 안 쓰는 앱.
+          3) UWP/WinUI3 는 처음부터 (3) + content_hwnd 폴백.
         """
         if not self.is_attached():
             raise RuntimeError("No window attached")
         host_hwnd = self._hwnd
 
-        # 일반 앱: 0x0 (redraw 안 함). UWP: 0x3 (DWM 컨텐츠 강제 렌더링 필요).
-        first_flag = 0x00000003 if (render_full_content or self._is_uwp) else 0x00000000
-        with self._target_dpi_ctx():
-            img = self._capture_with_flag(host_hwnd, first_flag)
-            # 단색이면 강제 렌더링 폴백 — DWM 으로 컴포지트되는 일부 앱은 flag=0 으로
-            # 검은 화면이 나옴. 이 경우만 redraw 비용 감수하고 PW_RENDERFULLCONTENT.
-            if self._is_blank_image(img) and first_flag != 0x00000003:
+        img: Optional[Image.Image] = None
+        # 1) 일반 앱: 윈도우 DC BitBlt 우선 (UWP 는 DWM 컴포지션이라 DC 가 비어있어 스킵).
+        if not self._is_uwp:
+            with self._target_dpi_ctx():
+                img = self._capture_via_window_dc(host_hwnd)
+
+        # 2) BitBlt 가 단색/실패면 PrintWindow 폴백 (target DPI 컨텍스트 안에서).
+        if img is None or self._is_blank_image(img):
+            with self._target_dpi_ctx():
                 img = self._capture_with_flag(host_hwnd, 0x00000003)
-            if self._is_blank_image(img) and self._content_hwnd:
-                try:
-                    if win32gui.IsWindow(self._content_hwnd):
-                        img = self._capture_with_flag(self._content_hwnd, 0x00000003)
-                        if self._is_blank_image(img):
-                            img = self._capture_with_flag(self._content_hwnd, 0x00000001)
-                except Exception:
-                    pass
+                if self._is_blank_image(img) and self._content_hwnd:
+                    try:
+                        if win32gui.IsWindow(self._content_hwnd):
+                            img = self._capture_with_flag(self._content_hwnd, 0x00000003)
+                            if self._is_blank_image(img):
+                                img = self._capture_with_flag(self._content_hwnd, 0x00000001)
+                    except Exception:
+                        pass
         if img is None:
-            raise RuntimeError("PrintWindow failed for all flags")
+            raise RuntimeError("Capture failed (window-DC BitBlt + PrintWindow)")
 
         buf = io.BytesIO()
         if fmt.lower() == "png":

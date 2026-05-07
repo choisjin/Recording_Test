@@ -1147,6 +1147,14 @@ export default function RecordPage() {
                 if (cv) {
                   if (cv.width !== img.naturalWidth) cv.width = img.naturalWidth;
                   if (cv.height !== img.naturalHeight) cv.height = img.naturalHeight;
+                  // 캔버스의 maxWidth/maxHeight: 100% 만으로는 width/height 가
+                  // 독립적으로 클램프되어 aspect ratio 가 깨질 수 있음 (스플리터로
+                  // 컨테이너 비율이 바뀌면 캔버스가 왜곡 → 시각 위치와 클릭 위치
+                  // 어긋남). aspect-ratio 를 자연 크기 비율로 강제하면 width/height
+                  // 중 하나만 클램프돼도 다른 쪽이 비례 축소 → 비왜곡.
+                  if (img.naturalHeight > 0) {
+                    cv.style.aspectRatio = `${img.naturalWidth} / ${img.naturalHeight}`;
+                  }
                   const ctx = cv.getContext('2d');
                   ctx?.drawImage(img, 0, 0);
                 }
