@@ -166,11 +166,37 @@ class ImageCompareService:
         gray_exp = cv2.cvtColor(img_exp, cv2.COLOR_BGR2GRAY)
         gray_act = cv2.cvtColor(img_act, cv2.COLOR_BGR2GRAY)
         # Sub-pixel 노이즈 정규화 — 같은 화면 캡처가 100% 가까이 나오도록.
-        gray_exp = self._normalize_for_ssim(gray_exp)
-        gray_act = self._normalize_for_ssim(gray_act)
+        gray_exp_n = self._normalize_for_ssim(gray_exp)
+        gray_act_n = self._normalize_for_ssim(gray_act)
 
-        score, diff = ssim(gray_exp, gray_act, full=True)
+        score, diff = ssim(gray_exp_n, gray_act_n, full=True)
         diff_uint8 = (diff * 255).astype("uint8")
+
+        # 진단: blur 적용 전후 SSIM, BGR 픽셀 동일성, 픽셀 차이 분포까지 한 번에 측정.
+        # IMG_COMPARE_DEBUG=1 또는 score<0.99 이면 자동 출력. single_crop은 playback_service가
+        # 미리 ROI를 잘라 이 함수에 전달하므로 여기서도 진단해야 함.
+        if _env_debug() or float(score) < 0.99:
+            try:
+                bgr_diff = cv2.absdiff(img_exp, img_act)
+                identical = bool((bgr_diff == 0).all())
+                bgr_max = int(bgr_diff.max())
+                bgr_mean = float(bgr_diff.mean())
+                bgr_gt5 = 100.0 * float((bgr_diff > 5).sum()) / max(1, bgr_diff.size)
+                raw_score, _ = ssim(gray_exp, gray_act, full=True)
+                gd = cv2.absdiff(gray_exp, gray_act)
+                logger.info(
+                    "compare_ssim shape=%s "
+                    "ssim_blurred=%.4f ssim_raw=%.4f identical=%s "
+                    "bgr_diff: max=%d mean=%.2f >5=%.1f%% "
+                    "gray_diff: max=%d mean=%.2f >5=%.1f%%",
+                    tuple(img_exp.shape),
+                    float(score), float(raw_score), identical,
+                    bgr_max, bgr_mean, bgr_gt5,
+                    int(gd.max()), float(gd.mean()),
+                    100.0 * float((gd > 5).sum()) / max(1, gd.size),
+                )
+            except Exception as e:
+                logger.debug("compare_ssim debug log failed: %r", e)
 
         return {
             "score": round(float(score), 4),
