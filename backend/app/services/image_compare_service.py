@@ -215,19 +215,33 @@ class ImageCompareService:
         score, diff = ssim(gray_exp_n, gray_act_n, full=True)
         diff_uint8 = (diff * 255).astype("uint8")
 
-        # 진단: 같은 정지 화면을 캡처해도 컴포지터/애니메이션으로 점수가 안 올라갈 때
-        # raw 픽셀 차이를 함께 보면 원인이 sub-pixel 노이즈인지 큰 영역 변화인지 구분 가능.
+        # 진단(IMG_COMPARE_DEBUG=1): blur 적용 전후 SSIM, BGR 픽셀 동일성, 픽셀 차이 분포까지 한 번에 측정.
+        # 사용자가 "블러 없이 원본 비교"가 어떻게 나오는지 즉시 확인 가능.
         if _env_debug():
             try:
-                d = cv2.absdiff(gray_exp, gray_act)
+                # 1) BGR 원본 차이 — 캡처 자체의 픽셀 차이 (블러 영향 0)
+                bgr_diff = cv2.absdiff(img_exp, actual_crop)
+                identical = bool((bgr_diff == 0).all())
+                bgr_max = int(bgr_diff.max())
+                bgr_mean = float(bgr_diff.mean())
+                bgr_gt5 = 100.0 * float((bgr_diff > 5).sum()) / max(1, bgr_diff.size)
+                # 2) 그레이스케일 raw SSIM (블러 OFF)
+                raw_score, _ = ssim(gray_exp, gray_act, full=True)
+                # 3) 그레이스케일 raw 픽셀 차이
+                gd = cv2.absdiff(gray_exp, gray_act)
                 logger.info(
-                    "image_compare ROI(%dx%d) score=%.4f raw_diff: max=%d mean=%.2f >5=%.1f%%",
-                    actual_crop.shape[1], actual_crop.shape[0], float(score),
-                    int(d.max()), float(d.mean()),
-                    100.0 * float((d > 5).sum()) / max(1, d.size),
+                    "image_compare ROI(%dx%d) "
+                    "ssim_blurred=%.4f ssim_raw=%.4f identical=%s "
+                    "bgr_diff: max=%d mean=%.2f >5=%.1f%% "
+                    "gray_diff: max=%d mean=%.2f >5=%.1f%%",
+                    actual_crop.shape[1], actual_crop.shape[0],
+                    float(score), float(raw_score), identical,
+                    bgr_max, bgr_mean, bgr_gt5,
+                    int(gd.max()), float(gd.mean()),
+                    100.0 * float((gd > 5).sum()) / max(1, gd.size),
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("image_compare debug log failed: %r", e)
 
         return {
             "score": round(float(score), 4),
