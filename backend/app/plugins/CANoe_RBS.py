@@ -101,9 +101,19 @@ class CANoe_RBS:
         pythoncom.CoInitialize()
         time.sleep(1)
 
-        # 5. win32com 캐시 재생성
-        print("[CANoe] Rebuilding win32com cache...")
-        win32com.client.gencache.Rebuild()
+        # 5. win32com 캐시 재생성 — CANoe 전용 stub만 생성.
+        # 주의: gencache.Rebuild()는 등록된 모든 TLB를 한꺼번에 재빌드하는데, 그 과정에서
+        # CANoe 이벤트 인터페이스 stub이 깨진 상태로 생성될 수 있고 그러면 py_canoe가
+        # DispatchWithEvents()로 이벤트 싱크를 붙일 때 "This COM object does not support
+        # events" 에러가 난다. EnsureDispatch는 지정 ProgID의 typelib만 정확히 생성하므로
+        # 더 안정적이다.
+        print("[CANoe] Ensuring CANoe gen_py stub...")
+        try:
+            win32com.client.gencache.EnsureDispatch("CANoe.Application")
+        except Exception as e:
+            # EnsureDispatch가 실패해도 py_canoe 자체가 lazy Dispatch로 회복할 수 있어
+            # 치명적이지 않음. 단 로그는 남김.
+            print(f"[CANoe] EnsureDispatch warning (non-fatal): {e}")
 
         self.cfg_file = cfg_file
         self.canoe_log_dir = self.make_timestamp_log_dir(canoe_log_dir)
