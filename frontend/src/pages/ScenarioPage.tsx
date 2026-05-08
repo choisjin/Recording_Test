@@ -715,21 +715,28 @@ export default function ScenarioPage() {
       ...auxiliaryDevices.map((d: any) => ({ id: d.id, name: d.name || d.id, type: d.type, status: d.status, address: d.address })),
     ].filter(d => d.status === 'device' || d.status === 'connected');
     setConnectedDevices(devices);
+    // 매핑 대상 alias 수집: step.device_id ∪ 저장된 device_map 키.
+    // 저장된 device_map만 보면 step에서 쓰는 alias가 빠질 수 있어 모달이 비게 되고,
+    // preflight 실패 후 "Change Device Map" 으로 모달을 열어도 변경할 항목이 없어진다.
+    const aliases = new Set<string>();
+    for (const s of (scenarioData.steps || [])) {
+      if (s && s.device_id) aliases.add(String(s.device_id));
+    }
+    for (const k of Object.keys(dmap)) aliases.add(k);
     // 시나리오의 매핑값(이전 환경 ID)을 현재 디바이스 ID로 자동 매칭
     const resolved: Record<string, string> = {};
-    for (const [alias, savedId] of Object.entries(dmap)) {
-      const exact = devices.find(d => d.id === savedId);
-      if (exact) {
-        resolved[alias] = savedId;
-      } else {
-        // ID가 안 맞으면 같은 alias 이름의 디바이스를 찾거나, 주소로 매칭
-        const byAlias = devices.find(d => d.id === alias);
-        if (byAlias) {
-          resolved[alias] = byAlias.id;
-        } else {
-          resolved[alias] = savedId; // 매칭 실패 시 원래 값 유지
+    for (const alias of aliases) {
+      const savedId = dmap[alias];
+      if (savedId) {
+        const exact = devices.find(d => d.id === savedId);
+        if (exact) {
+          resolved[alias] = savedId;
+          continue;
         }
       }
+      // 저장값이 없거나 매칭 실패 → alias 동명 디바이스 우선, 없으면 alias 자체(미해결로 표시).
+      const byAlias = devices.find(d => d.id === alias);
+      resolved[alias] = byAlias ? byAlias.id : (savedId || alias);
     }
     setDeviceMapEditing(resolved);
     setDeviceMapScenarioName(name);
@@ -1000,13 +1007,20 @@ export default function ScenarioPage() {
     const members = groups[gName] || [];
     if (members.length === 0) { message.warning(t('scenario.noScenariosInGroup')); return; }
 
-    // Collect device_maps from all member scenarios
+    // 멤버 시나리오들의 device_map 합집합 + steps 의 device_id 합집합을 alias 셋으로 사용.
+    // 저장된 device_map만 합치면 step에서 새로 도입된 alias가 모달에서 누락되어
+    // 사용자가 매핑 변경을 할 수 없게 된다.
     const mergedMap: Record<string, string> = {};
+    const aliases = new Set<string>();
     for (const m of members) {
       try {
         const res = await scenarioApi.get(m.name);
         const dmap = res.data.device_map || {};
         Object.assign(mergedMap, dmap);
+        for (const k of Object.keys(dmap)) aliases.add(k);
+        for (const s of (res.data.steps || [])) {
+          if (s && s.device_id) aliases.add(String(s.device_id));
+        }
       } catch { /* ignore */ }
     }
 
@@ -1020,14 +1034,17 @@ export default function ScenarioPage() {
       setConnectedDevices(devices);
     } catch { /* ignore */ }
     const resolved: Record<string, string> = {};
-    for (const [alias, savedId] of Object.entries(mergedMap)) {
-      const exact = devices.find(d => d.id === savedId);
-      if (exact) {
-        resolved[alias] = savedId;
-      } else {
-        const byAlias = devices.find(d => d.id === alias);
-        resolved[alias] = byAlias ? byAlias.id : savedId;
+    for (const alias of aliases) {
+      const savedId = mergedMap[alias];
+      if (savedId) {
+        const exact = devices.find(d => d.id === savedId);
+        if (exact) {
+          resolved[alias] = savedId;
+          continue;
+        }
       }
+      const byAlias = devices.find(d => d.id === alias);
+      resolved[alias] = byAlias ? byAlias.id : (savedId || alias);
     }
     setDeviceMapEditing(resolved);
     setDeviceMapScenarioName(`group:${gName}`);

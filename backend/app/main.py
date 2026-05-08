@@ -1208,7 +1208,9 @@ async def _run_play_group_job(data: dict):
         for entry in entries:
             try:
                 scen = await recording_service.load_scenario(entry["name"])
-                errs = await playback_service.preflight_check(scen)
+                # 그룹 일괄 매핑(device_map_override)을 각 멤버 시나리오의 preflight에도 적용.
+                # 누락 시 사용자가 보낸 매핑을 무시하고 alias 자체로 검사 → 매번 실패.
+                errs = await playback_service.preflight_check(scen, device_map_override)
                 for e in errs:
                     msg = f"[{entry['name']}] {e}"
                     if msg not in all_preflight_errors:
