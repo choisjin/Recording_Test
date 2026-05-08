@@ -3,8 +3,35 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import Optional
+
+
+def _env_blur_params() -> tuple[int, float]:
+    """IMG_COMPARE_BLUR_SIGMA 환경변수로 노이즈 흡수 강도 조정.
+
+    기본값 σ=0.5 (약한 노이즈 흡수). 같은 정지 화면을 두 번 캡처해도 컴포지터 sub-pixel
+    재렌더링/안티알리어싱 jitter로 SSIM이 0.92 정도 나오는 환경(MIB 등)에서 이 값을 1.0~1.5로
+    올리면 흡수율이 높아져 점수가 올라감 (실제 변화는 여전히 잡힘). 너무 크면 작은 UI 변화도
+    묻히므로 1.5 이상은 비추천. 커널 크기는 σ에 비례해 자동 조정.
+    """
+    try:
+        sigma = float(os.environ.get("IMG_COMPARE_BLUR_SIGMA", "") or 0.5)
+    except Exception:
+        sigma = 0.5
+    sigma = max(0.0, min(3.0, sigma))
+    if sigma <= 0.6:
+        ksize = 3
+    elif sigma <= 1.2:
+        ksize = 5
+    else:
+        ksize = 7
+    return ksize, sigma
+
+
+def _env_debug() -> bool:
+    return os.environ.get("IMG_COMPARE_DEBUG", "").strip() in ("1", "true", "yes")
 
 def _load_cv2_direct():
     """Fallback: load cv2.pyd directly, bypassing the package __init__.py.
@@ -78,14 +105,18 @@ class ImageCompareService:
         """SSIM 비교 전 sub-pixel 노이즈 정규화.
 
         같은 윈도우/화면이라도 캡처 시점·GPU 컴포지터·폰트 안티알리어싱·마우스 호버 등의
-        영향으로 픽셀값이 ±1~3 정도 흔들리는 경우가 흔하다. 가벼운 가우시안 블러
-        (3x3, sigma=0.5) 로 sub-pixel 노이즈를 흡수하면 SSIM 점수가 시각적 유사도와
-        더 잘 일치한다 (의미 있는 변화는 그대로 잡힘).
+        영향으로 픽셀값이 ±1~3 정도 흔들리는 경우가 흔하다. 가벼운 가우시안 블러로 sub-pixel
+        노이즈를 흡수하면 SSIM 점수가 시각적 유사도와 더 잘 일치한다 (의미 있는 변화는 그대로 잡힘).
+
+        강도는 IMG_COMPARE_BLUR_SIGMA 환경변수로 조정 가능 (기본 0.5).
         """
         if cv2 is None or gray is None:
             return gray
         try:
-            return cv2.GaussianBlur(gray, (3, 3), 0.5)
+            ksize, sigma = _env_blur_params()
+            if sigma <= 0:
+                return gray
+            return cv2.GaussianBlur(gray, (ksize, ksize), sigma)
         except Exception:
             return gray
 
@@ -179,10 +210,24 @@ class ImageCompareService:
         gray_exp = cv2.cvtColor(img_exp, cv2.COLOR_BGR2GRAY)
         gray_act = cv2.cvtColor(actual_crop, cv2.COLOR_BGR2GRAY)
         # Sub-pixel 노이즈 정규화 — 작은 크롭은 안티알리어싱 차이에 특히 민감.
-        gray_exp = self._normalize_for_ssim(gray_exp)
-        gray_act = self._normalize_for_ssim(gray_act)
-        score, diff = ssim(gray_exp, gray_act, full=True)
+        gray_exp_n = self._normalize_for_ssim(gray_exp)
+        gray_act_n = self._normalize_for_ssim(gray_act)
+        score, diff = ssim(gray_exp_n, gray_act_n, full=True)
         diff_uint8 = (diff * 255).astype("uint8")
+
+        # 진단: 같은 정지 화면을 캡처해도 컴포지터/애니메이션으로 점수가 안 올라갈 때
+        # raw 픽셀 차이를 함께 보면 원인이 sub-pixel 노이즈인지 큰 영역 변화인지 구분 가능.
+        if _env_debug():
+            try:
+                d = cv2.absdiff(gray_exp, gray_act)
+                logger.info(
+                    "image_compare ROI(%dx%d) score=%.4f raw_diff: max=%d mean=%.2f >5=%.1f%%",
+                    actual_crop.shape[1], actual_crop.shape[0], float(score),
+                    int(d.max()), float(d.mean()),
+                    100.0 * float((d > 5).sum()) / max(1, d.size),
+                )
+            except Exception:
+                pass
 
         return {
             "score": round(float(score), 4),
