@@ -343,7 +343,7 @@ export default function RecordPage() {
   const waitDurationRef = useRef(1000);
 
   // Per-step controls (for manual step input)
-  const [delayMs] = useState(1000);
+  const [delayMs] = useState(3000);
   const [compareModePopoverIndex, setCompareModePopoverIndex] = useState<number | null>(null);
 
   // ── WinControl (Windows 프로세스 임베드 컨트롤) ────────────────

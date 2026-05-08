@@ -153,7 +153,7 @@ class RecordingService:
         params: dict,
         device_id: str = "",
         description: str = "",
-        delay_after_ms: int = 1000,
+        delay_after_ms: int = 3000,
         roi: Optional[dict] = None,
         similarity_threshold: float = 0.95,
         skip_execute: bool = False,

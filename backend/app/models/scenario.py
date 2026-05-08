@@ -98,7 +98,7 @@ class Step(BaseModel):
     device_id: Optional[str] = None  # target device for this step
     screen_type: Optional[str] = None  # front_center|rear_left|rear_right|cluster (HKMC only)
     params: dict[str, Any]
-    delay_after_ms: int = 1000
+    delay_after_ms: int = 3000
     expected_image: Optional[str] = None
     description: str = ""
     roi: Optional[ROI] = None  # optional region for verification
