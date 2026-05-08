@@ -349,6 +349,19 @@ async def capture_expected_image(req: CaptureExpectedImageRequest):
             if not isap:
                 raise HTTPException(status_code=400, detail=f"iSAP device {req.device_id} not connected")
             png_bytes = await isap.async_screencap_bytes(screen_type=req.screen_type, fmt="png")
+        elif dev and dev.type == "icas_agent":
+            icas = dm.get_icas_service(req.device_id)
+            if not icas:
+                raise HTTPException(status_code=400, detail=f"ICAS device {req.device_id} not connected")
+            # ICAS 기본 화면은 HU. HKMC 호환으로 기본이 front_center로 들어올 수 있어 변환.
+            st = req.screen_type if req.screen_type in ("HU", "IID", "HUD") else "HU"
+            png_bytes = await icas.async_screencap_bytes(screen_type=st, fmt="png")
+        elif dev and dev.type == "mib_agent":
+            mib = dm.get_mib_service(req.device_id)
+            if not mib:
+                raise HTTPException(status_code=400, detail=f"MIB device {req.device_id} not connected")
+            st = req.screen_type if req.screen_type in ("HU", "IID", "HUD") else "HU"
+            png_bytes = await mib.async_screencap_bytes(screen_type=st, fmt="png")
         elif dev and dev.type == "vision_camera":
             cam = dm.get_vision_camera(req.device_id)
             if not cam or not cam.IsConnected():
