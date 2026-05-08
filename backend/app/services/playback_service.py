@@ -1002,7 +1002,27 @@ class PlaybackService:
                         if step.roi and act_img_ndarray is not None:
                             def _crop_actual_roi():
                                 r = step.roi
+                                ah, aw = act_img_ndarray.shape[:2]
+                                # 진단: actual 풀 사이즈 + step.roi + 실제 잘린 shape +
+                                # expected loaded shape 모두 한 줄로 노출. 좌표 misalignment 즉시 감지.
+                                eshape = exp_img_ndarray.shape if exp_img_ndarray is not None else None
+                                logger.info(
+                                    "single_crop align: actual_full=%dx%d step.roi=(x=%d y=%d w=%d h=%d) "
+                                    "expected_loaded_shape=%s",
+                                    aw, ah, r.x, r.y, r.width, r.height, eshape,
+                                )
+                                if r.x < 0 or r.y < 0 or r.x + r.width > aw or r.y + r.height > ah:
+                                    logger.warning(
+                                        "single_crop ROI OUT OF BOUNDS: actual=%dx%d roi=(%d,%d,%dx%d)",
+                                        aw, ah, r.x, r.y, r.width, r.height,
+                                    )
                                 cropped = act_img_ndarray[r.y:r.y + r.height, r.x:r.x + r.width]
+                                if exp_img_ndarray is not None and cropped.shape != exp_img_ndarray.shape:
+                                    logger.warning(
+                                        "single_crop SHAPE MISMATCH: cropped_actual=%s expected=%s "
+                                        "→ resize will distort comparison",
+                                        cropped.shape, exp_img_ndarray.shape,
+                                    )
                                 cropped_path = str(actual_dir / f"{file_prefix}_roi.png")
                                 safe_imwrite(cropped_path, cropped)
                                 return cropped_path, cropped

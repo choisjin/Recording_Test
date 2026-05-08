@@ -431,30 +431,24 @@ async def capture_expected_image(req: CaptureExpectedImageRequest):
         if img is None:
             raise HTTPException(status_code=400, detail="Cannot decode screenshot")
         x, y, w, h = int(req.crop["x"]), int(req.crop["y"]), int(req.crop["width"]), int(req.crop["height"])
+        # 크롭 좌표 진단 — 캡처 해상도와 요청 좌표 일치 여부 검증
+        ih, iw = img.shape[:2]
+        if x < 0 or y < 0 or x + w > iw or y + h > ih:
+            logger.warning(
+                "expected_image crop OUT OF BOUNDS: img=%dx%d crop=(%d,%d,%dx%d) → clamped",
+                iw, ih, x, y, w, h,
+            )
+        logger.info(
+            "expected_image save: full_capture=%dx%d crop_req=(%d,%d,%dx%d) result_shape=%s",
+            iw, ih, x, y, w, h, None,
+        )
         cropped = img[y:y + h, x:x + w]
+        logger.info(
+            "expected_image saved: cropped_shape=%s (expected %dx%d)",
+            cropped.shape, w, h,
+        )
         _, buf = cv2.imencode(".png", cropped)
         png_bytes = buf.tobytes()
-        # 진단: PNG 인코딩-디코딩 round-trip이 픽셀을 보존하는지 즉석 검증.
-        # 비교 시 100% 일치가 안 나오는 원인이 round-trip lossy 때문이라면 이 로그가 막아준다.
-        try:
-            import os as _os
-            if _os.environ.get("IMG_COMPARE_DEBUG", "").strip() in ("1", "true", "yes"):
-                rt = cv2.imdecode(np.frombuffer(png_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
-                if rt is None or rt.shape != cropped.shape:
-                    logger.warning(
-                        "expected_image PNG round-trip shape mismatch: src=%s rt=%s",
-                        cropped.shape, None if rt is None else rt.shape,
-                    )
-                else:
-                    rt_diff = cv2.absdiff(cropped, rt)
-                    rt_max = int(rt_diff.max())
-                    rt_mean = float(rt_diff.mean())
-                    logger.info(
-                        "expected_image PNG round-trip shape=%s identical=%s max_diff=%d mean_diff=%.4f",
-                        cropped.shape, bool((rt_diff == 0).all()), rt_max, rt_mean,
-                    )
-        except Exception as _e:
-            logger.debug("PNG round-trip sanity check failed: %r", _e)
 
     scenario_name = scenario.name
     save_dir = SCREENSHOTS_DIR / scenario_name

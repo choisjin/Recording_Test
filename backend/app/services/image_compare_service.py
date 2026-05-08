@@ -221,6 +221,15 @@ class ImageCompareService:
         rx2 = min(aw, rx + rw)
         ry2 = min(ah, ry + rh)
 
+        # 진단: actual 풀 사이즈 + 요청 roi + clamp 후 실제 잘린 영역 + expected shape.
+        # 좌표 misalignment 즉시 감지.
+        logger.info(
+            "_compare_at_roi align: actual_full=%dx%d roi_req=(x=%d y=%d w=%d h=%d) "
+            "clamped=(x=%d y=%d w=%d h=%d) expected_shape=%s",
+            aw, ah, int(roi.get("x", 0)), int(roi.get("y", 0)), rw, rh,
+            rx, ry, rx2 - rx, ry2 - ry, tuple(img_exp.shape),
+        )
+
         actual_crop = img_act[ry:ry2, rx:rx2]
         if actual_crop.size == 0:
             return {
@@ -228,6 +237,11 @@ class ImageCompareService:
                 "error": "ROI is outside actual image bounds",
                 "match_location": {"x": rx, "y": ry, "width": rw, "height": rh},
             }
+        if actual_crop.shape[:2] != img_exp.shape[:2]:
+            logger.warning(
+                "_compare_at_roi SHAPE MISMATCH: actual_crop=%s expected=%s → resize will distort",
+                actual_crop.shape, img_exp.shape,
+            )
 
         # expected 크롭 이미지와 크기가 다르면 actual_crop을 expected에 맞춤
         if img_exp.shape[:2] != actual_crop.shape[:2]:
