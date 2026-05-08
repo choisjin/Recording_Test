@@ -1034,11 +1034,17 @@ export default function RecordPage() {
   }, [wcConnected, leftPanelTab]);
 
   // 스텝의 expected/actual 캡처 시 사용할 디바이스 id.
-  // win_* 스텝은 WinControl 의 임베드된 윈도우 캡처를 사용해야 하므로 강제 라우팅.
+  // - win_* 스텝: WinControl 의 임베드된 윈도우 캡처 강제 (액션 자체가 윈도우 대상).
+  // - wait 스텝: device_id=null 로 만들어지므로 사용자가 현재 보고 있는 패널 기준으로 결정.
+  //   윈도우 컨트롤 탭이 활성이면 WinControl, 아니면 screenshotDeviceId.
+  //   (그렇지 않으면 윈도우 화면을 보면서 단일크롭해도 ADB 화면이 저장되는 문제 발생.)
   const captureDeviceIdForStep = useCallback((stepLike: { type?: string } | undefined): string => {
     if (stepLike?.type && stepLike.type.startsWith('win_')) return 'WinControl';
+    if (stepLike?.type === 'wait' && wcConnected && leftPanelTab === 'wincontrol') {
+      return 'WinControl';
+    }
     return screenshotDeviceId;
-  }, [screenshotDeviceId]);
+  }, [screenshotDeviceId, wcConnected, leftPanelTab]);
 
   const wcRefreshProcesses = useCallback(async () => {
     if (!wcConnected) return;
