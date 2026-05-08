@@ -1127,6 +1127,26 @@ class MIBAgentService:
         except ImportError as e:
             raise RuntimeError("scp module required: pip install scp") from e
 
+        # 진단/완화 토글 (환경변수)
+        # - MIB_DEBUG_TIMING=1 : dump/wait/scp/compose 단계별 소요시간 로깅
+        # - MIB_DUMP_TIMEOUT_S : exec_command stdout 폴링 타임아웃(초). 기본 8.
+        #   터치 직후 weston 리페인트와 dump 경합으로 hang 시 stall 길이를 제한.
+        # - MIB_CROP_TO_REGISTERED=1 : 캡처 PNG를 사용자 등록 해상도로 top-left crop,
+        #   _maybe_autoupdate_resolution 비활성화. surface 버퍼 > visible 인 환경
+        #   (예: 13.1" 1920x1080 등록인데 dump가 1920x1280로 떨어지는 케이스)에서
+        #   하단 검정 padding 영역을 제거.
+        debug_timing = os.environ.get("MIB_DEBUG_TIMING", "").strip() in ("1", "true", "yes")
+        try:
+            dump_timeout = float(os.environ.get("MIB_DUMP_TIMEOUT_S", "8") or 8)
+        except Exception:
+            dump_timeout = 8.0
+        crop_to_registered = os.environ.get("MIB_CROP_TO_REGISTERED", "").strip() in ("1", "true", "yes")
+        registered_w, registered_h = self._res_x, self._res_y
+
+        def _phase_log(label: str, t0: float) -> None:
+            if debug_timing:
+                logger.info("MIB cap.%s: %.0fms", label, (time.monotonic() - t0) * 1000)
+
         tmp_dir = tempfile.mkdtemp(prefix="mib_cap_")
         try:
             # 공유 SSH 세션에서 dump + SCP pull 을 일괄 수행 (매 프레임마다 재인증 방지).
@@ -1155,16 +1175,22 @@ class MIBAgentService:
                     + " ; ".join(dump_parts)
                     + " ; sync"
                 )
-                stdin, stdout, stderr = ssh.exec_command(dump_cmd, timeout=20)
+                t_dump = time.monotonic()
+                stdin, stdout, stderr = ssh.exec_command(dump_cmd, timeout=dump_timeout)
                 try:
                     stdin.close()
                 except Exception:
                     pass
                 exit_status = -1
                 err_text = ""
+                dump_deadline = time.monotonic() + dump_timeout
                 try:
-                    stdout.channel.settimeout(20)
+                    stdout.channel.settimeout(dump_timeout)
                     while not stdout.channel.exit_status_ready():
+                        if time.monotonic() > dump_deadline:
+                            # exec_command 자체의 timeout으로 안 끊기는 환경 대비 안전망.
+                            logger.warning("MIB HU dump timeout %.1fs — abandoning cycle", dump_timeout)
+                            break
                         if stdout.channel.recv_stderr_ready():
                             try:
                                 err_text += stdout.channel.recv_stderr(4096).decode("utf-8", errors="replace")
@@ -1187,15 +1213,27 @@ class MIBAgentService:
                         except Exception:
                             pass
 
-                if exit_status != 0:
+                dump_failed = (exit_status != 0)
+                if dump_failed:
                     snippet = err_text.strip().replace("\r", " ").replace("\n", " | ")[:200]
-                    logger.warning("MIB HU dump exit=%d stderr=%r", exit_status, snippet)
+                    logger.warning("MIB HU dump exit=%d stderr=%r — skipping SCP, will reset SSH",
+                                   exit_status, snippet)
+                _phase_log("dump", t_dump)
+
+                # dump 자체가 실패/타임아웃이면 SCP 단계는 skip — 죽은 dump 뒤의 SCP 시도가
+                # 추가 stall을 누적시키고, partial 파일을 가져와 _screen_fail_count를 잘못
+                # 증가시키는 부작용 방지. SSH 채널이 wedged 상태일 가능성이 높아 호출자가 리셋하도록 신호.
+                if dump_failed:
+                    raise RuntimeError(f"MIB HU dump failed (exit={exit_status})")
 
                 # LayerManagerControl이 비동기 처리하는 경우 dump_cmd 종료 후에도 파일 쓰기가 진행 중일 수 있음.
                 # SCP 전 짧은 wait + 디바이스 측 파일 크기 폴링으로 안정화 확인 (최대 1초).
+                t_wait = time.monotonic()
                 self._wait_remote_files_stable(ssh, [(idx, f"/tmp/{fname}") for idx, fname in file_map])
+                _phase_log("wait_stable", t_wait)
 
                 files: list[str] = []
+                t_scp = time.monotonic()
                 try:
                     with SCPClient(ssh.get_transport()) as scp:
                         for idx, fname in file_map:
@@ -1234,6 +1272,7 @@ class MIBAgentService:
                         "MIB HU SCPClient failed: type=%s repr=%r",
                         type(ee).__name__, ee, exc_info=True,
                     )
+                _phase_log("scp", t_scp)
                 return files
 
             local_files: list[str] = []
@@ -1263,6 +1302,7 @@ class MIBAgentService:
 
             # _validate_png_file이 1차로 거르지만, IDAT 내부 손상은 .convert에서야 드러남.
             # 손상된 파일은 무시하고 정상 파일만 사용. 모두 실패 시 RuntimeError로 외부 재시도.
+            t_compose = time.monotonic()
             images: list[Image.Image] = []
             corrupt_paths: list[tuple[str, int, str]] = []
             for p in local_files:
@@ -1284,12 +1324,21 @@ class MIBAgentService:
                 if over.size != base.size:
                     over = over.resize(base.size)
                 base = Image.alpha_composite(base, over)
-            # PNG 실제 크기 == 디바이스 실제 화면 해상도. 사용자가 잘못 입력한 경우 자동 보정.
-            # _x_mult/_y_mult가 어긋나면 터치 좌표 인코딩이 깨지므로 캡처가 들어올 때마다 점검.
-            try:
-                self._maybe_autoupdate_resolution(int(base.size[0]), int(base.size[1]))
-            except Exception as e:
-                logger.debug("MIB resolution auto-correct skipped: %s", e)
+            # 등록 해상도 crop 모드: surface 버퍼가 visible content 보다 큰 디바이스(13.1" 등)
+            # 에서 하단/우측에 들어가는 미사용 padding 영역을 제거. 등록 해상도 보다 작으면 그대로.
+            if crop_to_registered and registered_w > 0 and registered_h > 0:
+                cw = min(int(base.size[0]), int(registered_w))
+                ch = min(int(base.size[1]), int(registered_h))
+                if (cw, ch) != base.size:
+                    base = base.crop((0, 0, cw, ch))
+            else:
+                # PNG 실제 크기 == 디바이스 실제 화면 해상도. 사용자가 잘못 입력한 경우 자동 보정.
+                # _x_mult/_y_mult가 어긋나면 터치 좌표 인코딩이 깨지므로 캡처가 들어올 때마다 점검.
+                try:
+                    self._maybe_autoupdate_resolution(int(base.size[0]), int(base.size[1]))
+                except Exception as e:
+                    logger.debug("MIB resolution auto-correct skipped: %s", e)
+            _phase_log("compose", t_compose)
             return _encode_image(base, fmt)
         finally:
             _rm_tree(tmp_dir)
