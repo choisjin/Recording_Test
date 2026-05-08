@@ -691,6 +691,7 @@ export default function RecordPage() {
   // 모듈이 매칭된 디바이스 목록 (dropdown의 옵션)
   // - 보조 디바이스: info.module이 설정된 것
   // - 주 디바이스(ADB): 가상 module="Android"로 노출 → Android 모듈의 함수 사용 가능
+  // - 주 디바이스(HKMC Agent): 가상 module="HKMC6th"로 노출 → HKMC6thService 함수 사용 가능
   // 연결된 디바이스만 표시 (disconnected/offline/error/reconnecting 등은 제외)
   const isDeviceConnected = (d: { status?: string }) => d.status === 'connected' || d.status === 'device';
   const moduleDevices = [
@@ -698,6 +699,9 @@ export default function RecordPage() {
     ...primaryDevices
       .filter(d => d.type === 'adb' && isDeviceConnected(d))
       .map(d => ({ ...d, info: { ...d.info, module: 'Android' } })),
+    ...primaryDevices
+      .filter(d => d.type === 'hkmc_agent' && isDeviceConnected(d))
+      .map(d => ({ ...d, info: { ...d.info, module: 'HKMC6th' } })),
   ];
 
   // 선택된 디바이스에서 모듈 이름 derive

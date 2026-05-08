@@ -1288,5 +1288,115 @@
         "params": {}
       }
     }
+  },
+  "HKMC6th": {
+    "_description": "HKMC 6세대 IVI 디바이스 — TCP 소켓 프로토콜로 화면 캡처/터치/스와이프/HW 키 제어. 연결된 hkmc_agent 디바이스의 HKMC6thService 함수를 그대로 호출합니다.",
+    "functions": {
+      "tap": {
+        "description": "지정 좌표를 탭(터치)합니다.",
+        "params": {
+          "x": "X 좌표 (px)",
+          "y": "Y 좌표 (px)",
+          "screen_type": "화면 종류. front_center / rear_left / rear_right / cluster"
+        }
+      },
+      "repeat_tap": {
+        "description": "같은 좌표를 N회 연속 탭합니다(빠른 더블/멀티 탭용).",
+        "params": {
+          "x": "X 좌표 (px)",
+          "y": "Y 좌표 (px)",
+          "count": "탭 횟수 (기본 5)",
+          "interval_ms": "탭 간격 ms (기본 100)",
+          "screen_type": "화면 종류. front_center / rear_left / rear_right / cluster"
+        }
+      },
+      "long_press": {
+        "description": "지정 좌표를 누르고 duration_ms만큼 유지한 뒤 떼어냅니다.",
+        "params": {
+          "x": "X 좌표 (px)",
+          "y": "Y 좌표 (px)",
+          "duration_ms": "유지 시간 ms (기본 3000)",
+          "screen_type": "화면 종류. front_center / rear_left / rear_right / cluster"
+        }
+      },
+      "swipe": {
+        "description": "(x1,y1)에서 (x2,y2)로 드래그(스와이프)합니다.",
+        "params": {
+          "x1": "시작 X",
+          "y1": "시작 Y",
+          "x2": "끝 X",
+          "y2": "끝 Y",
+          "screen_type": "화면 종류. front_center / rear_left / rear_right / cluster"
+        }
+      },
+      "send_key": {
+        "description": "HW 키 이벤트(6세대 keyExt6th 패킷)를 보냅니다. cmd/sub_cmd/key_data 값은 HKMC 스펙 참조.",
+        "params": {
+          "cmd": "키 카테고리 cmd 값 (예: CMD_MKBD/CCP/RRC/SWC/MIRROR)",
+          "sub_cmd": "서브 cmd (SHORT_KEY/LONG_KEY/PRESS_KEY/RELEASE_KEY/DIAL_ACTION)",
+          "key_data": "키 코드(int)",
+          "monitor": "타겟 모니터 (0x00=NONE, 0x01=LEFT, 0x02=RIGHT)",
+          "direction": "다이얼/노브 방향 바이트(있으면)"
+        }
+      },
+      "send_key_by_name": {
+        "description": "키 이름으로 HW 키 이벤트를 보냅니다(스펙 default + 디바이스 오버라이드 적용).",
+        "params": {
+          "key_name": "키 이름 (HKMC_KEYS 사전 키)",
+          "sub_cmd": "서브 cmd (기본 SHORT_KEY)",
+          "screen_type": "타겟 화면",
+          "direction": "다이얼/노브 방향 바이트(있으면)",
+          "key_source": "키 소스(있는 경우)"
+        }
+      },
+      "screencap": {
+        "description": "현재 화면을 캡처해 파일로 저장합니다.",
+        "params": {
+          "output_path": "저장 경로(PNG/BMP)",
+          "screen_type": "화면 종류",
+          "left": "ROI 좌(생략 시 0)",
+          "top": "ROI 상(생략 시 0)",
+          "right": "ROI 우(생략 시 화면 끝)",
+          "bottom": "ROI 하(생략 시 화면 끝)",
+          "format": "저장 포맷 (png/bmp)"
+        }
+      },
+      "screencap_bytes": {
+        "description": "현재 화면을 캡처해 바이트(BMP/PNG)를 반환합니다(파일 저장 안 함).",
+        "params": {
+          "screen_type": "화면 종류. front_center / rear_left / rear_right / cluster",
+          "fmt": "포맷 (png/bmp)",
+          "timeout": "응답 대기 timeout 초"
+        }
+      },
+      "get_screen_size": {
+        "description": "지정 화면의 (width, height) 크기를 반환합니다.",
+        "params": {
+          "screen_type": "화면 종류. front_center / rear_left / rear_right / cluster"
+        }
+      },
+      "ethernet_signal": {
+        "description": "이더넷 시그널(payload + signal_id)을 전송합니다.",
+        "params": {
+          "n_signal_payload": "시그널 payload 값",
+          "n_signal_id": "시그널 ID"
+        }
+      },
+      "execute_shell": {
+        "description": "쉘 명령 패킷을 보냅니다(저수준 — cmd/sub_cmd/resp 직접 지정).",
+        "params": {
+          "cmd": "패킷 cmd",
+          "sub_cmd": "서브 cmd",
+          "resp": "응답 코드",
+          "str_data": "전송할 문자열"
+        }
+      },
+      "send_shell_cmd": {
+        "description": "단순 shell 문자열 명령을 디바이스에 전달합니다.",
+        "params": {
+          "str_data": "전송할 명령 문자열"
+        }
+      }
+    }
   }
 }

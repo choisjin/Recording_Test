@@ -799,7 +799,19 @@ async def device_input(req: InputRequest):
             # Pass device connection info as constructor kwargs
             ctor_kwargs = _build_constructor_kwargs(dev) if dev else None
             shared_conn = dm.get_serial_conn(req.device_id) if dev else None
-            response = await execute_module_function(module_name, func_name, func_args, ctor_kwargs, shared_conn)
+            # HKMC6th: 디바이스별 HKMC6thService 인스턴스 주입
+            hkmc_svc = None
+            if module_name == "HKMC6th":
+                hkmc_svc = dm.get_hkmc_service(req.device_id) if dev else None
+                if hkmc_svc is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"HKMC6th requires a connected hkmc_agent device (id={req.device_id})",
+                    )
+            response = await execute_module_function(
+                module_name, func_name, func_args, ctor_kwargs, shared_conn,
+                hkmc_service=hkmc_svc,
+            )
             return {"result": "ok", "response": response}
 
         if req.action == "serial_command":

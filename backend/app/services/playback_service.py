@@ -1845,13 +1845,22 @@ class PlaybackService:
             # 모듈(Android/CMD 제외)이면 현재 시점에 유일하게 해당 모듈이 붙어있는
             # auxiliary 디바이스가 있는지 찾아, 있으면 그것으로 강제 교체한다.
             if module_name and module_name not in ("Android", "CMD"):
-                candidates = [
-                    d for d in self.dm.list_auxiliary()
-                    if (d.info or {}).get("module") == module_name
-                ]
-                # dev가 이미 올바른 모듈 디바이스면 그대로 사용
+                # HKMC6th는 hkmc_agent 타입 디바이스(primary)에서 찾는다.
+                # 그 외 모듈은 auxiliary 디바이스의 info.module로 매칭.
                 dev_module = (dev.info or {}).get("module") if dev else None
-                if dev_module != module_name:
+                if module_name == "HKMC6th":
+                    candidates = [
+                        d for d in self.dm.list_all() if d.type == "hkmc_agent"
+                    ]
+                    is_correct_dev = bool(dev and dev.type == "hkmc_agent")
+                else:
+                    candidates = [
+                        d for d in self.dm.list_auxiliary()
+                        if (d.info or {}).get("module") == module_name
+                    ]
+                    is_correct_dev = (dev_module == module_name)
+                # dev가 이미 올바른 모듈 디바이스면 그대로 사용
+                if not is_correct_dev:
                     if len(candidates) == 1:
                         chosen = candidates[0]
                         logger.info(
@@ -1879,6 +1888,7 @@ class PlaybackService:
                             "MODULE_COMMAND: module=%s but no auxiliary device registered for it; falling back to step device %s",
                             module_name, real_id,
                         )
+            hkmc_svc = None
             if dev:
                 ctor_kwargs = _build_ctor_kwargs(dev)
                 shared_conn = self.dm.get_serial_conn(real_id)
@@ -1894,12 +1904,21 @@ class PlaybackService:
                 # ADB 디바이스: Android 모듈의 Send_adb_command가 사용
                 if dev.type == "adb":
                     adb_serial = dev.address
-            logger.info("Module exec: %s.%s device=%s ctor=%s shared_conn=%s ssh=%s adb=%s",
+                # HKMC6th 모듈: device_manager가 보유한 디바이스별 HKMC6thService 인스턴스 주입
+                if module_name == "HKMC6th" and dev.type == "hkmc_agent":
+                    hkmc_svc = self.dm.get_hkmc_service(real_id)
+                    if hkmc_svc is None:
+                        raise RuntimeError(
+                            f"HKMC6th step requires connected hkmc_agent device, but {real_id} has no service"
+                        )
+            logger.info("Module exec: %s.%s device=%s ctor=%s shared_conn=%s ssh=%s adb=%s hkmc=%s",
                         module_name, func_name, real_id, ctor_kwargs,
-                        shared_conn is not None, ssh_credentials is not None, adb_serial)
+                        shared_conn is not None, ssh_credentials is not None, adb_serial,
+                        hkmc_svc is not None)
             result = await execute_module_function(
                 module_name, func_name, func_args, ctor_kwargs, shared_conn,
                 ssh_credentials, adb_serial,
+                hkmc_service=hkmc_svc,
             )
             self._last_module_result = result
         elif step.type == StepType.SERIAL_COMMAND:

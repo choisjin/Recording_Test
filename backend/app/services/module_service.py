@@ -233,6 +233,8 @@ def list_available_modules() -> list[dict]:
          "connect_fields": []},
         {"name": "Android", "label": "Android", "connect_type": "none",
          "connect_fields": []},
+        {"name": "HKMC6th", "label": "HKMC6th", "connect_type": "none",
+         "connect_fields": []},
         {"name": "VisionCamera", "label": "VisionCamera", "connect_type": "vision_camera",
          "connect_fields": [
              {"name": "mac", "label": "MAC Address", "type": "text", "default": ""},
@@ -244,6 +246,11 @@ def list_available_modules() -> list[dict]:
     ]
     available = []
     for m in modules:
+        # HKMC6th는 ReplayKit 내장 서비스(HKMC6thService) 기반 가상 모듈
+        if m["name"] == "HKMC6th":
+            m["_source"] = "internal"
+            available.append(m)
+            continue
         try:
             __import__(f"lge.auto.{m['name']}", fromlist=[m["name"]])
             m["_source"] = "lge.auto"
@@ -338,6 +345,50 @@ def get_module_functions(module_name: str) -> list[dict]:
         cpm, cgm, cfuncs = cached
         if cpm == plugin_mtime and cgm == guides_mtime:
             return cfuncs
+
+    # HKMC6th: ReplayKit 내장 HKMC6thService를 가상 모듈로 노출.
+    # 각 디바이스(hkmc_agent)별 인스턴스를 device_manager가 관리하므로
+    # 클래스 자체에서 introspect 한다(_get_instance를 거치지 않음).
+    if module_name == "HKMC6th":
+        from .hkmc6th_service import HKMC6thService
+        # 모듈 스텝에서 노출하지 않을 메서드 (연결 lifecycle, 비동기 wrapper, 키 오버라이드 등)
+        excluded = {
+            "connect", "disconnect", "is_connected",
+            "set_key_overrides", "get_key_overrides", "resolve_key", "get_info",
+        }
+        functions = []
+        for name in sorted(dir(HKMC6thService)):
+            if name.startswith("_") or name.startswith("async_") or name in excluded:
+                continue
+            attr = getattr(HKMC6thService, name, None)
+            if not callable(attr):
+                continue
+            try:
+                sig = inspect.signature(attr)
+            except (ValueError, TypeError):
+                continue
+            params = []
+            for pname, p in sig.parameters.items():
+                if pname == "self":
+                    continue
+                param_info: dict[str, Any] = {"name": pname, "required": True}
+                if p.default is not inspect.Parameter.empty:
+                    param_info["required"] = False
+                    param_info["default"] = repr(p.default)
+                params.append(param_info)
+            functions.append({"name": name, "params": params})
+        # 가이드 병합
+        guides = _load_guides()
+        mod_guide = guides.get(module_name, {})
+        func_guides = mod_guide.get("functions", {})
+        for fn in functions:
+            fg = func_guides.get(fn["name"], {})
+            fn["description"] = fg.get("description", "")
+            param_guides = fg.get("params", {})
+            for p in fn["params"]:
+                p["description"] = param_guides.get(p["name"], "")
+        _module_functions_cache[module_name] = (plugin_mtime, guides_mtime, functions)
+        return functions
 
     # Android: 네이티브 lge.auto.Android 함수들은 노출하지 않고
     # ReplayKit 자체 ADBService 기반의 Send_adb_command 단일 가상 함수만 제공
@@ -618,8 +669,45 @@ def _get_instance(module_name: str, constructor_kwargs: Optional[dict] = None,
 def _execute_sync(module_name: str, function_name: str, args: dict,
                   constructor_kwargs: Optional[dict] = None,
                   shared_serial_conn=None, ssh_credentials: Optional[dict] = None,
-                  adb_serial: Optional[str] = None) -> Any:
+                  adb_serial: Optional[str] = None,
+                  hkmc_service: Any = None) -> Any:
     """Execute a module function synchronously."""
+    # HKMC6th: device_manager가 디바이스별로 관리하는 HKMC6thService 인스턴스에 직접 호출
+    if module_name == "HKMC6th":
+        if hkmc_service is None:
+            raise RuntimeError(
+                "HKMC6th module step requires an hkmc_agent device "
+                "(no HKMC6thService instance bound to this step)"
+            )
+        func = getattr(hkmc_service, function_name, None)
+        if func is None or not callable(func):
+            raise ValueError(f"Function '{function_name}' not found in HKMC6thService")
+        sig = inspect.signature(func)
+        call_args = {}
+        type_map = {"int": int, "float": float, "bool": bool, "str": str}
+        for pname, p in sig.parameters.items():
+            if pname == "self":
+                continue
+            if pname in args:
+                val = args[pname]
+                ann = p.annotation
+                if ann is not inspect.Parameter.empty:
+                    if isinstance(ann, str):
+                        ann = type_map.get(ann, ann)
+                    if ann in (int, float, bool, str):
+                        try:
+                            if ann is bool and isinstance(val, str):
+                                val = val.lower() not in ("0", "false", "no", "")
+                            else:
+                                val = ann(val)
+                        except (ValueError, TypeError):
+                            pass
+                call_args[pname] = val
+            elif p.default is inspect.Parameter.empty:
+                raise ValueError(f"Missing required parameter: {pname}")
+        result = func(**call_args)
+        return result
+
     # Android.Send_adb_command — ReplayKit 자체 ADBService로 라우팅 (가상 함수)
     if module_name == "Android" and function_name == "Send_adb_command":
         from .adb_service import ADBService
@@ -898,6 +986,7 @@ async def execute_module_function(
     shared_serial_conn=None, ssh_credentials: Optional[dict] = None,
     adb_serial: Optional[str] = None,
     timeout_s: Optional[float] = None,
+    hkmc_service: Any = None,
 ) -> str:
     """Execute a module function asynchronously (runs in thread pool).
 
@@ -914,7 +1003,7 @@ async def execute_module_function(
             None,
             functools.partial(_execute_sync, module_name, function_name, args,
                               constructor_kwargs, shared_serial_conn, ssh_credentials,
-                              adb_serial),
+                              adb_serial, hkmc_service),
         )
         result = await asyncio.wait_for(future, timeout=effective_timeout)
         return str(result) if result is not None else "OK"
