@@ -1649,6 +1649,31 @@ class PlaybackService:
         if step.type == StepType.ALL_RANDOM and not step.expected_image:
             return None
 
+        # WIN_* 스텝은 항상 WinControl에서 캡처 — step.device_id가 ADB 기기를 가리키더라도
+        # (녹화 시 활성 primary가 ADB였으면 그렇게 저장됨) 액션은 WinControl에서 실행되므로
+        # 검증 캡처도 같은 윈도우에서 떠야 함. 그렇지 않으면 ADB 화면이 actual로 잡혀 비교가 무의미.
+        if step.type in (StepType.WIN_TAP, StepType.WIN_DOUBLE_CLICK, StepType.WIN_LONG_PRESS,
+                          StepType.WIN_SWIPE, StepType.WIN_INPUT_TEXT, StepType.WIN_KEY):
+            wc_dev = None
+            for d in self.dm.list_all():
+                if d.type == "wincontrol":
+                    wc_dev = d
+                    break
+            if wc_dev is not None:
+                logger.info(
+                    "[SCREENSHOT RESOLVE] step=%s type=%s → forcing wincontrol device id=%s "
+                    "(ignoring step.device_id=%s screenshot_device_id=%s)",
+                    step.id, step.type.value, wc_dev.id,
+                    step.device_id, step.screenshot_device_id,
+                )
+                return {"type": "wincontrol", "id": wc_dev.id}
+            # WinControl 디바이스가 등록되지 않은 환경 — 명확히 에러 처리.
+            logger.error(
+                "[SCREENSHOT RESOLVE] step=%s type=%s requires WinControl but no wincontrol device registered",
+                step.id, step.type.value,
+            )
+            return None
+
         # screenshot_device_id가 저장되어 있으면 해당 디바이스 우선 사용
         # device_map을 통해 실제 디바이스 ID로 매핑. 매핑 후 못 찾으면 원본 id 로도 재시도.
         if step.screenshot_device_id:
