@@ -352,9 +352,15 @@ def get_module_functions(module_name: str) -> list[dict]:
     if module_name == "HKMC6th":
         from .hkmc6th_service import HKMC6thService
         # 모듈 스텝에서 노출하지 않을 메서드 (연결 lifecycle, 비동기 wrapper, 키 오버라이드 등)
+        # tap/swipe/long_press/repeat_tap는 전용 HKMC_* 스텝 타입으로 이미 제공되므로 제외.
+        # send_key/send_key_by_name은 hkmc_key 스텝 타입으로 이미 제공되므로 제외.
+        # screencap_bytes/get_screen_size는 모듈 스텝에서 활용도가 낮아 제외.
         excluded = {
             "connect", "disconnect", "is_connected",
             "set_key_overrides", "get_key_overrides", "resolve_key", "get_info",
+            "tap", "swipe", "long_press", "repeat_tap",
+            "send_key", "send_key_by_name",
+            "screencap_bytes", "get_screen_size",
         }
         functions = []
         for name in sorted(dir(HKMC6thService)):
