@@ -555,6 +555,8 @@ export default function RecordPage() {
   }>({ startX: 0, startY: 0, startTime: 0, active: false });
 
   // blob URL → data URL 변환 (HKMC WebSocket blob URL은 다음 프레임에 revoke 됨)
+  // 모달용 스냅샷은 PNG 무손실로 받아야 함 — 이 이미지가 expected_image로 그대로 저장되는 경우(saveExpectedImage)
+  // JPEG 양자화 노이즈가 박혀서 재생 시 actual(PNG) 과 비교 시 SSIM 5~13% 손실.
   const snapshotScreenshot = useCallback(async (overrideDeviceId?: string): Promise<string> => {
     // 백엔드에서 원본 해상도 스크린샷 직접 가져오기 (모달용)
     // win_* 스텝 등 특정 디바이스를 강제하고 싶으면 overrideDeviceId 전달.
@@ -564,9 +566,9 @@ export default function RecordPage() {
         const dev = primaryDevices.find(d => d.id === targetId)
           || auxiliaryDevices.find(d => d.id === targetId);
         const needsScreenType = (dev?.type === 'hkmc_agent' || dev?.type === 'isap_agent' || dev?.type === 'icas_agent' || dev?.type === 'mib_agent') || (dev?.type === 'adb' && (dev.info?.displays?.length ?? 0) > 1);
-        const res = await deviceApi.screenshot(targetId, needsScreenType ? screenType : undefined);
+        const res = await deviceApi.screenshot(targetId, needsScreenType ? screenType : undefined, 'png');
         if (res.data.image) {
-          const fmt = res.data.format || 'jpeg';
+          const fmt = res.data.format || 'png';
           return `data:image/${fmt};base64,${res.data.image}`;
         }
       } catch { /* 실패 시 아래 폴백 */ }
