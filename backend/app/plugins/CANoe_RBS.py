@@ -210,16 +210,27 @@ class CANoe_RBS:
             return [None, None, retmsg]
 
     def GetSysVar(self, namespace_name, sys_var_name, return_symbolic_name=False, islog=True):
+        full_name = f"{namespace_name}::{sys_var_name}"
+        if self.canoe_inst is None:
+            raise Exception(
+                f"CANoe instance not initialized — call Init_CANoe_Plugin first (var={full_name})"
+            )
         try:
-            ret_value = self.canoe_inst.get_system_variable_value(namespace_name + "::" + sys_var_name,
-                                                                  return_symbolic_name)
-            retmsg = "system variable({}) value = ({})".format(namespace_name + '::' + sys_var_name, ret_value)
+            ret_value = self.canoe_inst.get_system_variable_value(full_name, return_symbolic_name)
+            retmsg = f"system variable({full_name}) value = ({ret_value})"
             if islog:
                 print(retmsg)
             if ret_value is None:
-                raise Exception('Unable to get value')
+                # py_canoe는 (1) measurement 미시작, (2) 변수 미존재, (3) 내부 COM 에러 catch
+                # 등 여러 경우에 None을 리턴함. 사용자가 원인을 파악할 수 있도록 힌트 포함.
+                raise Exception(
+                    f"py_canoe returned None for system variable '{full_name}' — "
+                    f"check (1) Start() measurement was called, "
+                    f"(2) namespace/name spelled exactly (case-sensitive), "
+                    f"(3) cfg fully loaded"
+                )
             return [True, ret_value, retmsg]
-        except Exception as e:
+        except Exception:
             raise
 
     def CompareValue(self, get_value, expect_value):
@@ -464,15 +475,27 @@ class CANoe_RBS:
             return [None, None, retmsg]
 
     def GetEnvVar(self, env_var_name, islog=True):
+        if self.canoe_inst is None:
+            raise Exception(
+                f"CANoe instance not initialized — call Init_CANoe_Plugin first (var={env_var_name})"
+            )
         try:
             ret_value = self.canoe_inst.get_environment_variable_value(env_var_name)
-            retmsg = "environment variable({}) value = ({})".format(env_var_name, ret_value)
+            retmsg = f"environment variable({env_var_name}) value = ({ret_value})"
             if islog:
                 print(retmsg)
             if ret_value is None:
-                raise Exception('Unable to get value')
+                # 시스템 변수와 혼동했을 가능성 — Environment Variables 패널이 아니라
+                # System Variables 패널에 있는 변수면 GetSysVar(namespace, name)을 써야 함.
+                raise Exception(
+                    f"py_canoe returned None for environment variable '{env_var_name}' — "
+                    f"check (1) Start() measurement was called, "
+                    f"(2) variable exists in Environment Variables panel "
+                    f"(if it's under System Variables namespace, use GetSysVar instead), "
+                    f"(3) name spelled exactly (case-sensitive)"
+                )
             return [True, ret_value, retmsg]
-        except Exception as e:
+        except Exception:
             raise
 
     def CheckEnvVar(self, env_var_name, expect_value):
