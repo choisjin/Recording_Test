@@ -782,22 +782,17 @@ class WinControlService:
         # 사용자 윈도우 크기가 변경됨 — 검증 중에만 발생하는 의도된 부작용.
         if target_width > 0 and target_height > 0:
             self._resize_hwnd_client(hwnd, int(target_width), int(target_height))
-        # 임베드 상태 무관하게 직접 캡처 (capture_hwnd_bgr 는 self._hwnd 사용 안 함).
-        bgr = self.capture_hwnd_bgr(hwnd)
-        if bgr is None:
-            raise RuntimeError("capture_window_by_match: capture_hwnd_bgr returned None")
-        # BGR ndarray → PIL → PNG/JPEG bytes
-        try:
-            from PIL import Image as _PILImage  # 모듈 import 가 lazy 한 환경 대비
-            rgb = bgr[:, :, ::-1]
-            pil_img = _PILImage.fromarray(rgb)
-        except Exception as e:
-            raise RuntimeError(f"capture_window_by_match: PIL encode failed: {e}")
+        # 모달 미리보기(capture_window) 와 동일한 dispatch 로 캡처 — 풀 윈도우(타이틀바 포함).
+        # capture_hwnd_bgr 는 항상 PW_CLIENTONLY 라 일반 Win32 앱에서 타이틀바가 빠져 좌표가 어긋남.
+        is_uwp, content_hwnd = self._detect_uwp(hwnd)
+        img = self._capture_window_image_for(hwnd, is_uwp, content_hwnd)
+        if img is None:
+            raise RuntimeError("capture_window_by_match: capture failed (BitBlt + PrintWindow)")
         buf = io.BytesIO()
         if (fmt or "png").lower() == "jpeg":
-            pil_img.convert("RGB").save(buf, format="JPEG", quality=85)
+            img.convert("RGB").save(buf, format="JPEG", quality=85)
         else:
-            pil_img.save(buf, format="PNG")
+            img.save(buf, format="PNG")
         return buf.getvalue()
 
     def resize_client(self, target_w: int, target_h: int) -> tuple[int, int]:
@@ -1047,6 +1042,65 @@ class WinControlService:
         except Exception:
             return False
 
+    @contextlib.contextmanager
+    def _hwnd_dpi_ctx(self, hwnd: int):
+        """임의 hwnd 의 DPI awareness 로 스레드 컨텍스트를 일시 전환.
+
+        _target_dpi_ctx 와 동일하지만 self._hwnd 대신 인자로 받은 hwnd 사용.
+        capture_window_by_match 처럼 attached 와 무관하게 다른 hwnd 를 처리할 때 사용.
+        """
+        if not _WIN32_AVAILABLE or not hwnd:
+            yield
+            return
+        user32 = windll.user32
+        prev_ctx = None
+        target_ctx = None
+        try:
+            target_ctx = user32.GetWindowDpiAwarenessContext(hwnd)
+        except Exception:
+            target_ctx = None
+        if target_ctx:
+            try:
+                prev_ctx = user32.SetThreadDpiAwarenessContext(target_ctx)
+            except Exception:
+                prev_ctx = None
+        try:
+            yield
+        finally:
+            if prev_ctx:
+                try:
+                    user32.SetThreadDpiAwarenessContext(prev_ctx)
+                except Exception:
+                    pass
+
+    def _capture_window_image_for(
+        self, hwnd: int, is_uwp: bool, content_hwnd: Optional[int],
+    ) -> Optional[Image.Image]:
+        """capture_window 의 dispatch 로직을 임의 hwnd 에 적용.
+
+        시도 순서:
+          1) 일반 앱: GetWindowDC + BitBlt → 풀 윈도우(타이틀바 포함).
+          2) BitBlt 실패/blank: PrintWindow PW_RENDERFULLCONTENT|PW_CLIENTONLY (UWP 는 처음부터).
+          3) UWP 의 content_hwnd 폴백.
+        반환된 이미지가 모달 미리보기(=capture_window) 와 동일 좌표/스케일을 가지도록 일관 유지.
+        """
+        img: Optional[Image.Image] = None
+        if not is_uwp:
+            with self._hwnd_dpi_ctx(hwnd):
+                img = self._capture_via_window_dc(hwnd)
+        if img is None or self._is_blank_image(img):
+            with self._hwnd_dpi_ctx(hwnd):
+                img = self._capture_with_flag(hwnd, 0x00000003)
+                if self._is_blank_image(img) and content_hwnd:
+                    try:
+                        if win32gui.IsWindow(content_hwnd):
+                            img = self._capture_with_flag(content_hwnd, 0x00000003)
+                            if self._is_blank_image(img):
+                                img = self._capture_with_flag(content_hwnd, 0x00000001)
+                    except Exception:
+                        pass
+        return img
+
     def capture_window(self, fmt: str = "jpeg", render_full_content: bool = False) -> bytes:
         """대상 윈도우 캡처 (타이틀바 포함 풀 윈도우).
 
@@ -1060,26 +1114,7 @@ class WinControlService:
         """
         if not self.is_attached():
             raise RuntimeError("No window attached")
-        host_hwnd = self._hwnd
-
-        img: Optional[Image.Image] = None
-        # 1) 일반 앱: 윈도우 DC BitBlt 우선 (UWP 는 DWM 컴포지션이라 DC 가 비어있어 스킵).
-        if not self._is_uwp:
-            with self._target_dpi_ctx():
-                img = self._capture_via_window_dc(host_hwnd)
-
-        # 2) BitBlt 가 단색/실패면 PrintWindow 폴백 (target DPI 컨텍스트 안에서).
-        if img is None or self._is_blank_image(img):
-            with self._target_dpi_ctx():
-                img = self._capture_with_flag(host_hwnd, 0x00000003)
-                if self._is_blank_image(img) and self._content_hwnd:
-                    try:
-                        if win32gui.IsWindow(self._content_hwnd):
-                            img = self._capture_with_flag(self._content_hwnd, 0x00000003)
-                            if self._is_blank_image(img):
-                                img = self._capture_with_flag(self._content_hwnd, 0x00000001)
-                    except Exception:
-                        pass
+        img = self._capture_window_image_for(self._hwnd, self._is_uwp, self._content_hwnd)
         if img is None:
             raise RuntimeError("Capture failed (window-DC BitBlt + PrintWindow)")
 
