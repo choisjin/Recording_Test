@@ -215,9 +215,10 @@ class ImageCompareService:
         score, diff = ssim(gray_exp_n, gray_act_n, full=True)
         diff_uint8 = (diff * 255).astype("uint8")
 
-        # 진단(IMG_COMPARE_DEBUG=1): blur 적용 전후 SSIM, BGR 픽셀 동일성, 픽셀 차이 분포까지 한 번에 측정.
-        # 사용자가 "블러 없이 원본 비교"가 어떻게 나오는지 즉시 확인 가능.
-        if _env_debug():
+        # 진단: blur 적용 전후 SSIM, BGR 픽셀 동일성, 픽셀 차이 분포까지 한 번에 측정.
+        # 환경변수 IMG_COMPARE_DEBUG=1 로 항상 켜거나, score<0.99 일 때 자동으로 한 번 로깅
+        # (FAIL 원인을 환경변수 설정 없이도 즉시 확인할 수 있도록).
+        if _env_debug() or float(score) < 0.99:
             try:
                 # 1) BGR 원본 차이 — 캡처 자체의 픽셀 차이 (블러 영향 0)
                 bgr_diff = cv2.absdiff(img_exp, actual_crop)
