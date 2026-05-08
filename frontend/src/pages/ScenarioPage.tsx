@@ -697,6 +697,40 @@ export default function ScenarioPage() {
     });
   };
 
+  // 전체화면(full) 비교 모드를 사용 중이고 기대이미지까지 설정된 스텝의 id 목록.
+  // compare_mode 의 기본값이 'full' 이라 단순 full 검출은 noise 가 많음 — expected_image 까지 있어야
+  // 실제 비교가 일어남(=영향 받음).
+  const findDeprecatedFullSteps = (steps: any[]): number[] => {
+    const out: number[] = [];
+    for (const s of (steps || [])) {
+      if (!s) continue;
+      const mode = s.compare_mode || 'full';
+      if (mode === 'full' && s.expected_image) out.push(Number(s.id ?? 0));
+    }
+    return out;
+  };
+
+  // 전체화면 비교 deprecation 차단. 해당 스텝이 있으면 안내 모달 후 재생 차단(false 반환).
+  // 사용자는 RecordPage에서 비교 모드를 다른 것으로 수정한 뒤 다시 재생해야 함.
+  const confirmFullCompareDeprecation = (label: string, stepIds: number[]): Promise<boolean> => {
+    if (stepIds.length === 0) return Promise.resolve(true);
+    return new Promise<boolean>(resolve => {
+      Modal.warning({
+        title: t('record.fullScreenDeprecatedTitle'),
+        content: (
+          <div>
+            <p>{t('record.fullScreenDeprecated')}</p>
+            <p style={{ color: '#888', fontSize: 12, marginTop: 8 }}>
+              {label}: step #{stepIds.slice(0, 20).join(', #')}{stepIds.length > 20 ? ` (+${stepIds.length - 20})` : ''}
+            </p>
+          </div>
+        ),
+        okText: t('common.close'),
+        onOk: () => resolve(false),
+      });
+    });
+  };
+
   // --- Playback ---
   const playScenario = async (name: string) => {
     let scenarioData: ScenarioDetail;
@@ -705,6 +739,11 @@ export default function ScenarioPage() {
       scenarioData = res.data;
       setPlaybackScenario(scenarioData);
     } catch { message.error(t('scenario.loadFailed')); return; }
+
+    // 전체화면 비교(deprecated) 사용 검출 — 있으면 안내 후 사용자 선택에 따라 진행/취소.
+    const fullStepIds = findDeprecatedFullSteps(scenarioData.steps);
+    const proceed = await confirmFullCompareDeprecation(name, fullStepIds);
+    if (!proceed) return;
 
     // 재생 확인 모달 표시 (디바이스 매핑 + 웹캠 녹화 설정)
     const dmap = scenarioData.device_map || {};
@@ -1010,8 +1049,10 @@ export default function ScenarioPage() {
     // 멤버 시나리오들의 device_map 합집합 + steps 의 device_id 합집합을 alias 셋으로 사용.
     // 저장된 device_map만 합치면 step에서 새로 도입된 alias가 모달에서 누락되어
     // 사용자가 매핑 변경을 할 수 없게 된다.
+    // 동시에 deprecated full 비교 사용도 같은 루프에서 수집 — 추가 API 호출 절약.
     const mergedMap: Record<string, string> = {};
     const aliases = new Set<string>();
+    const allFullStepIds: number[] = [];
     for (const m of members) {
       try {
         const res = await scenarioApi.get(m.name);
@@ -1021,8 +1062,14 @@ export default function ScenarioPage() {
         for (const s of (res.data.steps || [])) {
           if (s && s.device_id) aliases.add(String(s.device_id));
         }
+        const fullIds = findDeprecatedFullSteps(res.data.steps || []);
+        for (const id of fullIds) allFullStepIds.push(id);
       } catch { /* ignore */ }
     }
+
+    // 전체화면 비교(deprecated) 사용 검출 — 있으면 안내 후 사용자 선택에 따라 진행/취소.
+    const proceed = await confirmFullCompareDeprecation(`group:${gName}`, allFullStepIds);
+    if (!proceed) return;
 
     let devices: { id: string; name: string; type: string; status: string; address?: string }[] = [];
     try {

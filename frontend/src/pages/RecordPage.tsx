@@ -3623,9 +3623,6 @@ export default function RecordPage() {
                   placement="bottomRight"
                   content={
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 130 }}>
-                      <Button size="small" block onClick={() => selectCompareMode(index, 'full')}>
-                        <CameraOutlined /> {t('record.fullScreen')}
-                      </Button>
                       <Button size="small" block onClick={() => selectCompareMode(index, 'single_crop')}>
                         <ScissorOutlined /> {t('record.singleCrop')}
                       </Button>
@@ -3634,6 +3631,9 @@ export default function RecordPage() {
                       </Button>
                       <Button size="small" block onClick={() => selectCompareMode(index, 'multi_crop')}>
                         <ScissorOutlined /> {t('record.multiCrop')}
+                      </Button>
+                      <Button size="small" block disabled title={t('record.fullScreenDeprecated')}>
+                        <CameraOutlined /> {t('record.fullScreen')}
                       </Button>
                     </div>
                   }
