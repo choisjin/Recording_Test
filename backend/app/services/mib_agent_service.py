@@ -717,6 +717,51 @@ class MIBAgentService:
                 [i for i in self._screen_indices if i not in self._screen_disabled] or "[fallback: 0]",
             )
 
+    def _log_dump_diagnostics(self, ssh, idx: int, local_path: Optional[str]) -> None:
+        """MIB_DEBUG_DUMP=1 일 때 PNG 검증/SCP 실패 원인을 로깅.
+
+        디바이스 측: lmc_idx{idx}.err(LayerManagerControl stderr) 내용과 ls -la 결과.
+        로컬 측: 받은 파일의 첫 16/끝 16바이트 hex (시그니처/IEND 위치 확인).
+        """
+        try:
+            cmd = (
+                f"echo '=== ls /tmp/screen_idx{idx}.png ==='; "
+                f"ls -la /tmp/screen_idx{idx}.png 2>&1; "
+                f"echo '=== head -c 16 hex ==='; "
+                f"head -c 16 /tmp/screen_idx{idx}.png 2>/dev/null | od -An -tx1 -N16; "
+                f"echo '=== tail -c 16 hex ==='; "
+                f"tail -c 16 /tmp/screen_idx{idx}.png 2>/dev/null | od -An -tx1 -N16; "
+                f"echo '=== lmc_idx{idx}.err ==='; "
+                f"cat /tmp/lmc_idx{idx}.err 2>/dev/null || echo '(no err file)'"
+            )
+            stdin, stdout, _ = ssh.exec_command(cmd, timeout=5)
+            try:
+                stdin.close()
+            except Exception:
+                pass
+            out = stdout.read().decode("utf-8", errors="replace")
+            snippet = out.strip().replace("\r", " ").replace("\n", " | ")[:1000]
+            logger.warning("MIB HU dump diag idx=%d device → %s", idx, snippet or "(empty)")
+        except Exception as e:
+            logger.debug("MIB HU dump diag idx=%d device probe failed: %s", idx, e)
+
+        if local_path and os.path.exists(local_path):
+            try:
+                size = os.path.getsize(local_path)
+                with open(local_path, "rb") as f:
+                    head = f.read(16)
+                    if size > 32:
+                        f.seek(-16, 2)
+                        tail = f.read(16)
+                    else:
+                        tail = b""
+                logger.warning(
+                    "MIB HU dump diag idx=%d local size=%d head=%s tail=%s",
+                    idx, size, head.hex(" "), tail.hex(" ") if tail else "(too small)",
+                )
+            except Exception as e:
+                logger.debug("MIB HU dump diag idx=%d local hex failed: %s", idx, e)
+
     def _probe_layer_info(self) -> None:
         """LayerManagerControl get screens/layers를 실행해 진단 정보를 로깅.
 
@@ -1129,6 +1174,8 @@ class MIBAgentService:
 
         # 진단/완화 토글 (환경변수)
         # - MIB_DEBUG_TIMING=1 : dump/wait/scp/compose 단계별 소요시간 로깅
+        # - MIB_DEBUG_DUMP=1   : PNG 검증 실패 시 lmc_idx{idx}.err / 원격 ls -la /
+        #   로컬 파일 헤더·테일 hex를 로깅 (corrupt 원인 진단).
         # - MIB_DUMP_TIMEOUT_S : exec_command stdout 폴링 타임아웃(초). 기본 8.
         #   터치 직후 weston 리페인트와 dump 경합으로 hang 시 stall 길이를 제한.
         # - MIB_CROP_TO_REGISTERED=1 : 캡처 PNG를 사용자 등록 해상도로 top-left crop,
@@ -1136,6 +1183,7 @@ class MIBAgentService:
         #   (예: 13.1" 1920x1080 등록인데 dump가 1920x1280로 떨어지는 케이스)에서
         #   하단 검정 padding 영역을 제거.
         debug_timing = os.environ.get("MIB_DEBUG_TIMING", "").strip() in ("1", "true", "yes")
+        debug_dump = os.environ.get("MIB_DEBUG_DUMP", "").strip() in ("1", "true", "yes")
         try:
             dump_timeout = float(os.environ.get("MIB_DUMP_TIMEOUT_S", "8") or 8)
         except Exception:
@@ -1253,6 +1301,8 @@ class MIBAgentService:
                                             "MIB HU scp %s: PNG truncated/corrupt (size=%d)",
                                             remote, os.path.getsize(local),
                                         )
+                                        if debug_dump:
+                                            self._log_dump_diagnostics(ssh, idx, local)
                                 if not ok:
                                     self._screen_fail_count[idx] = self._screen_fail_count.get(idx, 0) + 1
                                     self._maybe_disable_screen(idx)
@@ -1266,6 +1316,8 @@ class MIBAgentService:
                                         self._screen_fail_threshold,
                                         type(ee).__name__, ee,
                                     )
+                                if debug_dump:
+                                    self._log_dump_diagnostics(ssh, idx, local if os.path.exists(local) else None)
                                 self._maybe_disable_screen(idx)
                 except Exception as ee:
                     logger.warning(
