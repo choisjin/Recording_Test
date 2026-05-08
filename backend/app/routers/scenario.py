@@ -434,6 +434,27 @@ async def capture_expected_image(req: CaptureExpectedImageRequest):
         cropped = img[y:y + h, x:x + w]
         _, buf = cv2.imencode(".png", cropped)
         png_bytes = buf.tobytes()
+        # 진단: PNG 인코딩-디코딩 round-trip이 픽셀을 보존하는지 즉석 검증.
+        # 비교 시 100% 일치가 안 나오는 원인이 round-trip lossy 때문이라면 이 로그가 막아준다.
+        try:
+            import os as _os
+            if _os.environ.get("IMG_COMPARE_DEBUG", "").strip() in ("1", "true", "yes"):
+                rt = cv2.imdecode(np.frombuffer(png_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
+                if rt is None or rt.shape != cropped.shape:
+                    logger.warning(
+                        "expected_image PNG round-trip shape mismatch: src=%s rt=%s",
+                        cropped.shape, None if rt is None else rt.shape,
+                    )
+                else:
+                    rt_diff = cv2.absdiff(cropped, rt)
+                    rt_max = int(rt_diff.max())
+                    rt_mean = float(rt_diff.mean())
+                    logger.info(
+                        "expected_image PNG round-trip shape=%s identical=%s max_diff=%d mean_diff=%.4f",
+                        cropped.shape, bool((rt_diff == 0).all()), rt_max, rt_mean,
+                    )
+        except Exception as _e:
+            logger.debug("PNG round-trip sanity check failed: %r", _e)
 
     scenario_name = scenario.name
     save_dir = SCREENSHOTS_DIR / scenario_name
