@@ -1046,6 +1046,24 @@ export default function RecordPage() {
     return screenshotDeviceId;
   }, [screenshotDeviceId, wcConnected, leftPanelTab]);
 
+  // WinControl 로 expected 를 캡처하는 스텝의 params 에 현재 임베드된 프로세스 정보를 병합.
+  // 재생 시 _resolve_screenshot_device → wincontrol 캡처 직전에 ensure_attached 가 process_name/
+  // exe_path/window_title/aumid 등을 사용해 자동 재임베드. wait 처럼 액션 자체엔 프로세스 정보가
+  // 필요 없는 스텝도 검증을 위해 어떤 프로세스를 attach 해야 하는지 기록해둬야 함.
+  const enrichParamsForWcCapture = useCallback((params: any, targetDevId: string): any => {
+    if (targetDevId !== 'WinControl' || !wcAttached?.attached) return params || {};
+    return {
+      ...(params || {}),
+      process_name: wcAttached.name || '',
+      exe_path: wcAttached.exe_path || '',
+      window_title: wcAttached.title || '',
+      window_class: wcAttached.class_name || '',
+      process_aumid: wcAttached.aumid || '',
+      window_width: wcAttached.width || 0,
+      window_height: wcAttached.height || 0,
+    };
+  }, [wcAttached]);
+
   const wcRefreshProcesses = useCallback(async () => {
     if (!wcConnected) return;
     setWcLoadingProcs(true);
@@ -1767,9 +1785,12 @@ export default function RecordPage() {
     pauseScreenStream();
     try {
       const { _imageVer, ...currentStep } = steps[stepIdx];
-      // 현재 라이브 뷰의 device/screen_type을 override로 전달 — 스텝에 저장된 값이
-      // 사용자가 실제로 보고 있는 화면과 다를 때 발생하는 stale image 문제 회피
-      const overrides = screenshotDeviceId
+      // 스텝이 명시적으로 screenshot_device_id 를 가지고 있으면 그게 authoritative — override 금지.
+      // (예: WinControl 에서 캡처한 expected 가 있는 wait 스텝을 ADB 디바이스 보면서 테스트해도
+      // 저장 시점과 동일한 WinControl 에서 actual 을 떠야 비교가 의미 있음.)
+      // 저장된 값이 없을 때만 현재 라이브 뷰의 device/screen_type 을 폴백으로 전달.
+      const hasExplicitDevice = !!(currentStep as any).screenshot_device_id;
+      const overrides = (!hasExplicitDevice && screenshotDeviceId)
         ? { screenshotDeviceId, screenType }
         : undefined;
       const res = await scenarioApi.testStep(scenarioName, stepIdx, currentStep, overrides);
@@ -1915,7 +1936,16 @@ export default function RecordPage() {
           undefined, undefined, undefined,
           screenTypeArg,
         );
-        setSteps(prev => prev.map((s, i) => i === captureStepIndex ? { ...s, expected_image: res.data.filename, roi: crop, screenshot_device_id: targetDevId, screen_type: isWin ? s.screen_type : ((isScreenHkmc || isScreenICAS || hasMultiDisplay) ? screenType : s.screen_type), _imageVer: Date.now(), exclude_rois: [], expected_images: [] } : s));
+        setSteps(prev => prev.map((s, i) => i === captureStepIndex ? {
+          ...s,
+          // wait 등 비-win 스텝이 WinControl 로 캡처되면 재생 시 같은 프로세스를 자동 재임베드하기 위해
+          // 현재 attached 된 프로세스 정보를 params 에 병합. win_* 스텝은 이미 액션 시점에 채워져 있음.
+          params: enrichParamsForWcCapture(s.params, targetDevId),
+          expected_image: res.data.filename, roi: crop,
+          screenshot_device_id: targetDevId,
+          screen_type: isWin ? s.screen_type : ((isScreenHkmc || isScreenICAS || hasMultiDisplay) ? screenType : s.screen_type),
+          _imageVer: Date.now(), exclude_rois: [], expected_images: [],
+        } : s));
         message.success(t('record.cropExpectedSaved', { index: captureStepIndex + 1, size: `${rw}×${rh}` }));
         setCaptureModalOpen(false);
         setCaptureStepIndex(null);
@@ -1924,7 +1954,7 @@ export default function RecordPage() {
         message.error(e.response?.data?.detail || t('record.expectedImageSaveFailed'));
       }
     }
-  }, [captureStepIndex, scenarioName, screenshotDeviceId, t]);
+  }, [captureStepIndex, scenarioName, screenshotDeviceId, t, enrichParamsForWcCapture, isScreenHkmc, isScreenICAS, hasMultiDisplay, screenType]);
 
   useEffect(() => {
     if (captureModalOpen) setTimeout(() => drawCaptureCanvas(), 50);
@@ -2105,7 +2135,14 @@ export default function RecordPage() {
             undefined, undefined, undefined, undefined,
             screenTypeArg,
           );
-          setSteps(prev => prev.map((s, i) => i === excludeRoiEditingIndex ? { ...s, expected_image: capRes.data.filename, screenshot_device_id: targetDevId, screen_type: isWin ? s.screen_type : ((isScreenHkmc || isScreenICAS || hasMultiDisplay) ? screenType : s.screen_type), _imageVer: Date.now(), roi: null, expected_images: [] } : s));
+          setSteps(prev => prev.map((s, i) => i === excludeRoiEditingIndex ? {
+            ...s,
+            params: enrichParamsForWcCapture(s.params, targetDevId),
+            expected_image: capRes.data.filename,
+            screenshot_device_id: targetDevId,
+            screen_type: isWin ? s.screen_type : ((isScreenHkmc || isScreenICAS || hasMultiDisplay) ? screenType : s.screen_type),
+            _imageVer: Date.now(), roi: null, expected_images: [],
+          } : s));
         } catch (e: any) {
           message.error(e.response?.data?.detail || t('record.cropSaveFailed'));
           return;
@@ -2263,7 +2300,12 @@ export default function RecordPage() {
           undefined, undefined, undefined, true,
           screenTypeArgMulti,
         );
-        setSteps(prev => prev.map((s, i) => i === multiCropEditingIndex ? { ...s, expected_image: capRes.data.filename, screenshot_device_id: targetDevIdMulti, _imageVer: Date.now(), roi: null, exclude_rois: [] } : s));
+        setSteps(prev => prev.map((s, i) => i === multiCropEditingIndex ? {
+          ...s,
+          params: enrichParamsForWcCapture(s.params, targetDevIdMulti),
+          expected_image: capRes.data.filename, screenshot_device_id: targetDevIdMulti,
+          _imageVer: Date.now(), roi: null, exclude_rois: [],
+        } : s));
         const replaceIdx = multiCropSelectedIdx ?? undefined;
         const res = await scenarioApi.cropFromExpected(scenarioName, multiCropEditingIndex, crop, '', replaceIdx);
         const roi: ROI = res.data.roi;
