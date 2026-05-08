@@ -672,6 +672,29 @@ def _get_instance(module_name: str, constructor_kwargs: Optional[dict] = None,
     return _instances[module_name]
 
 
+def _cast_arg(val: Any, target_type: type) -> Any:
+    """문자열 값을 target_type으로 변환. int인 경우 hex/oct/bin prefix 자동 인식.
+
+    - int: "200" → 200, "0xC8" → 200, "0b1010" → 10, "0o17" → 15
+    - bool: "true"/"1"/"yes" → True, "false"/"0"/"no"/"" → False
+    - 그 외(이미 올바른 타입 등)는 target_type(val) 그대로
+    """
+    if not isinstance(val, str):
+        return target_type(val)
+    s = val.strip()
+    if target_type is bool:
+        return s.lower() not in ("0", "false", "no", "")
+    if target_type is int:
+        if not s:
+            raise ValueError("empty string")
+        # 0x/0o/0b 접두사가 있으면 base=0으로 자동 인식, 그 외는 일반 10진수
+        sl = s.lstrip("+-").lower()
+        if sl.startswith(("0x", "0o", "0b")):
+            return int(s, 0)
+        return int(s)
+    return target_type(s)
+
+
 def _execute_sync(module_name: str, function_name: str, args: dict,
                   constructor_kwargs: Optional[dict] = None,
                   shared_serial_conn=None, ssh_credentials: Optional[dict] = None,
@@ -702,12 +725,12 @@ def _execute_sync(module_name: str, function_name: str, args: dict,
                         ann = type_map.get(ann, ann)
                     if ann in (int, float, bool, str):
                         try:
-                            if ann is bool and isinstance(val, str):
-                                val = val.lower() not in ("0", "false", "no", "")
-                            else:
-                                val = ann(val)
-                        except (ValueError, TypeError):
-                            pass
+                            val = _cast_arg(val, ann)
+                        except (ValueError, TypeError) as e:
+                            raise ValueError(
+                                f"{module_name}.{function_name}: parameter '{pname}' "
+                                f"could not be cast to {ann.__name__}: {val!r} ({e})"
+                            )
                 call_args[pname] = val
             elif p.default is inspect.Parameter.empty:
                 raise ValueError(f"Missing required parameter: {pname}")
