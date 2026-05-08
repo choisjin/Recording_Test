@@ -168,7 +168,7 @@ def list_available_modules() -> list[dict]:
          ]},
         {"name": "CANOE", "label": "CANOE", "connect_type": "none",
          "connect_fields": []},
-        {"name": "CANoePlugin", "label": "CANoePlugin (py-canoe RBS)", "connect_type": "none",
+        {"name": "CANoe_RBS", "label": "CANoe_RBS (py-canoe RBS)", "connect_type": "none",
          "connect_fields": []},
         {"name": "CANoe_Ctrl", "label": "CANoe_Ctrl (Vector HW)", "connect_type": "none",
          "connect_fields": [
