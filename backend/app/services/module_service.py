@@ -6,12 +6,14 @@ Supports both lge.auto modules and local plugins (backend/app/plugins/).
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import importlib
 import inspect
 import functools
 import json
 import logging
 import sys
+import threading
 from pathlib import Path
 from typing import Any, Optional
 
@@ -26,6 +28,59 @@ _auto_connected: set[str] = set()
 # Cache: module_name -> (plugin_file_mtime, guides_mtime, list of function info).
 # mtime 기반 무효화로 플러그인 .py 또는 가이드 JSON 변경 시 자동 재스캔.
 _module_functions_cache: dict[str, tuple[float, float, list[dict]]] = {}
+
+# 모듈별 전용 단일 스레드 executor.
+# 이유:
+#   - CANoe 등 win32com 기반 모듈은 STA(Single-Threaded Apartment) COM 객체로,
+#     객체를 만든 스레드 외에서 호출하면 RPC_E_WRONG_THREAD(0x8001010E) 발생.
+#   - default ThreadPoolExecutor는 매 호출마다 다른 스레드를 쓰므로 COM affinity가 깨짐.
+#   - 모듈별로 max_workers=1 executor를 두면 같은 모듈은 항상 동일 스레드에서 실행되어
+#     COM 객체 affinity가 보장됨. 부수적으로 모듈 내부 상태에 대한 동시 호출도 직렬화됨.
+_module_executors: dict[str, concurrent.futures.ThreadPoolExecutor] = {}
+_module_executors_lock = threading.Lock()
+
+
+def _module_thread_initializer() -> None:
+    """모듈 executor 워커 스레드 초기화 — Windows COM 모듈을 위해 CoInitialize.
+
+    pythoncom.CoInitialize()는 STA 아파트먼트로 스레드를 초기화하고, 이미 초기화된
+    경우 무해하게 통과(S_FALSE 리턴). 비-Windows / pythoncom 미설치 환경은 ImportError로
+    조용히 패스.
+    """
+    try:
+        import pythoncom  # type: ignore[import-not-found]
+        pythoncom.CoInitialize()
+    except Exception:
+        pass
+
+
+def _get_module_executor(module_name: str) -> concurrent.futures.ThreadPoolExecutor:
+    """모듈 함수 실행 전용 단일 스레드 executor를 lazy 생성.
+
+    같은 module_name에 대한 모든 호출이 동일 워커 스레드에서 직렬 실행되어
+    COM affinity를 유지한다.
+    """
+    with _module_executors_lock:
+        ex = _module_executors.get(module_name)
+        if ex is None or getattr(ex, "_shutdown", False):
+            ex = concurrent.futures.ThreadPoolExecutor(
+                max_workers=1,
+                thread_name_prefix=f"mod-{module_name}",
+                initializer=_module_thread_initializer,
+            )
+            _module_executors[module_name] = ex
+        return ex
+
+
+def shutdown_module_executors() -> None:
+    """앱 종료 시 모든 모듈 executor 정리. (선택적 호출)"""
+    with _module_executors_lock:
+        for name, ex in list(_module_executors.items()):
+            try:
+                ex.shutdown(wait=False, cancel_futures=True)
+            except Exception as e:
+                logger.warning("Failed to shutdown executor for %s: %s", name, e)
+        _module_executors.clear()
 
 # Plugins directory
 _PLUGINS_DIR = Path(__file__).resolve().parent.parent / "plugins"
@@ -1027,9 +1082,13 @@ async def execute_module_function(
     """
     effective_timeout = _compute_module_timeout(args, timeout_s)
     loop = asyncio.get_event_loop()
+    # 모듈별 전용 단일 스레드 executor 사용 — COM(win32com/CANoe) STA affinity 유지.
+    # HKMC6th 가상 모듈은 device_manager의 HKMC6thService를 그대로 호출하므로 굳이
+    # 같은 스레드에 묶을 필요가 없지만, 일관성과 모듈 내부 상태 직렬화를 위해 동일하게 사용.
+    module_executor = _get_module_executor(module_name)
     try:
         future = loop.run_in_executor(
-            None,
+            module_executor,
             functools.partial(_execute_sync, module_name, function_name, args,
                               constructor_kwargs, shared_serial_conn, ssh_credentials,
                               adb_serial, hkmc_service),
