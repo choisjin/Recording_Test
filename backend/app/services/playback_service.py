@@ -815,30 +815,55 @@ class PlaybackService:
                         raise RuntimeError(f"Webcam device {ss_device['id']} not connected")
                 elif ss_device["type"] == "wincontrol":
                     wc = self.dm.get_wincontrol_service()
-                    if not wc.is_attached():
-                        # 자동 attach 시도 — step.params 에 저장된 프로세스 정보로.
+                    proc_name = str(step.params.get("process_name", "") or "")
+                    exe_path = str(step.params.get("exe_path", "") or "")
+                    title_pattern = str(step.params.get("window_title", "") or "")
+                    class_name = str(step.params.get("window_class", "") or "")
+                    aumid = str(step.params.get("process_aumid", "") or "")
+                    target_w = int(step.params.get("window_width", 0) or 0)
+                    target_h = int(step.params.get("window_height", 0) or 0)
+                    has_proc_info = bool(proc_name or exe_path or title_pattern or aumid)
+                    loop = asyncio.get_event_loop()
+                    if has_proc_info:
+                        # 프로세스 정보 있으면: 임베드 상태 변경 없이 대상 프로세스 윈도우만 직접 캡처.
+                        # 사용자가 다른 윈도우를 임베드/조작 중이어도 검증은 step 의 프로세스에서 수행.
                         try:
-                            await asyncio.get_event_loop().run_in_executor(
+                            img_bytes = await loop.run_in_executor(
                                 None,
                                 functools.partial(
-                                    wc.ensure_attached,
-                                    process_name=str(step.params.get("process_name", "") or ""),
-                                    exe_path=str(step.params.get("exe_path", "") or ""),
-                                    title_pattern=str(step.params.get("window_title", "") or ""),
-                                    class_name=str(step.params.get("window_class", "") or ""),
-                                    aumid=str(step.params.get("process_aumid", "") or ""),
+                                    wc.capture_window_by_match,
+                                    process_name=proc_name, exe_path=exe_path,
+                                    title_pattern=title_pattern, class_name=class_name,
+                                    aumid=aumid,
+                                    target_width=target_w, target_height=target_h,
+                                    fmt="png",
                                     launch_if_missing=True,
-                                    wait_seconds=float(step.params.get("launch_wait_seconds", 8.0) or 8.0),
-                                    target_width=int(step.params.get("window_width", 0) or 0),
-                                    target_height=int(step.params.get("window_height", 0) or 0),
+                                    wait_seconds=float(step.params.get("launch_wait_seconds", 5.0) or 5.0),
                                 ),
                             )
                         except Exception as e:
-                            raise RuntimeError(f"WinControl screenshot: {e}")
-                    loop = asyncio.get_event_loop()
-                    img_bytes = await loop.run_in_executor(
-                        None, functools.partial(wc.capture_window, "png"),
-                    )
+                            raise RuntimeError(f"WinControl screenshot (by_match): {e}")
+                    else:
+                        # 프로세스 정보 없는 legacy 스텝: 기존 동작 (현재 attached 윈도우 캡처)
+                        if not wc.is_attached():
+                            try:
+                                await loop.run_in_executor(
+                                    None,
+                                    functools.partial(
+                                        wc.ensure_attached,
+                                        process_name=proc_name, exe_path=exe_path,
+                                        title_pattern=title_pattern, class_name=class_name,
+                                        aumid=aumid,
+                                        launch_if_missing=True,
+                                        wait_seconds=8.0,
+                                        target_width=target_w, target_height=target_h,
+                                    ),
+                                )
+                            except Exception as e:
+                                raise RuntimeError(f"WinControl screenshot: {e}")
+                        img_bytes = await loop.run_in_executor(
+                            None, functools.partial(wc.capture_window, "png"),
+                        )
                     Path(actual_path).write_bytes(img_bytes)
 
                 step_result.actual_image = self._rel_path(actual_path, scenario_name)

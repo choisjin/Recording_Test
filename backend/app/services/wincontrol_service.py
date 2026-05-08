@@ -695,6 +695,111 @@ class WinControlService:
         except Exception:
             return (0, 0)
 
+    @staticmethod
+    def _resize_hwnd_client(hwnd: int, target_w: int, target_h: int) -> None:
+        """임의 hwnd의 client area를 target 크기로 리사이즈 (self._hwnd와 무관).
+
+        검증용 캡처 시 좌표/스케일 정합성을 위해 attached 상태 변경 없이 사용.
+        """
+        if not _WIN32_AVAILABLE or not hwnd or target_w <= 0 or target_h <= 0:
+            return
+        try:
+            if win32gui.IsZoomed(hwnd) or win32gui.IsIconic(hwnd):
+                win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+                time.sleep(0.05)
+            cur_window = win32gui.GetWindowRect(hwnd)
+            cur_outer_w = cur_window[2] - cur_window[0]
+            cur_outer_h = cur_window[3] - cur_window[1]
+            cur_client = win32gui.GetClientRect(hwnd)
+            cur_client_w = cur_client[2] - cur_client[0]
+            cur_client_h = cur_client[3] - cur_client[1]
+            if cur_client_w == target_w and cur_client_h == target_h:
+                return
+            dx = cur_outer_w - cur_client_w
+            dy = cur_outer_h - cur_client_h
+            new_outer_w = max(1, int(target_w) + dx)
+            new_outer_h = max(1, int(target_h) + dy)
+            SWP_NOMOVE = 0x0002
+            SWP_NOZORDER = 0x0004
+            SWP_NOACTIVATE = 0x0010
+            win32gui.SetWindowPos(
+                hwnd, 0, 0, 0, new_outer_w, new_outer_h,
+                SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE,
+            )
+            time.sleep(0.05)
+        except Exception as e:
+            logger.debug("WinControl _resize_hwnd_client failed: %s", e)
+
+    def capture_window_by_match(
+        self,
+        process_name: str = "",
+        exe_path: str = "",
+        title_pattern: str = "",
+        class_name: str = "",
+        aumid: str = "",
+        target_width: int = 0,
+        target_height: int = 0,
+        fmt: str = "png",
+        launch_if_missing: bool = True,
+        wait_seconds: float = 5.0,
+    ) -> bytes:
+        """대상 프로세스 윈도우를 임베드/포커스 상태 변경 없이 직접 캡처 (검증 전용).
+
+        - find_window 로 매칭되는 윈도우 hwnd 검색
+        - 못 찾고 launch_if_missing=True 면 exe_path / aumid 로 실행 후 등장 대기
+        - target_width/height 가 주어지면 그 크기로 client area 리사이즈 (좌표 정합성)
+        - capture_hwnd_bgr 로 직접 캡처 → PIL 인코딩
+
+        self._hwnd(현재 임베드된 윈도우)는 건드리지 않음 — 사용자가 다른 윈도우를
+        임베드/조작 중이어도 검증 캡처는 step 이 지정한 프로세스 윈도우에서 떠짐.
+        """
+        if not _WIN32_AVAILABLE:
+            raise RuntimeError(f"WinControl unavailable: {_IMPORT_ERROR}")
+        match = self.find_window(process_name, exe_path, title_pattern, class_name)
+        if match is None and launch_if_missing and (exe_path or aumid):
+            try:
+                if aumid:
+                    self.launch_uwp(aumid)
+                else:
+                    self.launch_process(exe_path)
+            except Exception as e:
+                raise RuntimeError(f"capture_window_by_match: launch failed: {e}")
+            deadline = time.monotonic() + max(0.5, wait_seconds)
+            while time.monotonic() < deadline:
+                time.sleep(0.3)
+                match = self.find_window(process_name, exe_path, title_pattern, class_name)
+                if match:
+                    self._wait_for_input_idle(match["hwnd"], timeout_ms=3000)
+                    time.sleep(0.3)
+                    break
+        if match is None:
+            raise RuntimeError(
+                f"capture_window_by_match: window not found "
+                f"(name={process_name!r}, title~={title_pattern!r}, exe={exe_path!r}, aumid={aumid!r})"
+            )
+        hwnd = int(match["hwnd"])
+        # 좌표 정합성을 위해 녹화 시점과 동일한 client 크기로 리사이즈.
+        # 사용자 윈도우 크기가 변경됨 — 검증 중에만 발생하는 의도된 부작용.
+        if target_width > 0 and target_height > 0:
+            self._resize_hwnd_client(hwnd, int(target_width), int(target_height))
+        # 임베드 상태 무관하게 직접 캡처 (capture_hwnd_bgr 는 self._hwnd 사용 안 함).
+        bgr = self.capture_hwnd_bgr(hwnd)
+        if bgr is None:
+            raise RuntimeError("capture_window_by_match: capture_hwnd_bgr returned None")
+        # BGR ndarray → PIL → PNG/JPEG bytes
+        try:
+            from PIL import Image as _PILImage  # 모듈 import 가 lazy 한 환경 대비
+            rgb = bgr[:, :, ::-1]
+            pil_img = _PILImage.fromarray(rgb)
+        except Exception as e:
+            raise RuntimeError(f"capture_window_by_match: PIL encode failed: {e}")
+        buf = io.BytesIO()
+        if (fmt or "png").lower() == "jpeg":
+            pil_img.convert("RGB").save(buf, format="JPEG", quality=85)
+        else:
+            pil_img.save(buf, format="PNG")
+        return buf.getvalue()
+
     def resize_client(self, target_w: int, target_h: int) -> tuple[int, int]:
         """대상 윈도우의 client area 를 (target_w, target_h) 로 리사이즈.
 
