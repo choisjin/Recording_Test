@@ -670,6 +670,9 @@ class PlaybackService:
                     # Android 가상 모듈은 ADB 기기에 붙으므로 타입 체크로 대체 허용
                     if not has_matching_module and requested_module == "Android":
                         has_matching_module = bool(dev_check and dev_check.type == "adb")
+                    # HKMC6th 가상 모듈은 hkmc_agent 디바이스에 붙음
+                    if not has_matching_module and requested_module == "HKMC6th":
+                        has_matching_module = bool(dev_check and dev_check.type == "hkmc_agent")
                     if not has_matching_module:
                         logger.warning(
                             "Step %d MODULE_COMMAND device_id=%s mismatches module=%s (dev.type=%s, dev.module=%s) — skip reconnect",
