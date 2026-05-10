@@ -209,6 +209,37 @@ class CANoe_RBS:
             print(retmsg)
             return [None, None, retmsg]
 
+    def _get_canoe_app_com(self):
+        """py_canoe 인스턴스 안의 raw CANoe.Application COM 객체를 찾아 반환.
+
+        py_canoe 버전별로 속성명이 다름:
+          - 일부 버전: self.canoe_inst.application
+          - 다른 버전: self.canoe_inst.app
+          - 내부 접근: self.canoe_inst._app / canoe_inst._CANoe__app 등
+        모두 실패하면 win32com으로 새 핸들을 얻어 활성 인스턴스에 붙음.
+        """
+        candidates = ["application", "app", "_app", "_CANoe__app", "ApplicationCOMObject"]
+        for attr in candidates:
+            obj = getattr(self.canoe_inst, attr, None)
+            if obj is not None and hasattr(obj, "System"):
+                return obj
+        # 마지막 폴백: 활성 CANoe.Application 가져오기
+        return win32com.client.GetActiveObject("CANoe.Application")
+
+    def _get_sysvar_via_com(self, namespace_name, sys_var_name):
+        """py_canoe 우회: 원본 COM API를 직접 호출해 실제 에러 surfacing.
+
+        py_canoe의 get_system_variable_value()는 내부에서 try/except로 모든 예외를
+        삼키고 None을 리턴함. 그래서 변수 못 찾는 진짜 이유(잘못된 namespace,
+        변수 미등록, measurement 미시작 등)를 확인하려면 COM 객체에 직접 접근해야 함.
+        """
+        app = self._get_canoe_app_com()
+        # Application.System.Namespaces("XXX").Variables("YYY").Value
+        sys_namespaces = app.System.Namespaces
+        ns_obj = sys_namespaces(namespace_name)
+        var_obj = ns_obj.Variables(sys_var_name)
+        return var_obj.Value
+
     def GetSysVar(self, namespace_name, sys_var_name, return_symbolic_name=False, islog=True):
         full_name = f"{namespace_name}::{sys_var_name}"
         if self.canoe_inst is None:
@@ -221,13 +252,32 @@ class CANoe_RBS:
             if islog:
                 print(retmsg)
             if ret_value is None:
-                # py_canoe는 (1) measurement 미시작, (2) 변수 미존재, (3) 내부 COM 에러 catch
-                # 등 여러 경우에 None을 리턴함. 사용자가 원인을 파악할 수 있도록 힌트 포함.
-                raise Exception(
-                    f"py_canoe returned None for system variable '{full_name}' — "
+                # py_canoe는 내부에서 모든 예외를 삼키고 None 리턴 → 진짜 원인을
+                # 알 수 없음. COM API 직접 호출로 실제 에러를 끄집어냄.
+                com_error_detail = None
+                try:
+                    direct_value = self._get_sysvar_via_com(namespace_name, sys_var_name)
+                    # 직접 호출은 성공했는데 py_canoe만 None 리턴한 경우 → 그대로 사용
+                    if direct_value is not None:
+                        retmsg = f"system variable({full_name}) value = ({direct_value}) [via direct COM]"
+                        if islog:
+                            print(retmsg)
+                        return [True, direct_value, retmsg]
+                except Exception as com_err:
+                    com_error_detail = str(com_err)
+
+                hint = (
                     f"check (1) Start() measurement was called, "
                     f"(2) namespace/name spelled exactly (case-sensitive), "
                     f"(3) cfg fully loaded"
+                )
+                if com_error_detail:
+                    raise Exception(
+                        f"system variable '{full_name}' lookup failed — "
+                        f"direct COM error: {com_error_detail} | {hint}"
+                    )
+                raise Exception(
+                    f"py_canoe returned None for system variable '{full_name}' — {hint}"
                 )
             return [True, ret_value, retmsg]
         except Exception:
@@ -474,6 +524,13 @@ class CANoe_RBS:
             print(retmsg)
             return [None, None, retmsg]
 
+    def _get_envvar_via_com(self, env_var_name):
+        """py_canoe 우회: Environment Variable을 raw COM으로 직접 조회."""
+        app = self._get_canoe_app_com()
+        # Application.Environment.GetVariable("XXX").Value
+        var_obj = app.Environment.GetVariable(env_var_name)
+        return var_obj.Value
+
     def GetEnvVar(self, env_var_name, islog=True):
         if self.canoe_inst is None:
             raise Exception(
@@ -485,14 +542,31 @@ class CANoe_RBS:
             if islog:
                 print(retmsg)
             if ret_value is None:
-                # 시스템 변수와 혼동했을 가능성 — Environment Variables 패널이 아니라
-                # System Variables 패널에 있는 변수면 GetSysVar(namespace, name)을 써야 함.
-                raise Exception(
-                    f"py_canoe returned None for environment variable '{env_var_name}' — "
+                # py_canoe가 예외 삼켰을 가능성 — direct COM 호출로 실제 에러 확인.
+                com_error_detail = None
+                try:
+                    direct_value = self._get_envvar_via_com(env_var_name)
+                    if direct_value is not None:
+                        retmsg = f"environment variable({env_var_name}) value = ({direct_value}) [via direct COM]"
+                        if islog:
+                            print(retmsg)
+                        return [True, direct_value, retmsg]
+                except Exception as com_err:
+                    com_error_detail = str(com_err)
+
+                hint = (
                     f"check (1) Start() measurement was called, "
                     f"(2) variable exists in Environment Variables panel "
                     f"(if it's under System Variables namespace, use GetSysVar instead), "
                     f"(3) name spelled exactly (case-sensitive)"
+                )
+                if com_error_detail:
+                    raise Exception(
+                        f"environment variable '{env_var_name}' lookup failed — "
+                        f"direct COM error: {com_error_detail} | {hint}"
+                    )
+                raise Exception(
+                    f"py_canoe returned None for environment variable '{env_var_name}' — {hint}"
                 )
             return [True, ret_value, retmsg]
         except Exception:
