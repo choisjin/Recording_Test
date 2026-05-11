@@ -1330,6 +1330,13 @@ class PlaybackService:
             return f"win_input_text \"{txt[:30]}{'...' if len(txt) > 30 else ''}\""
         elif step.type == StepType.WIN_KEY:
             return f"win_key {p.get('key', '')}"
+        elif step.type == StepType.WIN_KEY_COMBO:
+            keys = p.get("keys") if "keys" in p else p.get("combo", "")
+            if isinstance(keys, list):
+                keys_str = "+".join(str(k) for k in keys)
+            else:
+                keys_str = str(keys)
+            return f"win_key_combo {keys_str}"
         return step.type.value
 
     async def _force_reconnect_hkmc(self, device_id: str) -> bool:
@@ -1681,7 +1688,8 @@ class PlaybackService:
         # (녹화 시 활성 primary가 ADB였으면 그렇게 저장됨) 액션은 WinControl에서 실행되므로
         # 검증 캡처도 같은 윈도우에서 떠야 함. 그렇지 않으면 ADB 화면이 actual로 잡혀 비교가 무의미.
         if step.type in (StepType.WIN_TAP, StepType.WIN_DOUBLE_CLICK, StepType.WIN_LONG_PRESS,
-                          StepType.WIN_SWIPE, StepType.WIN_INPUT_TEXT, StepType.WIN_KEY):
+                          StepType.WIN_SWIPE, StepType.WIN_INPUT_TEXT, StepType.WIN_KEY,
+                          StepType.WIN_KEY_COMBO):
             wc_dev = None
             for d in self.dm.list_all():
                 if d.type == "wincontrol":
@@ -2271,7 +2279,8 @@ class PlaybackService:
                         next_progress = elapsed + PROGRESS_INTERVAL_S
         elif step.type in (StepType.WIN_TAP, StepType.WIN_DOUBLE_CLICK,
                            StepType.WIN_LONG_PRESS, StepType.WIN_SWIPE,
-                           StepType.WIN_INPUT_TEXT, StepType.WIN_KEY):
+                           StepType.WIN_INPUT_TEXT, StepType.WIN_KEY,
+                           StepType.WIN_KEY_COMBO):
             # 임베드 보장 — 저장된 process_name/exe_path 로 자동 attach 또는 launch.
             wc = self.dm.get_wincontrol_service()
             if not wc.is_available():
@@ -2332,6 +2341,16 @@ class PlaybackService:
             elif step.type == StepType.WIN_KEY:
                 await loop.run_in_executor(None,
                     functools.partial(wc.send_key, str(params.get("key", ""))))
+            elif step.type == StepType.WIN_KEY_COMBO:
+                raw = params.get("keys") if "keys" in params else params.get("combo", "")
+                if isinstance(raw, str):
+                    import re as _re
+                    keys_list = [s.strip() for s in _re.split(r"[+,]", raw) if s.strip()]
+                else:
+                    keys_list = [str(k).strip() for k in (raw or []) if str(k).strip()]
+                if keys_list:
+                    await loop.run_in_executor(None,
+                        functools.partial(wc.send_key_combo, keys_list))
         else:
             # ADB actions — real_id를 ADB 시리얼(dev.address)로 변환
             adb_serial = real_id

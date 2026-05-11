@@ -1745,3 +1745,68 @@ class WinControlService:
             time.sleep(0.10)
         finally:
             self._restore_context(ctx)
+
+    # Modifier 별칭 → 가상키 코드. 소문자 비교용.
+    _MODIFIER_VK = {
+        "ctrl": 0x11, "control": 0x11,         # VK_CONTROL
+        "alt": 0x12, "menu": 0x12,             # VK_MENU
+        "shift": 0x10,                          # VK_SHIFT
+        "win": 0x5B, "lwin": 0x5B,             # VK_LWIN
+        "super": 0x5B, "cmd": 0x5B, "meta": 0x5B,
+        "rwin": 0x5C,                           # VK_RWIN
+    }
+
+    def send_key_combo(self, keys: list[str]) -> None:
+        """Modifier + key 조합 전송. 예: ['ctrl','a'], ['ctrl','shift','f5'], ['alt','f4'].
+
+        시퀀스:
+          1) 수정자 키 down (입력 순서대로)
+          2) 비-수정자 키 각각 down → 짧은 hold → up (입력 순서대로)
+          3) 수정자 키 up (역순 — Windows 표준)
+
+        문자열로도 받을 수 있게 라우터에서 '+' 또는 ',' 분리 후 호출.
+        파싱은 호출자 책임 (라우터 레이어에서). 빈 리스트는 noop.
+        """
+        if not keys:
+            return
+        self._check()
+        # 수정자/일반 분리
+        modifiers: list[int] = []
+        regulars: list[int] = []
+        for k in keys:
+            key = str(k).strip()
+            if not key:
+                continue
+            mvk = self._MODIFIER_VK.get(key.lower())
+            if mvk is not None:
+                modifiers.append(mvk)
+            else:
+                regulars.append(_resolve_vk(key))
+        if not regulars and not modifiers:
+            return
+        ctx = self._save_context()
+        try:
+            self._focus()
+            # 1) 모든 수정자 down
+            for vk in modifiers:
+                self._send_input_keybd(vk, 0, 0)
+                time.sleep(0.02)
+            # 2) 일반 키 down/up — modifier-only 조합도 허용 (regulars 비었으면 스킵).
+            for vk in regulars:
+                self._send_input_keybd(vk, 0, 0)
+                time.sleep(0.03)
+                self._send_input_keybd(vk, 0, KEYEVENTF_KEYUP)
+                time.sleep(0.02)
+            # 3) 수정자 up (역순)
+            for vk in reversed(modifiers):
+                self._send_input_keybd(vk, 0, KEYEVENTF_KEYUP)
+                time.sleep(0.02)
+            time.sleep(0.10)
+        finally:
+            # 안전망 — 예외로 중간에 빠져나간 경우 수정자 강제 해제 (stuck key 방지).
+            for vk in reversed(modifiers):
+                try:
+                    self._send_input_keybd(vk, 0, KEYEVENTF_KEYUP)
+                except Exception:
+                    pass
+            self._restore_context(ctx)

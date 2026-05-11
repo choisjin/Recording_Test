@@ -34,6 +34,7 @@ class StepType(str, Enum):
     WIN_SWIPE = "win_swipe"
     WIN_INPUT_TEXT = "win_input_text"
     WIN_KEY = "win_key"
+    WIN_KEY_COMBO = "win_key_combo"  # Ctrl/Alt/Shift 등 수정자 + 키 조합 (예: Ctrl+A, Ctrl+Shift+F)
 
 
 class TapParams(BaseModel):

@@ -359,6 +359,8 @@ export default function RecordPage() {
   // 텍스트 입력 대기 모드 — '입력' 버튼 클릭 시 보낼 텍스트가 여기에 저장되고,
   // 다음 캔버스 클릭이 win_tap → win_input_text 시퀀스로 처리됨.
   const [wcPendingText, setWcPendingText] = useState<string | null>(null);
+  // 커스텀 키 조합 입력 — "ctrl+shift+f5" 형태. Send 버튼/Enter 로 즉시 전송.
+  const [wcKeyCombo, setWcKeyCombo] = useState('');
   const wcCanvasRef = useRef<HTMLCanvasElement>(null);
   // button: 'left' | 'right' — 좌/우 클릭 모두 동일 제스처 흐름 처리.
   const wcGestureRef = useRef<{ startX: number; startY: number; startTime: number; active: boolean; button: 'left' | 'right' }>(
@@ -1210,7 +1212,7 @@ export default function RecordPage() {
   // win 액션 실행 + 녹화 중이면 step 추가 (executeAction의 wincontrol 전용 버전)
   // 모든 win_* 스텝은 임베드된 프로세스 정보를 params 에 함께 저장 — 재생/테스트 시
   // 프로세스가 실행 중이지 않으면 백엔드가 자동으로 실행 후 재임베드한다.
-  const wcExecuteAction = useCallback(async (action: 'win_tap' | 'win_double_click' | 'win_long_press' | 'win_swipe' | 'win_input_text' | 'win_key', params: Record<string, any>, desc: string) => {
+  const wcExecuteAction = useCallback(async (action: 'win_tap' | 'win_double_click' | 'win_long_press' | 'win_swipe' | 'win_input_text' | 'win_key' | 'win_key_combo', params: Record<string, any>, desc: string) => {
     if (!wcAttached?.attached) {
       message.warning(t('record.winControlNoAttach'));
       return;
@@ -1344,6 +1346,14 @@ export default function RecordPage() {
     setWcInputText('');
     message.info('입력 위치를 클릭하세요');
   }, [wcInputText, wcPendingText]);
+
+  // 키 조합 전송 — modifier(ctrl/alt/shift/win) + 일반 키. 예: "ctrl+a", "ctrl+shift+f5".
+  // 백엔드가 '+'/',' 분리 → 모든 modifier down → 일반 키 down/up → modifier up(역순).
+  const wcSendKeyCombo = useCallback((combo: string) => {
+    const c = (combo || '').trim();
+    if (!c) return;
+    wcExecuteAction('win_key_combo', { keys: c }, `win_key_combo ${c}`);
+  }, [wcExecuteAction]);
 
   // ----------------------------------------------------------------
   // Random stress helpers (HKMC/iSAP 전용)
@@ -4329,6 +4339,55 @@ export default function RecordPage() {
                         {`입력 위치를 클릭하세요 — "${wcPendingText.length > 30 ? wcPendingText.slice(0, 30) + '...' : wcPendingText}"`}
                       </Tag>
                     )}
+                    {/* 키 조합 전송: 자주 쓰는 단축키 버튼 + 커스텀 입력.
+                        예) Ctrl+A 전체선택, Ctrl+C 복사, Ctrl+V 붙여넣기, Ctrl+X 잘라내기,
+                        Ctrl+Z 실행취소, Ctrl+Y 다시실행, Alt+F4 닫기. */}
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <span style={{ fontSize: 12, color: mutedTextColor }}>단축키:</span>
+                      {[
+                        { label: 'Ctrl+A', combo: 'ctrl+a' },
+                        { label: 'Ctrl+C', combo: 'ctrl+c' },
+                        { label: 'Ctrl+V', combo: 'ctrl+v' },
+                        { label: 'Ctrl+X', combo: 'ctrl+x' },
+                        { label: 'Ctrl+Z', combo: 'ctrl+z' },
+                        { label: 'Ctrl+Y', combo: 'ctrl+y' },
+                        { label: 'Ctrl+S', combo: 'ctrl+s' },
+                        { label: 'Alt+F4', combo: 'alt+f4' },
+                      ].map(({ label, combo }) => (
+                        <Button
+                          key={combo}
+                          size="small"
+                          onClick={() => wcSendKeyCombo(combo)}
+                        >
+                          {label}
+                        </Button>
+                      ))}
+                    </div>
+                    <Space.Compact style={{ width: '100%', maxWidth: 600 }}>
+                      <Input
+                        size="small"
+                        placeholder="ctrl+shift+f5 또는 alt+enter 처럼 + 또는 , 로 구분"
+                        value={wcKeyCombo}
+                        onChange={(e) => setWcKeyCombo(e.target.value)}
+                        onPressEnter={() => {
+                          if (!wcKeyCombo.trim()) return;
+                          wcSendKeyCombo(wcKeyCombo);
+                          setWcKeyCombo('');
+                        }}
+                      />
+                      <Button
+                        size="small"
+                        type="primary"
+                        onClick={() => {
+                          if (!wcKeyCombo.trim()) return;
+                          wcSendKeyCombo(wcKeyCombo);
+                          setWcKeyCombo('');
+                        }}
+                        disabled={!wcKeyCombo.trim()}
+                      >
+                        키 전송
+                      </Button>
+                    </Space.Compact>
                   </>
                 ) : (
                   <div style={{ color: mutedTextColor, textAlign: 'center', padding: 19 }}>

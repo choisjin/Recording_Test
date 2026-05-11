@@ -958,7 +958,7 @@ async def device_input(req: InputRequest):
             return {"result": "ok"}
 
         if req.action in ("win_tap", "win_double_click", "win_long_press", "win_swipe",
-                          "win_input_text", "win_key") and dev and dev.type == "wincontrol":
+                          "win_input_text", "win_key", "win_key_combo") and dev and dev.type == "wincontrol":
             wc = dm.get_wincontrol_service()
             if not wc.is_available():
                 raise HTTPException(
@@ -1022,6 +1022,19 @@ async def device_input(req: InputRequest):
             elif req.action == "win_key":
                 await loop.run_in_executor(None,
                     _ft2.partial(wc.send_key, str(p.get("key", ""))))
+            elif req.action == "win_key_combo":
+                # keys 는 list[str] 또는 "ctrl+a" / "ctrl,shift,f5" 형식 문자열.
+                raw = p.get("keys") if "keys" in p else p.get("combo", "")
+                if isinstance(raw, str):
+                    # '+' 또는 ',' 로 split, 공백 제거
+                    import re as _re
+                    keys_list = [s.strip() for s in _re.split(r"[+,]", raw) if s.strip()]
+                else:
+                    keys_list = [str(k).strip() for k in (raw or []) if str(k).strip()]
+                if not keys_list:
+                    raise HTTPException(status_code=400, detail="win_key_combo: empty keys")
+                await loop.run_in_executor(None,
+                    _ft2.partial(wc.send_key_combo, keys_list))
             return {"result": "ok"}
 
         # ADB actions — allow even if device is not in managed list (race with refresh)

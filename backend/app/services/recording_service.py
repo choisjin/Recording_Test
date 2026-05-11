@@ -989,7 +989,8 @@ class RecordingService:
                     )
         elif step_type in (StepType.WIN_TAP, StepType.WIN_DOUBLE_CLICK,
                            StepType.WIN_LONG_PRESS, StepType.WIN_SWIPE,
-                           StepType.WIN_INPUT_TEXT, StepType.WIN_KEY):
+                           StepType.WIN_INPUT_TEXT, StepType.WIN_KEY,
+                           StepType.WIN_KEY_COMBO):
             wc = self.dm.get_wincontrol_service()
             if not wc.is_available():
                 raise ValueError(
@@ -1054,6 +1055,16 @@ class RecordingService:
             elif step_type == StepType.WIN_KEY:
                 await loop.run_in_executor(None,
                     _ft3.partial(wc.send_key, str(params.get("key", ""))))
+            elif step_type == StepType.WIN_KEY_COMBO:
+                raw = params.get("keys") if "keys" in params else params.get("combo", "")
+                if isinstance(raw, str):
+                    import re as _re
+                    keys_list = [s.strip() for s in _re.split(r"[+,]", raw) if s.strip()]
+                else:
+                    keys_list = [str(k).strip() for k in (raw or []) if str(k).strip()]
+                if keys_list:
+                    await loop.run_in_executor(None,
+                        _ft3.partial(wc.send_key_combo, keys_list))
         elif step_type == StepType.WAIT:
             await _async_sleep(params.get("duration_ms", 1000) / 1000.0)
         else:
