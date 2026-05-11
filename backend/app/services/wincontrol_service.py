@@ -1595,13 +1595,11 @@ class WinControlService:
             return 1.0
 
     def _client_to_screen(self, x: int, y: int) -> tuple[int, int]:
-        """물리 픽셀 client 좌표 → 물리 픽셀 screen 좌표 (SendInput VIRTUALDESK 용).
+        """client 좌표 → screen 좌표.
 
-        ClientToScreen 은 SYSTEM_AWARE 타겟에서 논리(시스템 DPI) 좌표를 반환할 수 있음 →
-        그 결과를 직접 사용하지 않고 DWM 물리 좌표계 기준으로 직접 계산:
-          physical_screen = DWM.topleft + physical_client_offset + (x, y)
-        physical_client_offset 은 get_client_offset 과 동일 로직으로 산출.
-        타겟이 PMv2 면 DWM size == GetWindowRect size → scale=1.0 → 보정 없는 케이스와 동일.
+        입력(프론트가 보낸 client 좌표)을 scale 로 나눠서 logical 좌표계로 변환 후
+        GetWindowRect(논리) + ClientToScreen(논리) 기준으로 screen 좌표 계산.
+        SYSTEM_AWARE 타겟이 자신의 논리 좌표계로 클릭을 처리하도록 맞춤.
         """
         hwnd = self._hwnd
         if not hwnd:
@@ -1620,24 +1618,25 @@ class WinControlService:
             phys_h = vr[3] - vr[1]
             scale_x = phys_w / log_w
             scale_y = phys_h / log_h
-            phys_off_x = log_off_x * scale_x
-            phys_off_y = log_off_y * scale_y
-            sx = vr[0] + phys_off_x + int(x)
-            sy = vr[1] + phys_off_y + int(y)
+            # 입력을 scale 로 나눠서 logical 좌표로 변환
+            x_log = int(x) / scale_x
+            y_log = int(y) / scale_y
+            # GetWindowRect(논리) + 논리 client offset + 변환된 좌표 = 논리 screen 좌표
+            sx = wr[0] + log_off_x + x_log
+            sy = wr[1] + log_off_y + y_log
             sx_i = int(round(sx))
             sy_i = int(round(sy))
-            # 진단용 — 처음 몇 번만 INFO 로 찍고 이후 DEBUG 로 downgrade.
             if getattr(self, "_click_log_count", 0) < 5:
                 logger.info(
-                    "CLICK-DEBUG client(%d,%d) vr=%s wr=%s cts=(%d,%d) log_off=(%d,%d) scale=(%.3f,%.3f) phys_off=(%.1f,%.1f) -> screen(%d,%d)",
+                    "CLICK-DEBUG client(%d,%d) vr=%s wr=%s cts=(%d,%d) log_off=(%d,%d) scale=(%.3f,%.3f) x_log=(%.1f,%.1f) -> screen(%d,%d)",
                     int(x), int(y), vr, wr, cx, cy, log_off_x, log_off_y,
-                    scale_x, scale_y, phys_off_x, phys_off_y, sx_i, sy_i,
+                    scale_x, scale_y, x_log, y_log, sx_i, sy_i,
                 )
                 self._click_log_count = getattr(self, "_click_log_count", 0) + 1
             else:
                 logger.debug(
-                    "CLICK-DEBUG client(%d,%d) scale=(%.3f,%.3f) phys_off=(%.1f,%.1f) -> screen(%d,%d)",
-                    int(x), int(y), scale_x, scale_y, phys_off_x, phys_off_y, sx_i, sy_i,
+                    "CLICK-DEBUG client(%d,%d) scale=(%.3f,%.3f) -> screen(%d,%d)",
+                    int(x), int(y), scale_x, scale_y, sx_i, sy_i,
                 )
             return (sx_i, sy_i)
         except Exception:
