@@ -1232,7 +1232,7 @@ export default function RecordPage() {
     };
     // capture_after_ms: 백엔드가 액션 후 동일 활성화 사이클 안에서 ms 만큼 대기 후
     // 스크린샷까지 잡고 응답에 포함 → 이중 활성화/플리커 없이 1회 사이클로 처리.
-    const paramsWithCapture = { ...enrichedParams, capture_after_ms: 1000 };
+    const paramsWithCapture = { ...enrichedParams, capture_after_ms: 500 };
     let actionRes: any = null;
     try {
       actionRes = await deviceApi.input('WinControl', action, paramsWithCapture);
