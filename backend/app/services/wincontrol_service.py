@@ -1408,7 +1408,20 @@ class WinControlService:
         return ctx
 
     def _restore_context(self, ctx: dict) -> None:
-        """액션 후 이전 활성 창(z-order) + 마우스 커서 위치 복원."""
+        """액션 후 이전 활성 창(z-order) + 마우스 커서 위치 복원.
+
+        deferred_restore 컨텍스트 안이면 즉시 복원 안 하고 큐에 적재 — 컨텍스트 종료 시
+        일괄 복원. 액션 후 캡처를 한 사이클 안에서 처리하기 위함 (이중 활성화 방지).
+        """
+        if not ctx:
+            return
+        if getattr(self, "_defer_restore_active", False):
+            self._deferred_restore_ctxs.append(ctx)
+            return
+        self._do_restore_context(ctx)
+
+    def _do_restore_context(self, ctx: dict) -> None:
+        """실제 포어그라운드 + 커서 복원 동작."""
         if not ctx:
             return
         # 1) 이전 활성 창으로 포커스 복귀 (AttachThreadInput 트릭)
@@ -1445,6 +1458,31 @@ class WinControlService:
                 win32api.SetCursorPos((int(cursor[0]), int(cursor[1])))
             except Exception as e:
                 logger.debug("WinControl cursor restore failed: %s", e)
+
+    @contextlib.contextmanager
+    def deferred_restore(self):
+        """블록 동안 _restore_context 호출을 모두 지연 → 블록 종료 시 일괄 복원.
+
+        사용: 액션 후 캡처를 한 활성화 사이클 안에서 처리.
+          with wc.deferred_restore():
+              wc.send_tap(x, y)        # 액션이 _focus 로 타겟 활성화, restore 는 지연
+              time.sleep(1)            # UI 반영 대기 (타겟 계속 FG)
+              img = wc._capture_via_screen(wc._hwnd)  # 타겟 FG 상태 그대로 캡처
+          # 블록 종료 — prev_fg(우리 앱) 로 복원 (1회만)
+        """
+        self._defer_restore_active = True
+        self._deferred_restore_ctxs = []
+        try:
+            yield
+        finally:
+            self._defer_restore_active = False
+            # 모든 지연된 ctx 복원 — LIFO 가 아니라 첫 번째(=최외곽) ctx 만 의미가 있음.
+            # 중첩된 액션이라면 결국 사용자 앱(맨 처음 fg)으로 돌아가야 하므로 첫 번째 사용.
+            ctxs = self._deferred_restore_ctxs
+            self._deferred_restore_ctxs = []
+            if ctxs:
+                # 가장 처음 저장된 ctx 가 진짜 prev_fg(우리 frontend), 나머지는 타겟 자신.
+                self._do_restore_context(ctxs[0])
 
     def _client_to_screen(self, x: int, y: int) -> tuple[int, int]:
         """client 좌표 → screen 좌표 (SendInput 마우스 절대 위치용)."""

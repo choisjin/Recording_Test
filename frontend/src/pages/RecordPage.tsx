@@ -1230,15 +1230,34 @@ export default function RecordPage() {
       window_width: wcAttached.width || 0,
       window_height: wcAttached.height || 0,
     };
+    // capture_after_ms: 백엔드가 액션 후 동일 활성화 사이클 안에서 ms 만큼 대기 후
+    // 스크린샷까지 잡고 응답에 포함 → 이중 활성화/플리커 없이 1회 사이클로 처리.
+    const paramsWithCapture = { ...enrichedParams, capture_after_ms: 1000 };
+    let actionRes: any = null;
     try {
-      await deviceApi.input('WinControl', action, enrichedParams);
+      actionRes = await deviceApi.input('WinControl', action, paramsWithCapture);
     } catch (e: any) {
       message.error(e.response?.data?.detail || t('record.inputFailed'));
       return;
     }
-    // 액션 후 1초 대기 → 캡처. 대상 앱이 클릭/입력 결과를 화면에 반영할 시간 확보
-    // (대화상자 열림/페이지 전환/리스트 갱신 등 비동기 UI 업데이트 포함).
-    setTimeout(() => { void wcRefreshImage(); }, 1000);
+    // 응답에 이미지 포함됐으면 캔버스 갱신.
+    const b64 = actionRes?.data?.image as string | undefined;
+    if (b64) {
+      const img = new window.Image();
+      img.onload = () => {
+        wcImageRef.current = img;
+        const cv = wcCanvasRef.current;
+        if (cv) {
+          if (cv.width !== img.naturalWidth) cv.width = img.naturalWidth;
+          if (cv.height !== img.naturalHeight) cv.height = img.naturalHeight;
+          if (img.naturalHeight > 0) {
+            cv.style.aspectRatio = `${img.naturalWidth} / ${img.naturalHeight}`;
+          }
+          cv.getContext('2d')?.drawImage(img, 0, 0);
+        }
+      };
+      img.src = `data:image/jpeg;base64,${b64}`;
+    }
     if (recording) {
       const tempId = (steps[steps.length - 1]?.id || 0) + 1;
       const optimisticStep: Step = {

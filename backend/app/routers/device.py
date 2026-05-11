@@ -995,47 +995,66 @@ async def device_input(req: InputRequest):
             elif not wc.is_attached():
                 raise HTTPException(status_code=400, detail="WinControl: no window attached")
             import functools as _ft2
-            if req.action == "win_tap":
-                await loop.run_in_executor(None,
-                    _ft2.partial(wc.send_tap, int(p["x"]), int(p["y"]),
-                                 p.get("button", "left")))
-            elif req.action == "win_double_click":
-                await loop.run_in_executor(None,
-                    _ft2.partial(wc.send_double_click, int(p["x"]), int(p["y"])))
-            elif req.action == "win_long_press":
-                await loop.run_in_executor(None,
-                    _ft2.partial(wc.send_long_press, int(p["x"]), int(p["y"]),
-                                 int(p.get("duration_ms", 500)),
-                                 p.get("button", "left")))
-            elif req.action == "win_swipe":
-                await loop.run_in_executor(None,
-                    _ft2.partial(wc.send_swipe, int(p["x1"]), int(p["y1"]),
-                                 int(p["x2"]), int(p["y2"]),
-                                 int(p.get("duration_ms", 300))))
-            elif req.action == "win_input_text":
-                cfx = p.get("click_first_x")
-                cfy = p.get("click_first_y")
-                await loop.run_in_executor(None,
-                    _ft2.partial(wc.send_text, str(p.get("text", "")),
+            # capture_after_ms: 액션 후 ms 만큼 대기한 뒤 캡처해 응답에 포함.
+            # 0/None 이면 캡처 안 함. 양수면 액션의 deferred_restore 안에서 wait+capture
+            # 까지 한 사이클로 처리 → 이중 활성화/플리커 방지.
+            capture_after_ms_raw = p.get("capture_after_ms")
+            capture_after_ms = int(capture_after_ms_raw) if capture_after_ms_raw else 0
+
+            def _run_action():
+                if req.action == "win_tap":
+                    wc.send_tap(int(p["x"]), int(p["y"]), p.get("button", "left"))
+                elif req.action == "win_double_click":
+                    wc.send_double_click(int(p["x"]), int(p["y"]))
+                elif req.action == "win_long_press":
+                    wc.send_long_press(int(p["x"]), int(p["y"]),
+                                       int(p.get("duration_ms", 500)),
+                                       p.get("button", "left"))
+                elif req.action == "win_swipe":
+                    wc.send_swipe(int(p["x1"]), int(p["y1"]),
+                                  int(p["x2"]), int(p["y2"]),
+                                  int(p.get("duration_ms", 300)))
+                elif req.action == "win_input_text":
+                    cfx = p.get("click_first_x")
+                    cfy = p.get("click_first_y")
+                    wc.send_text(str(p.get("text", "")),
                                  int(cfx) if cfx is not None else None,
-                                 int(cfy) if cfy is not None else None))
-            elif req.action == "win_key":
-                await loop.run_in_executor(None,
-                    _ft2.partial(wc.send_key, str(p.get("key", ""))))
-            elif req.action == "win_key_combo":
-                # keys 는 list[str] 또는 "ctrl+a" / "ctrl,shift,f5" 형식 문자열.
-                raw = p.get("keys") if "keys" in p else p.get("combo", "")
-                if isinstance(raw, str):
-                    # '+' 또는 ',' 로 split, 공백 제거
-                    import re as _re
-                    keys_list = [s.strip() for s in _re.split(r"[+,]", raw) if s.strip()]
-                else:
-                    keys_list = [str(k).strip() for k in (raw or []) if str(k).strip()]
-                if not keys_list:
-                    raise HTTPException(status_code=400, detail="win_key_combo: empty keys")
-                await loop.run_in_executor(None,
-                    _ft2.partial(wc.send_key_combo, keys_list))
-            return {"result": "ok"}
+                                 int(cfy) if cfy is not None else None)
+                elif req.action == "win_key":
+                    wc.send_key(str(p.get("key", "")))
+                elif req.action == "win_key_combo":
+                    raw = p.get("keys") if "keys" in p else p.get("combo", "")
+                    if isinstance(raw, str):
+                        import re as _re
+                        keys_list = [s.strip() for s in _re.split(r"[+,]", raw) if s.strip()]
+                    else:
+                        keys_list = [str(k).strip() for k in (raw or []) if str(k).strip()]
+                    if not keys_list:
+                        raise ValueError("win_key_combo: empty keys")
+                    wc.send_key_combo(keys_list)
+
+            if capture_after_ms > 0:
+                # 액션 + 대기 + 캡처 + 복원을 한 활성화 사이클로 처리.
+                def _action_and_capture():
+                    import time as _time, io as _io, base64 as _b64
+                    with wc.deferred_restore():
+                        _run_action()
+                        # UI 반영 대기 (타겟이 여전히 포어그라운드).
+                        _time.sleep(capture_after_ms / 1000.0)
+                        # 타겟 FG 상태에서 바로 스크린 캡처 (활성화 추가 없음).
+                        img = wc._capture_via_screen(wc._hwnd) if wc.is_attached() else None
+                    # 컨텍스트 종료 → 우리 앱으로 포커스 복원 (1회만)
+                    if img is None:
+                        return None
+                    buf = _io.BytesIO()
+                    img.save(buf, format="JPEG", quality=70)
+                    return _b64.b64encode(buf.getvalue()).decode("ascii")
+
+                img_b64 = await loop.run_in_executor(None, _action_and_capture)
+                return {"result": "ok", "image": img_b64 or "", "format": "jpeg"}
+            else:
+                await loop.run_in_executor(None, _run_action)
+                return {"result": "ok"}
 
         # ADB actions — allow even if device is not in managed list (race with refresh)
         if dev and dev.type not in ("adb", None):
