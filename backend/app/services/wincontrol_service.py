@@ -669,30 +669,33 @@ class WinControlService:
             return (0, 0)
 
     def get_outer_size(self) -> tuple[int, int]:
-        """윈도우(타이틀바/보더 포함) outer 크기 = BitBlt 비트맵 크기.
-        GetWindowRect 기준 — _capture_via_screen / get_client_offset 과 동일 좌표계.
+        """윈도우(타이틀바/보더 포함, shadow 제외) 크기 = BitBlt 비트맵 크기.
+        DWM EXTENDED_FRAME_BOUNDS 기준 — _capture_via_screen 과 동일 좌표계.
         """
         if not self.is_attached():
             return (0, 0)
         try:
-            wr = win32gui.GetWindowRect(self._hwnd)
-            return (wr[2] - wr[0], wr[3] - wr[1])
+            vr = self._get_visible_window_rect(self._hwnd)
+            if vr is None:
+                vr = win32gui.GetWindowRect(self._hwnd)
+            return (vr[2] - vr[0], vr[3] - vr[1])
         except Exception:
             return (0, 0)
 
     def get_client_offset(self) -> tuple[int, int]:
-        """윈도우 비트맵 기준 client 좌상단 오프셋.
+        """비트맵 (0,0) 에서 client (0,0) 까지의 오프셋 (물리 픽셀).
 
-        프론트가 풀 윈도우 캔버스에서 받은 클릭 좌표를 client-space 로 변환할 때
-        빼는 값. GetWindowRect 기준 사용 — _capture_via_screen 과 동일 좌표계라야
-        bitmap pixel (0,0) = 윈도우 outer (0,0) 이 됨 → 클릭 좌표 정합.
+        bitmap 은 _capture_via_screen 에서 DWM 물리 픽셀 rect 기준으로 캡처.
+        ClientToScreen 는 PMv2 스레드에서 물리 픽셀 좌표 반환 → 둘 다 물리 픽셀이라 일관.
         """
         if not self.is_attached():
             return (0, 0)
         try:
-            wr = win32gui.GetWindowRect(self._hwnd)
+            vr = self._get_visible_window_rect(self._hwnd)
+            if vr is None:
+                vr = win32gui.GetWindowRect(self._hwnd)
             cx, cy = win32gui.ClientToScreen(self._hwnd, (0, 0))
-            return (cx - wr[0], cy - wr[1])
+            return (cx - vr[0], cy - vr[1])
         except Exception:
             return (0, 0)
 
@@ -861,14 +864,13 @@ class WinControlService:
         try:
             if not win32gui.IsWindow(hwnd) or win32gui.IsIconic(hwnd):
                 return None
-            # GetWindowRect 기준 캡처 — DWM EXTENDED_FRAME_BOUNDS 는 SYSTEM_AWARE 앱 +
-            # 가변 DPI 모니터 조합에서 윈도우보다 큰 (가상화된 물리) rect 를 반환하는
-            # 사례가 있음. 그 경우 비트맵이 윈도우 영역 너머까지 캡처해서 좌표 불일치 발생.
-            # GetWindowRect 는 PMv2 스레드에서 일관되게 윈도우 자체 outer rect 를 반환 →
-            # 비트맵 크기 = ClientToScreen 좌표계와 동일 → 좌표 정합.
-            # 단점: 드롭 섀도우(7px 가량)가 가장자리에 포함됨 — 시각적으로만 영향, 좌표 정합엔 무영향.
-            wr = win32gui.GetWindowRect(hwnd)
-            x, y, x2, y2 = wr
+            # DWM EXTENDED_FRAME_BOUNDS 가 PMv2 스레드에서 일관되게 물리 픽셀 좌표를 반환 →
+            # 실제 화면에 렌더링되는 영역과 정확히 일치. GetWindowRect 는 SYSTEM_AWARE 앱에서
+            # 시스템 DPI 기준 논리 좌표를 반환할 수 있어 멀티 DPI 모니터 환경에서 어긋남.
+            vr = self._get_visible_window_rect(hwnd)
+            if vr is None:
+                vr = win32gui.GetWindowRect(hwnd)
+            x, y, x2, y2 = vr
             w, h = x2 - x, y2 - y
         except Exception:
             return None
@@ -1265,9 +1267,14 @@ class WinControlService:
                     scale_corr = self._get_dpi_scale_for_window(hwnd)
                 except Exception:
                     pass
+                # ClientToScreen(0,0) 값이 DWM rect 와 일치하는지 확인 → 좌표계 진단
+                try:
+                    cts_outer = win32gui.ClientToScreen(hwnd, (0, 0))
+                except Exception:
+                    cts_outer = (-1, -1)
                 logger.info(
-                    "DPI-DEBUG[outer] hwnd=%s dpi=%s awareness=%s type=%s monitor_dpi=%s system_dpi=%s scale_corr=%.3f client=%s window=%s dwm=%s",
-                    hwnd, dpi_outer, aware_outer, aware_type, monitor_dpi, system_dpi, scale_corr, cr_outer, wr_outer, vr_outer,
+                    "DPI-DEBUG[outer] hwnd=%s dpi=%s awareness=%s type=%s monitor_dpi=%s system_dpi=%s scale_corr=%.3f client=%s window=%s dwm=%s ClientToScreen(0,0)=%s",
+                    hwnd, dpi_outer, aware_outer, aware_type, monitor_dpi, system_dpi, scale_corr, cr_outer, wr_outer, vr_outer, cts_outer,
                 )
                 with self._hwnd_dpi_ctx(hwnd):
                     cr_in = win32gui.GetClientRect(hwnd)
