@@ -1368,8 +1368,8 @@ export default function RecordPage() {
   // 백엔드가 '+'/',' 분리 → 모든 modifier down → 일반 키 down/up → modifier up(역순).
   const wcSendKeyCombo = useCallback((combo: string) => {
     const c = (combo || '').trim();
-    if (!c) return;
-    wcExecuteAction('win_key_combo', { keys: c }, `win_key_combo ${c}`);
+    if (!c) return Promise.resolve();
+    return wcExecuteAction('win_key_combo', { keys: c }, `win_key_combo ${c}`);
   }, [wcExecuteAction]);
 
   // ----------------------------------------------------------------
@@ -4362,20 +4362,25 @@ export default function RecordPage() {
                     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-start' }}>
                       <span style={{ fontSize: 12, color: mutedTextColor }}>단축키:</span>
                       {[
-                        { label: 'Ctrl+A', combo: 'ctrl+a' },
-                        { label: 'Ctrl+C', combo: 'ctrl+c' },
-                        { label: 'Ctrl+V', combo: 'ctrl+v' },
-                        { label: 'Ctrl+X', combo: 'ctrl+x' },
-                        { label: 'Ctrl+Z', combo: 'ctrl+z' },
-                        { label: 'Ctrl+Y', combo: 'ctrl+y' },
-                        { label: 'Ctrl+S', combo: 'ctrl+s' },
-                        { label: 'Ctrl+A+BackSpace', combo: 'ctrl+a+backspace' },
-                        { label: 'Alt+F4', combo: 'alt+f4' },
-                      ].map(({ label, combo }) => (
+                        { label: 'Ctrl+A', sequence: ['ctrl+a'] },
+                        { label: 'Ctrl+C', sequence: ['ctrl+c'] },
+                        { label: 'Ctrl+V', sequence: ['ctrl+v'] },
+                        { label: 'Ctrl+X', sequence: ['ctrl+x'] },
+                        { label: 'Ctrl+Z', sequence: ['ctrl+z'] },
+                        { label: 'Ctrl+Y', sequence: ['ctrl+y'] },
+                        { label: 'Ctrl+S', sequence: ['ctrl+s'] },
+                        { label: 'Alt+F4', sequence: ['alt+f4'] },
+                        // Ctrl+A 전체선택 후 Ctrl 떼고 BackSpace로 삭제 (Ctrl+BackSpace는 단어단위 삭제이므로 분리 필수).
+                        { label: 'Ctrl+A → BackSpace', sequence: ['ctrl+a', 'backspace'] },
+                      ].map(({ label, sequence }) => (
                         <Button
-                          key={combo}
+                          key={label}
                           size="small"
-                          onClick={() => wcSendKeyCombo(combo)}
+                          onClick={async () => {
+                            for (const combo of sequence) {
+                              await wcSendKeyCombo(combo);
+                            }
+                          }}
                         >
                           {label}
                         </Button>
