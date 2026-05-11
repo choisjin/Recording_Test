@@ -22,7 +22,7 @@ OUTPUT_PATH_EN = Path(__file__).resolve().parent / "module-guide-en.html"
 # 모듈 카테고리 분류 (id, ko_label, en_label, modules)
 CATEGORIES = [
     ("bench", "벤치 장비", "Test Bench", ["IVIQEBenchIOClient", "CCIC_BENCH", "BENCH", "SP25Bench", "SmartBench", "WoohyunBench"]),
-    ("can", "CAN 통신", "CAN Communication", ["CAN", "CANOE", "CANAT", "PCANClient"]),
+    ("can", "CAN 통신", "CAN Communication", ["CAN", "CANoe_RBS", "CANoe_Ctrl", "CANAT", "PCANClient"]),
     ("comm", "통신 (시리얼/SSH/UART/DLT)", "Communication (Serial/SSH/UART/DLT)", ["SerialPlugin", "SerialLogging", "Uart", "Ignition", "SSHManager", "DLTLogging", "DLTViewer"]),
     ("system", "시스템 & 유틸리티", "System & Utilities", ["Android", "CMD", "COMMON_WINDOWS", "TigrisCheck"]),
 ]

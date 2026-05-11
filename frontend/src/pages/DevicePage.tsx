@@ -13,9 +13,13 @@ const { Option } = Select;
 interface ConnectField {
   name: string;
   label: string;
-  type: 'text' | 'number' | 'select';
+  type: 'text' | 'number' | 'select' | 'object_list';
   default?: string;
   options?: string[];
+  // object_list 전용: 각 row의 sub-field 정의
+  item_fields?: ConnectField[];
+  // object_list 전용: 기본 row 데이터 (편집 시 최초 항목 추가용)
+  default_items?: Record<string, any>[];
 }
 
 interface ModuleInfo {
@@ -648,7 +652,13 @@ export default function DevicePage() {
       if (fields.length > 0) {
         extra = {};
         for (const f of fields) {
-          extra[f.name] = extraFieldValues[f.name] ?? f.default ?? '';
+          if (f.type === 'object_list') {
+            // object_list는 array 자체를 그대로 전송 (axios가 JSON 직렬화)
+            const v = extraFieldValues[f.name];
+            extra[f.name] = Array.isArray(v) ? v : (f.default_items ?? []);
+          } else {
+            extra[f.name] = extraFieldValues[f.name] ?? f.default ?? '';
+          }
         }
       }
       const tcpPort = (devType === 'hkmc_agent' || devType === 'isap_agent' || devType === 'icas_agent' || devType === 'mib_agent') ? hkmcPort : undefined;
@@ -1053,12 +1063,124 @@ export default function DevicePage() {
     </div>
   );
 
+  // object_list: 외부에서 들어온 값을 항상 array of records로 정규화
+  const normalizeObjectListValue = (raw: any, f: ConnectField): Record<string, any>[] => {
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === 'string' && raw.trim()) {
+      // JSON 또는 Python repr 양쪽 다 시도 (단일 따옴표/None/True/False 치환)
+      try {
+        return JSON.parse(raw);
+      } catch {
+        try {
+          const pyToJson = raw
+            .replace(/'/g, '"')
+            .replace(/\bNone\b/g, 'null')
+            .replace(/\bTrue\b/g, 'true')
+            .replace(/\bFalse\b/g, 'false');
+          return JSON.parse(pyToJson);
+        } catch {
+          // ignore
+        }
+      }
+    }
+    return f.default_items ? JSON.parse(JSON.stringify(f.default_items)) : [];
+  };
+
+  // object_list의 각 row를 sub-field로 렌더링
+  const renderObjectList = (f: ConnectField, values: Record<string, any>, onChange: (vals: Record<string, any>) => void) => {
+    const items = normalizeObjectListValue(values[f.name], f);
+    const itemFields = f.item_fields || [];
+
+    const update = (newItems: Record<string, any>[]) => {
+      onChange({ ...values, [f.name]: newItems });
+    };
+
+    const addItem = () => {
+      // 새 row의 기본값: 첫 번째 default_item을 복제하거나, item_fields의 default 모음
+      const proto = f.default_items?.[0]
+        ? { ...f.default_items[0] }
+        : Object.fromEntries(itemFields.map(sf => [sf.name, sf.default ?? '']));
+      update([...items, proto]);
+    };
+
+    const removeItem = (idx: number) => {
+      update(items.filter((_, i) => i !== idx));
+    };
+
+    const updateItem = (idx: number, key: string, val: any) => {
+      const next = items.map((it, i) => (i === idx ? { ...it, [key]: val } : it));
+      update(next);
+    };
+
+    return (
+      <div style={{ border: '1px solid #e0e0e0', borderRadius: 4, padding: 6, background: '#fafafa' }}>
+        {items.length === 0 && (
+          <div style={{ fontSize: 11, color: '#999', marginBottom: 4 }}>채널 없음 — 추가 버튼으로 등록하세요</div>
+        )}
+        {items.map((item, idx) => (
+          <div key={idx} style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(${itemFields.length}, minmax(0, 1fr)) auto`,
+            gap: 4,
+            alignItems: 'end',
+            marginBottom: 4,
+            padding: 4,
+            background: '#fff',
+            border: '1px solid #eee',
+            borderRadius: 3,
+          }}>
+            {itemFields.map(sf => (
+              <div key={sf.name} style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 10, color: '#888' }}>{sf.label}</div>
+                {sf.type === 'select' && sf.options ? (
+                  <Select
+                    size="small"
+                    style={{ width: '100%' }}
+                    value={String(item[sf.name] ?? sf.default ?? '')}
+                    onChange={(v) => updateItem(idx, sf.name, v)}
+                  >
+                    {sf.options.map(o => <Option key={o} value={o}>{o}</Option>)}
+                  </Select>
+                ) : sf.type === 'number' ? (
+                  <InputNumber
+                    size="small"
+                    style={{ width: '100%' }}
+                    value={item[sf.name] ?? (sf.default ? Number(sf.default) : undefined)}
+                    onChange={(v) => updateItem(idx, sf.name, v)}
+                  />
+                ) : (
+                  <Input
+                    size="small"
+                    value={item[sf.name] ?? sf.default ?? ''}
+                    onChange={(e) => updateItem(idx, sf.name, e.target.value)}
+                  />
+                )}
+              </div>
+            ))}
+            <Button
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              onClick={() => removeItem(idx)}
+              title="이 행 제거"
+            />
+          </div>
+        ))}
+        <Button size="small" icon={<PlusOutlined />} onClick={addItem} style={{ marginTop: 2 }}>
+          채널 추가
+        </Button>
+      </div>
+    );
+  };
+
   // Render dynamic connect_fields inputs
   const renderConnectFields = (fields: ConnectField[], values: Record<string, any>, onChange: (vals: Record<string, any>) => void) => {
     return fields.map(f => (
       <div key={f.name} style={{ marginBottom: 3 }}>
         <span style={{ fontSize: 11, color: '#888', marginRight: 6 }}>{f.label}:</span>
-        {f.type === 'select' && f.options ? (
+        {f.type === 'object_list' ? (
+          renderObjectList(f, values, onChange)
+        ) : f.type === 'select' && f.options ? (
           <Select
             style={{ width: '100%' }}
             value={values[f.name] ?? f.default}

@@ -3,42 +3,6 @@
     "version": "2.0",
     "description": "모듈 함수 가이드 — 각 함수의 설명과 파라미터 설명을 포함합니다. 수정 후 서버 재시작 없이 반영됩니다."
   },
-  "CANOE": {
-    "_description": "CANoe 제어 — Vector CANoe 시뮬레이션 소프트웨어의 시작/중지, 환경변수/시스템변수 설정을 제어하는 모듈",
-    "functions": {
-      "open_simulation": {
-        "description": "CANoe 시뮬레이션을 엽니다 (.cfg 파일 로드).",
-        "params": {
-          "cfgname": "CANoe 설정 파일(.cfg) 경로. 예: 'C:/canoe/project.cfg'"
-        }
-      },
-      "close_simulation": {
-        "description": "CANoe 시뮬레이션을 닫고 프로그램을 종료합니다.",
-        "params": {}
-      },
-      "start_Measurement": {
-        "description": "CANoe 측정(Measurement)을 시작합니다.",
-        "params": {}
-      },
-      "stop_Measurement": {
-        "description": "CANoe 측정(Measurement)을 중지합니다.",
-        "params": {}
-      },
-      "get_EnvVar": {
-        "description": "CANoe 환경 변수 값을 읽습니다.",
-        "params": {
-          "var": "환경 변수 이름"
-        }
-      },
-      "set_EnvVar": {
-        "description": "CANoe 환경 변수 값을 설정합니다.",
-        "params": {
-          "var": "환경 변수 이름",
-          "value": "설정할 값 (숫자)"
-        }
-      }
-    }
-  },
   "CANAT": {
     "_description": "CANat 디바이스 — CANat 하드웨어를 통해 CAN 버스 메시지를 송수신하는 모듈",
     "functions": {

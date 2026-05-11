@@ -3,42 +3,6 @@
     "version": "2.0",
     "description": "Module function guide — Contains descriptions and parameter details for each function. Changes take effect without server restart."
   },
-  "CANOE": {
-    "_description": "CANoe Control — Controls Vector CANoe simulation software: start/stop, environment variables, and system variables",
-    "functions": {
-      "open_simulation": {
-        "description": "Opens a CANoe simulation (loads a .cfg file).",
-        "params": {
-          "cfgname": "CANoe configuration file (.cfg) path. e.g. 'C:/canoe/project.cfg'"
-        }
-      },
-      "close_simulation": {
-        "description": "Closes the CANoe simulation and exits the program.",
-        "params": {}
-      },
-      "start_Measurement": {
-        "description": "Starts CANoe measurement.",
-        "params": {}
-      },
-      "stop_Measurement": {
-        "description": "Stops CANoe measurement.",
-        "params": {}
-      },
-      "get_EnvVar": {
-        "description": "Reads a CANoe environment variable value.",
-        "params": {
-          "var": "Environment variable name"
-        }
-      },
-      "set_EnvVar": {
-        "description": "Sets a CANoe environment variable value.",
-        "params": {
-          "var": "Environment variable name",
-          "value": "Value to set (numeric)"
-        }
-      }
-    }
-  },
   "CANAT": {
     "_description": "CANat Device — Sends and receives CAN bus messages via CANat hardware",
     "functions": {

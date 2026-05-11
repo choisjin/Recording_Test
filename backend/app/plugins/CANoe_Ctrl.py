@@ -2,6 +2,8 @@ import datetime
 import os
 import glob
 import time
+import json
+import ast
 import threading
 
 from can import Message, Logger, Notifier, broadcastmanager
@@ -12,11 +14,72 @@ from isotp import Address, NotifierBasedCanStack, AddressingMode, BlockingSendFa
 broadcastmanager.USE_WINDOWS_EVENTS = False  # For Periodic msg
 
 
+def _coerce_value(v):
+    """UI는 모든 값을 string으로 보냄 → 적절한 Python 타입으로 변환.
+
+    - "True"/"False" → bool
+    - "None"/"" → None
+    - 숫자 문자열 → int
+    - 그 외 → 원본 유지
+    """
+    if not isinstance(v, str):
+        return v
+    s = v.strip()
+    if s == "" or s.lower() == "none" or s.lower() == "null":
+        return None
+    if s.lower() == "true":
+        return True
+    if s.lower() == "false":
+        return False
+    try:
+        return int(s)
+    except ValueError:
+        pass
+    try:
+        return float(s)
+    except ValueError:
+        pass
+    return v
+
+
+def _normalize_device_info(device_info):
+    """device_info를 list[dict] 형태로 정규화.
+
+    허용되는 입력 형식:
+      1. list[dict] — 그대로 사용
+      2. JSON 문자열 — json.loads
+      3. Python literal 문자열 (단일 따옴표 포함) — ast.literal_eval
+      4. dict 단일 — list로 wrap
+    각 dict의 값은 _coerce_value로 타입 변환.
+    """
+    if device_info is None or device_info == "":
+        raise ValueError("device_info is empty")
+
+    parsed = device_info
+    if isinstance(parsed, str):
+        s = parsed.strip()
+        try:
+            parsed = json.loads(s)
+        except (ValueError, TypeError):
+            parsed = ast.literal_eval(s)
+
+    if isinstance(parsed, dict):
+        parsed = [parsed]
+    if not isinstance(parsed, list):
+        raise ValueError(f"device_info must be list[dict], got {type(parsed).__name__}")
+
+    result = []
+    for item in parsed:
+        if not isinstance(item, dict):
+            raise ValueError(f"device_info item must be dict, got {type(item).__name__}")
+        result.append({k: _coerce_value(v) for k, v in item.items()})
+    return result
+
+
 class CANoe_Ctrl:
     def __init__(self, device_info):
         self.bus = []
-        dev_dict = eval(device_info)
-        # print(dev_dict)
+        dev_dict = _normalize_device_info(device_info)
         for rp in range(0, len(dev_dict)):
             if dev_dict[rp]['is_fd'] is False:
                 self.bus.append(VectorBus(channel=dev_dict[rp]['channel'], app_name=dev_dict[rp]['app_name'],
