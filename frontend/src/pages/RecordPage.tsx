@@ -359,16 +359,6 @@ export default function RecordPage() {
   // 텍스트 입력 대기 모드 — '입력' 버튼 클릭 시 보낼 텍스트가 여기에 저장되고,
   // 다음 캔버스 클릭이 win_tap → win_input_text 시퀀스로 처리됨.
   const [wcPendingText, setWcPendingText] = useState<string | null>(null);
-  // 커스텀 키 조합 입력 — "ctrl+shift+f5" 형태. Send 버튼/Enter 로 즉시 전송.
-  const [wcKeyCombo, setWcKeyCombo] = useState('');
-  // 액션 모드 대기 — 다음 캔버스 클릭이 더블클릭/롱프레스로 처리됨.
-  // null = 일반(제스처 자동 판정), 'double_click' = 다음 클릭 더블클릭,
-  // { type: 'long_press', duration_ms: N } = 다음 클릭이 N ms 롱프레스.
-  type WcPendingAction =
-    | { type: 'double_click' }
-    | { type: 'long_press'; duration_ms: number }
-    | null;
-  const [wcPendingAction, setWcPendingAction] = useState<WcPendingAction>(null);
   const wcCanvasRef = useRef<HTMLCanvasElement>(null);
   // button: 'left' | 'right' — 좌/우 클릭 모두 동일 제스처 흐름 처리.
   const wcGestureRef = useRef<{ startX: number; startY: number; startTime: number; active: boolean; button: 'left' | 'right' }>(
@@ -1310,24 +1300,6 @@ export default function RecordPage() {
         return;
       }
     }
-    // 액션 모드 대기 — 좌클릭 + 작은 이동 거리면 모드에 맞는 액션 전송 후 모드 해제.
-    if (wcPendingAction !== null && wcGestureRef.current.button === 'left') {
-      const dist0 = Math.hypot(c.x - wcGestureRef.current.startX, c.y - wcGestureRef.current.startY);
-      if (dist0 <= 10) {
-        const action = wcPendingAction;
-        setWcPendingAction(null);
-        if (action.type === 'double_click') {
-          await wcExecuteAction('win_double_click',
-            { x: c.x, y: c.y },
-            `win_double_click (${c.x},${c.y})`);
-        } else {
-          await wcExecuteAction('win_long_press',
-            { x: c.x, y: c.y, duration_ms: action.duration_ms, button: 'left' },
-            `win_long_press (${c.x},${c.y}) ${action.duration_ms}ms`);
-        }
-        return;
-      }
-    }
     const { startX, startY, startTime, button } = wcGestureRef.current;
     const dist = Math.hypot(c.x - startX, c.y - startY);
     const elapsed = Date.now() - startTime;
@@ -1346,7 +1318,7 @@ export default function RecordPage() {
         { x: startX, y: startY, button },
         `win_tap${button === 'right' ? ' [right]' : ''} (${startX},${startY})`);
     }
-  }, [wcToWinCoords, wcExecuteAction, wcPendingText, wcPendingAction]);
+  }, [wcToWinCoords, wcExecuteAction, wcPendingText]);
 
   const wcDoubleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const c = wcToWinCoords(e.clientX, e.clientY);
@@ -4335,11 +4307,9 @@ export default function RecordPage() {
                           // 텍스트 입력 대기 중이면 text 커서 + 노란 보더로 시각 안내.
                           border: wcPendingText !== null
                             ? '2px solid #faad14'
-                            : wcPendingAction !== null
-                              ? '2px solid #52c41a'
-                              : (isDark ? '1px solid #333' : '1px solid #d9d9d9'),
+                            : (isDark ? '1px solid #333' : '1px solid #d9d9d9'),
                           borderRadius: 4,
-                          cursor: (wcPendingText !== null || wcPendingAction !== null) ? 'pointer' : 'crosshair',
+                          cursor: wcPendingText !== null ? 'text' : 'crosshair',
                           userSelect: 'none',
                         }}
                       />
@@ -4367,64 +4337,10 @@ export default function RecordPage() {
                         {`입력 위치를 클릭하세요 — "${wcPendingText.length > 30 ? wcPendingText.slice(0, 30) + '...' : wcPendingText}"`}
                       </Tag>
                     )}
-                    {/* 액션 모드 버튼: 클릭하면 다음 캔버스 클릭이 해당 액션으로 전송됨.
-                        제스처(드래그/홀드)로도 가능하지만 명시적 버튼이 더 직관적. */}
-                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
-                      <span style={{ fontSize: 12, color: mutedTextColor }}>액션 모드:</span>
-                      <Button
-                        size="small"
-                        type={wcPendingAction?.type === 'double_click' ? 'primary' : 'default'}
-                        danger={wcPendingAction?.type === 'double_click'}
-                        onClick={() => {
-                          if (wcPendingAction?.type === 'double_click') {
-                            setWcPendingAction(null);
-                          } else {
-                            setWcPendingAction({ type: 'double_click' });
-                            setWcPendingText(null);
-                            message.info('더블클릭 위치를 클릭하세요');
-                          }
-                        }}
-                      >
-                        더블클릭
-                      </Button>
-                      {[
-                        { label: '롱프레스 0.5초', ms: 500 },
-                        { label: '롱프레스 1초', ms: 1000 },
-                        { label: '롱프레스 3초', ms: 3000 },
-                      ].map(({ label, ms }) => {
-                        const isActive = wcPendingAction?.type === 'long_press' && wcPendingAction.duration_ms === ms;
-                        return (
-                          <Button
-                            key={ms}
-                            size="small"
-                            type={isActive ? 'primary' : 'default'}
-                            danger={isActive}
-                            onClick={() => {
-                              if (isActive) {
-                                setWcPendingAction(null);
-                              } else {
-                                setWcPendingAction({ type: 'long_press', duration_ms: ms });
-                                setWcPendingText(null);
-                                message.info(`${label} 위치를 클릭하세요`);
-                              }
-                            }}
-                          >
-                            {label}
-                          </Button>
-                        );
-                      })}
-                    </div>
-                    {wcPendingAction !== null && (
-                      <Tag color="green" style={{ alignSelf: 'flex-start' }}>
-                        {wcPendingAction.type === 'double_click'
-                          ? '더블클릭 위치를 캔버스에서 클릭하세요'
-                          : `롱프레스(${wcPendingAction.duration_ms}ms) 위치를 캔버스에서 클릭하세요`}
-                      </Tag>
-                    )}
-                    {/* 키 조합 전송: 자주 쓰는 단축키 버튼 + 커스텀 입력.
-                        예) Ctrl+A 전체선택, Ctrl+C 복사, Ctrl+V 붙여넣기, Ctrl+X 잘라내기,
-                        Ctrl+Z 실행취소, Ctrl+Y 다시실행, Alt+F4 닫기. */}
-                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                    {/* 단축키: 자주 쓰는 modifier 조합 버튼. 좌측 정렬.
+                        Ctrl+A 전체선택, Ctrl+C 복사, Ctrl+V 붙여넣기, Ctrl+X 잘라내기,
+                        Ctrl+Z 실행취소, Ctrl+Y 다시실행, Ctrl+S 저장, Alt+F4 닫기. */}
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-start' }}>
                       <span style={{ fontSize: 12, color: mutedTextColor }}>단축키:</span>
                       {[
                         { label: 'Ctrl+A', combo: 'ctrl+a' },
@@ -4445,31 +4361,6 @@ export default function RecordPage() {
                         </Button>
                       ))}
                     </div>
-                    <Space.Compact style={{ width: '100%', maxWidth: 600 }}>
-                      <Input
-                        size="small"
-                        placeholder="ctrl+shift+f5 또는 alt+enter 처럼 + 또는 , 로 구분"
-                        value={wcKeyCombo}
-                        onChange={(e) => setWcKeyCombo(e.target.value)}
-                        onPressEnter={() => {
-                          if (!wcKeyCombo.trim()) return;
-                          wcSendKeyCombo(wcKeyCombo);
-                          setWcKeyCombo('');
-                        }}
-                      />
-                      <Button
-                        size="small"
-                        type="primary"
-                        onClick={() => {
-                          if (!wcKeyCombo.trim()) return;
-                          wcSendKeyCombo(wcKeyCombo);
-                          setWcKeyCombo('');
-                        }}
-                        disabled={!wcKeyCombo.trim()}
-                      >
-                        키 전송
-                      </Button>
-                    </Space.Compact>
                   </>
                 ) : (
                   <div style={{ color: mutedTextColor, textAlign: 'center', padding: 19 }}>
