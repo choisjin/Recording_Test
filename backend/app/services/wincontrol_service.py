@@ -547,6 +547,7 @@ class WinControlService:
         # 진단 로그 1회 억제 플래그 리셋 — 새 윈도우 임베드 시 다시 한 번 찍히게.
         self._dpi_logged = False
         self._path_logged = False
+        self._click_log_count = 0
         return self.status()
 
     def detach(self) -> None:
@@ -1625,10 +1626,19 @@ class WinControlService:
             sy = vr[1] + phys_off_y + int(y)
             sx_i = int(round(sx))
             sy_i = int(round(sy))
-            logger.debug(
-                "CLICK-DEBUG client(%d,%d) scale=(%.3f,%.3f) phys_off=(%.1f,%.1f) -> screen(%d,%d)",
-                int(x), int(y), scale_x, scale_y, phys_off_x, phys_off_y, sx_i, sy_i,
-            )
+            # 진단용 — 처음 몇 번만 INFO 로 찍고 이후 DEBUG 로 downgrade.
+            if getattr(self, "_click_log_count", 0) < 5:
+                logger.info(
+                    "CLICK-DEBUG client(%d,%d) vr=%s wr=%s cts=(%d,%d) log_off=(%d,%d) scale=(%.3f,%.3f) phys_off=(%.1f,%.1f) -> screen(%d,%d)",
+                    int(x), int(y), vr, wr, cx, cy, log_off_x, log_off_y,
+                    scale_x, scale_y, phys_off_x, phys_off_y, sx_i, sy_i,
+                )
+                self._click_log_count = getattr(self, "_click_log_count", 0) + 1
+            else:
+                logger.debug(
+                    "CLICK-DEBUG client(%d,%d) scale=(%.3f,%.3f) phys_off=(%.1f,%.1f) -> screen(%d,%d)",
+                    int(x), int(y), scale_x, scale_y, phys_off_x, phys_off_y, sx_i, sy_i,
+                )
             return (sx_i, sy_i)
         except Exception:
             try:
