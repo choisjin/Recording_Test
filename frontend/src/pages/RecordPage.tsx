@@ -1120,92 +1120,77 @@ export default function RecordPage() {
     }
   }, [t]);
 
-  // 임베드된 윈도우 이미지 폴링 (기본 500ms ≈ 2fps — 깜박임 최소화).
-  // 캡처 응답에 attached:false 가 오면 → 자동 재임베드 시도 (저장된 프로세스 정보로).
-  // 이걸 통해 윈도우가 잠시 응답 불가 상태에 빠져도 사용자가 수동으로 재연결할 필요 없음.
-  useEffect(() => {
-    if (leftPanelTab !== 'wincontrol' || !wcAttached?.attached) return;
-    let alive = true;
-    let detachedCount = 0;
-    const POLL_MS = 500;
+  // 이벤트 기반 1회 캡처 — 폴링 제거 후 attach/액션 직후에만 호출.
+  // 정기 폴링이 매 cycle 활성화+스크린 캡처를 유발해 사용자 화면이 계속 깜박이는 문제 해결.
+  // 시나리오 재생은 RecordPage 캔버스를 사용하지 않으므로 영향 없음.
+  const wcRefreshImage = useCallback(async (): Promise<boolean> => {
+    try {
+      const res = await deviceApi.screenshot('WinControl', '');
+      const b64: string = res.data?.image || '';
+      const stillAttached = res.data?.attached !== false;
 
-    const tick = async () => {
-      while (alive) {
-        try {
-          const res = await deviceApi.screenshot('WinControl', '');
-          if (!alive) break;
-          const b64: string = res.data?.image || '';
-          const stillAttached = res.data?.attached !== false;
-
-          if (!stillAttached) {
-            detachedCount += 1;
-            // 윈도우 핸들이 무효해졌음 → 즉시 한 번 재임베드 시도
-            if (detachedCount >= 1 && wcAttached?.exe_path) {
-              try {
-                const status = (await deviceApi.winStatus()).data as WinAttachStatus;
-                if (status.attached) {
-                  setWcAttached(status);
-                  detachedCount = 0;
-                } else {
-                  // ensure_attached 를 직접 노출하지 않으므로 input 라우트의 자동 attach 경로를
-                  // 사용하기엔 부담 — 대신 process_name/exe_path 로 win/attach 시도.
-                  const procs = (await deviceApi.winListProcesses()).data?.processes || [];
-                  const match = procs.find((p: WinProcess) =>
-                    (wcAttached?.exe_path && p.exe_path && p.exe_path.toLowerCase() === wcAttached.exe_path.toLowerCase()) ||
-                    (wcAttached?.name && p.name.toLowerCase() === wcAttached.name.toLowerCase())
-                  );
-                  if (match) {
-                    const r = await deviceApi.winAttach(match.hwnd);
-                    setWcAttached(r.data.status);
-                    setWcSelectedHwnd(match.hwnd);
-                    detachedCount = 0;
-                  }
-                }
-              } catch {
-                // 재임베드 실패 — 다음 cycle 재시도
+      if (!stillAttached) {
+        // detach 감지 — 저장된 프로세스 정보로 즉시 1회 재임베드 시도.
+        if (wcAttached?.exe_path || wcAttached?.name) {
+          try {
+            const status = (await deviceApi.winStatus()).data as WinAttachStatus;
+            if (status.attached) {
+              setWcAttached(status);
+            } else {
+              const procs = (await deviceApi.winListProcesses()).data?.processes || [];
+              const match = procs.find((p: WinProcess) =>
+                (wcAttached?.exe_path && p.exe_path && p.exe_path.toLowerCase() === wcAttached.exe_path.toLowerCase()) ||
+                (wcAttached?.name && p.name.toLowerCase() === wcAttached.name.toLowerCase())
+              );
+              if (match) {
+                const r = await deviceApi.winAttach(match.hwnd);
+                setWcAttached(r.data.status);
+                setWcSelectedHwnd(match.hwnd);
               }
             }
-          } else {
-            detachedCount = 0;
+          } catch {
+            // 재임베드 실패 — 다음 액션 시 재시도
           }
-
-          if (b64) {
-            const url = `data:image/jpeg;base64,${b64}`;
-            await new Promise<void>((resolve) => {
-              const img = new window.Image();
-              img.onload = () => {
-                if (!alive) return resolve();
-                wcImageRef.current = img;
-                const cv = wcCanvasRef.current;
-                if (cv) {
-                  if (cv.width !== img.naturalWidth) cv.width = img.naturalWidth;
-                  if (cv.height !== img.naturalHeight) cv.height = img.naturalHeight;
-                  // 캔버스의 maxWidth/maxHeight: 100% 만으로는 width/height 가
-                  // 독립적으로 클램프되어 aspect ratio 가 깨질 수 있음 (스플리터로
-                  // 컨테이너 비율이 바뀌면 캔버스가 왜곡 → 시각 위치와 클릭 위치
-                  // 어긋남). aspect-ratio 를 자연 크기 비율로 강제하면 width/height
-                  // 중 하나만 클램프돼도 다른 쪽이 비례 축소 → 비왜곡.
-                  if (img.naturalHeight > 0) {
-                    cv.style.aspectRatio = `${img.naturalWidth} / ${img.naturalHeight}`;
-                  }
-                  const ctx = cv.getContext('2d');
-                  ctx?.drawImage(img, 0, 0);
-                }
-                resolve();
-              };
-              img.onerror = () => resolve();
-              img.src = url;
-            });
-          }
-        } catch {
-          // 폴링 자체 실패 무시 — 다음 cycle 재시도
         }
-        await new Promise(r => setTimeout(r, POLL_MS));
+        return false;
       }
-    };
-    tick();
-    return () => { alive = false; };
-  }, [leftPanelTab, wcAttached?.attached, wcAttached?.exe_path, wcAttached?.name]);
+
+      if (!b64) return true;
+      await new Promise<void>((resolve) => {
+        const img = new window.Image();
+        img.onload = () => {
+          wcImageRef.current = img;
+          const cv = wcCanvasRef.current;
+          if (cv) {
+            if (cv.width !== img.naturalWidth) cv.width = img.naturalWidth;
+            if (cv.height !== img.naturalHeight) cv.height = img.naturalHeight;
+            // 캔버스의 maxWidth/maxHeight: 100% 만으로는 width/height 가
+            // 독립적으로 클램프되어 aspect ratio 가 깨질 수 있음 (스플리터로
+            // 컨테이너 비율이 바뀌면 캔버스가 왜곡 → 시각 위치와 클릭 위치
+            // 어긋남). aspect-ratio 를 자연 크기 비율로 강제하면 width/height
+            // 중 하나만 클램프돼도 다른 쪽이 비례 축소 → 비왜곡.
+            if (img.naturalHeight > 0) {
+              cv.style.aspectRatio = `${img.naturalWidth} / ${img.naturalHeight}`;
+            }
+            const ctx = cv.getContext('2d');
+            ctx?.drawImage(img, 0, 0);
+          }
+          resolve();
+        };
+        img.onerror = () => resolve();
+        img.src = `data:image/jpeg;base64,${b64}`;
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }, [wcAttached?.exe_path, wcAttached?.name]);
+
+  // attach 직후 1회 자동 캡처 — 임베드 시점에 사용자가 화면을 볼 수 있도록.
+  useEffect(() => {
+    if (leftPanelTab !== 'wincontrol' || !wcAttached?.attached) return;
+    void wcRefreshImage();
+  }, [leftPanelTab, wcAttached?.attached, wcAttached?.hwnd, wcRefreshImage]);
 
   // 캔버스 클라이언트 좌표 → 윈도우 client 좌표 변환.
   // 캔버스는 풀 윈도우(타이틀바 포함) 비트맵을 표시하므로 client_offset 만큼 빼서
@@ -1251,6 +1236,9 @@ export default function RecordPage() {
       message.error(e.response?.data?.detail || t('record.inputFailed'));
       return;
     }
+    // 액션 직후 1회 캡처 — 폴링 제거에 따른 사후 화면 갱신.
+    // 백엔드에서 활성화+스크린 캡처를 이미 처리 (DPI 호환성 mismatch 우회).
+    void wcRefreshImage();
     if (recording) {
       const tempId = (steps[steps.length - 1]?.id || 0) + 1;
       const optimisticStep: Step = {
@@ -1277,7 +1265,7 @@ export default function RecordPage() {
         }
       }
     }
-  }, [wcAttached, recording, delayMs, steps, t]);
+  }, [wcAttached, recording, delayMs, steps, t, wcRefreshImage]);
 
   const wcMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     // 좌(0)/우(2) 버튼만 처리 — 가운데 버튼은 무시.

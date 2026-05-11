@@ -916,71 +916,126 @@ class WinControlService:
             except Exception:
                 pass
 
-    def _capture_via_window_dc(self, hwnd: int) -> Optional[Image.Image]:
-        """타겟 윈도우 자신의 DC 에서 BitBlt 로 직접 복사 — paint 메시지 미디스패치.
+    def _capture_via_screen_activated(self, hwnd: int) -> Optional[Image.Image]:
+        """대상 윈도우를 일시 활성화한 뒤 화면 영역에서 BitBlt 캡처 (Alt+PrintScreen 등가).
 
-        PrintWindow 는 WM_PRINT/WM_PAINT 를 타겟에 보내서 redraw 트리거 → 깜박임/IME
-        composition 풀림. 윈도우 DC 에서 직접 BitBlt 하면 메시지 없이 현재 백버퍼만
-        복사 → 타겟 무영향. 단점: 더블버퍼 안 쓰는 일부 앱은 stale 콘텐츠가 잡힐 수
-        있어 호출자가 blank 검사 시 PrintWindow 폴백.
+        DWM 합성된 최종 픽셀을 가져오므로 DPI 호환성/awareness 와 무관하게 항상 정확.
+        BitBlt(window DC)나 PrintWindow 가 우/하단 garbage 로 실패하는 케이스의 결정적 해결책.
+
+        제약: 대상 윈도우가 잠깐 포어그라운드로 와서 사용자 화면에 짧은 플리커 발생.
+        AttachThreadInput 트릭 + 이전 포어그라운드 복원으로 영향 최소화.
         """
         if not _WIN32_AVAILABLE or not hwnd:
             return None
         try:
-            if not win32gui.IsWindow(hwnd) or win32gui.IsIconic(hwnd):
+            if not win32gui.IsWindow(hwnd):
                 return None
-            vr = self._get_visible_window_rect(hwnd)
-            if vr is None:
-                vr = win32gui.GetWindowRect(hwnd)
-            w, h = vr[2] - vr[0], vr[3] - vr[1]
+            if win32gui.IsIconic(hwnd):
+                try:
+                    win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+                except Exception:
+                    pass
         except Exception:
             return None
-        if w <= 0 or h <= 0:
-            return None
-        # 윈도우 외곽까지 포함된 DC (타이틀바/보더 + 클라이언트). GetDC 는 클라이언트만.
-        hwnd_dc = win32gui.GetWindowDC(hwnd)
-        if not hwnd_dc:
-            return None
-        mfc_dc = None
-        save_dc = None
-        bmp = None
+
+        prev_fg = None
         try:
-            mfc_dc = win32ui.CreateDCFromHandle(hwnd_dc)
-            save_dc = mfc_dc.CreateCompatibleDC()
-            bmp = win32ui.CreateBitmap()
-            bmp.CreateCompatibleBitmap(mfc_dc, w, h)
-            save_dc.SelectObject(bmp)
-            # SRCCOPY = 0x00CC0020. 윈도우 DC 의 (0,0) 부터 (w,h) 를 비트맵에 복사.
-            save_dc.BitBlt((0, 0), (w, h), mfc_dc, (0, 0), win32con.SRCCOPY)
-            info = bmp.GetInfo()
-            bits = bmp.GetBitmapBits(True)
-            return Image.frombuffer(
-                "RGB",
-                (info["bmWidth"], info["bmHeight"]),
-                bits, "raw", "BGRX", 0, 1,
-            )
+            prev_fg = windll.user32.GetForegroundWindow()
+            if prev_fg and not win32gui.IsWindow(prev_fg):
+                prev_fg = None
         except Exception:
-            return None
-        finally:
-            if bmp is not None:
-                try:
-                    win32gui.DeleteObject(bmp.GetHandle())
-                except Exception:
-                    pass
-            if save_dc is not None:
-                try:
-                    save_dc.DeleteDC()
-                except Exception:
-                    pass
-            if mfc_dc is not None:
-                try:
-                    mfc_dc.DeleteDC()
-                except Exception:
-                    pass
+            prev_fg = None
+
+        # 최적화: 이미 타겟(또는 같은 프로세스 자식)이 포어그라운드면 활성화 스킵 →
+        # 클릭 직후처럼 사용자가 임베드 안에서 작업 중일 땐 플리커 0.
+        already_fg = False
+        try:
+            if prev_fg == hwnd:
+                already_fg = True
+            elif prev_fg:
+                _, prev_pid = win32process.GetWindowThreadProcessId(prev_fg)
+                if prev_pid and self._pid and int(prev_pid) == int(self._pid):
+                    already_fg = True
+        except Exception:
+            pass
+
+        if already_fg:
+            # 활성화 없이 바로 스크린 캡처
             try:
-                win32gui.ReleaseDC(hwnd, hwnd_dc)
+                with self._hwnd_dpi_ctx(hwnd):
+                    return self._capture_via_screen(hwnd)
+            except Exception:
+                return None
+
+        # 1) 활성화 — AttachThreadInput 트릭으로 foreground lock 우회.
+        try:
+            cur_thread = win32api.GetCurrentThreadId()
+            fg_thread = 0
+            if prev_fg:
+                try:
+                    fg_thread, _ = win32process.GetWindowThreadProcessId(prev_fg)
+                except Exception:
+                    fg_thread = 0
+            attached = False
+            try:
+                if fg_thread and fg_thread != cur_thread:
+                    attached = bool(
+                        windll.user32.AttachThreadInput(cur_thread, fg_thread, True)
+                    )
+                try:
+                    win32gui.BringWindowToTop(hwnd)
+                except Exception:
+                    pass
+                try:
+                    win32gui.SetForegroundWindow(hwnd)
+                except Exception:
+                    pass
+            finally:
+                if attached:
+                    try:
+                        windll.user32.AttachThreadInput(cur_thread, fg_thread, False)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        # 2) DWM 컴포지션 + 렌더링 완료 대기 (너무 짧으면 이전 z-order 잔상 잡힘)
+        time.sleep(0.08)
+
+        # 3) 스크린 영역 BitBlt
+        try:
+            with self._hwnd_dpi_ctx(hwnd):
+                img = self._capture_via_screen(hwnd)
+        except Exception:
+            img = None
+
+        # 4) 이전 포어그라운드 복원 — 사용자 앱(우리 frontend)에 포커스 돌려놓음.
+        if prev_fg and prev_fg != hwnd:
+            try:
+                cur_thread = win32api.GetCurrentThreadId()
+                target_thread, _ = win32process.GetWindowThreadProcessId(prev_fg)
+                attached = False
+                try:
+                    if target_thread and target_thread != cur_thread:
+                        attached = bool(
+                            windll.user32.AttachThreadInput(cur_thread, target_thread, True)
+                        )
+                    win32gui.SetForegroundWindow(prev_fg)
+                except Exception:
+                    try:
+                        windll.user32.SetForegroundWindow(prev_fg)
+                    except Exception:
+                        pass
+                finally:
+                    if attached:
+                        try:
+                            windll.user32.AttachThreadInput(cur_thread, target_thread, False)
+                        except Exception:
+                            pass
             except Exception:
                 pass
+
+        return img
 
     def _capture_with_flag(self, hwnd: int, flag: int) -> Optional[Image.Image]:
         """주어진 PrintWindow 플래그로 hwnd 를 캡처해 PIL Image 반환. 실패 시 None.
@@ -1116,90 +1171,6 @@ class WinControlService:
         except Exception:
             return False
 
-    @staticmethod
-    def _nc_top_height(hwnd: int) -> int:
-        """타이틀바 + 상단 보더 높이 추정 (NC 영역 상단). client 원점과 윈도우 원점 차이.
-
-        고DPI에서 BitBlt 가 NC 영역만 빈 채로 잡혔는지 검사할 때 검사 범위로 사용.
-        실패 시 0 — 호출자가 0이면 검사 스킵.
-        """
-        if not _WIN32_AVAILABLE or not hwnd:
-            return 0
-        try:
-            wr = win32gui.GetWindowRect(hwnd)
-            cx, cy = win32gui.ClientToScreen(hwnd, (0, 0))
-            h = int(cy) - int(wr[1])
-            return max(0, h)
-        except Exception:
-            return 0
-
-    @staticmethod
-    def _is_top_band_blank(img: Optional[Image.Image], band_h: int) -> bool:
-        """이미지 상단 band_h 픽셀이 단색(검정/빈) 인지.
-
-        BitBlt 가 풀 윈도우 비트맵은 잡았지만 DWM 합성 타이틀바를 윈도우 자체 DC 가
-        가지고 있지 않아 상단만 검정으로 잡히는 케이스 감지용 (고DPI #32770 다이얼로그).
-        """
-        if img is None or band_h <= 0:
-            return False
-        try:
-            if img.height <= band_h:
-                return False
-            top = img.crop((0, 0, img.width, band_h))
-            extrema = top.getextrema()
-            if not extrema:
-                return False
-            if isinstance(extrema[0], tuple):
-                for mn, mx in extrema:
-                    if mx - mn > 8:
-                        return False
-                return True
-            mn, mx = extrema
-            return (mx - mn) <= 8
-        except Exception:
-            return False
-
-    @staticmethod
-    def _has_garbage_border(img: Optional[Image.Image]) -> bool:
-        """BitBlt 비트맵 우/하단에 uninitialized memory(검정/가비지) 영역이 있는지.
-
-        DPI 호환성 mismatch 로 GetWindowDC 의 painted 영역이 윈도우 frame 보다 작은 경우,
-        BitBlt(frame 크기)는 painted 영역 바깥을 uninitialized 메모리에서 복사 → 검정 +
-        가비지 줄무늬가 우/하단에 생김. 중앙 영역 평균 밝기 대비 우/하단 5% 영역이
-        충분히 어두우면 garbage 로 판정.
-        """
-        if img is None or img.width < 100 or img.height < 100:
-            return False
-        try:
-            gray = img.convert("L")
-            cx, cy = img.width // 2, img.height // 2
-            sample_w = max(20, img.width // 20)
-            sample_h = max(20, img.height // 20)
-            # 중앙 영역 (정상 painted 라고 가정)
-            mid = gray.crop((max(0, cx - sample_w), max(0, cy - sample_h),
-                             min(img.width, cx + sample_w), min(img.height, cy + sample_h)))
-            mid_data = list(mid.getdata())
-            if not mid_data:
-                return False
-            mid_mean = sum(mid_data) / len(mid_data)
-            # 다이얼로그가 어두운 테마면 garbage 검출 의미 없음 — skip.
-            if mid_mean < 60:
-                return False
-            # 우측 5% 평균
-            right_x = max(1, int(img.width * 0.95))
-            right = gray.crop((right_x, 0, img.width, img.height))
-            right_data = list(right.getdata())
-            right_mean = sum(right_data) / len(right_data) if right_data else mid_mean
-            # 하단 5% 평균
-            bottom_y = max(1, int(img.height * 0.95))
-            bottom = gray.crop((0, bottom_y, img.width, img.height))
-            bottom_data = list(bottom.getdata())
-            bottom_mean = sum(bottom_data) / len(bottom_data) if bottom_data else mid_mean
-            # 중앙 대비 우/하단이 40 이상 어두우면 garbage 영역 있다고 판정.
-            return (right_mean < mid_mean - 40) or (bottom_mean < mid_mean - 40)
-        except Exception:
-            return False
-
     @contextlib.contextmanager
     def _hwnd_dpi_ctx(self, hwnd: int):
         """임의 hwnd 의 DPI awareness 로 스레드 컨텍스트를 일시 전환.
@@ -1237,9 +1208,10 @@ class WinControlService:
         """capture_window 의 dispatch 로직을 임의 hwnd 에 적용.
 
         시도 순서:
-          1) 일반 앱: GetWindowDC + BitBlt → 풀 윈도우(타이틀바 포함).
-          2) BitBlt 실패/blank: PrintWindow PW_RENDERFULLCONTENT|PW_CLIENTONLY (UWP 는 처음부터).
-          3) UWP 의 content_hwnd 폴백.
+          1) 일반 앱: 활성화 + 화면 영역 BitBlt (Alt+PrintScreen 등가) — DPI/배율 무관.
+             이미 타겟이 포어그라운드면 활성화 스킵 (플리커 없음).
+          2) 스크린 캡처 실패 시 PrintWindow PW_RENDERFULLCONTENT 폴백 — 가려진 윈도우 등.
+          3) UWP 는 처음부터 PrintWindow 경로.
         반환된 이미지가 모달 미리보기(=capture_window) 와 동일 좌표/스케일을 가지도록 일관 유지.
         """
         # ── DPI 진단 로그 (1회만) ───────────────────────────────────────
@@ -1282,18 +1254,18 @@ class WinControlService:
 
         img: Optional[Image.Image] = None
         used_path = None
+        # 1순위: 활성화 + 스크린 캡처 (Alt+PrintScreen 등가).
+        # DWM 합성된 최종 픽셀을 가져오므로 DPI/배율 무관하게 항상 정확.
+        # 이미 타겟/같은 프로세스가 포어그라운드면 활성화 스킵 → 플리커 없음.
         if not is_uwp:
-            with self._hwnd_dpi_ctx(hwnd):
-                img = self._capture_via_window_dc(hwnd)
+            img = self._capture_via_screen_activated(hwnd)
             if img is not None and not self._is_blank_image(img):
-                used_path = "BitBlt"
+                used_path = "Screen+Activate"
+        # 2순위: 스크린 캡처 실패 시 PrintWindow 폴백 — UWP 거나 윈도우가 완전 가려진 케이스.
         if img is None or self._is_blank_image(img):
-            # 풀 윈도우 폴백 — PW_CLIENTONLY 비트(0x01) 빼서 타이틀바 포함.
-            # 0x02 = PW_RENDERFULLCONTENT (DWM 합성 앱용, 타이틀바 포함하여 그림).
             with self._hwnd_dpi_ctx(hwnd):
                 img = self._capture_with_flag(hwnd, 0x00000002)
                 if self._is_blank_image(img):
-                    # 0x02 폴백이 빈 경우 → 기존 client-only(0x03) 시도 (최소한 클라이언트는 살림).
                     img = self._capture_with_flag(hwnd, 0x00000003)
                 if self._is_blank_image(img) and content_hwnd:
                     try:
@@ -1304,48 +1276,6 @@ class WinControlService:
                     except Exception:
                         pass
             used_path = used_path or "PrintWindow"
-
-        # BitBlt 가 "성공" 했어도 두 가지 실패 패턴이 있음:
-        #   (a) NC 영역(타이틀바)만 빈 케이스 — DWM 합성 타이틀바가 윈도우 자체 DC 에 없음
-        #   (b) 우/하단 광범위 garbage — DPI 호환성 mismatch 로 painted 영역 < frame
-        # 두 경우 모두 PrintWindow(0x02) 로 재캡처하면 OS 가 풀로 그려서 해결됨.
-        if used_path == "BitBlt" and img is not None:
-            nc_h = self._nc_top_height(hwnd)
-            nc_blank = nc_h > 0 and self._is_top_band_blank(img, nc_h)
-            garbage = self._has_garbage_border(img)
-            if nc_blank or garbage:
-                try:
-                    with self._hwnd_dpi_ctx(hwnd):
-                        pw_img = self._capture_with_flag(hwnd, 0x00000002)
-                    # PrintWindow 결과도 garbage 가 있으면 (DPI 호환성 mismatch 가 심한 경우)
-                    # 스크린 캡처로 최후 폴백 — DWM 합성 후 픽셀을 직접 가져와서 항상 정상.
-                    pw_garbage = pw_img is not None and self._has_garbage_border(pw_img)
-                    pw_ok = pw_img is not None and not self._is_blank_image(pw_img) and not pw_garbage
-                    if not pw_ok:
-                        with self._hwnd_dpi_ctx(hwnd):
-                            sc_img = self._capture_via_screen(hwnd)
-                        if sc_img is not None and not self._is_blank_image(sc_img):
-                            if sc_img.size != img.size:
-                                sc_img = sc_img.resize(img.size)
-                            img = sc_img
-                            used_path = "Screen(reCAP)"
-                    elif pw_ok:
-                        if garbage:
-                            # 우/하단까지 손상 → PrintWindow 결과를 통째로 사용.
-                            if pw_img.size != img.size:
-                                pw_img = pw_img.resize(img.size)
-                            img = pw_img
-                            used_path = "PrintWindow(reCAP)"
-                        else:
-                            # NC 만 손상 → 상단 NC 영역만 교체.
-                            if pw_img.size != img.size:
-                                pw_img = pw_img.resize(img.size)
-                            band_h = min(nc_h, img.height, pw_img.height)
-                            band = pw_img.crop((0, 0, img.width, band_h))
-                            img.paste(band, (0, 0))
-                            used_path = "BitBlt+NC"
-                except Exception as e:
-                    logger.debug("Capture recovery failed: %s", e)
 
         if not getattr(self, "_path_logged", False) and img is not None:
             logger.info("DPI-DEBUG[path] hwnd=%s used=%s bitmap=%sx%s",
