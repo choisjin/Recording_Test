@@ -1188,10 +1188,25 @@ export default function RecordPage() {
     }
   }, [wcAttached?.exe_path, wcAttached?.name]);
 
-  // attach 직후 1회 자동 캡처 — 임베드 시점에 사용자가 화면을 볼 수 있도록.
+  // attach 직후 + 1초 간격 폴링. 캡처 백엔드가 활성화+스크린(Alt+PrtScn 등가) 으로 동작 →
+  // 타겟이 포어그라운드면 플리커 없이 캡처, 아니면 짧은 활성화 후 즉시 복원.
+  // 폴링 1초 = idle 시 1초당 짧은 1회 깜박임이지만 background 자동 갱신 보장.
+  // 액션 후엔 wcRefreshImage 가 즉시 호출되므로 더 빠른 반응성도 확보.
   useEffect(() => {
     if (leftPanelTab !== 'wincontrol' || !wcAttached?.attached) return;
+    let alive = true;
+    const POLL_MS = 1000;
+    // 즉시 1회 + 폴링
     void wcRefreshImage();
+    const tick = async () => {
+      while (alive) {
+        await new Promise(r => setTimeout(r, POLL_MS));
+        if (!alive) break;
+        await wcRefreshImage();
+      }
+    };
+    tick();
+    return () => { alive = false; };
   }, [leftPanelTab, wcAttached?.attached, wcAttached?.hwnd, wcRefreshImage]);
 
   // 캔버스 클라이언트 좌표 → 윈도우 client 좌표 변환.
