@@ -960,10 +960,14 @@ class WinControlService:
             pass
 
         if already_fg:
-            # 활성화 없이 바로 스크린 캡처
+            # 활성화 없이 바로 스크린 캡처.
+            # 주의: _hwnd_dpi_ctx 로 래핑하면 안 됨. 타겟이 DPI-unaware 일 때 스레드를
+            # unaware 로 바꾸면 GetWindowRect/DWM/BitBlt 가 모두 논리 픽셀로 동작해서
+            # 비트맵이 100% 크기로 잡힘. 반면 클릭 좌표 변환(ClientToScreen)은
+            # 백엔드 기본 PMv2 라 물리 픽셀로 동작 → 단위 불일치로 클릭 어긋남.
+            # 스크린 캡처는 백엔드 기본(PMv2) 컨텍스트에서 물리 픽셀로 통일.
             try:
-                with self._hwnd_dpi_ctx(hwnd):
-                    return self._capture_via_screen(hwnd)
+                return self._capture_via_screen(hwnd)
             except Exception:
                 return None
 
@@ -1002,10 +1006,11 @@ class WinControlService:
         # 2) DWM 컴포지션 + 렌더링 완료 대기 (너무 짧으면 이전 z-order 잔상 잡힘)
         time.sleep(0.08)
 
-        # 3) 스크린 영역 BitBlt
+        # 3) 스크린 영역 BitBlt — DPI 컨텍스트 전환 없이 백엔드 기본(PMv2)에서.
+        # _hwnd_dpi_ctx 래핑하면 타겟 DPI-unaware 시 비트맵이 논리 픽셀(100%) 로 잡혀
+        # 클릭 좌표 변환과 단위가 어긋남.
         try:
-            with self._hwnd_dpi_ctx(hwnd):
-                img = self._capture_via_screen(hwnd)
+            img = self._capture_via_screen(hwnd)
         except Exception:
             img = None
 
