@@ -544,10 +544,6 @@ class WinControlService:
         logger.info("WinControl attached: hwnd=%d pid=%s name=%s exe=%s title=%r class=%s uwp=%s aumid=%r content=%s",
                     hwnd, self._pid, self._process_name, self._exe_path,
                     self._window_title, self._window_class, self._is_uwp, self._aumid, self._content_hwnd)
-        # 진단 로그 1회 억제 플래그 리셋 — 새 윈도우 임베드 시 다시 한 번 찍히게.
-        self._dpi_logged = False
-        self._path_logged = False
-        self._click_log_count = 0
         return self.status()
 
     def detach(self) -> None:
@@ -1241,68 +1237,6 @@ class WinControlService:
           3) UWP 는 처음부터 PrintWindow 경로.
         반환된 이미지가 모달 미리보기(=capture_window) 와 동일 좌표/스케일을 가지도록 일관 유지.
         """
-        # ── DPI 진단 로그 (1회만) ───────────────────────────────────────
-        # 노트북(125%) vs 데스크탑(100%) 좌표계 차이 확인용. 한 번 찍히면 self._dpi_logged=True 로 억제.
-        if not getattr(self, "_dpi_logged", False):
-            try:
-                cr_outer = win32gui.GetClientRect(hwnd)
-                wr_outer = win32gui.GetWindowRect(hwnd)
-                vr_outer = self._get_visible_window_rect(hwnd)
-                try:
-                    dpi_outer = windll.user32.GetDpiForWindow(hwnd)
-                except Exception:
-                    dpi_outer = -1
-                try:
-                    aware_outer = windll.user32.GetWindowDpiAwarenessContext(hwnd)
-                except Exception:
-                    aware_outer = -1
-                # awareness handle 을 실제 type(0=UNAWARE, 1=SYSTEM, 2=PER_MONITOR) 로 변환
-                aware_type = -1
-                try:
-                    if aware_outer not in (-1, 0):
-                        aware_type = windll.user32.GetAwarenessFromDpiAwarenessContext(aware_outer)
-                except Exception:
-                    pass
-                # 모니터 DPI + scale factor 도 같이 — 클릭 좌표 보정에 사용
-                monitor_dpi = -1
-                system_dpi = -1
-                scale_corr = 1.0
-                try:
-                    monitor = windll.user32.MonitorFromWindow(hwnd, 2)
-                    dpi_x = ctypes.c_uint(); dpi_y = ctypes.c_uint()
-                    windll.shcore.GetDpiForMonitor(monitor, 0, ctypes.byref(dpi_x), ctypes.byref(dpi_y))
-                    monitor_dpi = int(dpi_x.value)
-                except Exception:
-                    pass
-                try:
-                    system_dpi = int(windll.user32.GetDpiForSystem())
-                except Exception:
-                    pass
-                try:
-                    scale_corr = self._get_dpi_scale_for_window(hwnd)
-                except Exception:
-                    pass
-                # ClientToScreen(0,0) 값이 DWM rect 와 일치하는지 확인 → 좌표계 진단
-                try:
-                    cts_outer = win32gui.ClientToScreen(hwnd, (0, 0))
-                except Exception:
-                    cts_outer = (-1, -1)
-                logger.info(
-                    "DPI-DEBUG[outer] hwnd=%s dpi=%s awareness=%s type=%s monitor_dpi=%s system_dpi=%s scale_corr=%.3f client=%s window=%s dwm=%s ClientToScreen(0,0)=%s",
-                    hwnd, dpi_outer, aware_outer, aware_type, monitor_dpi, system_dpi, scale_corr, cr_outer, wr_outer, vr_outer, cts_outer,
-                )
-                with self._hwnd_dpi_ctx(hwnd):
-                    cr_in = win32gui.GetClientRect(hwnd)
-                    wr_in = win32gui.GetWindowRect(hwnd)
-                    vr_in = self._get_visible_window_rect(hwnd)
-                    logger.info(
-                        "DPI-DEBUG[in-ctx] hwnd=%s client=%s window=%s dwm=%s",
-                        hwnd, cr_in, wr_in, vr_in,
-                    )
-                self._dpi_logged = True
-            except Exception as e:
-                logger.info("DPI-DEBUG failed: %s", e)
-
         img: Optional[Image.Image] = None
         used_path = None
         # 1순위: 활성화 + 스크린 캡처 (Alt+PrintScreen 등가).
@@ -1328,10 +1262,6 @@ class WinControlService:
                         pass
             used_path = used_path or "PrintWindow"
 
-        if not getattr(self, "_path_logged", False) and img is not None:
-            logger.info("DPI-DEBUG[path] hwnd=%s used=%s bitmap=%sx%s",
-                        hwnd, used_path, img.width, img.height)
-            self._path_logged = True
         return img
 
     def capture_window(self, fmt: str = "jpeg", render_full_content: bool = False) -> bytes:
@@ -1551,49 +1481,6 @@ class WinControlService:
                 # 가장 처음 저장된 ctx 가 진짜 prev_fg(우리 frontend), 나머지는 타겟 자신.
                 self._do_restore_context(ctxs[0])
 
-    def _get_dpi_scale_for_window(self, hwnd: int) -> float:
-        """타겟 윈도우의 virtualization scale 계산.
-
-        모니터의 실제 DPI 대비 윈도우 내부 좌표계 DPI 의 비율:
-          - DPI-Unaware: 내부 = 96 DPI 고정 → scale = monitor_dpi / 96 (125%면 1.25)
-          - System-aware: 내부 = 시스템 DPI → scale = monitor_dpi / system_dpi
-          - PMv2/PerMonitor: 내부 = monitor_dpi (적응) → scale = 1.0
-        프론트가 보낸 좌표(물리 픽셀 비트맵 기준)를 타겟의 내부 좌표로 변환할 때 사용.
-        """
-        if not _WIN32_AVAILABLE or not hwnd:
-            return 1.0
-        try:
-            # 1) 모니터 실제 DPI
-            monitor = windll.user32.MonitorFromWindow(hwnd, 2)  # MONITOR_DEFAULTTONEAREST
-            dpi_x = ctypes.c_uint()
-            dpi_y = ctypes.c_uint()
-            try:
-                windll.shcore.GetDpiForMonitor(monitor, 0, ctypes.byref(dpi_x), ctypes.byref(dpi_y))
-                monitor_dpi = dpi_x.value or 96
-            except Exception:
-                monitor_dpi = 96
-            # 2) 윈도우 awareness type
-            try:
-                ctx = windll.user32.GetWindowDpiAwarenessContext(hwnd)
-                awareness = windll.user32.GetAwarenessFromDpiAwarenessContext(ctx)
-            except Exception:
-                awareness = 2  # 알 수 없으면 PMv2 가정 (보정 안 함)
-            # 3) 내부 DPI 추정
-            if awareness == 0:  # UNAWARE — 항상 96 으로 보임
-                internal_dpi = 96
-            elif awareness == 1:  # SYSTEM_AWARE — 시스템 DPI 기준
-                try:
-                    internal_dpi = windll.user32.GetDpiForSystem() or 96
-                except Exception:
-                    internal_dpi = 96
-            else:  # PMv2/PER_MONITOR
-                internal_dpi = monitor_dpi
-            if internal_dpi <= 0:
-                internal_dpi = 96
-            return float(monitor_dpi) / float(internal_dpi)
-        except Exception:
-            return 1.0
-
     def _client_to_screen(self, x: int, y: int) -> tuple[int, int]:
         """client 좌표 → screen 좌표.
 
@@ -1624,21 +1511,7 @@ class WinControlService:
             # GetWindowRect(논리) + 논리 client offset + 변환된 좌표 = 논리 screen 좌표
             sx = wr[0] + log_off_x + x_log
             sy = wr[1] + log_off_y + y_log
-            sx_i = int(round(sx))
-            sy_i = int(round(sy))
-            if getattr(self, "_click_log_count", 0) < 5:
-                logger.info(
-                    "CLICK-DEBUG client(%d,%d) vr=%s wr=%s cts=(%d,%d) log_off=(%d,%d) scale=(%.3f,%.3f) x_log=(%.1f,%.1f) -> screen(%d,%d)",
-                    int(x), int(y), vr, wr, cx, cy, log_off_x, log_off_y,
-                    scale_x, scale_y, x_log, y_log, sx_i, sy_i,
-                )
-                self._click_log_count = getattr(self, "_click_log_count", 0) + 1
-            else:
-                logger.debug(
-                    "CLICK-DEBUG client(%d,%d) scale=(%.3f,%.3f) -> screen(%d,%d)",
-                    int(x), int(y), scale_x, scale_y, sx_i, sy_i,
-                )
-            return (sx_i, sy_i)
+            return (int(round(sx)), int(round(sy)))
         except Exception:
             try:
                 return win32gui.ClientToScreen(hwnd, (int(x), int(y)))
