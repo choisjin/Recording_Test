@@ -685,17 +685,31 @@ class WinControlService:
     def get_client_offset(self) -> tuple[int, int]:
         """비트맵 (0,0) 에서 client (0,0) 까지의 오프셋 (물리 픽셀).
 
-        bitmap 은 _capture_via_screen 에서 DWM 물리 픽셀 rect 기준으로 캡처.
-        ClientToScreen 는 PMv2 스레드에서 물리 픽셀 좌표 반환 → 둘 다 물리 픽셀이라 일관.
+        - 비트맵 = DWM 물리 픽셀 rect 기준 (1193x855 같은 큰 값)
+        - GetWindowRect / ClientToScreen 은 SYSTEM_AWARE 타겟에서 논리(시스템 DPI) 픽셀 반환
+        → 좌표계 불일치 → 둘 다 직접 계산해서 물리로 환산:
+          logical_client_offset = ClientToScreen(0,0) - GetWindowRect.topleft
+          scale = DWM_size / GetWindowRect_size
+          physical_client_offset = logical_client_offset * scale
         """
         if not self.is_attached():
             return (0, 0)
         try:
-            vr = self._get_visible_window_rect(self._hwnd)
+            hwnd = self._hwnd
+            vr = self._get_visible_window_rect(hwnd)
             if vr is None:
-                vr = win32gui.GetWindowRect(self._hwnd)
-            cx, cy = win32gui.ClientToScreen(self._hwnd, (0, 0))
-            return (cx - vr[0], cy - vr[1])
+                vr = win32gui.GetWindowRect(hwnd)
+            wr = win32gui.GetWindowRect(hwnd)
+            cx, cy = win32gui.ClientToScreen(hwnd, (0, 0))
+            log_off_x = cx - wr[0]
+            log_off_y = cy - wr[1]
+            log_w = max(1, wr[2] - wr[0])
+            log_h = max(1, wr[3] - wr[1])
+            phys_w = vr[2] - vr[0]
+            phys_h = vr[3] - vr[1]
+            scale_x = phys_w / log_w
+            scale_y = phys_h / log_h
+            return (int(round(log_off_x * scale_x)), int(round(log_off_y * scale_y)))
         except Exception:
             return (0, 0)
 
@@ -1580,24 +1594,47 @@ class WinControlService:
             return 1.0
 
     def _client_to_screen(self, x: int, y: int) -> tuple[int, int]:
-        """client 좌표 → screen 좌표 (SendInput VIRTUALDESK 용).
+        """물리 픽셀 client 좌표 → 물리 픽셀 screen 좌표 (SendInput VIRTUALDESK 용).
 
-        _capture_via_screen / get_client_offset 이 GetWindowRect 기준으로 통일됐으므로
-        프론트가 보내는 좌표와 ClientToScreen 입력 좌표계가 동일 → 보정 없이 직접 변환.
-        멀티 모니터/SYSTEM_AWARE 등 가상화 케이스에서도 모두 일관된 좌표계 사용.
-
-        SendInput VIRTUALDESK 는 GetSystemMetrics(SM_*VIRTUALSCREEN) 기준 정규화 →
-        ClientToScreen 출력이 그 좌표계와 동일한 단위 (둘 다 PMv2 스레드에서 호출).
+        ClientToScreen 은 SYSTEM_AWARE 타겟에서 논리(시스템 DPI) 좌표를 반환할 수 있음 →
+        그 결과를 직접 사용하지 않고 DWM 물리 좌표계 기준으로 직접 계산:
+          physical_screen = DWM.topleft + physical_client_offset + (x, y)
+        physical_client_offset 은 get_client_offset 과 동일 로직으로 산출.
+        타겟이 PMv2 면 DWM size == GetWindowRect size → scale=1.0 → 보정 없는 케이스와 동일.
         """
         hwnd = self._hwnd
         if not hwnd:
             return (int(x), int(y))
         try:
-            sx, sy = win32gui.ClientToScreen(hwnd, (int(x), int(y)))
-            logger.debug("CLICK-DEBUG client(%d,%d) -> screen(%d,%d)", int(x), int(y), sx, sy)
-            return (sx, sy)
+            vr = self._get_visible_window_rect(hwnd)
+            if vr is None:
+                vr = win32gui.GetWindowRect(hwnd)
+            wr = win32gui.GetWindowRect(hwnd)
+            cx, cy = win32gui.ClientToScreen(hwnd, (0, 0))
+            log_off_x = cx - wr[0]
+            log_off_y = cy - wr[1]
+            log_w = max(1, wr[2] - wr[0])
+            log_h = max(1, wr[3] - wr[1])
+            phys_w = vr[2] - vr[0]
+            phys_h = vr[3] - vr[1]
+            scale_x = phys_w / log_w
+            scale_y = phys_h / log_h
+            phys_off_x = log_off_x * scale_x
+            phys_off_y = log_off_y * scale_y
+            sx = vr[0] + phys_off_x + int(x)
+            sy = vr[1] + phys_off_y + int(y)
+            sx_i = int(round(sx))
+            sy_i = int(round(sy))
+            logger.debug(
+                "CLICK-DEBUG client(%d,%d) scale=(%.3f,%.3f) phys_off=(%.1f,%.1f) -> screen(%d,%d)",
+                int(x), int(y), scale_x, scale_y, phys_off_x, phys_off_y, sx_i, sy_i,
+            )
+            return (sx_i, sy_i)
         except Exception:
-            return (int(x), int(y))
+            try:
+                return win32gui.ClientToScreen(hwnd, (int(x), int(y)))
+            except Exception:
+                return (int(x), int(y))
 
     def _send_input_mouse_move(self, screen_x: int, screen_y: int) -> None:
         """SendInput 으로 마우스 절대 위치 이동 (가상화면 좌표계)."""
