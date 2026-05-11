@@ -1244,9 +1244,28 @@ class WinControlService:
                         aware_type = windll.user32.GetAwarenessFromDpiAwarenessContext(aware_outer)
                 except Exception:
                     pass
+                # 모니터 DPI + scale factor 도 같이 — 클릭 좌표 보정에 사용
+                monitor_dpi = -1
+                system_dpi = -1
+                scale_corr = 1.0
+                try:
+                    monitor = windll.user32.MonitorFromWindow(hwnd, 2)
+                    dpi_x = ctypes.c_uint(); dpi_y = ctypes.c_uint()
+                    windll.shcore.GetDpiForMonitor(monitor, 0, ctypes.byref(dpi_x), ctypes.byref(dpi_y))
+                    monitor_dpi = int(dpi_x.value)
+                except Exception:
+                    pass
+                try:
+                    system_dpi = int(windll.user32.GetDpiForSystem())
+                except Exception:
+                    pass
+                try:
+                    scale_corr = self._get_dpi_scale_for_window(hwnd)
+                except Exception:
+                    pass
                 logger.info(
-                    "DPI-DEBUG[outer] hwnd=%s dpi=%s awareness=%s type=%s client=%s window=%s dwm=%s",
-                    hwnd, dpi_outer, aware_outer, aware_type, cr_outer, wr_outer, vr_outer,
+                    "DPI-DEBUG[outer] hwnd=%s dpi=%s awareness=%s type=%s monitor_dpi=%s system_dpi=%s scale_corr=%.3f client=%s window=%s dwm=%s",
+                    hwnd, dpi_outer, aware_outer, aware_type, monitor_dpi, system_dpi, scale_corr, cr_outer, wr_outer, vr_outer,
                 )
                 with self._hwnd_dpi_ctx(hwnd):
                     cr_in = win32gui.GetClientRect(hwnd)
@@ -1508,15 +1527,80 @@ class WinControlService:
                 # 가장 처음 저장된 ctx 가 진짜 prev_fg(우리 frontend), 나머지는 타겟 자신.
                 self._do_restore_context(ctxs[0])
 
+    def _get_dpi_scale_for_window(self, hwnd: int) -> float:
+        """타겟 윈도우의 virtualization scale 계산.
+
+        모니터의 실제 DPI 대비 윈도우 내부 좌표계 DPI 의 비율:
+          - DPI-Unaware: 내부 = 96 DPI 고정 → scale = monitor_dpi / 96 (125%면 1.25)
+          - System-aware: 내부 = 시스템 DPI → scale = monitor_dpi / system_dpi
+          - PMv2/PerMonitor: 내부 = monitor_dpi (적응) → scale = 1.0
+        프론트가 보낸 좌표(물리 픽셀 비트맵 기준)를 타겟의 내부 좌표로 변환할 때 사용.
+        """
+        if not _WIN32_AVAILABLE or not hwnd:
+            return 1.0
+        try:
+            # 1) 모니터 실제 DPI
+            monitor = windll.user32.MonitorFromWindow(hwnd, 2)  # MONITOR_DEFAULTTONEAREST
+            dpi_x = ctypes.c_uint()
+            dpi_y = ctypes.c_uint()
+            try:
+                windll.shcore.GetDpiForMonitor(monitor, 0, ctypes.byref(dpi_x), ctypes.byref(dpi_y))
+                monitor_dpi = dpi_x.value or 96
+            except Exception:
+                monitor_dpi = 96
+            # 2) 윈도우 awareness type
+            try:
+                ctx = windll.user32.GetWindowDpiAwarenessContext(hwnd)
+                awareness = windll.user32.GetAwarenessFromDpiAwarenessContext(ctx)
+            except Exception:
+                awareness = 2  # 알 수 없으면 PMv2 가정 (보정 안 함)
+            # 3) 내부 DPI 추정
+            if awareness == 0:  # UNAWARE — 항상 96 으로 보임
+                internal_dpi = 96
+            elif awareness == 1:  # SYSTEM_AWARE — 시스템 DPI 기준
+                try:
+                    internal_dpi = windll.user32.GetDpiForSystem() or 96
+                except Exception:
+                    internal_dpi = 96
+            else:  # PMv2/PER_MONITOR
+                internal_dpi = monitor_dpi
+            if internal_dpi <= 0:
+                internal_dpi = 96
+            return float(monitor_dpi) / float(internal_dpi)
+        except Exception:
+            return 1.0
+
     def _client_to_screen(self, x: int, y: int) -> tuple[int, int]:
-        """client 좌표 → screen 좌표 (SendInput 마우스 절대 위치용)."""
+        """물리 픽셀 client 좌표 → 물리 픽셀 screen 좌표 (SendInput VIRTUALDESK 용).
+
+        타겟이 DPI 가상화된 경우(UNAWARE/SYSTEM_AWARE on high-DPI 모니터):
+          - 프론트에서 받은 좌표는 캡처 비트맵(물리 픽셀) 기준
+          - 타겟의 ClientToScreen 은 자신의 내부 좌표계 기준 → 변환 필요
+          - 물리 client → 내부 client (1/scale) → ClientToScreen → 내부 screen → 물리 screen (*scale)
+        타겟이 PMv2 면 scale==1.0 → 보정 없음.
+        """
         hwnd = self._hwnd
         if not hwnd:
             return (int(x), int(y))
         try:
-            return win32gui.ClientToScreen(hwnd, (int(x), int(y)))
+            scale = self._get_dpi_scale_for_window(hwnd)
+            if abs(scale - 1.0) > 0.01:
+                xl = int(round(int(x) / scale))
+                yl = int(round(int(y) / scale))
+                sx, sy = win32gui.ClientToScreen(hwnd, (xl, yl))
+                sx_phys = int(round(sx * scale))
+                sy_phys = int(round(sy * scale))
+                logger.info("CLICK-DEBUG client(%d,%d) scale=%.3f -> logical(%d,%d) -> screen_logical(%d,%d) -> screen_phys(%d,%d)",
+                            int(x), int(y), scale, xl, yl, sx, sy, sx_phys, sy_phys)
+                return (sx_phys, sy_phys)
+            sx, sy = win32gui.ClientToScreen(hwnd, (int(x), int(y)))
+            logger.debug("CLICK-DEBUG client(%d,%d) scale=1.0 -> screen(%d,%d)", int(x), int(y), sx, sy)
+            return (sx, sy)
         except Exception:
-            return (int(x), int(y))
+            try:
+                return win32gui.ClientToScreen(hwnd, (int(x), int(y)))
+            except Exception:
+                return (int(x), int(y))
 
     def _send_input_mouse_move(self, screen_x: int, screen_y: int) -> None:
         """SendInput 으로 마우스 절대 위치 이동 (가상화면 좌표계)."""
