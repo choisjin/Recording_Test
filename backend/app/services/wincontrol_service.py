@@ -1084,10 +1084,44 @@ class WinControlService:
           3) UWP 의 content_hwnd 폴백.
         반환된 이미지가 모달 미리보기(=capture_window) 와 동일 좌표/스케일을 가지도록 일관 유지.
         """
+        # ── DPI 진단 로그 (1회만) ───────────────────────────────────────
+        # 노트북(125%) vs 데스크탑(100%) 좌표계 차이 확인용. 한 번 찍히면 self._dpi_logged=True 로 억제.
+        if not getattr(self, "_dpi_logged", False):
+            try:
+                cr_outer = win32gui.GetClientRect(hwnd)
+                wr_outer = win32gui.GetWindowRect(hwnd)
+                vr_outer = self._get_visible_window_rect(hwnd)
+                try:
+                    dpi_outer = windll.user32.GetDpiForWindow(hwnd)
+                except Exception:
+                    dpi_outer = -1
+                try:
+                    aware_outer = windll.user32.GetWindowDpiAwarenessContext(hwnd)
+                except Exception:
+                    aware_outer = -1
+                logger.info(
+                    "DPI-DEBUG[outer] hwnd=%s dpi=%s awareness=%s client=%s window=%s dwm=%s",
+                    hwnd, dpi_outer, aware_outer, cr_outer, wr_outer, vr_outer,
+                )
+                with self._hwnd_dpi_ctx(hwnd):
+                    cr_in = win32gui.GetClientRect(hwnd)
+                    wr_in = win32gui.GetWindowRect(hwnd)
+                    vr_in = self._get_visible_window_rect(hwnd)
+                    logger.info(
+                        "DPI-DEBUG[in-ctx] hwnd=%s client=%s window=%s dwm=%s",
+                        hwnd, cr_in, wr_in, vr_in,
+                    )
+                self._dpi_logged = True
+            except Exception as e:
+                logger.info("DPI-DEBUG failed: %s", e)
+
         img: Optional[Image.Image] = None
+        used_path = None
         if not is_uwp:
             with self._hwnd_dpi_ctx(hwnd):
                 img = self._capture_via_window_dc(hwnd)
+            if img is not None and not self._is_blank_image(img):
+                used_path = "BitBlt"
         if img is None or self._is_blank_image(img):
             with self._hwnd_dpi_ctx(hwnd):
                 img = self._capture_with_flag(hwnd, 0x00000003)
@@ -1099,6 +1133,11 @@ class WinControlService:
                                 img = self._capture_with_flag(content_hwnd, 0x00000001)
                     except Exception:
                         pass
+            used_path = used_path or "PrintWindow"
+        if not getattr(self, "_path_logged", False) and img is not None:
+            logger.info("DPI-DEBUG[path] hwnd=%s used=%s bitmap=%sx%s",
+                        hwnd, used_path, img.width, img.height)
+            self._path_logged = True
         return img
 
     def capture_window(self, fmt: str = "jpeg", render_full_content: bool = False) -> bytes:
