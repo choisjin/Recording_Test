@@ -1637,17 +1637,29 @@ class WinControlService:
                 return (int(x), int(y))
 
     def _send_input_mouse_move(self, screen_x: int, screen_y: int) -> None:
-        """SendInput 으로 마우스 절대 위치 이동 (가상화면 좌표계)."""
-        # MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK = 0x4001 | 0x8000
-        # 절대 좌표는 0..65535 정규화 + 가상 데스크탑 기준
-        vx = windll.user32.GetSystemMetrics(76)  # SM_XVIRTUALSCREEN
-        vy = windll.user32.GetSystemMetrics(77)  # SM_YVIRTUALSCREEN
-        vw = windll.user32.GetSystemMetrics(78) or 1  # SM_CXVIRTUALSCREEN
-        vh = windll.user32.GetSystemMetrics(79) or 1  # SM_CYVIRTUALSCREEN
-        nx = int(((screen_x - vx) * 65535) / vw)
-        ny = int(((screen_y - vy) * 65535) / vh)
-        # MOUSEEVENTF_MOVE=0x0001, MOUSEEVENTF_ABSOLUTE=0x8000, MOUSEEVENTF_VIRTUALDESK=0x4000
-        win32api.mouse_event(0x0001 | 0x8000 | 0x4000, nx, ny, 0, 0)
+        """마우스 커서를 물리 픽셀 screen 좌표로 직접 이동.
+
+        기존 SendInput MOUSEEVENTF_ABSOLUTE+VIRTUALDESK 방식은 GetSystemMetrics 가
+        system-aware (system DPI 기준 논리값) 라 PMv2 스레드에서 물리 픽셀 좌표를
+        넘겨도 정규화 비율이 어긋남 (예: system_dpi=96 인데 모니터 125% 면 SM_CXVIRTUALSCREEN
+        이 논리값을 반환 → 비율 1/1.25 어긋남).
+        SetCursorPos 는 PMv2 스레드에서 물리 픽셀 좌표를 직접 받음 → DPI 가상화 영향 없음.
+        """
+        try:
+            windll.user32.SetCursorPos(int(screen_x), int(screen_y))
+        except Exception as e:
+            logger.debug("SetCursorPos failed (%s), fallback to mouse_event ABSOLUTE", e)
+            # 폴백: 기존 VIRTUALDESK 방식 — 단일 모니터/system_dpi 일치 환경에선 정상 동작
+            try:
+                vx = windll.user32.GetSystemMetrics(76)
+                vy = windll.user32.GetSystemMetrics(77)
+                vw = windll.user32.GetSystemMetrics(78) or 1
+                vh = windll.user32.GetSystemMetrics(79) or 1
+                nx = int(((int(screen_x) - vx) * 65535) / vw)
+                ny = int(((int(screen_y) - vy) * 65535) / vh)
+                win32api.mouse_event(0x0001 | 0x8000 | 0x4000, nx, ny, 0, 0)
+            except Exception:
+                pass
 
     def _send_input_button(self, button: str, down: bool) -> None:
         # MOUSEEVENTF_LEFTDOWN=0x0002, LEFTUP=0x0004, RIGHTDOWN=0x0008, RIGHTUP=0x0010,
