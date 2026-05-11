@@ -374,6 +374,51 @@ class SerialLogging:
         logger.info("[SerialLogging] SendCommand: %s", command.strip())
         return "OK"
 
+    def Send_Packet(self, data: str) -> str:
+        """raw hex 바이트 패킷을 시리얼 포트로 전송합니다.
+
+        공백으로 구분된 hex 토큰 문자열을 받아 각 토큰을 바이트로 변환 후 송신.
+        토큰별 파싱이라 `"00 77 42"`, `"0x79 0x6D"`, `"7 6D F2"` 같이 자릿수가
+        다양해도 처리됩니다. write 후 `flush()` 호출로 OS 출력 버퍼까지 비워
+        실제 회선 도달을 보장합니다.
+
+        Args:
+            data: 공백 구분 hex 문자열 (예: "00 77 42 37 02 F2 00 FE 00 FE 00")
+
+        Returns:
+            "OK: Sent N bytes (HH HH HH ...)" 또는 "ERROR: ..."
+
+        예:
+            SerialLogging.Send_Packet("79 6D F2 0F")
+            SerialLogging.Send_Packet("00 77 42 37 02 F2 00 FE 00 FE 00")
+        """
+        if not self._serial or not self._serial.is_open:
+            return "ERROR: 시리얼 포트가 연결되어 있지 않습니다. StartLogging() 먼저 호출하세요."
+        if not data or not data.strip():
+            return "ERROR: data가 비어 있습니다"
+        try:
+            # 공백 분리 → 각 토큰 hex 정수 변환 (1자리/2자리/0x prefix 모두 허용)
+            tokens = data.split()
+            byte_list: list[int] = []
+            for tok in tokens:
+                val = int(tok, 16)
+                if val < 0 or val > 0xFF:
+                    return f"ERROR: hex 값이 1바이트 범위(0~0xFF)를 벗어남 — '{tok}' → {val}"
+                byte_list.append(val)
+            raw = bytes(byte_list)
+        except ValueError as e:
+            return f"ERROR: hex 파싱 실패 — {e}"
+
+        try:
+            self._serial.write(raw)
+            self._serial.flush()  # OS 출력 버퍼 비워서 wire 도달 보장
+        except Exception as e:
+            return f"ERROR: 송신 실패 — {e}"
+
+        hex_str = " ".join(f"{b:02X}" for b in raw)
+        logger.info("[SerialLogging] Send_Packet (%d bytes): %s", len(raw), hex_str)
+        return f"OK: Sent {len(raw)} bytes ({hex_str})"
+
     # ------------------------------------------------------------------
     # 명령어 전송 + 키워드 합부 판정 (응답 라인을 즉시 캐치)
     # ------------------------------------------------------------------
