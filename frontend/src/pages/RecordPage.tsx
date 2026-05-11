@@ -361,6 +361,14 @@ export default function RecordPage() {
   const [wcPendingText, setWcPendingText] = useState<string | null>(null);
   // 커스텀 키 조합 입력 — "ctrl+shift+f5" 형태. Send 버튼/Enter 로 즉시 전송.
   const [wcKeyCombo, setWcKeyCombo] = useState('');
+  // 액션 모드 대기 — 다음 캔버스 클릭이 더블클릭/롱프레스로 처리됨.
+  // null = 일반(제스처 자동 판정), 'double_click' = 다음 클릭 더블클릭,
+  // { type: 'long_press', duration_ms: N } = 다음 클릭이 N ms 롱프레스.
+  type WcPendingAction =
+    | { type: 'double_click' }
+    | { type: 'long_press'; duration_ms: number }
+    | null;
+  const [wcPendingAction, setWcPendingAction] = useState<WcPendingAction>(null);
   const wcCanvasRef = useRef<HTMLCanvasElement>(null);
   // button: 'left' | 'right' — 좌/우 클릭 모두 동일 제스처 흐름 처리.
   const wcGestureRef = useRef<{ startX: number; startY: number; startTime: number; active: boolean; button: 'left' | 'right' }>(
@@ -1188,25 +1196,10 @@ export default function RecordPage() {
     }
   }, [wcAttached?.exe_path, wcAttached?.name]);
 
-  // attach 직후 + 1초 간격 폴링. 캡처 백엔드가 활성화+스크린(Alt+PrtScn 등가) 으로 동작 →
-  // 타겟이 포어그라운드면 플리커 없이 캡처, 아니면 짧은 활성화 후 즉시 복원.
-  // 폴링 1초 = idle 시 1초당 짧은 1회 깜박임이지만 background 자동 갱신 보장.
-  // 액션 후엔 wcRefreshImage 가 즉시 호출되므로 더 빠른 반응성도 확보.
+  // attach 직후 1회 자동 캡처 — 폴링 없음, 액션 후엔 wcRefreshImage 가 즉시 호출됨.
   useEffect(() => {
     if (leftPanelTab !== 'wincontrol' || !wcAttached?.attached) return;
-    let alive = true;
-    const POLL_MS = 1000;
-    // 즉시 1회 + 폴링
     void wcRefreshImage();
-    const tick = async () => {
-      while (alive) {
-        await new Promise(r => setTimeout(r, POLL_MS));
-        if (!alive) break;
-        await wcRefreshImage();
-      }
-    };
-    tick();
-    return () => { alive = false; };
   }, [leftPanelTab, wcAttached?.attached, wcAttached?.hwnd, wcRefreshImage]);
 
   // 캔버스 클라이언트 좌표 → 윈도우 client 좌표 변환.
@@ -1253,9 +1246,9 @@ export default function RecordPage() {
       message.error(e.response?.data?.detail || t('record.inputFailed'));
       return;
     }
-    // 액션 직후 1회 캡처 — 폴링 제거에 따른 사후 화면 갱신.
-    // 백엔드에서 활성화+스크린 캡처를 이미 처리 (DPI 호환성 mismatch 우회).
-    void wcRefreshImage();
+    // 액션 후 1초 대기 → 캡처. 대상 앱이 클릭/입력 결과를 화면에 반영할 시간 확보
+    // (대화상자 열림/페이지 전환/리스트 갱신 등 비동기 UI 업데이트 포함).
+    setTimeout(() => { void wcRefreshImage(); }, 1000);
     if (recording) {
       const tempId = (steps[steps.length - 1]?.id || 0) + 1;
       const optimisticStep: Step = {
@@ -1317,6 +1310,24 @@ export default function RecordPage() {
         return;
       }
     }
+    // 액션 모드 대기 — 좌클릭 + 작은 이동 거리면 모드에 맞는 액션 전송 후 모드 해제.
+    if (wcPendingAction !== null && wcGestureRef.current.button === 'left') {
+      const dist0 = Math.hypot(c.x - wcGestureRef.current.startX, c.y - wcGestureRef.current.startY);
+      if (dist0 <= 10) {
+        const action = wcPendingAction;
+        setWcPendingAction(null);
+        if (action.type === 'double_click') {
+          await wcExecuteAction('win_double_click',
+            { x: c.x, y: c.y },
+            `win_double_click (${c.x},${c.y})`);
+        } else {
+          await wcExecuteAction('win_long_press',
+            { x: c.x, y: c.y, duration_ms: action.duration_ms, button: 'left' },
+            `win_long_press (${c.x},${c.y}) ${action.duration_ms}ms`);
+        }
+        return;
+      }
+    }
     const { startX, startY, startTime, button } = wcGestureRef.current;
     const dist = Math.hypot(c.x - startX, c.y - startY);
     const elapsed = Date.now() - startTime;
@@ -1335,7 +1346,7 @@ export default function RecordPage() {
         { x: startX, y: startY, button },
         `win_tap${button === 'right' ? ' [right]' : ''} (${startX},${startY})`);
     }
-  }, [wcToWinCoords, wcExecuteAction, wcPendingText]);
+  }, [wcToWinCoords, wcExecuteAction, wcPendingText, wcPendingAction]);
 
   const wcDoubleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const c = wcToWinCoords(e.clientX, e.clientY);
@@ -4324,9 +4335,11 @@ export default function RecordPage() {
                           // 텍스트 입력 대기 중이면 text 커서 + 노란 보더로 시각 안내.
                           border: wcPendingText !== null
                             ? '2px solid #faad14'
-                            : (isDark ? '1px solid #333' : '1px solid #d9d9d9'),
+                            : wcPendingAction !== null
+                              ? '2px solid #52c41a'
+                              : (isDark ? '1px solid #333' : '1px solid #d9d9d9'),
                           borderRadius: 4,
-                          cursor: wcPendingText !== null ? 'text' : 'crosshair',
+                          cursor: (wcPendingText !== null || wcPendingAction !== null) ? 'pointer' : 'crosshair',
                           userSelect: 'none',
                         }}
                       />
@@ -4352,6 +4365,60 @@ export default function RecordPage() {
                     {wcPendingText !== null && (
                       <Tag color="orange" style={{ alignSelf: 'flex-start' }}>
                         {`입력 위치를 클릭하세요 — "${wcPendingText.length > 30 ? wcPendingText.slice(0, 30) + '...' : wcPendingText}"`}
+                      </Tag>
+                    )}
+                    {/* 액션 모드 버튼: 클릭하면 다음 캔버스 클릭이 해당 액션으로 전송됨.
+                        제스처(드래그/홀드)로도 가능하지만 명시적 버튼이 더 직관적. */}
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <span style={{ fontSize: 12, color: mutedTextColor }}>액션 모드:</span>
+                      <Button
+                        size="small"
+                        type={wcPendingAction?.type === 'double_click' ? 'primary' : 'default'}
+                        danger={wcPendingAction?.type === 'double_click'}
+                        onClick={() => {
+                          if (wcPendingAction?.type === 'double_click') {
+                            setWcPendingAction(null);
+                          } else {
+                            setWcPendingAction({ type: 'double_click' });
+                            setWcPendingText(null);
+                            message.info('더블클릭 위치를 클릭하세요');
+                          }
+                        }}
+                      >
+                        더블클릭
+                      </Button>
+                      {[
+                        { label: '롱프레스 0.5초', ms: 500 },
+                        { label: '롱프레스 1초', ms: 1000 },
+                        { label: '롱프레스 3초', ms: 3000 },
+                      ].map(({ label, ms }) => {
+                        const isActive = wcPendingAction?.type === 'long_press' && wcPendingAction.duration_ms === ms;
+                        return (
+                          <Button
+                            key={ms}
+                            size="small"
+                            type={isActive ? 'primary' : 'default'}
+                            danger={isActive}
+                            onClick={() => {
+                              if (isActive) {
+                                setWcPendingAction(null);
+                              } else {
+                                setWcPendingAction({ type: 'long_press', duration_ms: ms });
+                                setWcPendingText(null);
+                                message.info(`${label} 위치를 클릭하세요`);
+                              }
+                            }}
+                          >
+                            {label}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                    {wcPendingAction !== null && (
+                      <Tag color="green" style={{ alignSelf: 'flex-start' }}>
+                        {wcPendingAction.type === 'double_click'
+                          ? '더블클릭 위치를 캔버스에서 클릭하세요'
+                          : `롱프레스(${wcPendingAction.duration_ms}ms) 위치를 캔버스에서 클릭하세요`}
                       </Tag>
                     )}
                     {/* 키 조합 전송: 자주 쓰는 단축키 버튼 + 커스텀 입력.
