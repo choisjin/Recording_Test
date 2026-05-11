@@ -4369,6 +4369,7 @@ export default function RecordPage() {
                         { label: 'Ctrl+Z', combo: 'ctrl+z' },
                         { label: 'Ctrl+Y', combo: 'ctrl+y' },
                         { label: 'Ctrl+S', combo: 'ctrl+s' },
+                        { label: 'Ctrl+A+BackSpace', combo: 'ctrl+a+backspace' },
                         { label: 'Alt+F4', combo: 'alt+f4' },
                       ].map(({ label, combo }) => (
                         <Button
