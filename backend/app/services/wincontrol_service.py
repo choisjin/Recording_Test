@@ -971,7 +971,9 @@ class WinControlService:
             except Exception:
                 return None
 
-        # 1) 활성화 — AttachThreadInput 트릭으로 foreground lock 우회.
+        # 1) 활성화 — Alt 키 self-inject + AttachThreadInput 트릭으로 foreground lock 우회.
+        # Alt 탭은 최초 서버 시작 후 첫 호출에서 SetForegroundWindow 가 거부되는 문제 방지.
+        self._unlock_foreground()
         try:
             cur_thread = win32api.GetCurrentThreadId()
             fg_thread = 0
@@ -1016,6 +1018,7 @@ class WinControlService:
 
         # 4) 이전 포어그라운드 복원 — 사용자 앱(우리 frontend)에 포커스 돌려놓음.
         if prev_fg and prev_fg != hwnd:
+            self._unlock_foreground()
             try:
                 cur_thread = win32api.GetCurrentThreadId()
                 target_thread, _ = win32process.GetWindowThreadProcessId(prev_fg)
@@ -1321,6 +1324,24 @@ class WinControlService:
             raise RuntimeError("No window attached")
         return self._hwnd  # type: ignore[return-value]
 
+    @staticmethod
+    def _unlock_foreground() -> None:
+        """Windows SetForegroundWindow 락 우회 — 가상 Alt 키 down/up.
+
+        백엔드 프로세스가 입력 이벤트 이력이 없으면 SetForegroundWindow 가 거부됨.
+        ALTUP+ALTDOWN 을 self-inject 해서 OS 가 "최근 입력 이벤트 있음" 으로 판정하도록.
+        부작용 최소화: down/up 매우 짧은 간격 + scan code 0 (메뉴 활성화 방지).
+        최초 서버 시작 후 첫 임베드에서 포커스 전환이 실패하는 문제 해결용.
+        """
+        if not _WIN32_AVAILABLE:
+            return
+        try:
+            # VK_MENU = 0x12, KEYEVENTF_KEYUP = 0x02
+            windll.user32.keybd_event(0x12, 0, 0, 0)
+            windll.user32.keybd_event(0x12, 0, 0x02, 0)
+        except Exception:
+            pass
+
     def _focus(self) -> None:
         """대상 윈도우를 전면으로 + 포커스. SendInput 모드 전제 조건.
 
@@ -1355,6 +1376,8 @@ class WinControlService:
                     was_iconic = True
             except Exception:
                 pass
+            # 포어그라운드 락 우회 — 가상 Alt 키 탭 (최초 서버 시작 후 첫 호출 실패 방지)
+            self._unlock_foreground()
             # 포어그라운드 락 회피 — AttachThreadInput 트릭
             try:
                 fg = windll.user32.GetForegroundWindow()
@@ -1424,9 +1447,10 @@ class WinControlService:
         """실제 포어그라운드 + 커서 복원 동작."""
         if not ctx:
             return
-        # 1) 이전 활성 창으로 포커스 복귀 (AttachThreadInput 트릭)
+        # 1) 이전 활성 창으로 포커스 복귀 (AttachThreadInput 트릭 + Alt unlock)
         prev_fg = ctx.get("prev_fg")
         if prev_fg:
+            self._unlock_foreground()
             try:
                 if win32gui.IsWindow(prev_fg):
                     cur_thread = win32api.GetCurrentThreadId()
