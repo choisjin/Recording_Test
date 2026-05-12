@@ -1250,6 +1250,9 @@ export default function DevicePage() {
         <Button icon={<LinkOutlined />} onClick={handleConnectSelected} loading={connectingAll} disabled={selectedDeviceIds.size === 0}>{t('device.connectSelected')} ({selectedDeviceIds.size})</Button>
         <Button icon={<DisconnectOutlined />} danger onClick={handleDisconnectAll} loading={disconnectingAll}>{t('device.disconnectAll')}</Button>
         <Button icon={<DisconnectOutlined />} onClick={handleDisconnectSelected} loading={disconnectingAll} disabled={selectedDeviceIds.size === 0}>{t('device.disconnectSelected')} ({selectedDeviceIds.size})</Button>
+        <Button icon={<PlusOutlined />} type="primary" onClick={() => openAddModal('primary')}>{t('device.addPrimary')}</Button>
+        <Button icon={<PlusOutlined />} onClick={() => openAddModal('auxiliary')}>{t('device.addAuxiliary')}</Button>
+        <Button icon={<SettingOutlined />} onClick={openScanSettings}>{t('device.scanSettings')}</Button>
       </Space>
 
       {/* 주/보조 디바이스를 별도 Card로 명확히 구분.
@@ -1335,12 +1338,6 @@ export default function DevicePage() {
                   <Tag>{primaryCount}</Tag>
                 </Space>
               }
-              extra={
-                <Space>
-                  <Button icon={<PlusOutlined />} type="primary" size="small" onClick={() => openAddModal('primary')}>{t('device.addPrimary')}</Button>
-                  <Button icon={<SettingOutlined />} size="small" onClick={openScanSettings}>{t('device.scanSettings')}</Button>
-                </Space>
-              }
             >
               {primaryGroupOrder.length === 0 ? (
                 <div style={{ color: '#999', textAlign: 'center', padding: 20 }}>{t('device.noDevicesRegistered')}</div>
@@ -1378,11 +1375,6 @@ export default function DevicePage() {
                   />
                   <span style={{ fontWeight: 600 }}>{t('record.auxiliaryDevices')}</span>
                   <Tag>{auxiliaryCount}</Tag>
-                </Space>
-              }
-              extra={
-                <Space>
-                  <Button icon={<PlusOutlined />} size="small" onClick={() => openAddModal('auxiliary')}>{t('device.addAuxiliary')}</Button>
                 </Space>
               }
             >
