@@ -178,6 +178,8 @@
     "SerialPlugin": false,
     "DLTViewer": false,
     "VisionCamera": false,
+    "CMD": false,
+    "HKMC6th": false,
     "SerialLogging": true
   },
   "agents": [

@@ -2305,9 +2305,10 @@ export default function DevicePage() {
                         .sort((a, b) => a[1].localeCompare(b[1]))
                         .map(([value, label]) => ({ label, value }));
                     } else {
-                      // 보조 디바이스: 모듈 목록 + 기존 auxiliary prefix
+                      // 보조 디바이스: 표시 가능한 모듈 목록 + 기존 auxiliary prefix
+                      // module_visibility=false(AdminPage에서 체크 해제)된 모듈은 제외 — 구현되지 않거나 사용하지 않는 모듈 숨김.
                       const opts = new Map<string, string>();
-                      modules.forEach(m => opts.set(m.name, m.label));
+                      visibleModules.forEach(m => opts.set(m.name, m.label));
                       auxiliaryDevices.forEach(d => {
                         const p = getDevicePrefix(d.id);
                         if (!opts.has(p)) opts.set(p, p);
