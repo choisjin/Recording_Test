@@ -300,13 +300,13 @@ export default function DevicePage() {
     return map;
   }, [catalogProjects, catalogAgents]);
 
-  const PROJECT_OPTIONS = useMemo(() => [
-    { label: t('device.allProjects'), value: '' },
-    ...catalogProjects
+  // 주 디바이스 추가 모달의 프로젝트 콤보 — 전체("") 항목은 의미 없음(특정 프로젝트 선택 강제).
+  const PROJECT_OPTIONS = useMemo(() => (
+    catalogProjects
       .filter(p => p.enabled !== false && typeof p.name === 'string' && p.name.length > 0)
       .map(p => ({ label: p.name, value: p.name }))
-      .sort((a, b) => (a.label || '').localeCompare(b.label || '')),
-  ], [catalogProjects, t]);
+      .sort((a, b) => (a.label || '').localeCompare(b.label || ''))
+  ), [catalogProjects]);
 
   const DEVICE_MODELS = useMemo(() => {
     const enabledProjects = catalogProjects.filter(p => p.enabled !== false);
@@ -1244,16 +1244,21 @@ export default function DevicePage() {
 
   return (
     <div>
-      <Space style={{ marginBottom: 6 }} wrap>
-        <Button icon={<ReloadOutlined />} onClick={fetchDevices} loading={loading}>{t('common.refresh')}</Button>
-        <Button icon={<ApiOutlined />} type="primary" onClick={handleConnectAll} loading={connectingAll}>{t('device.connectAll')}</Button>
-        <Button icon={<LinkOutlined />} onClick={handleConnectSelected} loading={connectingAll} disabled={selectedDeviceIds.size === 0}>{t('device.connectSelected')} ({selectedDeviceIds.size})</Button>
-        <Button icon={<DisconnectOutlined />} danger onClick={handleDisconnectAll} loading={disconnectingAll}>{t('device.disconnectAll')}</Button>
-        <Button icon={<DisconnectOutlined />} onClick={handleDisconnectSelected} loading={disconnectingAll} disabled={selectedDeviceIds.size === 0}>{t('device.disconnectSelected')} ({selectedDeviceIds.size})</Button>
-        <Button icon={<PlusOutlined />} type="primary" onClick={() => openAddModal('primary')}>{t('device.addPrimary')}</Button>
-        <Button icon={<PlusOutlined />} onClick={() => openAddModal('auxiliary')}>{t('device.addAuxiliary')}</Button>
-        <Button icon={<SettingOutlined />} onClick={openScanSettings}>{t('device.scanSettings')}</Button>
-      </Space>
+      {/* 좌측: 새로고침/연결/해제 — 우측: 디바이스 추가/스캔설정 (justify-between으로 양쪽 정렬) */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
+        <Space wrap>
+          <Button icon={<ReloadOutlined />} onClick={fetchDevices} loading={loading}>{t('common.refresh')}</Button>
+          <Button icon={<ApiOutlined />} type="primary" onClick={handleConnectAll} loading={connectingAll}>{t('device.connectAll')}</Button>
+          <Button icon={<LinkOutlined />} onClick={handleConnectSelected} loading={connectingAll} disabled={selectedDeviceIds.size === 0}>{t('device.connectSelected')} ({selectedDeviceIds.size})</Button>
+          <Button icon={<DisconnectOutlined />} danger onClick={handleDisconnectAll} loading={disconnectingAll}>{t('device.disconnectAll')}</Button>
+          <Button icon={<DisconnectOutlined />} onClick={handleDisconnectSelected} loading={disconnectingAll} disabled={selectedDeviceIds.size === 0}>{t('device.disconnectSelected')} ({selectedDeviceIds.size})</Button>
+        </Space>
+        <Space wrap>
+          <Button icon={<PlusOutlined />} type="primary" onClick={() => openAddModal('primary')}>{t('device.addPrimary')}</Button>
+          <Button icon={<PlusOutlined />} onClick={() => openAddModal('auxiliary')}>{t('device.addAuxiliary')}</Button>
+          <Button icon={<SettingOutlined />} onClick={openScanSettings}>{t('device.scanSettings')}</Button>
+        </Space>
+      </div>
 
       {/* 주/보조 디바이스를 별도 Card로 명확히 구분.
           - 주 디바이스 카드: primary 그룹들 (Android/HKMC/iSAP/VisionCam/Webcam 등)
@@ -1419,10 +1424,11 @@ export default function DevicePage() {
                     {modalCategory === 'primary' && (
                       <>
                         <Select
-                          value={deviceProject}
+                          value={deviceProject || undefined}
                           onChange={(v) => { setDeviceProject(v); setDeviceModel(''); }}
                           style={{ minWidth: 120 }}
                           options={PROJECT_OPTIONS}
+                          placeholder={t('device.projectPlaceholder')}
                           status={primaryProjectModelMissing && !deviceProject ? 'warning' : undefined}
                         />
                         <Select
@@ -1953,10 +1959,11 @@ export default function DevicePage() {
                     {modalCategory === 'primary' && (
                       <Space style={{ width: '100%' }} wrap>
                         <Select
-                          value={deviceProject}
+                          value={deviceProject || undefined}
                           onChange={(v) => { setDeviceProject(v); setDeviceModel(''); }}
                           style={{ minWidth: 120 }}
                           options={PROJECT_OPTIONS}
+                          placeholder={t('device.projectPlaceholder')}
                           status={primaryProjectModelMissing && !deviceProject ? 'warning' : undefined}
                         />
                         <Select
