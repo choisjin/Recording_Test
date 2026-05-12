@@ -251,50 +251,30 @@ class SerialLogging:
         """모듈 표준 연결 인터페이스 — 보조 디바이스 '연결' 클릭 시 자동 호출됨.
 
         module_service._get_instance가 인자 없는 Connect()를 발견하면 인스턴스
-        생성 직후 자동으로 호출한다. 포트 open + capture 스레드 시작 + SERIAL_HUB
-        lifecycle emit까지 수행하므로 이후 Send_Packet/SendCommand가 즉시 동작하고
-        뷰어도 자동 오픈된다.
+        생성 직후 자동으로 호출한다. 포트 open + capture 스레드 시작만 수행하고
+        SERIAL_HUB lifecycle은 emit하지 않는다 — 뷰어 모달 자동 오픈은 StartLogging()
+        호출(시나리오 스텝)에만 한정. 디바이스 탭의 단순 연결로 모달이 튀어나오지
+        않도록 하기 위함.
 
-        StartLogging과 동일한 효과지만 메시지/파라미터가 다르며, 둘 중 어느 쪽을
-        호출해도 _connect()가 idempotent하므로 안전하다.
+        이후 Send_Packet/SendCommand는 즉시 사용 가능. 사용자가 로그 뷰어를 보고
+        싶다면 시나리오에서 StartLogging()을 호출하면 된다 (_connect는 idempotent).
         """
         err = self._connect()
         if err:
             return err
-        try:
-            SERIAL_HUB.emit_lifecycle({
-                "type": "session_started",
-                "session_id": self._session_id(),
-                "port": self._port,
-                "bps": self._bps,
-                "save_path": "",
-                "started_at": time.time(),
-                "scenario_playback": _is_scenario_playback(),
-            })
-        except Exception:
-            pass
         return f"Connected: {self._port} @ {self._bps}"
 
     def Disconnect(self) -> str:
         """모듈 표준 연결 해제 인터페이스 — 보조 디바이스 '연결 해제' / cleanup 경로에서 자동 호출됨.
 
-        capture 스레드 중단 + 시리얼 포트 close + SERIAL_HUB session_stopped emit.
-        파일 저장은 하지 않으므로(StopLogging과의 차이) raw 송수신용으로만 사용한
-        세션을 깔끔히 닫을 때 적합하다.
+        capture 스레드 중단 + 시리얼 포트 close. lifecycle session_stopped emit은
+        Connect 시점에 session_started를 emit하지 않았으므로 대칭으로 생략.
+        StartLogging→StopLogging 사이클로 만든 세션은 StopLogging이 자체적으로
+        session_stopped를 emit하므로 영향 없음.
         """
         if not self._serial or not self._serial.is_open:
             return "Already disconnected"
-        sid = self._session_id()
         self._disconnect()
-        try:
-            SERIAL_HUB.emit_lifecycle({
-                "type": "session_stopped",
-                "session_id": sid,
-                "save_path": "",
-                "stopped_at": time.time(),
-            })
-        except Exception:
-            pass
         return f"Disconnected: {self._port}"
 
     def _session_id(self) -> str:
