@@ -1728,16 +1728,23 @@ class DeviceManager:
         """그룹 내 디바이스 순서를 변경하고 ID 번호를 재할당합니다.
         예: prefix="Android", ordered_ids=["Android_2","Android_1"]
         → Android_2→Android_1, Android_1→Android_2
+
+        보호된 시스템 기본 디바이스(Common, WinControl)는 ID 고정 — 번호 재할당에서 제외.
+        WinControl 은 UI 상 Common 그룹에 표시되지만 ID 는 'WinControl' 로 유지되어야 함.
         """
         # 1) 유효성 검증
         for did in ordered_ids:
             if did not in self._devices:
                 raise ValueError(f"Device {did} not found")
 
-        # 2) 새 ID 매핑 생성
+        # 2) 새 ID 매핑 생성 — 보호 디바이스는 건너뛰고 일반 디바이스만 1부터 재번호.
         remap: dict[str, str] = {}  # old_id → new_id
-        for idx, old_id in enumerate(ordered_ids, 1):
-            new_id = f"{prefix}_{idx}"
+        renum_idx = 0
+        for old_id in ordered_ids:
+            if self.is_protected_device(old_id):
+                continue  # ID 변경 없음 — 그룹 내 위치만 보존
+            renum_idx += 1
+            new_id = f"{prefix}_{renum_idx}"
             if old_id != new_id:
                 remap[old_id] = new_id
 

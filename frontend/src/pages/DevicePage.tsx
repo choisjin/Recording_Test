@@ -999,6 +999,25 @@ export default function DevicePage() {
     return [...first, ...rest];
   }, [deviceGroups]);
 
+  // 주/보조 그룹 분리 — 카테고리 명확 구분 + Common은 보조 최하단 고정.
+  // 그룹의 카테고리는 첫 디바이스 기준 (같은 prefix 그룹 내 디바이스는 같은 category 가정).
+  const primaryGroupOrder = useMemo(() => {
+    return groupOrder.filter(prefix => {
+      const g = deviceGroups[prefix];
+      return g && g.length > 0 && g[0].category === 'primary';
+    });
+  }, [groupOrder, deviceGroups]);
+
+  const auxiliaryGroupOrder = useMemo(() => {
+    const aux = groupOrder.filter(prefix => {
+      const g = deviceGroups[prefix];
+      return g && g.length > 0 && g[0].category === 'auxiliary';
+    });
+    // Common 그룹은 항상 보조 최하단
+    const withoutCommon = aux.filter(p => p !== 'Common');
+    return aux.includes('Common') ? [...withoutCommon, 'Common'] : withoutCommon;
+  }, [groupOrder, deviceGroups]);
+
   const handleGroupDragEnd = async (prefix: string, event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -1233,65 +1252,151 @@ export default function DevicePage() {
         <Button icon={<DisconnectOutlined />} onClick={handleDisconnectSelected} loading={disconnectingAll} disabled={selectedDeviceIds.size === 0}>{t('device.disconnectSelected')} ({selectedDeviceIds.size})</Button>
       </Space>
 
-      <Card
-        size="small"
-        title={
-          <Space>
-            <Checkbox
-              indeterminate={selectedDeviceIds.size > 0 && selectedDeviceIds.size < allDevices.length}
-              checked={allDevices.length > 0 && selectedDeviceIds.size === allDevices.length}
-              onChange={(e) => toggleSelectAll(e.target.checked)}
-            />
-            {`${t('device.title')} (${allDevices.length})`}
-          </Space>
-        }
-        extra={
-          <Space>
-            <Button icon={<PlusOutlined />} type="primary" size="small" onClick={() => openAddModal('primary')}>{t('device.addPrimary')}</Button>
-            <Button icon={<PlusOutlined />} size="small" onClick={() => openAddModal('auxiliary')}>{t('device.addAuxiliary')}</Button>
-            <Button icon={<SettingOutlined />} size="small" onClick={openScanSettings}>{t('device.scanSettings')}</Button>
-          </Space>
-        }
-      >
-        {groupOrder.length === 0 ? (
-          <div style={{ color: '#999', textAlign: 'center', padding: 26 }}>{t('device.noDevicesRegistered')}</div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {groupOrder.map(prefix => {
-              const group = deviceGroups[prefix];
-              if (!group || group.length === 0) return null;
-              const label = GROUP_LABELS[prefix] || prefix;
-              const connectedCount = group.filter(isDeviceConnected).length;
-              return (
-                <Card
-                  key={prefix}
-                  size="small"
-                  type="inner"
-                  title={
-                    <Space>
-                      <span style={{ fontWeight: 600 }}>{label}</span>
-                      <Tag>{group.length}</Tag>
-                      {connectedCount > 0 && <Tag color="green">{connectedCount} {t('device.statusConnected')}</Tag>}
-                    </Space>
-                  }
-                  styles={{ body: { padding: 0 } }}
-                >
-                  <DndContext sensors={dndSensors} collisionDetection={closestCenter}
-                    onDragEnd={(e) => handleGroupDragEnd(prefix, e)}>
-                    <SortableContext items={group.map(d => d.id)} strategy={verticalListSortingStrategy}>
-                      {group.map(d => (
-                        <SortableDeviceRow key={d.id} device={d}>
-                          {renderDeviceRow(d)}
-                        </SortableDeviceRow>
-                      ))}
-                    </SortableContext>
-                  </DndContext>
-                </Card>
-              );
-            })}
+      {/* 주/보조 디바이스를 별도 Card로 명확히 구분.
+          - 주 디바이스 카드: primary 그룹들 (Android/HKMC/iSAP/VisionCam/Webcam 등)
+          - 보조 디바이스 카드: auxiliary 그룹들 + Common 그룹 (항상 최하단 고정)
+          - Common 그룹은 보호 디바이스(Common, WinControl) 전용 — 드래그 순서변경 비활성화. */}
+      {(() => {
+        const renderGroupCard = (prefix: string) => {
+          const group = deviceGroups[prefix];
+          if (!group || group.length === 0) return null;
+          const label = GROUP_LABELS[prefix] || prefix;
+          const connectedCount = group.filter(isDeviceConnected).length;
+          // Common 그룹: 드래그 비활성. 보호 디바이스만 들어있으므로 ID/순서 변경 의미 없음.
+          const isCommonGroup = prefix === 'Common';
+          return (
+            <Card
+              key={prefix}
+              size="small"
+              type="inner"
+              title={
+                <Space>
+                  <span style={{ fontWeight: 600 }}>{label}</span>
+                  <Tag>{group.length}</Tag>
+                  {connectedCount > 0 && <Tag color="green">{connectedCount} {t('device.statusConnected')}</Tag>}
+                </Space>
+              }
+              styles={{ body: { padding: 0 } }}
+            >
+              {isCommonGroup ? (
+                // 드래그 없이 단순 렌더 — 보호 디바이스(Common, WinControl) 순서 고정.
+                group.map(d => (
+                  <div key={d.id} style={{ padding: '6px 12px', borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+                    {renderDeviceRow(d)}
+                  </div>
+                ))
+              ) : (
+                <DndContext sensors={dndSensors} collisionDetection={closestCenter}
+                  onDragEnd={(e) => handleGroupDragEnd(prefix, e)}>
+                  <SortableContext items={group.map(d => d.id)} strategy={verticalListSortingStrategy}>
+                    {group.map(d => (
+                      <SortableDeviceRow key={d.id} device={d}>
+                        {renderDeviceRow(d)}
+                      </SortableDeviceRow>
+                    ))}
+                  </SortableContext>
+                </DndContext>
+              )}
+            </Card>
+          );
+        };
+
+        const primaryCount = primaryGroupOrder.reduce((n, p) => n + (deviceGroups[p]?.length || 0), 0);
+        const auxiliaryCount = auxiliaryGroupOrder.reduce((n, p) => n + (deviceGroups[p]?.length || 0), 0);
+
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {/* 주 디바이스 카드 */}
+            <Card
+              size="small"
+              title={
+                <Space>
+                  <Checkbox
+                    indeterminate={(() => {
+                      const selCount = primaryDevices.filter(d => selectedDeviceIds.has(d.id) && !d.protected).length;
+                      const total = primaryDevices.filter(d => !d.protected).length;
+                      return selCount > 0 && selCount < total;
+                    })()}
+                    checked={(() => {
+                      const total = primaryDevices.filter(d => !d.protected).length;
+                      const selCount = primaryDevices.filter(d => selectedDeviceIds.has(d.id) && !d.protected).length;
+                      return total > 0 && selCount === total;
+                    })()}
+                    onChange={(e) => {
+                      const next = new Set(selectedDeviceIds);
+                      primaryDevices.forEach(d => {
+                        if (d.protected) return;
+                        if (e.target.checked) next.add(d.id); else next.delete(d.id);
+                      });
+                      setSelectedDeviceIds(next);
+                    }}
+                  />
+                  <span style={{ fontWeight: 600 }}>{t('record.primaryDevices')}</span>
+                  <Tag>{primaryCount}</Tag>
+                </Space>
+              }
+              extra={
+                <Space>
+                  <Button icon={<PlusOutlined />} type="primary" size="small" onClick={() => openAddModal('primary')}>{t('device.addPrimary')}</Button>
+                  <Button icon={<SettingOutlined />} size="small" onClick={openScanSettings}>{t('device.scanSettings')}</Button>
+                </Space>
+              }
+            >
+              {primaryGroupOrder.length === 0 ? (
+                <div style={{ color: '#999', textAlign: 'center', padding: 20 }}>{t('device.noDevicesRegistered')}</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {primaryGroupOrder.map(renderGroupCard)}
+                </div>
+              )}
+            </Card>
+
+            {/* 보조 디바이스 카드 */}
+            <Card
+              size="small"
+              title={
+                <Space>
+                  <Checkbox
+                    indeterminate={(() => {
+                      const selCount = auxiliaryDevices.filter(d => selectedDeviceIds.has(d.id) && !d.protected).length;
+                      const total = auxiliaryDevices.filter(d => !d.protected).length;
+                      return selCount > 0 && selCount < total;
+                    })()}
+                    checked={(() => {
+                      const total = auxiliaryDevices.filter(d => !d.protected).length;
+                      const selCount = auxiliaryDevices.filter(d => selectedDeviceIds.has(d.id) && !d.protected).length;
+                      return total > 0 && selCount === total;
+                    })()}
+                    onChange={(e) => {
+                      const next = new Set(selectedDeviceIds);
+                      auxiliaryDevices.forEach(d => {
+                        if (d.protected) return;
+                        if (e.target.checked) next.add(d.id); else next.delete(d.id);
+                      });
+                      setSelectedDeviceIds(next);
+                    }}
+                  />
+                  <span style={{ fontWeight: 600 }}>{t('record.auxiliaryDevices')}</span>
+                  <Tag>{auxiliaryCount}</Tag>
+                </Space>
+              }
+              extra={
+                <Space>
+                  <Button icon={<PlusOutlined />} size="small" onClick={() => openAddModal('auxiliary')}>{t('device.addAuxiliary')}</Button>
+                </Space>
+              }
+            >
+              {auxiliaryGroupOrder.length === 0 ? (
+                <div style={{ color: '#999', textAlign: 'center', padding: 20 }}>{t('device.noDevicesRegistered')}</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {auxiliaryGroupOrder.map(renderGroupCard)}
+                </div>
+              )}
+            </Card>
           </div>
-        )}
-      </Card>
+        );
+      })()}
 
       {/* 장치 추가 모달 */}
       <Modal
