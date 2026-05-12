@@ -238,9 +238,64 @@ class SerialLogging:
         self._serial = None
         logger.info("[SerialLogging] Disconnected")
 
-    def _IsConnected(self) -> bool:
-        """연결 상태 확인. StartLogging 전에도 모듈은 사용 가능 (지연 연결)."""
-        return True
+    def IsConnected(self) -> bool:
+        """포트가 실제로 열려 있는지 보고.
+
+        module_service._is_connected가 이 메서드를 우선 호출하여 디바이스 status를
+        결정한다. 따라서 정확한 포트 상태를 반환해야 보조 디바이스 '연결' 직후
+        Send_Packet 등이 즉시 사용 가능한지 UI에 올바로 반영된다.
+        """
+        return bool(self._serial and getattr(self._serial, "is_open", False))
+
+    def Connect(self) -> str:
+        """모듈 표준 연결 인터페이스 — 보조 디바이스 '연결' 클릭 시 자동 호출됨.
+
+        module_service._get_instance가 인자 없는 Connect()를 발견하면 인스턴스
+        생성 직후 자동으로 호출한다. 포트 open + capture 스레드 시작 + SERIAL_HUB
+        lifecycle emit까지 수행하므로 이후 Send_Packet/SendCommand가 즉시 동작하고
+        뷰어도 자동 오픈된다.
+
+        StartLogging과 동일한 효과지만 메시지/파라미터가 다르며, 둘 중 어느 쪽을
+        호출해도 _connect()가 idempotent하므로 안전하다.
+        """
+        err = self._connect()
+        if err:
+            return err
+        try:
+            SERIAL_HUB.emit_lifecycle({
+                "type": "session_started",
+                "session_id": self._session_id(),
+                "port": self._port,
+                "bps": self._bps,
+                "save_path": "",
+                "started_at": time.time(),
+                "scenario_playback": _is_scenario_playback(),
+            })
+        except Exception:
+            pass
+        return f"Connected: {self._port} @ {self._bps}"
+
+    def Disconnect(self) -> str:
+        """모듈 표준 연결 해제 인터페이스 — 보조 디바이스 '연결 해제' / cleanup 경로에서 자동 호출됨.
+
+        capture 스레드 중단 + 시리얼 포트 close + SERIAL_HUB session_stopped emit.
+        파일 저장은 하지 않으므로(StopLogging과의 차이) raw 송수신용으로만 사용한
+        세션을 깔끔히 닫을 때 적합하다.
+        """
+        if not self._serial or not self._serial.is_open:
+            return "Already disconnected"
+        sid = self._session_id()
+        self._disconnect()
+        try:
+            SERIAL_HUB.emit_lifecycle({
+                "type": "session_stopped",
+                "session_id": sid,
+                "save_path": "",
+                "stopped_at": time.time(),
+            })
+        except Exception:
+            pass
+        return f"Disconnected: {self._port}"
 
     def _session_id(self) -> str:
         return f"{self._port}@{self._bps}"
@@ -602,7 +657,7 @@ class SerialLogging:
         Returns:
             상태 문자열
         """
-        connected = self._IsConnected()
+        connected = self.IsConnected()
         with self._lock:
             log_count = len(self._logs)
         saving = self._save_path or "N/A"
