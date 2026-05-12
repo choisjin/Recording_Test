@@ -824,8 +824,16 @@ export default function ResultsPage() {
       map.get(ts)!.push(r);
     }
     return Array.from(map.entries()).map(([ts, items]) => {
-      const hasAnyFail = items.some(i => i.status === 'fail' || i.status === 'error');
-      const hasWarning = items.some(i => i.status === 'warning');
+      // 저장된 status 필드뿐 아니라 카운터(failed_steps/error_steps)도 확인 — 백엔드가
+      // 어떤 경로에서 status="pass"로 저장하면서 failed_steps>0을 동시에 쓰는 일이
+      // 발생할 경우, 카운터를 신뢰해 사용자가 "PASS인데 빨간 카운트"로 혼란을 겪지 않게 함.
+      // (조건부이동으로 인한 revisit이 카운터에는 누적되지만 status 결정 시점에 빠지는
+      // 케이스 등을 화면 단에서 방어)
+      const hasAnyFail = items.some(i =>
+        i.status === 'fail' || i.status === 'error' ||
+        (i.failed_steps || 0) > 0 || (i.error_steps || 0) > 0
+      );
+      const hasWarning = items.some(i => i.status === 'warning' || (i.warning_steps || 0) > 0);
       const names = [...new Set(items.map(i => i.scenario_name))];
       return {
         key: ts,

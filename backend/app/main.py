@@ -1054,6 +1054,11 @@ async def _run_play_job(data: dict):
                         _pending_seq = global_step_seq
                         start_data["step_id"] = _pending_seq
                         start_data["description"] = f"[Cycle {iteration}] {start_data.get('description', '')}"
+                    # exec_seq: 실행 단위 고유 ID — 조건부이동으로 같은 step_id를 재방문해도
+                    # 매 실행마다 새 값. 프론트는 이걸로 dedup해야 revisit 행이 누락되지 않음.
+                    # _step_idx는 _run_play_job 시작 시점에 0으로 초기화되어 한 재생 세션
+                    # 동안 monotonic하게 증가 → 버퍼 replay 시 동일 exec_seq로 정확히 매칭.
+                    start_data["exec_seq"] = _step_idx
                     publish_event({
                         "type": "step_start",
                         "data": start_data,
@@ -1081,9 +1086,12 @@ async def _run_play_job(data: dict):
                     else:
                         result.error_steps += 1
                         playback_service._monitor_state["error"] += 1
+                    sr_data = step_result.model_dump()
+                    # step_start와 동일 exec_seq를 부착 — 프론트가 placeholder 행과 매칭하기 위함
+                    sr_data["exec_seq"] = _step_idx
                     publish_event({
                         "type": "step_result",
-                        "data": step_result.model_dump(),
+                        "data": sr_data,
                         "iteration": iteration,
                     })
 
@@ -1288,6 +1296,9 @@ async def _run_play_group_job(data: dict):
                         start_data = {k: v for k, v in item.items() if k != "_type"}
                         start_data["step_id"] = _pending_seq
                         start_data["description"] = f"[{sc_name}] {start_data.get('description', '')}" if start_data.get('description') else f"[{sc_name}]"
+                        # exec_seq: 그룹 전체에서 monotonic — 시나리오 간/조건부이동 revisit 모두 새 값.
+                        # 프론트가 step_id+repeat_index 대신 이것으로 dedup해서 revisit 행이 누락되지 않도록.
+                        start_data["exec_seq"] = _pending_seq
                         publish_event({
                             "type": "step_start",
                             "data": start_data,
@@ -1312,9 +1323,11 @@ async def _run_play_group_job(data: dict):
                         unified_result.failed_steps += 1
                     else:
                         unified_result.error_steps += 1
+                    sr_data = step_result.model_dump()
+                    sr_data["exec_seq"] = _pending_seq
                     publish_event({
                         "type": "step_result",
-                        "data": step_result.model_dump(),
+                        "data": sr_data,
                         "iteration": iteration,
                         "scenario_name": sc_name,
                     })

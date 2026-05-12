@@ -94,6 +94,10 @@ interface SubResultData {
 interface StepResultData {
   step_id: number;
   repeat_index: number;
+  // 백엔드가 보내는 실행 단위 고유 ID. 조건부이동으로 같은 step_id를 다시 방문하면
+  // 매 실행마다 새 값이 부여되어 dedup이 revisit 행을 누락시키지 않음.
+  // 구버전 백엔드와의 호환을 위해 optional.
+  exec_seq?: number;
   timestamp: string | null;
   device_id: string;
   command: string;
@@ -877,6 +881,7 @@ export default function ScenarioPage() {
         const d = msg.data;
         const placeholder: StepResultData = {
           step_id: d.step_id, repeat_index: d.repeat_index,
+          exec_seq: d.exec_seq,
           timestamp: new Date().toISOString(), device_id: d.device_id,
           command: d.command, description: d.description,
           status: 'running', similarity_score: null,
@@ -886,8 +891,16 @@ export default function ScenarioPage() {
           delay_ms: d.delay_ms, execution_time_ms: 0,
           compare_mode: null, sub_results: [],
         };
-        // 재연결 replay 시 중복 방지 — 같은 (step_id, repeat_index) 행이 이미 있으면 스킵
+        // dedup 키: exec_seq(실행 단위 고유 ID)가 있으면 그걸로, 없으면 구버전 호환 키.
+        // 조건부이동 revisit은 새 exec_seq를 받으므로 새 행이 append됨.
+        // 버퍼 replay는 동일 exec_seq를 다시 보내므로 정확히 매칭되어 skip.
         setStepResults((prev) => {
+          if (d.exec_seq !== undefined) {
+            for (let i = prev.length - 1; i >= 0; i--) {
+              if (prev[i].exec_seq === d.exec_seq) return prev;
+            }
+            return [...prev, placeholder];
+          }
           for (let i = prev.length - 1; i >= 0; i--) {
             if (prev[i].step_id === d.step_id && prev[i].repeat_index === d.repeat_index) return prev;
           }
@@ -907,10 +920,18 @@ export default function ScenarioPage() {
         const result: StepResultData = msg.data;
         setStepResults((prev) => {
           let idx = -1;
-          for (let i = prev.length - 1; i >= 0; i--) { if (prev[i].step_id === result.step_id && prev[i].repeat_index === result.repeat_index) { idx = i; break; } }
+          // exec_seq가 있으면 그걸로 매칭(조건부이동 revisit 행을 정확히 찍음), 없으면 구버전 호환
+          if (result.exec_seq !== undefined) {
+            for (let i = prev.length - 1; i >= 0; i--) {
+              if (prev[i].exec_seq === result.exec_seq) { idx = i; break; }
+            }
+          } else {
+            for (let i = prev.length - 1; i >= 0; i--) { if (prev[i].step_id === result.step_id && prev[i].repeat_index === result.repeat_index) { idx = i; break; } }
+          }
           if (idx >= 0) {
             const updated = [...prev];
-            updated[idx] = result;
+            // exec_seq는 placeholder의 것을 보존(서버가 sr_data에 같은 값을 넣어 보내므로 사실상 동일)
+            updated[idx] = { ...result, exec_seq: result.exec_seq ?? prev[idx].exec_seq };
             return updated;
           }
           return [...prev, result];
@@ -1174,6 +1195,7 @@ export default function ScenarioPage() {
         const d = msg.data;
         const placeholder: StepResultData = {
           step_id: d.step_id, repeat_index: d.repeat_index,
+          exec_seq: d.exec_seq,
           timestamp: new Date().toISOString(), device_id: d.device_id,
           command: d.command, description: d.description,
           status: 'running', similarity_score: null,
@@ -1183,8 +1205,15 @@ export default function ScenarioPage() {
           delay_ms: d.delay_ms, execution_time_ms: 0,
           compare_mode: null, sub_results: [],
         };
-        // 재연결 replay 시 중복 방지
+        // dedup 키: exec_seq(실행 단위 고유 ID)가 있으면 그걸로, 없으면 구버전 호환 키.
+        // 그룹/조건부이동 revisit 모두 새 exec_seq를 받음 → 행이 누락되지 않음.
         setStepResults((prev) => {
+          if (d.exec_seq !== undefined) {
+            for (let i = prev.length - 1; i >= 0; i--) {
+              if (prev[i].exec_seq === d.exec_seq) return prev;
+            }
+            return [...prev, placeholder];
+          }
           for (let i = prev.length - 1; i >= 0; i--) {
             if (prev[i].step_id === d.step_id && prev[i].repeat_index === d.repeat_index) return prev;
           }
@@ -1202,10 +1231,16 @@ export default function ScenarioPage() {
         const result: StepResultData = msg.data;
         setStepResults((prev) => {
           let idx = -1;
-          for (let i = prev.length - 1; i >= 0; i--) { if (prev[i].step_id === result.step_id && prev[i].repeat_index === result.repeat_index) { idx = i; break; } }
+          if (result.exec_seq !== undefined) {
+            for (let i = prev.length - 1; i >= 0; i--) {
+              if (prev[i].exec_seq === result.exec_seq) { idx = i; break; }
+            }
+          } else {
+            for (let i = prev.length - 1; i >= 0; i--) { if (prev[i].step_id === result.step_id && prev[i].repeat_index === result.repeat_index) { idx = i; break; } }
+          }
           if (idx >= 0) {
             const updated = [...prev];
-            updated[idx] = result;
+            updated[idx] = { ...result, exec_seq: result.exec_seq ?? prev[idx].exec_seq };
             return updated;
           }
           return [...prev, result];
