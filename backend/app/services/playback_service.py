@@ -1926,11 +1926,42 @@ class PlaybackService:
                         module_name, func_name, real_id, ctor_kwargs,
                         shared_conn is not None, ssh_credentials is not None, adb_serial,
                         hkmc_svc is not None)
-            result = await execute_module_function(
-                module_name, func_name, func_args, ctor_kwargs, shared_conn,
-                ssh_credentials, adb_serial,
-                hkmc_service=hkmc_svc,
-            )
+            # HKMC6th 모듈은 직접 HKMC_TOUCH/SWIPE 스텝과 동일하게 stale socket
+            # 또는 idle drop 으로 인한 ConnectionError 를 1회 retry — 같은 스텝이
+            # false fail 로 끝나지 않고 force-reconnect 후 동일 함수를 재실행한다.
+            if module_name == "HKMC6th" and dev and dev.type == "hkmc_agent":
+                last_exc: Optional[BaseException] = None
+                for _hkmc_mod_attempt in range(2):
+                    try:
+                        result = await execute_module_function(
+                            module_name, func_name, func_args, ctor_kwargs, shared_conn,
+                            ssh_credentials, adb_serial,
+                            hkmc_service=hkmc_svc,
+                        )
+                        last_exc = None
+                        break
+                    except (ConnectionError, OSError) as ce:
+                        last_exc = ce
+                        if _hkmc_mod_attempt == 0:
+                            logger.warning(
+                                "HKMC6th module action failed (connection lost), reconnecting: %s",
+                                ce,
+                            )
+                            await self._force_reconnect_hkmc(real_id)
+                            # force-reconnect 후 새 서비스 인스턴스를 받아 다음 시도에 주입
+                            hkmc_svc = self.dm.get_hkmc_service(real_id)
+                            if hkmc_svc is None:
+                                raise
+                            continue
+                        raise
+                if last_exc is not None:
+                    raise last_exc
+            else:
+                result = await execute_module_function(
+                    module_name, func_name, func_args, ctor_kwargs, shared_conn,
+                    ssh_credentials, adb_serial,
+                    hkmc_service=hkmc_svc,
+                )
             self._last_module_result = result
         elif step.type == StepType.SERIAL_COMMAND:
             if not real_id:

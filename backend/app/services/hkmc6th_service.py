@@ -639,10 +639,17 @@ class HKMC6thService:
             except (socket.error, OSError):
                 if not self._exit_flag:
                     logger.error("Receive thread socket error")
+                    # stale state 방지: 다음 _send_raw 가 호출되기 전이라도
+                    # is_connected 가 정확히 False 를 반환하도록 flag 만 내림.
+                    # socket close 는 _send_raw 의 ConnectionError 핸들러
+                    # 또는 외부 reconnect 경로가 책임진다 — 여기서 close 하면
+                    # 동시 송신 스레드와의 race 가능.
+                    self._connected = False
                 break
             except Exception as e:
                 if not self._exit_flag:
                     logger.error("Receive thread error: %s", e)
+                    self._connected = False
                 break
 
         logger.info("Receive thread ended for %s:%d", self.host, self.port)
