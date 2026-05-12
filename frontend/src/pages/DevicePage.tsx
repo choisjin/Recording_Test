@@ -567,7 +567,7 @@ export default function DevicePage() {
     if (connectType === 'ssh') {
       if (!connectAddress.trim()) { message.warning(t('device.sshHostPlaceholder')); return; }
       if (!sshUser.trim()) { message.warning(t('device.sshUserPlaceholder')); return; }
-      if (!sshPass.trim() && !sshKeyFile.trim()) { message.warning(t('device.sshPassPlaceholder')); return; }
+      // 비밀번호는 선택 — 일부 디바이스는 비밀번호 없이 접속 가능 (e.g. root/empty)
       setConnecting(true);
       try {
         const extra = {
