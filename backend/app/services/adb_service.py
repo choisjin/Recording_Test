@@ -12,6 +12,8 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+from .capture import AdbScreenrecordBackend, detect_ffmpeg
+
 logger = logging.getLogger(__name__)
 
 ADB_PATH = os.environ.get("ADB_PATH", "adb")
@@ -138,6 +140,10 @@ class ADBService:
         # 장기 screencap 세션 (serial|sf_display_id → streamer) — 연결 시 선제 생성
         self._streamers: dict[str, "AdbScreencapStreamer"] = {}
         self._streamer_lock = asyncio.Lock()
+        # 라이브 미러링용 H.264 백엔드 (디바이스당 단일 디스플레이 동시 미러링 제약).
+        # ffmpeg 미설치/디바이스 미지원 시 자동으로 None 폴백되어 screencap streamer 사용.
+        self._screenrecord_backends: dict[str, AdbScreenrecordBackend] = {}
+        self._screenrecord_lock = asyncio.Lock()
 
     # ------------------------------------------------------------------
     # Device management
@@ -845,6 +851,70 @@ class ADBService:
         for s in streamers:
             try:
                 await s.close()
+            except Exception:
+                pass
+
+    # ------------------------------------------------------------------
+    # H.264 라이브 미러링 백엔드 (screenrecord + ffmpeg)
+    # ------------------------------------------------------------------
+
+    async def ensure_screenrecord_backend(
+        self,
+        serial: str,
+        logical_id: Optional[int],
+        *,
+        size: str = "1280x720",
+        bitrate: int = 2_000_000,
+    ) -> Optional[AdbScreenrecordBackend]:
+        """디바이스의 screenrecord 백엔드를 보장.
+
+        - 같은 (serial, logical_id) 조합으로 살아있으면 재사용.
+        - 디스플레이가 바뀐 경우 기존 인스턴스를 close 후 새로 시작.
+        - 시작 실패(ffmpeg 미설치, 디바이스 미지원, 첫 프레임 timeout 등) 시 None →
+          호출자는 screencap 폴백 사용.
+
+        디바이스당 단일 디스플레이 미러링 제약(설계상)에 따라 key는 serial만 사용.
+        """
+        if not detect_ffmpeg():
+            return None
+        async with self._screenrecord_lock:
+            existing = self._screenrecord_backends.get(serial)
+            if existing and existing.is_alive() and existing.logical_id == logical_id:
+                return existing
+            if existing:
+                try:
+                    await existing.close()
+                except Exception as e:
+                    logger.debug("screenrecord existing close error: %s", e)
+                self._screenrecord_backends.pop(serial, None)
+
+            backend = AdbScreenrecordBackend(
+                serial, logical_id, size=size, bitrate=bitrate,
+            )
+            ok = await backend.try_start()
+            if not ok:
+                return None
+            self._screenrecord_backends[serial] = backend
+            return backend
+
+    async def close_screenrecord_backend(self, serial: str) -> None:
+        """특정 디바이스의 screenrecord 백엔드 종료. 디바이스 disconnect 훅에서 호출."""
+        async with self._screenrecord_lock:
+            backend = self._screenrecord_backends.pop(serial, None)
+        if backend:
+            try:
+                await backend.close()
+            except Exception as e:
+                logger.debug("screenrecord close error (%s): %s", serial, e)
+
+    async def close_all_screenrecord_backends(self) -> None:
+        """셧다운용 — 모든 screenrecord 백엔드 정리."""
+        async with self._screenrecord_lock:
+            backends = list(self._screenrecord_backends.values())
+            self._screenrecord_backends.clear()
+        for b in backends:
+            try:
+                await b.close()
             except Exception:
                 pass
 

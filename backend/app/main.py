@@ -38,7 +38,8 @@ from pathlib import Path
 
 from .routers import compositor as compositor_router, device, dlt as dlt_router, results, scenario, serial_log as serial_log_router, settings, webcam
 from .dependencies import adb_service, device_manager, playback_service, recording_service, monitor_client
-from .services.adb_service import resolve_sf_display_id
+from .services.adb_service import resolve_sf_display_id, resolve_input_display_id
+from .services.capture import log_runtime_status as _log_capture_runtime_status
 from .models.scenario import ScenarioResult
 from .services.playback_service import RESULTS_DIR as _RESULTS_DIR
 
@@ -273,6 +274,13 @@ async def _auto_connect_all():
 async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle."""
     # --- Startup ---
+    # 라이브 미러링 백엔드의 ffmpeg 가용성을 한 번 진단 (있으면 INFO, 없으면 WARNING).
+    # 미설치라도 동작에는 영향 없음 — screencap PNG 폴백으로 자동 전환된다.
+    try:
+        _log_capture_runtime_status()
+    except Exception as e:
+        logger.debug("capture runtime status check: %s", e)
+
     # ADB 서버를 명시적으로 미리 시작 (CREATE_NO_WINDOW 포함)
     # adb가 자체적으로 데몬을 spawn하면 별도 콘솔 창이 생길 수 있으므로 선제 실행
     try:
@@ -319,6 +327,10 @@ async def lifespan(app: FastAPI):
         await adb_service.close_all_streamers()
     except Exception as e:
         logger.debug("close_all_streamers: %s", e)
+    try:
+        await adb_service.close_all_screenrecord_backends()
+    except Exception as e:
+        logger.debug("close_all_screenrecord_backends: %s", e)
     logger.info("Killing ADB server...")
     try:
         await adb_service._run("kill-server")
@@ -444,13 +456,22 @@ async def websocket_screen_mirror(websocket: WebSocket):
     target_device_id = ""
     screen_type = "front_center"
     force_h264 = False
+    # ADB 디바이스에 대한 캡처 fps 제한 (1~30, 기본 1).
+    # 제한 없이 screencap을 호출하면 디바이스 SurfaceFlinger/CPU/ADB daemon이
+    # 지속 점유되어 폰 전체 반응성이 떨어진다.
+    fps = 1
     try:
         init_msg = await asyncio.wait_for(websocket.receive_json(), timeout=2.0)
         target_device_id = init_msg.get("device_id", "")
         screen_type = init_msg.get("screen_type", "front_center")
         force_h264 = init_msg.get("force_h264", False)
+        try:
+            fps = max(1, min(30, int(init_msg.get("fps", fps))))
+        except (TypeError, ValueError):
+            pass
     except (asyncio.TimeoutError, Exception):
         pass  # 타임아웃이면 ADB 폴백
+    adb_frame_interval = 1.0 / fps
 
     # 디바이스 타입 판별
     dev = device_manager.get_device(target_device_id) if target_device_id else None
@@ -475,6 +496,10 @@ async def websocket_screen_mirror(websocket: WebSocket):
     # scrcpy 제거 — 항상 JPEG screencap 사용
     h264_mode = False
     recv_task = None
+
+    # ADB H.264 미러링 시도 결과 — 한 번 실패하면 이 세션 내에서는 더 안 시도하고
+    # screencap 폴백을 계속 사용 (재시도하면 매 iteration마다 spawn 비용 발생).
+    screenrecord_giveup = False
 
     try:
         await websocket.send_json({"mode": "jpeg"})
@@ -602,25 +627,77 @@ async def websocket_screen_mirror(websocket: WebSocket):
                         await asyncio.sleep(0.3)
                         continue
                 else:
-                    # ADB — 장기 adb shell 세션 streamer 사용 (프레임당 adb.exe spawn 방지)
-                    # capture + WebSocket 전송이 완료되어야 다음 capture 시작 (자연 backpressure)
+                    # ADB 라이브 미러링 — 2단계 폴백 체인
+                    #   1순위: screenrecord(H.264) → ffmpeg(MJPEG) — 30~60fps, HW 인코더
+                    #   2순위: screencap PNG streamer — 1~5fps, 모든 환경에서 동작
+                    # 검증/녹화 캡처(screencap_bytes)와는 별개 채널.
                     adb_display_id = None
                     try:
                         adb_display_id = int(screen_type)
                     except (ValueError, TypeError):
                         pass
-                    sf_did = resolve_sf_display_id(
-                        dev.info if dev else None, adb_display_id
-                    )
                     adb_serial = dev.address if dev else target_device_id
                     if not adb_serial:
                         await asyncio.sleep(0.3)
                         continue
+
+                    # 1순위 시도: 한 번 실패하면 이 세션 내에서 재시도 안 함 (giveup 플래그).
+                    if not screenrecord_giveup:
+                        # 폴더블 등에서 비활성 디스플레이는 검은 화면을 길게 보내므로 차단.
+                        is_active = True
+                        if dev and dev.info:
+                            for d in dev.info.get("displays", []):
+                                if d.get("id") == adb_display_id and d.get("is_active") is False:
+                                    is_active = False
+                                    break
+                        if is_active:
+                            logical_id = resolve_input_display_id(
+                                dev.info if dev else None, adb_display_id
+                            )
+                            backend = await adb_service.ensure_screenrecord_backend(
+                                adb_serial, logical_id,
+                            )
+                            if backend:
+                                # 백엔드의 inner-loop가 자체적으로 segment 재시작까지 처리.
+                                # 정상 종료(재시작 실패 등) 시 자연스럽게 outer-loop로 복귀해
+                                # screencap 폴백으로 전환된다.
+                                try:
+                                    async for jpeg in backend.stream_jpeg():
+                                        await websocket.send_bytes(jpeg)
+                                except WebSocketDisconnect:
+                                    raise
+                                except Exception as e:
+                                    logger.warning(
+                                        "screenrecord stream error (%s): %s",
+                                        adb_serial, e,
+                                    )
+                                # 여기 도달했다는 건 backend가 끝났다는 뜻 — 다음 iteration부터 폴백.
+                                screenrecord_giveup = True
+                                # 명시적으로 자원 정리.
+                                await adb_service.close_screenrecord_backend(adb_serial)
+                                continue
+                            else:
+                                screenrecord_giveup = True
+                                logger.info(
+                                    "screenrecord unavailable for %s (display=%s) — falling back to screencap",
+                                    adb_serial, adb_display_id,
+                                )
+
+                    # 2순위 폴백: 기존 screencap PNG streamer + fps throttle
+                    sf_did = resolve_sf_display_id(
+                        dev.info if dev else None, adb_display_id
+                    )
+                    loop = asyncio.get_event_loop()
+                    frame_t0 = loop.time()
                     jpeg_bytes = await adb_service.streaming_screencap_bytes(
                         serial=adb_serial, fmt="jpeg", sf_display_id=sf_did,
                     )
                     if jpeg_bytes:
                         await websocket.send_bytes(jpeg_bytes)
+                    frame_elapsed = loop.time() - frame_t0
+                    sleep_s = adb_frame_interval - frame_elapsed
+                    if sleep_s > 0:
+                        await asyncio.sleep(sleep_s)
             except WebSocketDisconnect:
                 raise
             except Exception as e:

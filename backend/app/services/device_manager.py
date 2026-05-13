@@ -1278,6 +1278,11 @@ class DeviceManager:
                             await self.adb.ensure_streamer(dev.address)
                         except Exception as se:
                             logger.debug("ADB streamer restart on reconnect %s: %s", dev.id, se)
+                        # H.264 미러링 백엔드도 재시작이 필요 (이전 screenrecord 프로세스는 끊김)
+                        try:
+                            await self.adb.close_screenrecord_backend(dev.address)
+                        except Exception as se:
+                            logger.debug("ADB screenrecord close on reconnect %s: %s", dev.id, se)
                     self._adb_reconnect_attempts.pop(dev.id, None)
                     dev.status = "device"
                     continue
@@ -1797,6 +1802,10 @@ class DeviceManager:
                 await self.adb.close_streamer(dev.address)
             except Exception as se:
                 logger.debug("ADB streamer close on remove failed for %s: %s", dev.id, se)
+            try:
+                await self.adb.close_screenrecord_backend(dev.address)
+            except Exception as se:
+                logger.debug("ADB screenrecord close on remove failed for %s: %s", dev.id, se)
 
         if dev.type == "adb" and ":" in dev.address:
             result = await self.adb.disconnect_device(dev.address)
@@ -2576,6 +2585,10 @@ class DeviceManager:
                 await self.adb.close_streamer(dev.address)
             except Exception as se:
                 logger.debug("ADB streamer close failed for %s: %s", dev.id, se)
+            try:
+                await self.adb.close_screenrecord_backend(dev.address)
+            except Exception as se:
+                logger.debug("ADB screenrecord close failed for %s: %s", dev.id, se)
             if ":" in dev.address:
                 try:
                     await self.adb._run(f"disconnect {dev.address}")
