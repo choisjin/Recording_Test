@@ -867,8 +867,8 @@ class ADBService:
         serial: str,
         logical_id: Optional[int],
         *,
-        size: str = "1280x720",
-        bitrate: int = 2_000_000,
+        size: Optional[str] = None,
+        bitrate: int = 4_000_000,
     ) -> Optional[AdbScreenrecordBackend]:
         """디바이스의 screenrecord 백엔드를 보장.
 

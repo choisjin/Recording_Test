@@ -62,8 +62,8 @@ class AdbScreenrecordBackend:
         serial: str,
         logical_id: Optional[int] = None,
         *,
-        size: str = "1280x720",
-        bitrate: int = 2_000_000,
+        size: Optional[str] = None,
+        bitrate: int = 4_000_000,
         quality: int = 5,
     ):
         self.serial = serial
@@ -86,10 +86,16 @@ class AdbScreenrecordBackend:
             ADB_PATH, "-s", self.serial, "exec-out",
             "screenrecord",
             "--output-format=h264",
-            "--size", self.size,
             "--bit-rate", str(self.bitrate),
             "--time-limit", str(_SEGMENT_SECONDS),
         ]
+        # --size를 명시하면 디바이스가 가로세로비를 맞추려 letterbox(위아래 검은 띠)
+        # 또는 pillarbox를 추가해 미러링 화면의 좌표가 어긋난다 (IVI의 와이드 화면
+        # 1920x720 등을 16:9로 강제 다운스케일하면 발생). None이면 디바이스 native
+        # 해상도 그대로 인코딩하므로 좌표 변환이 정확하게 일치한다. HW 인코더 부담은
+        # 거의 차이 없음.
+        if self.size:
+            cmd += ["--size", self.size]
         # --display-id 0은 보통 default(primary)와 같지만, 일부 단일 디스플레이
         # 디바이스 펌웨어가 이 옵션 자체를 거부하거나 검은 화면을 보낸다.
         # 0/None이면 옵션 자체를 생략해 default 디스플레이를 쓰도록 한다.
