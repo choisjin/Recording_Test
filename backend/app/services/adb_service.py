@@ -158,6 +158,9 @@ class ADBService:
         # 매 WS 세션마다 5~10초 시도 비용을 반복하지 않게 한다.
         # 디바이스 disconnect/remove 시 해제되어 다음 연결에서 다시 시도 가능.
         self._h264_disabled: set[str] = set()
+        # scrcpy만 막히고 screenrecord는 동작하는 디바이스 (HMG IVI 등) 캐시.
+        # scrcpy 시도 비용(10초)을 매 cooldown마다 반복하지 않고 screenrecord로 직행.
+        self._scrcpy_disabled: set[str] = set()
 
     # ------------------------------------------------------------------
     # Device management
@@ -1037,6 +1040,20 @@ class ADBService:
     def clear_h264_disabled(self, serial: str) -> None:
         """디바이스 disconnect 시 호출 — 다음 연결에서 다시 시도 가능하게."""
         self._h264_disabled.discard(serial)
+        self._scrcpy_disabled.discard(serial)
+
+    def is_scrcpy_disabled(self, serial: str) -> bool:
+        return serial in self._scrcpy_disabled or serial in self._h264_disabled
+
+    def mark_scrcpy_disabled(self, serial: str) -> None:
+        """디바이스가 scrcpy를 지원 못 함을 캐시. screenrecord는 그대로 시도."""
+        if serial not in self._scrcpy_disabled:
+            self._scrcpy_disabled.add(serial)
+            logger.info(
+                "scrcpy permanently disabled for %s (try_start failed). "
+                "Will use screenrecord/screencap fallback until device disconnects.",
+                serial,
+            )
 
 
 class AdbScreencapStreamer:

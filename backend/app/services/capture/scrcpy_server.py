@@ -1,23 +1,28 @@
-"""scrcpy-server 기반 H.264 라이브 미러링 백엔드.
+"""scrcpy-server (v1.25) 기반 H.264 라이브 미러링 백엔드.
 
 scrcpy-server.jar를 디바이스에 push 후 app_process로 실행해 MediaCodec API를
 직접 호출한다. screenrecord와 달리:
   * idle 시에도 frame 출력이 자연스러움 (인코더 직접 제어)
   * 무한 streaming (segment 175초 제한 없음)
-  * raw_stream=true 모드로 prefix bytes 없이 순수 H.264 NAL stream 수신
+  * raw_video_stream=true 모드로 prefix bytes 없이 순수 H.264 NAL stream 수신
+
+v1.25 선택 이유 (v2.x 대비):
+  * v2.x는 SurfaceControl direct API 사용 → 자동차 IVI 컨테이너(HMG 등)에서 차단됨
+  * v1.x는 Surface 간접 mirroring → 임베디드/자동차 Android 호환성 우수
+  * v1.x는 single-instance 설계 — socket name "scrcpy" 고정 (scid 옵션 없음)
 
 흐름:
-  1. tools/scrcpy-server.jar 를 /data/local/tmp/scrcpy-server.jar 로 push (해시 비교로 skip 가능)
-  2. adb forward tcp:<local_port> localabstract:scrcpy_<scid>
-  3. adb shell CLASSPATH=... app_process / com.genymobile.scrcpy.Server <version> ...
-  4. localhost:<local_port>로 TCP connect (재시도 with backoff)
+  1. tools/scrcpy-server.jar(v1.25) 를 /data/local/tmp/scrcpy-server.jar 로 push
+  2. adb forward tcp:<local_port> localabstract:scrcpy
+  3. adb shell CLASSPATH=... app_process / com.genymobile.scrcpy.Server 1.25 ...
+  4. localhost:<local_port>로 TCP connect (server listen 준비까지 backoff 재시도)
   5. socket → ffmpeg stdin (asyncio forwarding task)
   6. ffmpeg → MJPEG → JPEG 프레임 yield
 
 폴백 트리거:
   * scrcpy-server.jar 부재 (배포 누락)
   * adb push 실패
-  * app_process 실행 실패 (특정 GVM/IVI 환경)
+  * app_process 실행 실패 (특정 GVM 환경)
   * TCP connect 실패 또는 첫 프레임 timeout
 """
 
@@ -44,8 +49,12 @@ _NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
 ADB_PATH = os.environ.get("ADB_PATH", "adb")
 
-# scrcpy 버전 — 옵션 형식이 버전마다 다르므로 server.jar와 동일 버전 고정.
-SCRCPY_VERSION = "2.4"
+# scrcpy 버전 — 옵션 형식과 동작이 버전마다 다르므로 server.jar와 동일 버전 고정.
+# v1.25 선택 이유:
+#   * v2.x는 SurfaceControl direct API 사용 → HMG IVI 같은 자동차 컨테이너 환경에서 차단됨
+#   * v1.x는 Surface 간접 mirroring → 호환성 우수, 자동차/임베디드 Android에서도 동작
+#   * v1.25가 v1.x 마지막 stable
+SCRCPY_VERSION = "1.25"
 
 # 디바이스 측 jar 경로.
 DEVICE_JAR_PATH = "/data/local/tmp/scrcpy-server.jar"
@@ -171,11 +180,9 @@ class ScrcpyServerBackend:
         self.bitrate = bitrate
         self.max_fps = max_fps
         self.quality = quality
-        # scrcpy v2.x 필수: 8-hex SCID (랜덤). socket name에도 사용됨.
-        # scrcpy server는 scid를 Integer.parseInt(value, 16)으로 파싱(signed 32-bit)하므로
-        # 최상위 비트가 1이면(0x80000000~0xFFFFFFFF) NumberFormatException 발생.
-        # 항상 양수 범위(0~0x7FFFFFFF)로 제한해야 한다.
-        self.scid = "%08x" % random.randint(0, 0x7FFFFFFF)
+        # scrcpy v1.x는 single-instance 설계 — socket name 고정 "scrcpy", scid 옵션 없음.
+        # 한 디바이스에 동시 한 scrcpy 인스턴스만 가능 (우리 정책상 단일 디스플레이 미러링
+        # 제약과 일치).
         self.local_port = 0
         self._server_proc: Optional[subprocess.Popen] = None
         self._reader: Optional[asyncio.StreamReader] = None
@@ -241,8 +248,9 @@ class ScrcpyServerBackend:
             return False
 
         logger.info(
-            "scrcpy backend started: serial=%s display=%s scid=%s port=%d bitrate=%d",
-            self.serial, self.logical_id, self.scid, self.local_port, self.bitrate,
+            "scrcpy backend started: serial=%s display=%s port=%d bitrate=%d (v%s)",
+            self.serial, self.logical_id, self.local_port, self.bitrate,
+            SCRCPY_VERSION,
         )
         return True
 
@@ -300,12 +308,12 @@ class ScrcpyServerBackend:
             return False
 
     async def _setup_forward(self) -> bool:
-        """adb forward 등록. localabstract:scrcpy_<scid>로 connect 가능."""
+        """adb forward 등록. v1.x는 socket name이 "scrcpy" 고정."""
         loop = asyncio.get_event_loop()
         cmd = [
             ADB_PATH, "-s", self.serial, "forward",
             f"tcp:{self.local_port}",
-            f"localabstract:scrcpy_{self.scid}",
+            "localabstract:scrcpy",
         ]
         try:
             result = await loop.run_in_executor(
@@ -346,36 +354,43 @@ class ScrcpyServerBackend:
             pass
 
     def _build_server_cmd(self) -> list[str]:
-        """app_process 명령 구성 — scrcpy v2.4 옵션 형식.
+        """app_process 명령 구성 — scrcpy v1.25 옵션 형식.
 
-        raw_stream=true: prefix bytes(dummy/meta) 없이 순수 H.264 NAL stream 출력.
-          → ffmpeg에 바로 input으로 흘려넣을 수 있음.
-        tunnel_forward=true: server가 listen, PC가 client (adb forward 사용).
-        control=false: 입력 채널 비활성 (우리는 기존 ADB input 사용).
-        cleanup=true: 비정상 종료 시 디바이스 측 자원 정리.
+        v1.x와 v2.x는 옵션 이름이 다르고 디스플레이 캡처 메커니즘도 다르다:
+          * v1.x: Surface 간접 mirroring — 자동차/임베디드 Android 호환성 좋음
+          * v2.x: SurfaceControl direct API — 빠르지만 HMG 같은 자동차 IVI 컨테이너 차단됨
+
+        v1.25 주요 옵션:
+          * raw_video_stream=true: prefix bytes(dummy/meta) 없이 순수 H.264 NAL 출력
+          * tunnel_forward=true: server listen, PC connect (adb forward 사용)
+          * control=false: 입력 채널 비활성 (우리는 기존 ADB input 사용)
+          * cleanup=false: 디바이스 측 자동 정리(power off 등) 차단
+          * bit_rate (v2.x의 video_bit_rate)
+          * crop=-, codec_options=-, encoder_name=-: "기본값" sentinel
         """
-        # shell 명령 한 줄로 합쳐서 전달 (CLASSPATH 환경변수 prefix).
-        # raw_stream=true 한 옵션이 send_dummy_byte/send_device_meta/send_codec_meta/
-        # send_frame_meta를 모두 자동으로 false로 만든다. send_*=false를 명시했더니
-        # scrcpy v2.4에서 옵션 파싱 시점에 server가 조용히 종료되는 케이스가 있어
-        # raw_stream만 두고 다른 send_* 옵션은 제거.
         opts = [
-            f"scid={self.scid}",
-            # 진단을 위해 일시적으로 debug. 안정화 후 error로 환원.
-            "log_level=debug",
-            "video=true",
-            "audio=false",
-            "video_codec=h264",
-            f"video_bit_rate={self.bitrate}",
+            "log_level=info",
             "max_size=0",
+            f"bit_rate={self.bitrate}",
             f"max_fps={self.max_fps}",
-            "video_source=display",
-            f"display_id={self.logical_id}",
-            "control=false",
-            "cleanup=true",
-            "power_on=false",
+            "lock_video_orientation=-1",
             "tunnel_forward=true",
-            "raw_stream=true",
+            "crop=-",
+            "control=false",
+            f"display_id={self.logical_id}",
+            "show_touches=false",
+            "stay_awake=false",
+            "codec_options=-",
+            "encoder_name=-",
+            "power_off_on_close=false",
+            "clipboard_autosync=false",
+            "downsize_on_error=true",
+            "cleanup=false",
+            "power_on=false",
+            "send_device_meta=false",
+            "send_frame_meta=false",
+            "send_dummy_byte=false",
+            "raw_video_stream=true",
         ]
         inner = (
             f"CLASSPATH={DEVICE_JAR_PATH} "
@@ -653,14 +668,13 @@ class ScrcpyServerBackend:
     async def _cleanup_device_side(self) -> None:
         """디바이스에 남아있을지 모를 scrcpy/screenrecord 프로세스 정리.
 
+        v1.x는 single-instance(socket name "scrcpy" 고정)라 scid 구분 안 함.
         같은 디바이스의 HW 인코더 자원을 다른 백엔드도 쓸 수 있어 cross-cleanup.
-        scid 매칭으로 우선 시도하고, 못 죽이면 일반 매칭으로 한 번 더.
         """
         loop = asyncio.get_event_loop()
         patterns = [
-            f"scrcpy.Server.*scid={self.scid}",  # 우리 인스턴스 우선
-            "scrcpy.Server",                     # 일반 (다른 stale 인스턴스)
-            "screenrecord",                      # 다른 백엔드의 stale (cross-cleanup)
+            "scrcpy.Server",   # scrcpy 서버 인스턴스 (어떤 것이든)
+            "screenrecord",    # 다른 백엔드의 stale (cross-cleanup)
         ]
         for pat in patterns:
             cmd = [ADB_PATH, "-s", self.serial, "shell", "pkill", "-f", pat]

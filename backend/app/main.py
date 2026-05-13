@@ -687,9 +687,11 @@ async def websocket_screen_mirror(websocket: WebSocket):
                     )
 
                     _now = asyncio.get_event_loop().time()
-                    # 디바이스가 이전 시도에서 두 H.264 백엔드 모두 실패한 것으로 캐시됐으면
-                    # 즉시 screencap 폴백으로 직행 (시도 비용 절약).
+                    # 디바이스 단위 cache 확인:
+                    #   _h264_disabled : scrcpy + screenrecord 모두 불가 (GVM 등) → screencap 직행
+                    #   _scrcpy_disabled : scrcpy만 불가, screenrecord는 OK (HMG IVI 등)
                     _h264_disabled = adb_service.is_h264_disabled(adb_serial)
+                    _scrcpy_disabled = adb_service.is_scrcpy_disabled(adb_serial)
 
                     if not adb_dispatch_logged:
                         # list comprehension도 Cython 호환을 위해 명시적 loop로.
@@ -702,14 +704,16 @@ async def websocket_screen_mirror(websocket: WebSocket):
                             })
                         logger.info(
                             "ADB mirror dispatch: serial=%s screen_type=%r display_id=%s "
-                            "logical_id=%s is_active=%s all_inactive_override=%s displays=%s",
+                            "logical_id=%s is_active=%s all_inactive_override=%s "
+                            "h264_disabled=%s scrcpy_disabled=%s displays=%s",
                             adb_serial, screen_type, adb_display_id, _logical_id,
-                            _is_active, _all_inactive, _disp_summary,
+                            _is_active, _all_inactive,
+                            _h264_disabled, _scrcpy_disabled, _disp_summary,
                         )
                         adb_dispatch_logged = True
 
                     # 1순위: scrcpy-server
-                    if not _h264_disabled and _is_active and _now >= scrcpy_retry_after:
+                    if not _scrcpy_disabled and _is_active and _now >= scrcpy_retry_after:
                         scrcpy_backend = await adb_service.ensure_scrcpy_backend(
                             adb_serial, _logical_id,
                         )
@@ -730,12 +734,16 @@ async def websocket_screen_mirror(websocket: WebSocket):
                             await adb_service.close_scrcpy_backend(adb_serial)
                             continue
                         else:
-                            scrcpy_retry_after = _now + BACKEND_RETRY_COOLDOWN
+                            # try_start 2회 모두 실패 → 디바이스 단위 영구 비활성으로 마크.
+                            # screenrecord 백엔드는 그대로 시도하므로 HMG처럼 scrcpy만 막힌
+                            # 디바이스에서도 미러링 부드러움을 유지할 수 있다.
+                            adb_service.mark_scrcpy_disabled(adb_serial)
+                            _scrcpy_disabled = True
+                            scrcpy_retry_after = float("inf")
                             logger.info(
                                 "scrcpy unavailable for %s (display=%s) — "
-                                "falling back to screenrecord, will retry in %ds",
+                                "falling back to screenrecord",
                                 adb_serial, adb_display_id,
-                                int(BACKEND_RETRY_COOLDOWN),
                             )
 
                     # 2순위 시도: screenrecord
