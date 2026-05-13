@@ -54,9 +54,10 @@ _NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
 ADB_PATH = os.environ.get("ADB_PATH", "adb")
 
-# scrcpy 버전 — 옵션 형식과 동작이 버전마다 다르므로 server.jar와 동일 버전 고정.
-# 사용자 환경에서 동작 검증된 v1.21을 사용한다.
-SCRCPY_VERSION = "1.21"
+# scrcpy 버전 — 옵션 형식과 동작이 버전마다 다르므로 server.jar와 정확히 일치해야 한다.
+# scrcpy 1.x server는 client_version과 BuildConfig.VERSION_NAME을 strict 비교하므로
+# 불일치 시 즉시 IllegalArgumentException으로 종료. 배포된 jar(v1.25)와 일치시킨다.
+SCRCPY_VERSION = "1.25"
 
 # 디바이스 측 jar 경로.
 DEVICE_JAR_PATH = "/data/local/tmp/scrcpy-server.jar"
