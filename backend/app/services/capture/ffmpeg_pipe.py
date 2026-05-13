@@ -105,17 +105,17 @@ class FFmpegMjpegPipe:
             raise RuntimeError("input_proc.stdout is None — spawn it with stdout=subprocess.PIPE")
 
         # 입력 옵션 주의사항 (실측 기반):
-        #   * "-fflags nobuffer -flags low_delay" 는 raw H.264 elementary stream에서
-        #     demuxer의 NAL unit 버퍼링까지 꺼버려 frame 분리가 실패한다 (frame=0).
-        #     실시간 latency가 중요하더라도 raw H.264 입력에는 절대 쓰지 말 것.
-        #   * "-probesize 32 -analyzeduration 0" 같은 극단값도 SPS/PPS 파싱 실패.
-        #   * 적절한 값: probesize 64KB + analyzeduration 0.5초 면 IDR keyframe 안에
-        #     충분히 들어오면서 첫 프레임까지 latency도 짧다.
+        #   * "-fflags nobuffer -flags low_delay" 는 raw H.264 demuxer의 NAL 버퍼링까지
+        #     꺼버려 frame 분리 실패. 절대 쓰지 말 것.
+        #   * "-probesize 32 -analyzeduration 0" 같은 극단값은 SPS/PPS 파싱 실패.
+        #   * 정적 화면 (자동차 IVI 등) 케이스에서 5초에 ~80KB만 들어오는 환경이 있어
+        #     probesize 64KB는 너무 큼. 8KB면 SPS+PPS+IDR이 충분히 들어가고 첫 frame
+        #     latency도 짧다 (실측: 정적 화면에서도 1초 안에 디코더 시작).
         cmd: list[str] = [
             ff, "-hide_banner", "-loglevel", "error",
-            "-probesize", "65536",
-            "-analyzeduration", "500000",
-            # screenrecord stream에는 오디오가 없지만 ffmpeg는 기본적으로
+            "-probesize", "8192",
+            "-analyzeduration", "100000",
+            # screenrecord/scrcpy stream에는 오디오가 없지만 ffmpeg는 기본적으로
             # 오디오 stream을 탐색하므로 명시적으로 차단.
             "-an",
         ]
@@ -179,8 +179,8 @@ class FFmpegMjpegPipe:
 
         cmd: list[str] = [
             ff, "-hide_banner", "-loglevel", "error",
-            "-probesize", "65536",
-            "-analyzeduration", "500000",
+            "-probesize", "8192",
+            "-analyzeduration", "100000",
             "-an",
             "-f", input_fmt, "-i", "pipe:0",
             "-f", "mjpeg",

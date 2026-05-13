@@ -36,10 +36,10 @@ ADB_PATH = os.environ.get("ADB_PATH", "adb")
 # screenrecord 최대 시간은 180초. 만료 직전 매끄럽게 재시작하기 위해 약간 짧게.
 _SEGMENT_SECONDS = 175
 
-# 첫 JPEG 프레임 수신 timeout (초). 일부 디바이스/SoC에서 첫 IDR keyframe까지
-# 수 초 걸리는 케이스가 있어 넉넉히 잡는다. 폴백 전환이 다소 늦어지지만,
+# 첫 JPEG 프레임 수신 timeout (초). 정적 화면(자동차 IVI 등) + 낮은 비트레이트 케이스에서
+# 첫 IDR이 4~6초 지연되는 경우가 있어 넉넉히 잡는다. 폴백 전환은 다소 늦어지지만
 # 한번 성공한 뒤로는 segment 재시작에만 영향 없음.
-_FIRST_FRAME_TIMEOUT = 5.0
+_FIRST_FRAME_TIMEOUT = 8.0
 
 # idle 상태에서 keep-alive 재송신 간격 (초).
 # 화면이 정적이면 H.264 인코더가 새 frame 출력을 멈춘다. 이때 WebSocket에 데이터가
@@ -370,23 +370,26 @@ class AdbScreenrecordBackend:
         logger.info("screenrecord backend closed: serial=%s", self.serial)
 
     async def _cleanup_device_side(self) -> None:
-        """디바이스에 남은 screenrecord 프로세스를 정리.
+        """디바이스에 남은 screenrecord/scrcpy 프로세스를 정리.
 
         프로젝트는 동시 미러링을 한 디바이스당 1개 디스플레이로 제한하므로
         pkill로 전부 정리해도 안전하다. HW 인코더 release를 강제하기 위함.
+        scrcpy app_process도 같은 인코더 자원을 쓰기 때문에 cross-cleanup.
         """
         loop = asyncio.get_event_loop()
-        cmd = [ADB_PATH, "-s", self.serial, "shell", "pkill", "-f", "screenrecord"]
-        try:
-            await loop.run_in_executor(
-                None,
-                lambda: subprocess.run(
-                    cmd, capture_output=True, timeout=2,
-                    creationflags=_NO_WINDOW,
-                ),
-            )
-        except Exception as e:
-            logger.debug("device-side screenrecord cleanup error (%s): %s", self.serial, e)
+        # screenrecord와 scrcpy server 모두 정리 (HW 인코더 자원 release).
+        for pattern in ("screenrecord", "scrcpy.Server"):
+            cmd = [ADB_PATH, "-s", self.serial, "shell", "pkill", "-f", pattern]
+            try:
+                await loop.run_in_executor(
+                    None,
+                    lambda c=cmd: subprocess.run(
+                        c, capture_output=True, timeout=2,
+                        creationflags=_NO_WINDOW,
+                    ),
+                )
+            except Exception as e:
+                logger.debug("device-side cleanup error (%s): %s", self.serial, e)
 
     def is_alive(self) -> bool:
         return not self._closed and self._pipe is not None and self._pipe.is_alive()

@@ -50,8 +50,8 @@ SCRCPY_VERSION = "2.4"
 # 디바이스 측 jar 경로.
 DEVICE_JAR_PATH = "/data/local/tmp/scrcpy-server.jar"
 
-# 첫 JPEG 프레임 수신 timeout (초).
-_FIRST_FRAME_TIMEOUT = 5.0
+# 첫 JPEG 프레임 수신 timeout (초). 정적 화면 케이스에 대응해 넉넉히.
+_FIRST_FRAME_TIMEOUT = 8.0
 
 # idle keep-alive 간격 (초). screenrecord 백엔드와 동일 의미.
 _IDLE_FRAME_TIMEOUT = 1.0
@@ -172,7 +172,10 @@ class ScrcpyServerBackend:
         self.max_fps = max_fps
         self.quality = quality
         # scrcpy v2.x 필수: 8-hex SCID (랜덤). socket name에도 사용됨.
-        self.scid = "%08x" % random.randint(0, 0xFFFFFFFF)
+        # scrcpy server는 scid를 Integer.parseInt(value, 16)으로 파싱(signed 32-bit)하므로
+        # 최상위 비트가 1이면(0x80000000~0xFFFFFFFF) NumberFormatException 발생.
+        # 항상 양수 범위(0~0x7FFFFFFF)로 제한해야 한다.
+        self.scid = "%08x" % random.randint(0, 0x7FFFFFFF)
         self.local_port = 0
         self._server_proc: Optional[subprocess.Popen] = None
         self._reader: Optional[asyncio.StreamReader] = None
@@ -648,22 +651,29 @@ class ScrcpyServerBackend:
         logger.info("scrcpy backend closed: serial=%s", self.serial)
 
     async def _cleanup_device_side(self) -> None:
-        """디바이스에 남아있을지 모를 scrcpy app_process 정리."""
+        """디바이스에 남아있을지 모를 scrcpy/screenrecord 프로세스 정리.
+
+        같은 디바이스의 HW 인코더 자원을 다른 백엔드도 쓸 수 있어 cross-cleanup.
+        scid 매칭으로 우선 시도하고, 못 죽이면 일반 매칭으로 한 번 더.
+        """
         loop = asyncio.get_event_loop()
-        cmd = [
-            ADB_PATH, "-s", self.serial, "shell",
-            "pkill", "-f", f"scrcpy.Server.*scid={self.scid}",
+        patterns = [
+            f"scrcpy.Server.*scid={self.scid}",  # 우리 인스턴스 우선
+            "scrcpy.Server",                     # 일반 (다른 stale 인스턴스)
+            "screenrecord",                      # 다른 백엔드의 stale (cross-cleanup)
         ]
-        try:
-            await loop.run_in_executor(
-                None,
-                lambda: subprocess.run(
-                    cmd, capture_output=True, timeout=2,
-                    creationflags=_NO_WINDOW,
-                ),
-            )
-        except Exception:
-            pass
+        for pat in patterns:
+            cmd = [ADB_PATH, "-s", self.serial, "shell", "pkill", "-f", pat]
+            try:
+                await loop.run_in_executor(
+                    None,
+                    lambda c=cmd: subprocess.run(
+                        c, capture_output=True, timeout=2,
+                        creationflags=_NO_WINDOW,
+                    ),
+                )
+            except Exception:
+                pass
 
     def is_alive(self) -> bool:
         return (
