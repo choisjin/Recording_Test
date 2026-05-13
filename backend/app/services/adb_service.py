@@ -892,14 +892,24 @@ class ADBService:
                     logger.debug("screenrecord existing close error: %s", e)
                 self._screenrecord_backends.pop(serial, None)
 
-            backend = AdbScreenrecordBackend(
-                serial, logical_id, size=size, bitrate=bitrate,
-            )
-            ok = await backend.try_start()
-            if not ok:
-                return None
-            self._screenrecord_backends[serial] = backend
-            return backend
+            # try_start 한 번이 실패할 때 디바이스 HW 인코더 cooldown이 짧게
+            # 끝나면 두 번째 시도가 잡힌다. 두 번 다 실패하면 폴백.
+            for attempt in range(2):
+                backend = AdbScreenrecordBackend(
+                    serial, logical_id, size=size, bitrate=bitrate,
+                )
+                ok = await backend.try_start()
+                if ok:
+                    self._screenrecord_backends[serial] = backend
+                    return backend
+                # 실패한 backend는 close에서 디바이스 측 정리까지 수행 (pkill).
+                try:
+                    await backend.close()
+                except Exception:
+                    pass
+                if attempt == 0:
+                    await asyncio.sleep(0.5)
+            return None
 
     async def close_screenrecord_backend(self, serial: str) -> None:
         """특정 디바이스의 screenrecord 백엔드 종료. 디바이스 disconnect 훅에서 호출."""

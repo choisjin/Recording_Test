@@ -498,9 +498,13 @@ async def websocket_screen_mirror(websocket: WebSocket):
     h264_mode = False
     recv_task = None
 
-    # ADB H.264 미러링 시도 결과 — 한 번 실패하면 이 세션 내에서는 더 안 시도하고
-    # screencap 폴백을 계속 사용 (재시도하면 매 iteration마다 spawn 비용 발생).
-    screenrecord_giveup = False
+    # ADB H.264 미러링 시도 결과를 timestamp로 관리.
+    # 0이면 즉시 시도, >0이면 그 시각까지 폴백 유지 후 재시도.
+    # 한 번 실패해도 30초 cooldown 후 자동 재시도 → 화면 sleep/HW 인코더 cooldown 등
+    # 일시적 stuck 케이스가 자연 복구된다. (예전 'giveup 영구 True' 패턴은 멀티 디스플레이
+    # 전환 후 H.264 복구가 안 되는 문제가 있었다.)
+    SCREENRECORD_RETRY_COOLDOWN = 30.0
+    screenrecord_retry_after = 0.0
 
     try:
         await websocket.send_json({"mode": "jpeg"})
@@ -642,8 +646,9 @@ async def websocket_screen_mirror(websocket: WebSocket):
                         await asyncio.sleep(0.3)
                         continue
 
-                    # 1순위 시도: 한 번 실패하면 이 세션 내에서 재시도 안 함 (giveup 플래그).
-                    if not screenrecord_giveup:
+                    # 1순위 시도: cooldown이 지난 경우에만 (또는 처음).
+                    _now = asyncio.get_event_loop().time()
+                    if _now >= screenrecord_retry_after:
                         # 폴더블 등에서 비활성 디스플레이는 검은 화면을 길게 보내므로 차단.
                         is_active = True
                         if dev and dev.info:
@@ -660,8 +665,8 @@ async def websocket_screen_mirror(websocket: WebSocket):
                             )
                             if backend:
                                 # 백엔드의 inner-loop가 자체적으로 segment 재시작까지 처리.
-                                # 정상 종료(재시작 실패 등) 시 자연스럽게 outer-loop로 복귀해
-                                # screencap 폴백으로 전환된다.
+                                # 정상 종료(재시작 실패 등) 시 outer-loop로 복귀해 screencap
+                                # 폴백을 한 iteration 보내고, 다음에 다시 H.264 시도 가능.
                                 try:
                                     async for jpeg in backend.stream_jpeg():
                                         await websocket.send_bytes(jpeg)
@@ -672,16 +677,23 @@ async def websocket_screen_mirror(websocket: WebSocket):
                                         "screenrecord stream error (%s): %s",
                                         adb_serial, e,
                                     )
-                                # 여기 도달했다는 건 backend가 끝났다는 뜻 — 다음 iteration부터 폴백.
-                                screenrecord_giveup = True
-                                # 명시적으로 자원 정리.
+                                # backend가 끝남 → 잠시 폴백 후 30초 뒤 재시도.
+                                screenrecord_retry_after = (
+                                    asyncio.get_event_loop().time()
+                                    + SCREENRECORD_RETRY_COOLDOWN
+                                )
                                 await adb_service.close_screenrecord_backend(adb_serial)
                                 continue
                             else:
-                                screenrecord_giveup = True
+                                # try_start 실패 → cooldown 후 재시도. 폴백 1프레임 보내고 계속.
+                                screenrecord_retry_after = (
+                                    _now + SCREENRECORD_RETRY_COOLDOWN
+                                )
                                 logger.info(
-                                    "screenrecord unavailable for %s (display=%s) — falling back to screencap",
+                                    "screenrecord unavailable for %s (display=%s) — "
+                                    "falling back to screencap, will retry in %ds",
                                     adb_serial, adb_display_id,
+                                    int(SCREENRECORD_RETRY_COOLDOWN),
                                 )
 
                     # 2순위 폴백: 기존 screencap PNG streamer + fps throttle

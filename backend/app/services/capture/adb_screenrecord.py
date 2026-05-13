@@ -42,7 +42,9 @@ _SEGMENT_SECONDS = 175
 _FIRST_FRAME_TIMEOUT = 5.0
 
 # 재시작 사이 잠깐 쉼 (디바이스 인코더 자원 해제 시간 확보).
-_RESTART_GAP = 0.05
+# 50ms는 빠른 재시작에 좋지만 일부 SoC는 codec instance release에 더 오래 걸려
+# 다음 spawn이 frame을 못 받는다. 500ms 정도면 대부분 환경에서 안전.
+_RESTART_GAP = 0.5
 
 # screenrecord 실패 시 진단을 위해 stderr 마지막 N바이트만 보관/로깅.
 _STDERR_TAIL_BYTES = 1024
@@ -297,12 +299,36 @@ class AdbScreenrecordBackend:
         self._proc = None
 
     async def close(self) -> None:
-        """idempotent 완전 종료. 재사용 불가."""
+        """idempotent 완전 종료. 재사용 불가.
+
+        디바이스 측에 남아있을지 모를 stale screenrecord 프로세스도 함께 정리해
+        다음 시도에서 HW 인코더 자원을 깨끗하게 잡을 수 있도록 한다.
+        """
         if self._closed:
             return
         self._closed = True
         await self._close_pipe()
+        await self._cleanup_device_side()
         logger.info("screenrecord backend closed: serial=%s", self.serial)
+
+    async def _cleanup_device_side(self) -> None:
+        """디바이스에 남은 screenrecord 프로세스를 정리.
+
+        프로젝트는 동시 미러링을 한 디바이스당 1개 디스플레이로 제한하므로
+        pkill로 전부 정리해도 안전하다. HW 인코더 release를 강제하기 위함.
+        """
+        loop = asyncio.get_event_loop()
+        cmd = [ADB_PATH, "-s", self.serial, "shell", "pkill", "-f", "screenrecord"]
+        try:
+            await loop.run_in_executor(
+                None,
+                lambda: subprocess.run(
+                    cmd, capture_output=True, timeout=2,
+                    creationflags=_NO_WINDOW,
+                ),
+            )
+        except Exception as e:
+            logger.debug("device-side screenrecord cleanup error (%s): %s", self.serial, e)
 
     def is_alive(self) -> bool:
         return not self._closed and self._pipe is not None and self._pipe.is_alive()
