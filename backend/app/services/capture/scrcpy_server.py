@@ -1,4 +1,4 @@
-"""scrcpy-server (v1.25) 기반 H.264 라이브 미러링 백엔드.
+"""scrcpy-server (v1.21) 기반 H.264 라이브 미러링 백엔드.
 
 scrcpy-server.jar를 디바이스에 push 후 app_process로 실행해 MediaCodec API를
 직접 호출한다. screenrecord와 달리:
@@ -6,24 +6,29 @@ scrcpy-server.jar를 디바이스에 push 후 app_process로 실행해 MediaCode
   * 무한 streaming (segment 175초 제한 없음)
   * raw_video_stream=true 모드로 prefix bytes 없이 순수 H.264 NAL stream 수신
 
-v1.25 선택 이유 (v2.x 대비):
-  * v2.x는 SurfaceControl direct API 사용 → 자동차 IVI 컨테이너(HMG 등)에서 차단됨
-  * v1.x는 Surface 간접 mirroring → 임베디드/자동차 Android 호환성 우수
-  * v1.x는 single-instance 설계 — socket name "scrcpy" 고정 (scid 옵션 없음)
+v1.21 + adb reverse 선택 이유:
+  * v2.x SurfaceControl direct API는 자동차 IVI 컨테이너(HMG 등)에서 차단됨
+  * v1.x Surface 간접 mirroring은 임베디드/자동차 Android 호환성 우수
+  * tunnel_forward=false (adb reverse) 가 HMG 같은 컨테이너 환경에서 동작.
+    forward 방향(device listen, PC connect)은 SELinux/컨테이너 정책에 막힐 수 있지만,
+    reverse 방향(PC listen, device connect)은 허용되는 경우가 많다.
+    사용자 환경의 scrcpy 1.21 CLI 가 이 방식으로 동작한다고 검증됨.
 
 흐름:
-  1. tools/scrcpy-server.jar(v1.25) 를 /data/local/tmp/scrcpy-server.jar 로 push
-  2. adb forward tcp:<local_port> localabstract:scrcpy
-  3. adb shell CLASSPATH=... app_process / com.genymobile.scrcpy.Server 1.25 ...
-  4. localhost:<local_port>로 TCP connect (server listen 준비까지 backoff 재시도)
-  5. socket → ffmpeg stdin (asyncio forwarding task)
-  6. ffmpeg → MJPEG → JPEG 프레임 yield
+  1. tools/scrcpy-server.jar(v1.21) 를 /data/local/tmp/scrcpy-server.jar 로 push
+  2. PC 측에서 TCP listen (asyncio.start_server, 동적 포트)
+  3. adb reverse localabstract:scrcpy tcp:<PC_port>
+  4. adb shell CLASSPATH=... app_process / com.genymobile.scrcpy.Server 1.21 ...
+     server.jar가 localabstract:scrcpy 로 connect → adb reverse가 PC TCP로 forward
+  5. 우리 listen socket이 connection 받음 → reader/writer 획득
+  6. socket → ffmpeg stdin (asyncio forwarding task)
+  7. ffmpeg → MJPEG → JPEG 프레임 yield
 
 폴백 트리거:
   * scrcpy-server.jar 부재 (배포 누락)
-  * adb push 실패
-  * app_process 실행 실패 (특정 GVM 환경)
-  * TCP connect 실패 또는 첫 프레임 timeout
+  * adb push / reverse 실패
+  * app_process 실행 실패
+  * 디바이스 connect 실패 또는 첫 프레임 timeout
 """
 
 from __future__ import annotations
@@ -50,11 +55,8 @@ _NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 ADB_PATH = os.environ.get("ADB_PATH", "adb")
 
 # scrcpy 버전 — 옵션 형식과 동작이 버전마다 다르므로 server.jar와 동일 버전 고정.
-# v1.25 선택 이유:
-#   * v2.x는 SurfaceControl direct API 사용 → HMG IVI 같은 자동차 컨테이너 환경에서 차단됨
-#   * v1.x는 Surface 간접 mirroring → 호환성 우수, 자동차/임베디드 Android에서도 동작
-#   * v1.25가 v1.x 마지막 stable
-SCRCPY_VERSION = "1.25"
+# 사용자 환경에서 동작 검증된 v1.21을 사용한다.
+SCRCPY_VERSION = "1.21"
 
 # 디바이스 측 jar 경로.
 DEVICE_JAR_PATH = "/data/local/tmp/scrcpy-server.jar"
@@ -180,11 +182,12 @@ class ScrcpyServerBackend:
         self.bitrate = bitrate
         self.max_fps = max_fps
         self.quality = quality
-        # scrcpy v1.x는 single-instance 설계 — socket name 고정 "scrcpy", scid 옵션 없음.
-        # 한 디바이스에 동시 한 scrcpy 인스턴스만 가능 (우리 정책상 단일 디스플레이 미러링
-        # 제약과 일치).
+        # scrcpy v1.x는 single-instance 설계 — socket name "scrcpy" 고정, scid 옵션 없음.
         self.local_port = 0
         self._server_proc: Optional[subprocess.Popen] = None
+        # adb reverse 방식: PC가 TCP listen, 디바이스 server.jar가 connect 옴.
+        self._listener: Optional[asyncio.base_events.Server] = None
+        self._accept_event: Optional[asyncio.Event] = None
         self._reader: Optional[asyncio.StreamReader] = None
         self._writer: Optional[asyncio.StreamWriter] = None
         self._pipe: Optional[FFmpegMjpegPipe] = None
@@ -213,20 +216,22 @@ class ScrcpyServerBackend:
             # 1) jar push (해시 동일 시 skip)
             if not await self._push_jar(jar):
                 return False
-            # 2) 로컬 포트 할당 + adb forward
-            self.local_port = _alloc_local_port()
-            if not await self._setup_forward():
+            # 2) PC에서 TCP listen 시작 (asyncio.start_server)
+            if not await self._setup_reverse_listener():
                 return False
-            # 3) server 프로세스 실행 (백그라운드)
+            # 3) adb reverse 등록 — device의 localabstract:scrcpy → PC TCP
+            if not await self._setup_reverse():
+                return False
+            # 4) server 프로세스 실행 (백그라운드)
             if not await self._spawn_server():
                 return False
-            # 4) TCP connect (server.jar listen 시작까지 backoff 재시도)
-            if not await self._connect_socket():
+            # 5) 디바이스가 우리에게 connect 올 때까지 대기
+            if not await self._accept_socket():
                 return False
-            # 5) ffmpeg spawn + socket → stdin forwarding task 시작
+            # 6) ffmpeg spawn + socket → stdin forwarding task 시작
             if not await self._attach_ffmpeg():
                 return False
-            # 6) 첫 프레임 검증
+            # 7) 첫 프레임 검증
             self._iter = self._pipe.__aiter__()  # type: ignore[union-attr]
             first = await asyncio.wait_for(
                 self._iter.__anext__(), timeout=first_frame_timeout
@@ -307,13 +312,41 @@ class ScrcpyServerBackend:
         except Exception:
             return False
 
-    async def _setup_forward(self) -> bool:
-        """adb forward 등록. v1.x는 socket name이 "scrcpy" 고정."""
+    async def _setup_reverse_listener(self) -> bool:
+        """PC에서 TCP listen 시작. server.jar의 connect를 받는다."""
+        self._accept_event = asyncio.Event()
+
+        async def _on_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+            # 첫 connect만 받고 나머지는 차단 (single instance).
+            if self._reader is None:
+                self._reader = reader
+                self._writer = writer
+                if self._accept_event:
+                    self._accept_event.set()
+            else:
+                try:
+                    writer.close()
+                except Exception:
+                    pass
+
+        try:
+            self._listener = await asyncio.start_server(_on_client, "127.0.0.1", 0)
+            sockets = self._listener.sockets
+            if not sockets:
+                return False
+            self.local_port = sockets[0].getsockname()[1]
+            return True
+        except Exception as e:
+            logger.warning("scrcpy listener setup failed (%s): %s", self.serial, e)
+            return False
+
+    async def _setup_reverse(self) -> bool:
+        """adb reverse 등록. 디바이스의 localabstract:scrcpy → PC tcp:<local_port>."""
         loop = asyncio.get_event_loop()
         cmd = [
-            ADB_PATH, "-s", self.serial, "forward",
-            f"tcp:{self.local_port}",
+            ADB_PATH, "-s", self.serial, "reverse",
             "localabstract:scrcpy",
+            f"tcp:{self.local_port}",
         ]
         try:
             result = await loop.run_in_executor(
@@ -324,23 +357,21 @@ class ScrcpyServerBackend:
                 ),
             )
         except Exception as e:
-            logger.warning("adb forward failed (%s): %s", self.serial, e)
+            logger.warning("adb reverse failed (%s): %s", self.serial, e)
             return False
         if result.returncode != 0:
             logger.warning(
-                "adb forward failed (%s): %s",
+                "adb reverse failed (%s): %s",
                 self.serial, result.stderr.decode(errors="replace").strip(),
             )
             return False
         return True
 
-    async def _remove_forward(self) -> None:
-        if not self.local_port:
-            return
+    async def _remove_reverse(self) -> None:
         loop = asyncio.get_event_loop()
         cmd = [
-            ADB_PATH, "-s", self.serial, "forward", "--remove",
-            f"tcp:{self.local_port}",
+            ADB_PATH, "-s", self.serial, "reverse", "--remove",
+            "localabstract:scrcpy",
         ]
         try:
             await loop.run_in_executor(
@@ -354,27 +385,26 @@ class ScrcpyServerBackend:
             pass
 
     def _build_server_cmd(self) -> list[str]:
-        """app_process 명령 구성 — scrcpy v1.25 옵션 형식.
+        """app_process 명령 구성 — scrcpy v1.21 CLI 호환 옵션 셋.
 
-        v1.x와 v2.x는 옵션 이름이 다르고 디스플레이 캡처 메커니즘도 다르다:
-          * v1.x: Surface 간접 mirroring — 자동차/임베디드 Android 호환성 좋음
-          * v2.x: SurfaceControl direct API — 빠르지만 HMG 같은 자동차 IVI 컨테이너 차단됨
+        scrcpy 1.21 CLI가 server.jar에 보내는 14개 옵션과 동일한 형식. 추가 옵션을
+        넣으면 일부 v1.21 server.jar는 IllegalArgumentException으로 즉시 종료한다.
 
-        v1.25 주요 옵션:
-          * raw_video_stream=true: prefix bytes(dummy/meta) 없이 순수 H.264 NAL 출력
-          * tunnel_forward=true: server listen, PC connect (adb forward 사용)
-          * control=false: 입력 채널 비활성 (우리는 기존 ADB input 사용)
-          * cleanup=false: 디바이스 측 자동 정리(power off 등) 차단
-          * bit_rate (v2.x의 video_bit_rate)
+        주요 옵션:
+          * tunnel_forward=false: adb reverse 사용 (PC listen, device connect)
+            HMG IVI 같은 컨테이너 환경에서 forward 방향 socket binding이 막혀있어
+            반대 방향인 reverse가 통하는 경우가 많다 (CLI 검증됨).
+          * control=false: 입력 채널 비활성 (우리는 ADB input 사용)
           * crop=-, codec_options=-, encoder_name=-: "기본값" sentinel
+          * power_off_on_close=false: 우리 close 시 디바이스 화면 꺼지지 않게
         """
         opts = [
             "log_level=info",
-            "max_size=0",
             f"bit_rate={self.bitrate}",
+            "max_size=0",
             f"max_fps={self.max_fps}",
             "lock_video_orientation=-1",
-            "tunnel_forward=true",
+            "tunnel_forward=false",
             "crop=-",
             "control=false",
             f"display_id={self.logical_id}",
@@ -383,13 +413,8 @@ class ScrcpyServerBackend:
             "codec_options=-",
             "encoder_name=-",
             "power_off_on_close=false",
-            "clipboard_autosync=false",
-            "downsize_on_error=true",
-            "cleanup=false",
-            "power_on=false",
-            "send_device_meta=false",
-            "send_frame_meta=false",
-            "send_dummy_byte=false",
+            # v1.20+ 옵션: prefix bytes(dummy 1 + device_meta 64) + frame_meta(12/frame)
+            # 모두 비활성화. ffmpeg가 raw H.264 NAL stream을 바로 디코딩 가능.
             "raw_video_stream=true",
         ]
         inner = (
@@ -472,29 +497,26 @@ class ScrcpyServerBackend:
     def _stdout_tail_str(self) -> str:
         return self._tail_str(getattr(self, "_stdout_tail", bytearray()))
 
-    async def _connect_socket(self) -> bool:
-        """server.jar의 listen이 준비될 때까지 backoff로 connect 재시도."""
-        for attempt in range(_CONNECT_RETRIES):
-            try:
-                self._reader, self._writer = await asyncio.open_connection(
-                    "127.0.0.1", self.local_port,
-                )
-                return True
-            except (ConnectionRefusedError, OSError):
-                # 아직 listen 안 됨. 짧게 sleep 후 재시도.
-                await asyncio.sleep(_CONNECT_RETRY_DELAY)
-            # server 프로세스가 일찍 죽었으면 그만.
-            if self._server_proc and self._server_proc.poll() is not None:
-                logger.info(
-                    "scrcpy server exited before listen (%s): %s",
-                    self.serial, self._stderr_tail_str(),
-                )
-                return False
-        logger.info(
-            "scrcpy connect timed out (%s): %s",
-            self.serial, self._stderr_tail_str(),
-        )
-        return False
+    async def _accept_socket(self) -> bool:
+        """디바이스 server.jar가 우리 PC로 connect 올 때까지 대기.
+
+        adb reverse 방식이라 connect 시작 주체는 디바이스. server.jar가 시작 후
+        localabstract:scrcpy로 connect → adb reverse가 우리 TCP listen으로 forward.
+        """
+        if not self._accept_event:
+            return False
+        try:
+            await asyncio.wait_for(
+                self._accept_event.wait(),
+                timeout=_CONNECT_RETRIES * _CONNECT_RETRY_DELAY,
+            )
+            return self._reader is not None
+        except asyncio.TimeoutError:
+            logger.info(
+                "scrcpy accept timed out (%s): server_err=%s",
+                self.serial, self._stderr_tail_str(),
+            )
+            return False
 
     async def _attach_ffmpeg(self) -> bool:
         """ffmpeg를 stdin=PIPE로 spawn하고 socket → stdin forwarding task 시작."""
@@ -615,7 +637,7 @@ class ScrcpyServerBackend:
             return
         self._closed = True
 
-        # 1) socket close → server.jar가 자연 종료 (cleanup=true)
+        # 1) socket close → server.jar가 자연 종료
         if self._writer:
             try:
                 self._writer.close()
@@ -645,7 +667,7 @@ class ScrcpyServerBackend:
                 pass
         self._forward_task = None
 
-        # 4) server 프로세스가 아직 살아있으면 kill (cleanup=true라도 hung 가능성).
+        # 4) server 프로세스 종료
         if self._server_proc and self._server_proc.poll() is None:
             try:
                 self._server_proc.terminate()
@@ -657,11 +679,20 @@ class ScrcpyServerBackend:
                 pass
         self._server_proc = None
 
-        # 5) 디바이스 측 잔존 app_process 정리 (cleanup=true가 처리하지만 보강).
+        # 5) PC listener 종료
+        if self._listener:
+            try:
+                self._listener.close()
+                await self._listener.wait_closed()
+            except Exception:
+                pass
+            self._listener = None
+
+        # 6) 디바이스 측 잔존 app_process 정리
         await self._cleanup_device_side()
 
-        # 6) adb forward 제거
-        await self._remove_forward()
+        # 7) adb reverse 제거
+        await self._remove_reverse()
 
         logger.info("scrcpy backend closed: serial=%s", self.serial)
 
