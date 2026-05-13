@@ -716,7 +716,10 @@ class ADBService:
         loop = asyncio.get_event_loop()
         stdout, stderr, rc = await loop.run_in_executor(None, functools.partial(_run_sync, cmd))
         if rc != 0:
-            logger.error("ADB error: %s", stderr)
+            # stderr가 ADB 도움말 dump면 매우 길어지므로 첫 줄만. 명령도 함께 출력해
+            # 어떤 cmd가 거부됐는지 식별 가능하게 한다.
+            err_short = (stderr.split("\n", 1)[0] if stderr else "").strip()
+            logger.error("ADB error (args=%r): %s", args, err_short or stderr[:200])
         return stdout
 
     async def _detect_gvm_container(self, serial: str) -> str | None:
@@ -776,7 +779,11 @@ class ADBService:
         loop = asyncio.get_event_loop()
         stdout, stderr, rc = await loop.run_in_executor(None, functools.partial(_run_sync, cmd, timeout))
         if rc != 0:
-            logger.error("ADB error (device %s): %s", serial, stderr)
+            err_short = (stderr.split("\n", 1)[0] if stderr else "").strip()
+            logger.error(
+                "ADB error (device %s, args=%r): %s",
+                serial, args, err_short or stderr[:200],
+            )
         return stdout
 
     # ------------------------------------------------------------------

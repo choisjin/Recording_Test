@@ -515,6 +515,9 @@ async def websocket_screen_mirror(websocket: WebSocket):
     BACKEND_RETRY_COOLDOWN = 30.0
     scrcpy_retry_after = 0.0
     screenrecord_retry_after = 0.0
+    # WS 세션 진입 시 ADB 분기에 한 번만 dispatch 의도를 INFO 로그로 출력 — 어떤 백엔드가
+    # 활성/비활성 판단됐는지 운영 시점에 추적할 수 있게 한다.
+    adb_dispatch_logged = False
 
     try:
         await websocket.send_json({"mode": "jpeg"})
@@ -669,6 +672,20 @@ async def websocket_screen_mirror(websocket: WebSocket):
                     )
 
                     _now = asyncio.get_event_loop().time()
+
+                    if not adb_dispatch_logged:
+                        _displays_info = (
+                            dev.info.get("displays", []) if (dev and dev.info) else []
+                        )
+                        logger.info(
+                            "ADB mirror dispatch: serial=%s screen_type=%r display_id=%s "
+                            "logical_id=%s is_active=%s displays=%s",
+                            adb_serial, screen_type, adb_display_id, _logical_id,
+                            _is_active,
+                            [{"id": d.get("id"), "active": d.get("is_active"),
+                              "lid": d.get("logical_id")} for d in _displays_info],
+                        )
+                        adb_dispatch_logged = True
 
                     # 1순위: scrcpy-server
                     if _is_active and _now >= scrcpy_retry_after:
