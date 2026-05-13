@@ -763,10 +763,18 @@ async def websocket_screen_mirror(websocket: WebSocket):
                                 adb_service.mark_h264_disabled(adb_serial)
                                 _h264_disabled = True
 
-                    # 2순위 폴백: 기존 screencap PNG streamer + fps throttle
+                    # 3순위 폴백: screencap PNG streamer + fps throttle
+                    # H.264 백엔드가 비활성된 디바이스(GVM 등)는 조작용 미러링이 부드러워야
+                    # 사용자가 입력하기 편하므로 fps를 자동으로 올린다 (조작은 실제 화면
+                    # 좌표 정확도가 중요해 native screencap이 적합 — virtual display로 우회
+                    # 불가). 일반 폰은 1순위 H.264가 활성이라 여기 거의 안 옴.
                     sf_did = resolve_sf_display_id(
                         dev.info if dev else None, adb_display_id
                     )
+                    _interval = adb_frame_interval
+                    if _h264_disabled:
+                        # GVM은 native fps 미상이라 5fps 정도가 부드러움/부하의 균형점.
+                        _interval = min(_interval, 0.2)
                     loop = asyncio.get_event_loop()
                     frame_t0 = loop.time()
                     jpeg_bytes = await adb_service.streaming_screencap_bytes(
@@ -775,7 +783,7 @@ async def websocket_screen_mirror(websocket: WebSocket):
                     if jpeg_bytes:
                         await websocket.send_bytes(jpeg_bytes)
                     frame_elapsed = loop.time() - frame_t0
-                    sleep_s = adb_frame_interval - frame_elapsed
+                    sleep_s = _interval - frame_elapsed
                     if sleep_s > 0:
                         await asyncio.sleep(sleep_s)
             except WebSocketDisconnect:
