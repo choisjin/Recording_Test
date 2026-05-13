@@ -41,6 +41,7 @@ from .dependencies import adb_service, device_manager, playback_service, recordi
 from .services.adb_service import resolve_sf_display_id, resolve_input_display_id
 # build_dist.py가 배포 시 __init__.py를 빈 파일로 만들기 때문에 서브모듈 직접 import.
 from .services.capture.ffmpeg_runtime import log_runtime_status as _log_capture_runtime_status
+from .services.capture.scrcpy_server import log_scrcpy_status as _log_scrcpy_status
 from .models.scenario import ScenarioResult
 from .services.playback_service import RESULTS_DIR as _RESULTS_DIR
 
@@ -275,12 +276,16 @@ async def _auto_connect_all():
 async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle."""
     # --- Startup ---
-    # 라이브 미러링 백엔드의 ffmpeg 가용성을 한 번 진단 (있으면 INFO, 없으면 WARNING).
-    # 미설치라도 동작에는 영향 없음 — screencap PNG 폴백으로 자동 전환된다.
+    # 라이브 미러링 백엔드 진단 (있으면 INFO, 없으면 INFO/WARNING).
+    # 미설치라도 동작에는 영향 없음 — 자동 폴백 체인이 알아서 다음 단계로 넘어간다.
     try:
         _log_capture_runtime_status()
     except Exception as e:
         logger.debug("capture runtime status check: %s", e)
+    try:
+        _log_scrcpy_status()
+    except Exception as e:
+        logger.debug("scrcpy status check: %s", e)
 
     # ADB 서버를 명시적으로 미리 시작 (CREATE_NO_WINDOW 포함)
     # adb가 자체적으로 데몬을 spawn하면 별도 콘솔 창이 생길 수 있으므로 선제 실행
@@ -332,6 +337,10 @@ async def lifespan(app: FastAPI):
         await adb_service.close_all_screenrecord_backends()
     except Exception as e:
         logger.debug("close_all_screenrecord_backends: %s", e)
+    try:
+        await adb_service.close_all_scrcpy_backends()
+    except Exception as e:
+        logger.debug("close_all_scrcpy_backends: %s", e)
     logger.info("Killing ADB server...")
     try:
         await adb_service._run("kill-server")
@@ -498,12 +507,13 @@ async def websocket_screen_mirror(websocket: WebSocket):
     h264_mode = False
     recv_task = None
 
-    # ADB H.264 미러링 시도 결과를 timestamp로 관리.
-    # 0이면 즉시 시도, >0이면 그 시각까지 폴백 유지 후 재시도.
-    # 한 번 실패해도 30초 cooldown 후 자동 재시도 → 화면 sleep/HW 인코더 cooldown 등
-    # 일시적 stuck 케이스가 자연 복구된다. (예전 'giveup 영구 True' 패턴은 멀티 디스플레이
-    # 전환 후 H.264 복구가 안 되는 문제가 있었다.)
-    SCREENRECORD_RETRY_COOLDOWN = 30.0
+    # ADB 라이브 미러링 백엔드 우선순위:
+    #   1순위: scrcpy-server (idle/wake-up 동작 우수)
+    #   2순위: screenrecord + ffmpeg
+    #   3순위: screencap PNG 폴링 (모든 환경에서 동작)
+    # 각 단계별로 마지막 실패 시각을 기록해 30초 cooldown 후 자동 재시도.
+    BACKEND_RETRY_COOLDOWN = 30.0
+    scrcpy_retry_after = 0.0
     screenrecord_retry_after = 0.0
 
     try:
@@ -632,9 +642,10 @@ async def websocket_screen_mirror(websocket: WebSocket):
                         await asyncio.sleep(0.3)
                         continue
                 else:
-                    # ADB 라이브 미러링 — 2단계 폴백 체인
-                    #   1순위: screenrecord(H.264) → ffmpeg(MJPEG) — 30~60fps, HW 인코더
-                    #   2순위: screencap PNG streamer — 1~5fps, 모든 환경에서 동작
+                    # ADB 라이브 미러링 — 3단계 폴백 체인
+                    #   1순위: scrcpy-server (MediaCodec 직접 제어, idle 문제 없음)
+                    #   2순위: screenrecord(H.264) + ffmpeg(MJPEG) — 30~60fps, HW 인코더
+                    #   3순위: screencap PNG streamer — 1~5fps, 모든 환경에서 동작
                     # 검증/녹화 캡처(screencap_bytes)와는 별개 채널.
                     adb_display_id = None
                     try:
@@ -646,55 +657,79 @@ async def websocket_screen_mirror(websocket: WebSocket):
                         await asyncio.sleep(0.3)
                         continue
 
-                    # 1순위 시도: cooldown이 지난 경우에만 (또는 처음).
+                    # 디스플레이 활성 여부 (폴더블 비활성 디스플레이는 차단).
+                    _is_active = True
+                    if dev and dev.info:
+                        for d in dev.info.get("displays", []):
+                            if d.get("id") == adb_display_id and d.get("is_active") is False:
+                                _is_active = False
+                                break
+                    _logical_id = resolve_input_display_id(
+                        dev.info if dev else None, adb_display_id
+                    )
+
                     _now = asyncio.get_event_loop().time()
-                    if _now >= screenrecord_retry_after:
-                        # 폴더블 등에서 비활성 디스플레이는 검은 화면을 길게 보내므로 차단.
-                        is_active = True
-                        if dev and dev.info:
-                            for d in dev.info.get("displays", []):
-                                if d.get("id") == adb_display_id and d.get("is_active") is False:
-                                    is_active = False
-                                    break
-                        if is_active:
-                            logical_id = resolve_input_display_id(
-                                dev.info if dev else None, adb_display_id
+
+                    # 1순위: scrcpy-server
+                    if _is_active and _now >= scrcpy_retry_after:
+                        scrcpy_backend = await adb_service.ensure_scrcpy_backend(
+                            adb_serial, _logical_id,
+                        )
+                        if scrcpy_backend:
+                            try:
+                                async for jpeg in scrcpy_backend.stream_jpeg():
+                                    await websocket.send_bytes(jpeg)
+                            except WebSocketDisconnect:
+                                raise
+                            except Exception as e:
+                                logger.warning(
+                                    "scrcpy stream error (%s): %s", adb_serial, e,
+                                )
+                            scrcpy_retry_after = (
+                                asyncio.get_event_loop().time()
+                                + BACKEND_RETRY_COOLDOWN
                             )
-                            backend = await adb_service.ensure_screenrecord_backend(
-                                adb_serial, logical_id,
+                            await adb_service.close_scrcpy_backend(adb_serial)
+                            continue
+                        else:
+                            scrcpy_retry_after = _now + BACKEND_RETRY_COOLDOWN
+                            logger.info(
+                                "scrcpy unavailable for %s (display=%s) — "
+                                "falling back to screenrecord, will retry in %ds",
+                                adb_serial, adb_display_id,
+                                int(BACKEND_RETRY_COOLDOWN),
                             )
-                            if backend:
-                                # 백엔드의 inner-loop가 자체적으로 segment 재시작까지 처리.
-                                # 정상 종료(재시작 실패 등) 시 outer-loop로 복귀해 screencap
-                                # 폴백을 한 iteration 보내고, 다음에 다시 H.264 시도 가능.
-                                try:
-                                    async for jpeg in backend.stream_jpeg():
-                                        await websocket.send_bytes(jpeg)
-                                except WebSocketDisconnect:
-                                    raise
-                                except Exception as e:
-                                    logger.warning(
-                                        "screenrecord stream error (%s): %s",
-                                        adb_serial, e,
-                                    )
-                                # backend가 끝남 → 잠시 폴백 후 30초 뒤 재시도.
-                                screenrecord_retry_after = (
-                                    asyncio.get_event_loop().time()
-                                    + SCREENRECORD_RETRY_COOLDOWN
+
+                    # 2순위 시도: screenrecord
+                    if _is_active and _now >= screenrecord_retry_after:
+                        sr_backend = await adb_service.ensure_screenrecord_backend(
+                            adb_serial, _logical_id,
+                        )
+                        if sr_backend:
+                            try:
+                                async for jpeg in sr_backend.stream_jpeg():
+                                    await websocket.send_bytes(jpeg)
+                            except WebSocketDisconnect:
+                                raise
+                            except Exception as e:
+                                logger.warning(
+                                    "screenrecord stream error (%s): %s",
+                                    adb_serial, e,
                                 )
-                                await adb_service.close_screenrecord_backend(adb_serial)
-                                continue
-                            else:
-                                # try_start 실패 → cooldown 후 재시도. 폴백 1프레임 보내고 계속.
-                                screenrecord_retry_after = (
-                                    _now + SCREENRECORD_RETRY_COOLDOWN
-                                )
-                                logger.info(
-                                    "screenrecord unavailable for %s (display=%s) — "
-                                    "falling back to screencap, will retry in %ds",
-                                    adb_serial, adb_display_id,
-                                    int(SCREENRECORD_RETRY_COOLDOWN),
-                                )
+                            screenrecord_retry_after = (
+                                asyncio.get_event_loop().time()
+                                + BACKEND_RETRY_COOLDOWN
+                            )
+                            await adb_service.close_screenrecord_backend(adb_serial)
+                            continue
+                        else:
+                            screenrecord_retry_after = _now + BACKEND_RETRY_COOLDOWN
+                            logger.info(
+                                "screenrecord unavailable for %s (display=%s) — "
+                                "falling back to screencap, will retry in %ds",
+                                adb_serial, adb_display_id,
+                                int(BACKEND_RETRY_COOLDOWN),
+                            )
 
                     # 2순위 폴백: 기존 screencap PNG streamer + fps throttle
                     sf_did = resolve_sf_display_id(

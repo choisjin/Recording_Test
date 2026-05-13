@@ -161,6 +161,51 @@ class FFmpegMjpegPipe:
         return cls(ffproc, input_proc=input_proc)
 
     @classmethod
+    async def from_stdin_pipe(
+        cls,
+        input_fmt: str = "h264",
+        quality: int = 5,
+    ) -> "FFmpegMjpegPipe":
+        """ffmpeg를 stdin=PIPE로 spawn. 호출자가 ffmpeg.stdin에 직접 write한다.
+
+        socket이나 메모리 buffer 등 외부 비-Popen 소스에서 데이터를 받아 ffmpeg에
+        흘려넣는 경우 사용 (예: scrcpy-server의 TCP stream → ffmpeg).
+
+        반환된 인스턴스의 `.ffmpeg_stdin` 속성으로 write 가능.
+        """
+        ff = detect_ffmpeg()
+        if not ff:
+            raise RuntimeError("ffmpeg binary not available")
+
+        cmd: list[str] = [
+            ff, "-hide_banner", "-loglevel", "error",
+            "-probesize", "65536",
+            "-analyzeduration", "500000",
+            "-an",
+            "-f", input_fmt, "-i", "pipe:0",
+            "-f", "mjpeg",
+            "-pix_fmt", "yuvj420p",
+            "-vf", "scale=in_range=tv:out_range=pc",
+            "-flush_packets", "1",
+            "-q:v", str(quality),
+            "pipe:1",
+        ]
+
+        ffproc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            creationflags=_NO_WINDOW,
+        )
+        return cls(ffproc, input_proc=None)
+
+    @property
+    def ffmpeg_stdin(self) -> Optional[asyncio.StreamWriter]:
+        """from_stdin_pipe로 생성된 경우 ffmpeg의 stdin writer."""
+        return self._ff.stdin
+
+    @classmethod
     async def from_command(cls, cmd: list[str]) -> "FFmpegMjpegPipe":
         """완결된 ffmpeg 명령을 직접 실행. 출력 MJPEG는 호출자가 cmd에 포함.
 

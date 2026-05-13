@@ -16,6 +16,7 @@ from typing import Optional
 # `from .capture import ...` 형태는 ImportError를 일으킨다. 반드시 서브모듈을
 # 직접 명시해서 import해야 .pyd 컴파일 배포본에서도 정상 동작한다.
 from .capture.adb_screenrecord import AdbScreenrecordBackend
+from .capture.scrcpy_server import ScrcpyServerBackend, detect_scrcpy_server
 from .capture.ffmpeg_runtime import detect_ffmpeg
 
 logger = logging.getLogger(__name__)
@@ -148,6 +149,10 @@ class ADBService:
         # ffmpeg 미설치/디바이스 미지원 시 자동으로 None 폴백되어 screencap streamer 사용.
         self._screenrecord_backends: dict[str, AdbScreenrecordBackend] = {}
         self._screenrecord_lock = asyncio.Lock()
+        # 1순위 H.264 백엔드 — scrcpy-server. screenrecord보다 idle/wake-up 동작이 우수.
+        # jar 부재 또는 디바이스 미지원 시 자동으로 screenrecord 백엔드로 폴백.
+        self._scrcpy_backends: dict[str, ScrcpyServerBackend] = {}
+        self._scrcpy_lock = asyncio.Lock()
 
     # ------------------------------------------------------------------
     # Device management
@@ -926,6 +931,73 @@ class ADBService:
         async with self._screenrecord_lock:
             backends = list(self._screenrecord_backends.values())
             self._screenrecord_backends.clear()
+        for b in backends:
+            try:
+                await b.close()
+            except Exception:
+                pass
+
+    # ------------------------------------------------------------------
+    # 1순위 H.264 라이브 미러링 백엔드 (scrcpy-server)
+    # ------------------------------------------------------------------
+
+    async def ensure_scrcpy_backend(
+        self,
+        serial: str,
+        logical_id: Optional[int],
+        *,
+        bitrate: int = 4_000_000,
+    ) -> Optional[ScrcpyServerBackend]:
+        """디바이스의 scrcpy 백엔드를 보장.
+
+        - 같은 (serial, logical_id) 조합으로 살아있으면 재사용.
+        - 디스플레이 변경 시 기존 close 후 새로 시작.
+        - jar 부재, push 실패, server 실행 실패, 첫 프레임 timeout 등으로 실패 시 None →
+          호출자는 screenrecord/screencap 폴백 사용.
+        """
+        if not detect_scrcpy_server() or not detect_ffmpeg():
+            return None
+        async with self._scrcpy_lock:
+            existing = self._scrcpy_backends.get(serial)
+            if existing and existing.is_alive() and existing.logical_id == (logical_id or 0):
+                return existing
+            if existing:
+                try:
+                    await existing.close()
+                except Exception as e:
+                    logger.debug("scrcpy existing close error: %s", e)
+                self._scrcpy_backends.pop(serial, None)
+
+            # 일시적 push/forward 실패가 있을 수 있어 1회 자동 retry.
+            for attempt in range(2):
+                backend = ScrcpyServerBackend(
+                    serial, logical_id, bitrate=bitrate,
+                )
+                ok = await backend.try_start()
+                if ok:
+                    self._scrcpy_backends[serial] = backend
+                    return backend
+                try:
+                    await backend.close()
+                except Exception:
+                    pass
+                if attempt == 0:
+                    await asyncio.sleep(0.5)
+            return None
+
+    async def close_scrcpy_backend(self, serial: str) -> None:
+        async with self._scrcpy_lock:
+            backend = self._scrcpy_backends.pop(serial, None)
+        if backend:
+            try:
+                await backend.close()
+            except Exception as e:
+                logger.debug("scrcpy close error (%s): %s", serial, e)
+
+    async def close_all_scrcpy_backends(self) -> None:
+        async with self._scrcpy_lock:
+            backends = list(self._scrcpy_backends.values())
+            self._scrcpy_backends.clear()
         for b in backends:
             try:
                 await b.close()

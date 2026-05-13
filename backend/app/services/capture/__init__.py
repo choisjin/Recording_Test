@@ -2,4 +2,5 @@
 from .ffmpeg_runtime import detect_ffmpeg, ffmpeg_version, log_runtime_status
 from .ffmpeg_pipe import FFmpegMjpegPipe
 from .adb_screenrecord import AdbScreenrecordBackend
-__all__ = ["detect_ffmpeg", "ffmpeg_version", "log_runtime_status", "FFmpegMjpegPipe", "AdbScreenrecordBackend"]
+from .scrcpy_server import ScrcpyServerBackend, detect_scrcpy_server, log_scrcpy_status
+__all__ = ["detect_ffmpeg", "ffmpeg_version", "log_runtime_status", "FFmpegMjpegPipe", "AdbScreenrecordBackend", "ScrcpyServerBackend", "detect_scrcpy_server", "log_scrcpy_status"]
