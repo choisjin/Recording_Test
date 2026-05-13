@@ -664,7 +664,12 @@ logs/
 *.whl
 get-pip.py
 DltViewerSDK_21.1.3_ver/
-tools/
+# tools/ 폴더의 binary들(ffmpeg.exe 100MB 등)은 deploy push 제외하되,
+# scrcpy-server.jar는 60KB로 작고 H.264 미러링 백엔드의 필수 자원이므로
+# negative pattern으로 추적 허용. "tools/"가 아닌 "tools/*"로 디렉토리
+# 내용만 ignore해야 negative pattern이 적용된다는 git 동작에 주의.
+tools/*
+!tools/scrcpy-server.jar
 
 # 사용자 데이터
 backend/screenshots/
