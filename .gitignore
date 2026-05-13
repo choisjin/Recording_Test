@@ -32,7 +32,13 @@ Results/
 
 # Large binaries (배포에만 포함)
 *.whl
-tools/
+# tools/ 폴더는 binary들이 들어있어 기본적으로 ignore.
+# 단, "tools/" 형태(trailing slash)로 디렉토리를 통째로 ignore하면 negative
+# pattern(!) 이 적용되지 않으므로 "tools/*" 로 내용만 ignore해야 한다.
+tools/*
+# scrcpy-server.jar는 60KB로 작고 배포 패키지에 반드시 포함되어야 하므로 추적 대상.
+# 빌드/실행 시 디바이스에 push해 H.264 라이브 미러링 백엔드로 사용된다.
+!tools/scrcpy-server.jar
 installer_output/
 DltViewerSDK_21.1.3_ver/
 
