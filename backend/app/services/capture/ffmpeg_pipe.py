@@ -100,6 +100,13 @@ class FFmpegMjpegPipe:
         cmd: list[str] = [
             ff, "-hide_banner", "-loglevel", "error",
             "-fflags", "nobuffer", "-flags", "low_delay",
+            # raw H.264 같은 elementary stream에서 ffmpeg 기본 분석 시간이
+            # 첫 프레임 latency를 크게 늘린다 → 최소화.
+            "-probesize", "32",
+            "-analyzeduration", "0",
+            # screenrecord stream에는 오디오가 없는데 ffmpeg는 기본적으로
+            # 오디오 stream을 탐색하려 시간을 쓰므로 명시적으로 차단.
+            "-an",
         ]
         if extra_in:
             cmd += extra_in

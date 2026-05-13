@@ -21,6 +21,7 @@ import logging
 import os
 import subprocess
 import sys
+import threading
 from typing import AsyncIterator, Optional
 
 from .ffmpeg_pipe import FFmpegMjpegPipe
@@ -35,11 +36,16 @@ ADB_PATH = os.environ.get("ADB_PATH", "adb")
 # screenrecord 최대 시간은 180초. 만료 직전 매끄럽게 재시작하기 위해 약간 짧게.
 _SEGMENT_SECONDS = 175
 
-# 첫 JPEG 프레임 수신 timeout (초). H.264 keyframe + ffmpeg 초기화 시간 고려.
-_FIRST_FRAME_TIMEOUT = 2.5
+# 첫 JPEG 프레임 수신 timeout (초). 일부 디바이스/SoC에서 첫 IDR keyframe까지
+# 수 초 걸리는 케이스가 있어 넉넉히 잡는다. 폴백 전환이 다소 늦어지지만,
+# 한번 성공한 뒤로는 segment 재시작에만 영향 없음.
+_FIRST_FRAME_TIMEOUT = 5.0
 
 # 재시작 사이 잠깐 쉼 (디바이스 인코더 자원 해제 시간 확보).
 _RESTART_GAP = 0.05
+
+# screenrecord 실패 시 진단을 위해 stderr 마지막 N바이트만 보관/로깅.
+_STDERR_TAIL_BYTES = 1024
 
 
 class AdbScreenrecordBackend:
@@ -84,7 +90,10 @@ class AdbScreenrecordBackend:
             "--bit-rate", str(self.bitrate),
             "--time-limit", str(_SEGMENT_SECONDS),
         ]
-        if self.logical_id is not None:
+        # --display-id 0은 보통 default(primary)와 같지만, 일부 단일 디스플레이
+        # 디바이스 펌웨어가 이 옵션 자체를 거부하거나 검은 화면을 보낸다.
+        # 0/None이면 옵션 자체를 생략해 default 디스플레이를 쓰도록 한다.
+        if self.logical_id is not None and self.logical_id != 0:
             cmd += ["--display-id", str(self.logical_id)]
         cmd.append("-")
         return cmd
@@ -115,9 +124,18 @@ class AdbScreenrecordBackend:
             self._iter = self._pipe.__aiter__()
             first = await asyncio.wait_for(self._iter.__anext__(), timeout=first_frame_timeout)
         except (asyncio.TimeoutError, StopAsyncIteration, Exception) as e:
+            # 진단: screenrecord 측 stderr와 종료 상태를 로그로 노출.
+            # 다음 원인 분기:
+            #   * exit code != 0 + stderr 있음 → 디바이스 측 거부 (옵션/권한)
+            #   * exit code = None + stderr 비어있음 → ffmpeg가 데이터를 못 받음
+            #   * "no such option" / "Unknown option" → screenrecord가 옵션 미지원
+            stderr_tail = self._read_stderr_tail()
+            rc = self._proc.poll() if self._proc else None
             logger.info(
-                "screenrecord first-frame check failed (serial=%s, display=%s): %s",
+                "screenrecord first-frame check failed (serial=%s, display=%s): %s "
+                "screenrecord_rc=%s stderr=%r",
                 self.serial, self.logical_id, type(e).__name__,
+                rc, stderr_tail,
             )
             await self._close_pipe()
             return False
@@ -135,7 +153,9 @@ class AdbScreenrecordBackend:
             self._proc = subprocess.Popen(
                 self._build_cmd(),
                 stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
+                # 진단을 위해 stderr 캡처. 단, blocking read로 데드락이 나지 않도록
+                # 별도 스레드에서 비동기적으로 tail에 적재한다.
+                stderr=subprocess.PIPE,
                 creationflags=_NO_WINDOW,
                 bufsize=0,
             )
@@ -143,6 +163,14 @@ class AdbScreenrecordBackend:
             logger.warning("screenrecord spawn failed (%s): %s", self.serial, e)
             self._proc = None
             return False
+
+        # stderr를 백그라운드로 빨아들여 _STDERR_TAIL_BYTES만큼만 보관.
+        # 안 빨아들이면 stderr 파이프가 가득 차 screenrecord가 블록될 수 있음.
+        self._stderr_tail = bytearray()
+        self._stderr_thread = threading.Thread(
+            target=self._drain_stderr, daemon=True,
+        )
+        self._stderr_thread.start()
 
         try:
             self._pipe = await FFmpegMjpegPipe.from_input_proc(
@@ -206,6 +234,37 @@ class AdbScreenrecordBackend:
             except StopAsyncIteration:
                 return
             yield frame
+
+    def _drain_stderr(self) -> None:
+        """screenrecord stderr를 끝까지 읽어 tail에 보관 (별도 스레드에서 호출).
+        파이프가 가득 차 디바이스 측이 블록되는 것을 방지하기 위한 필수 동작.
+        """
+        proc = self._proc
+        if not proc or not proc.stderr:
+            return
+        try:
+            while True:
+                chunk = proc.stderr.read(4096)
+                if not chunk:
+                    break
+                self._stderr_tail.extend(chunk)
+                # tail이 너무 커지지 않도록 마지막 _STDERR_TAIL_BYTES만 유지.
+                if len(self._stderr_tail) > _STDERR_TAIL_BYTES * 2:
+                    del self._stderr_tail[:-_STDERR_TAIL_BYTES]
+        except Exception:
+            pass
+
+    def _read_stderr_tail(self) -> str:
+        """현재까지 수집된 stderr의 마지막 부분을 사람이 읽기 좋게 정리해 반환."""
+        if not getattr(self, "_stderr_tail", None):
+            return ""
+        try:
+            raw = bytes(self._stderr_tail[-_STDERR_TAIL_BYTES:])
+            text = raw.decode("utf-8", errors="replace").strip()
+            # 한 줄로 축약 (로그 가독성)
+            return " | ".join(line.strip() for line in text.splitlines() if line.strip())
+        except Exception:
+            return repr(bytes(self._stderr_tail[-_STDERR_TAIL_BYTES:]))
 
     async def _close_pipe(self) -> None:
         """ffmpeg pipe만 닫고 인스턴스는 살림 (재시작 대비)."""
