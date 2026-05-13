@@ -660,10 +660,19 @@ async def websocket_screen_mirror(websocket: WebSocket):
                         await asyncio.sleep(0.3)
                         continue
 
-                    # 디스플레이 활성 여부 (폴더블 비활성 디스플레이는 차단).
+                    # 디스플레이 활성 여부 결정:
+                    #   * 폴더블처럼 "일부만" inactive면 그건 신뢰 가능한 정보 → 차단
+                    #   * GVM/IVI 환경처럼 "전체" inactive면 dumpsys 정보가 신뢰 불가
+                    #     (실제로는 active인데 viewport API가 false 반환). 무시하고 시도.
+                    _displays = (
+                        dev.info.get("displays", []) if (dev and dev.info) else []
+                    )
+                    _all_inactive = bool(_displays) and all(
+                        d.get("is_active") is False for d in _displays
+                    )
                     _is_active = True
-                    if dev and dev.info:
-                        for d in dev.info.get("displays", []):
+                    if _displays and not _all_inactive:
+                        for d in _displays:
                             if d.get("id") == adb_display_id and d.get("is_active") is False:
                                 _is_active = False
                                 break
@@ -674,16 +683,13 @@ async def websocket_screen_mirror(websocket: WebSocket):
                     _now = asyncio.get_event_loop().time()
 
                     if not adb_dispatch_logged:
-                        _displays_info = (
-                            dev.info.get("displays", []) if (dev and dev.info) else []
-                        )
                         logger.info(
                             "ADB mirror dispatch: serial=%s screen_type=%r display_id=%s "
-                            "logical_id=%s is_active=%s displays=%s",
+                            "logical_id=%s is_active=%s all_inactive_override=%s displays=%s",
                             adb_serial, screen_type, adb_display_id, _logical_id,
-                            _is_active,
+                            _is_active, _all_inactive,
                             [{"id": d.get("id"), "active": d.get("is_active"),
-                              "lid": d.get("logical_id")} for d in _displays_info],
+                              "lid": d.get("logical_id")} for d in _displays],
                         )
                         adb_dispatch_logged = True
 
