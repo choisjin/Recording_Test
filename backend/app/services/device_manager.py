@@ -1287,6 +1287,8 @@ class DeviceManager:
                             await self.adb.close_scrcpy_backend(dev.address)
                         except Exception as se:
                             logger.debug("ADB scrcpy close on reconnect %s: %s", dev.id, se)
+                        # 재연결 시 H.264 비활성 캐시 초기화 — 디바이스 환경이 바뀌었을 수 있음.
+                        self.adb.clear_h264_disabled(dev.address)
                     self._adb_reconnect_attempts.pop(dev.id, None)
                     dev.status = "device"
                     continue
@@ -1814,6 +1816,7 @@ class DeviceManager:
                 await self.adb.close_scrcpy_backend(dev.address)
             except Exception as se:
                 logger.debug("ADB scrcpy close on remove failed for %s: %s", dev.id, se)
+            self.adb.clear_h264_disabled(dev.address)
 
         if dev.type == "adb" and ":" in dev.address:
             result = await self.adb.disconnect_device(dev.address)
@@ -2601,6 +2604,7 @@ class DeviceManager:
                 await self.adb.close_scrcpy_backend(dev.address)
             except Exception as se:
                 logger.debug("ADB scrcpy close failed for %s: %s", dev.id, se)
+            self.adb.clear_h264_disabled(dev.address)
             if ":" in dev.address:
                 try:
                     await self.adb._run(f"disconnect {dev.address}")

@@ -153,6 +153,11 @@ class ADBService:
         # jar 부재 또는 디바이스 미지원 시 자동으로 screenrecord 백엔드로 폴백.
         self._scrcpy_backends: dict[str, ScrcpyServerBackend] = {}
         self._scrcpy_lock = asyncio.Lock()
+        # GVM/IVI 환경처럼 H.264 백엔드(scrcpy + screenrecord) 모두 동작 불가한 디바이스
+        # 캐시. 한 번 두 백엔드 모두 실패하면 등록되어 다음 시도부터 즉시 screencap 폴백.
+        # 매 WS 세션마다 5~10초 시도 비용을 반복하지 않게 한다.
+        # 디바이스 disconnect/remove 시 해제되어 다음 연결에서 다시 시도 가능.
+        self._h264_disabled: set[str] = set()
 
     # ------------------------------------------------------------------
     # Device management
@@ -1010,6 +1015,28 @@ class ADBService:
                 await b.close()
             except Exception:
                 pass
+
+    # ------------------------------------------------------------------
+    # H.264 비활성 캐시 (GVM 등 두 백엔드 모두 동작 불가한 디바이스)
+    # ------------------------------------------------------------------
+
+    def is_h264_disabled(self, serial: str) -> bool:
+        return serial in self._h264_disabled
+
+    def mark_h264_disabled(self, serial: str) -> None:
+        """디바이스가 H.264 미러링을 지원 못 함을 캐시. 다음 시도부터 즉시 screencap 폴백."""
+        if serial not in self._h264_disabled:
+            self._h264_disabled.add(serial)
+            logger.info(
+                "H.264 mirroring permanently disabled for %s "
+                "(both scrcpy and screenrecord failed — likely GVM/IVI environment). "
+                "Using screencap fallback until device disconnects.",
+                serial,
+            )
+
+    def clear_h264_disabled(self, serial: str) -> None:
+        """디바이스 disconnect 시 호출 — 다음 연결에서 다시 시도 가능하게."""
+        self._h264_disabled.discard(serial)
 
 
 class AdbScreencapStreamer:

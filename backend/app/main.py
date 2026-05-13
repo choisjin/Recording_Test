@@ -681,6 +681,9 @@ async def websocket_screen_mirror(websocket: WebSocket):
                     )
 
                     _now = asyncio.get_event_loop().time()
+                    # 디바이스가 이전 시도에서 두 H.264 백엔드 모두 실패한 것으로 캐시됐으면
+                    # 즉시 screencap 폴백으로 직행 (시도 비용 절약).
+                    _h264_disabled = adb_service.is_h264_disabled(adb_serial)
 
                     if not adb_dispatch_logged:
                         logger.info(
@@ -694,7 +697,7 @@ async def websocket_screen_mirror(websocket: WebSocket):
                         adb_dispatch_logged = True
 
                     # 1순위: scrcpy-server
-                    if _is_active and _now >= scrcpy_retry_after:
+                    if not _h264_disabled and _is_active and _now >= scrcpy_retry_after:
                         scrcpy_backend = await adb_service.ensure_scrcpy_backend(
                             adb_serial, _logical_id,
                         )
@@ -724,7 +727,7 @@ async def websocket_screen_mirror(websocket: WebSocket):
                             )
 
                     # 2순위 시도: screenrecord
-                    if _is_active and _now >= screenrecord_retry_after:
+                    if not _h264_disabled and _is_active and _now >= screenrecord_retry_after:
                         sr_backend = await adb_service.ensure_screenrecord_backend(
                             adb_serial, _logical_id,
                         )
@@ -753,6 +756,12 @@ async def websocket_screen_mirror(websocket: WebSocket):
                                 adb_serial, adb_display_id,
                                 int(BACKEND_RETRY_COOLDOWN),
                             )
+                            # scrcpy도 이미 실패 상태(_now >= scrcpy_retry_after 였는데
+                            # 위에서 다시 cooldown 갱신된 상태)이고 GVM 환경으로 추정되면
+                            # H.264 영구 비활성으로 등록 → 다음 시도 즉시 screencap 폴백.
+                            if _all_inactive_override and scrcpy_retry_after > _now:
+                                adb_service.mark_h264_disabled(adb_serial)
+                                _h264_disabled = True
 
                     # 2순위 폴백: 기존 screencap PNG streamer + fps throttle
                     sf_did = resolve_sf_display_id(
