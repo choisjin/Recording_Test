@@ -225,12 +225,14 @@ class ScrcpyServerBackend:
         except (asyncio.TimeoutError, StopAsyncIteration, Exception) as e:
             ff_err = self._pipe.stderr_tail() if self._pipe else ""
             sr_err = self._stderr_tail_str()
+            sr_out = self._stdout_tail_str()
             fwd_bytes = getattr(self, "_forward_total_bytes", 0)
+            srv_rc = self._server_proc.poll() if self._server_proc else None
             logger.info(
                 "scrcpy first-frame check failed (serial=%s display=%s): %s "
-                "fwd_bytes=%d server_err=%r ffmpeg_err=%r",
+                "server_rc=%s fwd_bytes=%d server_out=%r server_err=%r ffmpeg_err=%r",
                 self.serial, self.logical_id, type(e).__name__,
-                fwd_bytes, sr_err, ff_err,
+                srv_rc, fwd_bytes, sr_out, sr_err, ff_err,
             )
             await self.close()
             return False
@@ -350,6 +352,10 @@ class ScrcpyServerBackend:
         cleanup=true: 비정상 종료 시 디바이스 측 자원 정리.
         """
         # shell 명령 한 줄로 합쳐서 전달 (CLASSPATH 환경변수 prefix).
+        # raw_stream=true 한 옵션이 send_dummy_byte/send_device_meta/send_codec_meta/
+        # send_frame_meta를 모두 자동으로 false로 만든다. send_*=false를 명시했더니
+        # scrcpy v2.4에서 옵션 파싱 시점에 server가 조용히 종료되는 케이스가 있어
+        # raw_stream만 두고 다른 send_* 옵션은 제거.
         opts = [
             f"scid={self.scid}",
             # 진단을 위해 일시적으로 debug. 안정화 후 error로 환원.
@@ -366,13 +372,7 @@ class ScrcpyServerBackend:
             "cleanup=true",
             "power_on=false",
             "tunnel_forward=true",
-            # raw_stream만 의존하지 않고 메타 옵션도 명시적으로 모두 false.
-            # 일부 scrcpy 버전에서 raw_stream 처리가 빠질 수 있어 안전망으로 추가.
             "raw_stream=true",
-            "send_dummy_byte=false",
-            "send_device_meta=false",
-            "send_codec_meta=false",
-            "send_frame_meta=false",
         ]
         inner = (
             f"CLASSPATH={DEVICE_JAR_PATH} "
@@ -382,11 +382,15 @@ class ScrcpyServerBackend:
         return [ADB_PATH, "-s", self.serial, "shell", inner]
 
     async def _spawn_server(self) -> bool:
-        """server 프로세스를 백그라운드로 spawn. stderr는 진단용으로 캡처."""
+        """server 프로세스를 백그라운드로 spawn. stdout/stderr 모두 진단용으로 캡처.
+
+        scrcpy의 app_process는 일부 로그를 stdout, 일부를 stderr로 출력하므로
+        한 쪽만 받으면 단서를 놓칠 수 있음.
+        """
         try:
             self._server_proc = subprocess.Popen(
                 self._build_server_cmd(),
-                stdout=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 stdin=subprocess.DEVNULL,
                 creationflags=_NO_WINDOW,
@@ -396,10 +400,28 @@ class ScrcpyServerBackend:
             logger.warning("scrcpy server spawn failed (%s): %s", self.serial, e)
             return False
 
-        # stderr를 백그라운드로 drain (pipe 막힘 방지 + 진단용).
+        # stdout/stderr를 각각 백그라운드로 drain (pipe 막힘 방지 + 진단용).
         import threading
+        threading.Thread(target=self._drain_stdout, daemon=True).start()
         threading.Thread(target=self._drain_stderr, daemon=True).start()
         return True
+
+    def _drain_stdout(self) -> None:
+        proc = self._server_proc
+        if not proc or not proc.stdout:
+            return
+        if not hasattr(self, "_stdout_tail"):
+            self._stdout_tail = bytearray()
+        try:
+            while True:
+                chunk = proc.stdout.read(4096)
+                if not chunk:
+                    break
+                self._stdout_tail.extend(chunk)
+                if len(self._stdout_tail) > 4096:
+                    del self._stdout_tail[:-2048]
+        except Exception:
+            pass
 
     def _drain_stderr(self) -> None:
         proc = self._server_proc
@@ -416,15 +438,21 @@ class ScrcpyServerBackend:
         except Exception:
             pass
 
-    def _stderr_tail_str(self) -> str:
-        if not self._stderr_tail:
+    def _tail_str(self, buf: bytearray) -> str:
+        if not buf:
             return ""
         try:
-            raw = bytes(self._stderr_tail[-1024:])
+            raw = bytes(buf[-1024:])
             text = raw.decode("utf-8", errors="replace").strip()
             return " | ".join(line.strip() for line in text.splitlines() if line.strip())
         except Exception:
             return ""
+
+    def _stderr_tail_str(self) -> str:
+        return self._tail_str(self._stderr_tail)
+
+    def _stdout_tail_str(self) -> str:
+        return self._tail_str(getattr(self, "_stdout_tail", bytearray()))
 
     async def _connect_socket(self) -> bool:
         """server.jar의 listen이 준비될 때까지 backoff로 connect 재시도."""
