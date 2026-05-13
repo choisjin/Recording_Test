@@ -225,10 +225,12 @@ class ScrcpyServerBackend:
         except (asyncio.TimeoutError, StopAsyncIteration, Exception) as e:
             ff_err = self._pipe.stderr_tail() if self._pipe else ""
             sr_err = self._stderr_tail_str()
+            fwd_bytes = getattr(self, "_forward_total_bytes", 0)
             logger.info(
                 "scrcpy first-frame check failed (serial=%s display=%s): %s "
-                "server_err=%r ffmpeg_err=%r",
-                self.serial, self.logical_id, type(e).__name__, sr_err, ff_err,
+                "fwd_bytes=%d server_err=%r ffmpeg_err=%r",
+                self.serial, self.logical_id, type(e).__name__,
+                fwd_bytes, sr_err, ff_err,
             )
             await self.close()
             return False
@@ -350,7 +352,8 @@ class ScrcpyServerBackend:
         # shell 명령 한 줄로 합쳐서 전달 (CLASSPATH 환경변수 prefix).
         opts = [
             f"scid={self.scid}",
-            "log_level=error",
+            # 진단을 위해 일시적으로 debug. 안정화 후 error로 환원.
+            "log_level=debug",
             "video=true",
             "audio=false",
             "video_codec=h264",
@@ -363,7 +366,13 @@ class ScrcpyServerBackend:
             "cleanup=true",
             "power_on=false",
             "tunnel_forward=true",
+            # raw_stream만 의존하지 않고 메타 옵션도 명시적으로 모두 false.
+            # 일부 scrcpy 버전에서 raw_stream 처리가 빠질 수 있어 안전망으로 추가.
             "raw_stream=true",
+            "send_dummy_byte=false",
+            "send_device_meta=false",
+            "send_codec_meta=false",
+            "send_frame_meta=false",
         ]
         inner = (
             f"CLASSPATH={DEVICE_JAR_PATH} "
@@ -455,7 +464,13 @@ class ScrcpyServerBackend:
         return True
 
     async def _forward_socket_to_ffmpeg(self) -> None:
-        """TCP socket의 raw H.264 데이터를 ffmpeg stdin으로 전달."""
+        """TCP socket의 raw H.264 데이터를 ffmpeg stdin으로 전달.
+
+        byte counter를 보관해 try_start 실패 시 진단에 사용:
+          * total_bytes == 0 → server가 데이터를 안 보냄 (raw_stream 옵션 미적용 등)
+          * total_bytes 있는데 ffmpeg가 stream 못 찾음 → 데이터 포맷 문제 (prefix bytes 등)
+        """
+        self._forward_total_bytes = 0
         if not self._reader or not self._pipe:
             return
         stdin = self._pipe.ffmpeg_stdin
@@ -466,6 +481,7 @@ class ScrcpyServerBackend:
                 chunk = await self._reader.read(65536)
                 if not chunk:
                     break
+                self._forward_total_bytes += len(chunk)
                 try:
                     stdin.write(chunk)
                     await stdin.drain()
@@ -476,7 +492,6 @@ class ScrcpyServerBackend:
         except Exception as e:
             logger.debug("scrcpy forward task error: %s", e)
         finally:
-            # ffmpeg stdin을 닫아 EOF 알림 → ffmpeg가 깔끔히 종료.
             try:
                 stdin.close()
             except Exception:

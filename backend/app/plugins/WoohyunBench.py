@@ -232,13 +232,20 @@ class WoohyunBench:
             if isinstance(fd_mode, str):
                 fd_mode = fd_mode.strip().lower() in ("1", "true", "yes", "on")
             self._send_canfd_raw(cid, payload, bool(fd_mode))
-            return f"OK: SendCanFd ID=0x{cid:X} ({len(payload)}B, fd={'on' if fd_mode else 'off'})"
+            return (f"OK: SendCanFd ID=0x{cid:X} ({len(payload)}B, "
+                    f"fd={'on' if fd_mode else 'off'}, x5@200ms)")
         except Exception as e:
             logger.error("WoohyunBench SendCanFd failed: %s", e)
             return f"FAIL: SendCanFd: {e}"
 
-    def _send_canfd_raw(self, can_id: int, payload: bytearray, fd_mode: bool) -> None:
-        """legacy CCIC_BENCH._canfd_send 패킷 구조 그대로 송신."""
+    def _send_canfd_raw(self, can_id: int, payload: bytearray, fd_mode: bool,
+                        repeat: int = 5, interval_sec: float = 0.2) -> None:
+        """벤치 UDP_CANFD_SEND과 동일한 포맷으로 raw CAN FD 프레임 송신.
+
+        포맷: HEADER(6) + LEN(2) + CAN_ID(4) + frame_byte(1) + payload
+              ※ frame_byte 뒤에 reserved 바이트는 **없다** (벤치 UDP_CANFD 라이브러리 기준).
+        주기 송신: 벤치/ECU가 CAN 신호를 안정적으로 잡도록 5회 × 200ms 반복.
+        """
         if not self._sock:
             raise RuntimeError("Not connected")
 
@@ -251,15 +258,17 @@ class WoohyunBench:
             (can_id >> 8)  & 0xFF,
              can_id        & 0xFF,
         ]
-        # legacy와 동일: frame byte 뒤에 reserved 0x00 1바이트 포함
-        data = can_id_bytes + [can_frame, 0x00] + list(payload)
+        data = can_id_bytes + [can_frame] + list(payload)
         length_bytes = [(len(data) >> 8) & 0xFF, len(data) & 0xFF]
         packet = bytearray(CANFD_SEND_PACKET_HEADER + length_bytes + data)
-
-        self._sock.sendto(packet, (self._host, self._udp_port))
         hex_str = ", ".join(hex(b) for b in packet)
-        logger.info("WoohyunBench CANFD TX (ID=0x%X, payload=%dB): [%s]",
-                    can_id, len(payload), hex_str)
+
+        for i in range(max(1, repeat)):
+            self._sock.sendto(packet, (self._host, self._udp_port))
+            logger.info("WoohyunBench CANFD TX [%d/%d] (ID=0x%X, payload=%dB): [%s]",
+                        i + 1, repeat, can_id, len(payload), hex_str)
+            if i + 1 < repeat:
+                time.sleep(interval_sec)
 
     @staticmethod
     def _parse_can_id(can_id) -> int:
