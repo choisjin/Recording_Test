@@ -12,7 +12,11 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from .capture import AdbScreenrecordBackend, detect_ffmpeg
+# 주의: build_dist.py가 배포 시 모든 __init__.py를 빈 파일로 덮어쓰므로
+# `from .capture import ...` 형태는 ImportError를 일으킨다. 반드시 서브모듈을
+# 직접 명시해서 import해야 .pyd 컴파일 배포본에서도 정상 동작한다.
+from .capture.adb_screenrecord import AdbScreenrecordBackend
+from .capture.ffmpeg_runtime import detect_ffmpeg
 
 logger = logging.getLogger(__name__)
 

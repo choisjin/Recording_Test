@@ -39,7 +39,8 @@ from pathlib import Path
 from .routers import compositor as compositor_router, device, dlt as dlt_router, results, scenario, serial_log as serial_log_router, settings, webcam
 from .dependencies import adb_service, device_manager, playback_service, recording_service, monitor_client
 from .services.adb_service import resolve_sf_display_id, resolve_input_display_id
-from .services.capture import log_runtime_status as _log_capture_runtime_status
+# build_dist.py가 배포 시 __init__.py를 빈 파일로 만들기 때문에 서브모듈 직접 import.
+from .services.capture.ffmpeg_runtime import log_runtime_status as _log_capture_runtime_status
 from .models.scenario import ScenarioResult
 from .services.playback_service import RESULTS_DIR as _RESULTS_DIR
 
