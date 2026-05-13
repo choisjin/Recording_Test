@@ -133,10 +133,11 @@ class FFmpegMjpegPipe:
                 # 첫 frame을 ffmpeg 내부 buffer에 묶어두지 않고 곧장 내보낸다. wake-up
                 # latency를 100~200ms 수준으로 단축하는 데 효과적.
                 "-flush_packets", "1",
-                # 손상된 frame이 있어도 무시하고 계속 진행. idle 후 wake-up 시 H.264
-                # stream에 작은 갭이나 corruption이 있어도 stream이 끊기지 않게 한다.
-                "-err_detect", "ignore_err",
                 "-q:v", str(quality)]
+        # 주의: 한 때 `-err_detect ignore_err`를 넣었었는데, 빠른 화면 변화 중 corrupt
+        # frame이 발생하면 MJPEG 인코더가 stuck 상태에 빠져 stream이 1fps로 떨어지고
+        # 복구가 안 되는 케이스가 발생. 차라리 에러 시 ffmpeg가 정상 종료(EOF)되어 우리
+        # 백엔드가 segment restart 또는 폴백 분기를 타도록 두는 게 안전하다.
         if extra_out:
             cmd += extra_out
         cmd.append("pipe:1")

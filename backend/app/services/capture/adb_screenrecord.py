@@ -208,20 +208,18 @@ class AdbScreenrecordBackend:
         return True
 
     async def stream_jpeg(self) -> AsyncIterator[bytes]:
-        """JPEG 프레임 yield.
+        """JPEG 프레임 yield (producer-consumer 큐 패턴).
 
-        동작 원칙:
-            * idle (화면 정적 → H.264 인코더가 frame 출력 안 함) 시에도 **segment를
-              강제 재시작하지 않는다**. restart는 화면 멈춤으로 보여 사용자 입장에서
-              "끊김/재연결"로 인식되기 때문.
-            * idle 동안에는 마지막 frame을 keep-alive 간격으로 재송신해 WS 생존 유지.
-              사용자 입장에서는 화면이 그냥 정지된 상태로 보임.
-            * 사용자가 화면을 만져서 H.264 인코더가 wake-up하면 wait_for가 즉시 풀려
-              새 frame 흐름이 자동 재개됨 (SoC wake-up latency만큼만 지연).
-            * screenrecord --time-limit 만료(EOF)는 어쩔 수 없이 segment 재시작.
-              175초마다 1회라 사용자 거의 못 느낌.
-
-        try_start()가 True를 반환했을 때만 호출 가능.
+        설계 핵심:
+            * frame iterator를 **별도 producer task에서 돌린다.** main loop는 queue에서
+              꺼내기만 함 → queue.get이 timeout돼도 iterator generator state는 무사.
+              (이전 `asyncio.wait_for(self._iter.__anext__(), ...)` 패턴은 timeout 시
+              generator를 cancel해 state가 망가지고 stream이 실제 죽었는지 감지를 못해
+              "fps 1로 줄어들고 복구 안 됨" 증상을 만들었다.)
+            * idle 시 segment를 강제 재시작하지 않음. 마지막 frame을 keep-alive로
+              재송신해 WS 생존 유지 + 사용자 화면은 자연스러운 정지 상태.
+            * stream이 진짜로 끝나면 producer가 EOF 센티넬을 큐에 넣어 명확히 신호.
+            * screenrecord --time-limit 만료(EOF)만 segment 재시작.
         """
         first = getattr(self, "_first_frame", None)
         last_frame: Optional[bytes] = None
@@ -230,41 +228,63 @@ class AdbScreenrecordBackend:
             last_frame = first
             yield first
 
+        EOF_SENTINEL: object = object()
+
         while not self._closed:
+            queue: asyncio.Queue = asyncio.Queue(maxsize=2)
+
+            async def _producer(it):
+                """ffmpeg pipe iterator를 소비해 큐에 적재. cancel 시 EOF 미통보."""
+                try:
+                    async for f in it:
+                        if self._closed:
+                            return
+                        await queue.put(f)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    logger.debug("screenrecord producer error: %s", e)
+                # 자연 종료(ffmpeg EOF 등) — main loop가 알 수 있도록 sentinel 전송.
+                try:
+                    await queue.put(EOF_SENTINEL)
+                except Exception:
+                    pass
+
+            producer_task = asyncio.create_task(_producer(self._iter))
+
             segment_had_frames = last_frame is not None
             try:
-                while True:
+                while not self._closed:
                     try:
-                        frame = await asyncio.wait_for(
-                            self._iter.__anext__(),
-                            timeout=_IDLE_FRAME_TIMEOUT,
+                        item = await asyncio.wait_for(
+                            queue.get(), timeout=_IDLE_FRAME_TIMEOUT,
                         )
                     except asyncio.TimeoutError:
-                        # idle — restart 하지 않고 마지막 frame을 keep-alive로 재송신.
-                        # WS 끊김 방지 + 사용자 입장에서 화면 정지 상태가 자연스럽게
-                        # 유지된다. wait_for로 돌아가서 다음 timeout/frame 대기.
+                        # idle — keep-alive. producer는 그대로 살아있어 generator
+                        # state 영향 없음.
                         if last_frame is not None:
                             yield last_frame
                         continue
-                    except StopAsyncIteration:
-                        # ffmpeg/screenrecord가 자연 종료 (time-limit 만료 또는 stream
-                        # 에러). 이 케이스만 segment 재시작.
-                        break
+
+                    if item is EOF_SENTINEL:
+                        break  # stream 자연 종료 → segment restart 분기로
                     segment_had_frames = True
-                    last_frame = frame
-                    yield frame
-                    if self._closed:
-                        return
+                    last_frame = item  # type: ignore[assignment]
+                    yield item
             except (asyncio.CancelledError, GeneratorExit):
+                producer_task.cancel()
                 raise
-            except Exception as e:
-                logger.debug("screenrecord stream iteration error: %s", e)
+            finally:
+                producer_task.cancel()
+                try:
+                    await producer_task
+                except (asyncio.CancelledError, Exception):
+                    pass
 
             if self._closed:
                 return
 
-            # spawn 직후 frame을 한 개도 못 받고 종료된 경우 — 디바이스/인코더가
-            # 비정상 상태일 가능성. 폴백으로 양보.
+            # spawn 직후 frame을 한 개도 못 받고 종료 — 인코더 비정상. 폴백 양보.
             if not segment_had_frames:
                 logger.info(
                     "screenrecord segment produced no frames — giving up (serial=%s)",
