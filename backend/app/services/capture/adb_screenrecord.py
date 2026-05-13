@@ -124,18 +124,22 @@ class AdbScreenrecordBackend:
             self._iter = self._pipe.__aiter__()
             first = await asyncio.wait_for(self._iter.__anext__(), timeout=first_frame_timeout)
         except (asyncio.TimeoutError, StopAsyncIteration, Exception) as e:
-            # 진단: screenrecord 측 stderr와 종료 상태를 로그로 노출.
-            # 다음 원인 분기:
-            #   * exit code != 0 + stderr 있음 → 디바이스 측 거부 (옵션/권한)
-            #   * exit code = None + stderr 비어있음 → ffmpeg가 데이터를 못 받음
-            #   * "no such option" / "Unknown option" → screenrecord가 옵션 미지원
-            stderr_tail = self._read_stderr_tail()
+            # 진단: screenrecord/ffmpeg 양쪽 stderr와 종료 상태를 같이 로그.
+            # 해석 가이드:
+            #   * screenrecord_rc != None + screenrecord_err 있음
+            #         → 디바이스가 명령을 거부 (옵션/권한 문제)
+            #   * screenrecord_rc = None + screenrecord_err 비어있음 + ffmpeg_err 있음
+            #         → ffmpeg가 데이터를 받았지만 분석 실패 (잘못된 H.264 등)
+            #   * 양쪽 모두 비어있고 timeout만 발생
+            #         → screenrecord가 stdout으로 데이터를 보내지 않음 (정적 화면 등)
+            sr_err = self._read_stderr_tail()
+            ff_err = self._pipe.stderr_tail() if self._pipe else ""
             rc = self._proc.poll() if self._proc else None
             logger.info(
                 "screenrecord first-frame check failed (serial=%s, display=%s): %s "
-                "screenrecord_rc=%s stderr=%r",
+                "screenrecord_rc=%s screenrecord_err=%r ffmpeg_err=%r",
                 self.serial, self.logical_id, type(e).__name__,
-                rc, stderr_tail,
+                rc, sr_err, ff_err,
             )
             await self._close_pipe()
             return False

@@ -62,6 +62,13 @@ class FFmpegMjpegPipe:
         self._input_proc = input_proc  # 있으면 close 시 함께 종료
         self._buf = bytearray()
         self._closed = False
+        # ffmpeg stderr는 평소엔 무시되지만 첫 프레임이 안 올 때 진단을 위해
+        # 백그라운드로 빨아들여 tail로 보관한다 (파이프 가득 차서 ffmpeg가
+        # 블록되는 것도 함께 예방).
+        self._stderr_tail: bytearray = bytearray()
+        self._stderr_task: Optional[asyncio.Task] = None
+        if ffmpeg_proc.stderr is not None:
+            self._stderr_task = asyncio.create_task(self._drain_stderr())
 
     # ------------------------------------------------------------------
     # Factories
@@ -97,21 +104,32 @@ class FFmpegMjpegPipe:
         if input_proc.stdout is None:
             raise RuntimeError("input_proc.stdout is None — spawn it with stdout=subprocess.PIPE")
 
+        # 입력 옵션 주의사항 (실측 기반):
+        #   * "-fflags nobuffer -flags low_delay" 는 raw H.264 elementary stream에서
+        #     demuxer의 NAL unit 버퍼링까지 꺼버려 frame 분리가 실패한다 (frame=0).
+        #     실시간 latency가 중요하더라도 raw H.264 입력에는 절대 쓰지 말 것.
+        #   * "-probesize 32 -analyzeduration 0" 같은 극단값도 SPS/PPS 파싱 실패.
+        #   * 적절한 값: probesize 64KB + analyzeduration 0.5초 면 IDR keyframe 안에
+        #     충분히 들어오면서 첫 프레임까지 latency도 짧다.
         cmd: list[str] = [
             ff, "-hide_banner", "-loglevel", "error",
-            "-fflags", "nobuffer", "-flags", "low_delay",
-            # raw H.264 같은 elementary stream에서 ffmpeg 기본 분석 시간이
-            # 첫 프레임 latency를 크게 늘린다 → 최소화.
-            "-probesize", "32",
-            "-analyzeduration", "0",
-            # screenrecord stream에는 오디오가 없는데 ffmpeg는 기본적으로
-            # 오디오 stream을 탐색하려 시간을 쓰므로 명시적으로 차단.
+            "-probesize", "65536",
+            "-analyzeduration", "500000",
+            # screenrecord stream에는 오디오가 없지만 ffmpeg는 기본적으로
+            # 오디오 stream을 탐색하므로 명시적으로 차단.
             "-an",
         ]
         if extra_in:
             cmd += extra_in
         cmd += ["-f", input_fmt, "-i", "pipe:0",
-                "-f", "mjpeg", "-q:v", str(quality)]
+                "-f", "mjpeg",
+                # Android screenrecord의 H.264는 TV-range YUV(yuv420p, limited 16-235)인데
+                # MJPEG 표준은 JPEG-range YUV(yuvj420p, full 0-255)다. 명시하지 않으면
+                # "Non full-range YUV is non-standard" 에러로 인코더 초기화가 실패한다.
+                "-pix_fmt", "yuvj420p",
+                # 색상 범위(tv→pc) 변환을 명시적으로 처리해 swscaler의 deprecated 경고 제거.
+                "-vf", "scale=in_range=tv:out_range=pc",
+                "-q:v", str(quality)]
         if extra_out:
             cmd += extra_out
         cmd.append("pipe:1")
@@ -120,7 +138,9 @@ class FFmpegMjpegPipe:
             *cmd,
             stdin=input_proc.stdout,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
+            # stderr를 잡아 진단에 활용. 평소엔 버려지지만 첫 프레임이 안 올 때
+            # 마지막 메시지로 원인을 식별할 수 있다 (예: Invalid data, no IDR 등).
+            stderr=asyncio.subprocess.PIPE,
             creationflags=_NO_WINDOW,
         )
         # input_proc.stdout fd는 ffmpeg 자식에 상속됐으므로 부모 프로세스에서는
@@ -155,7 +175,7 @@ class FFmpegMjpegPipe:
             *cmd,
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
             creationflags=_NO_WINDOW,
         )
         return cls(ffproc)
@@ -166,6 +186,34 @@ class FFmpegMjpegPipe:
 
     def is_alive(self) -> bool:
         return not self._closed and self._ff.returncode is None
+
+    async def _drain_stderr(self) -> None:
+        """ffmpeg stderr를 끝까지 빨아들여 tail에 보관.
+        파이프가 가득 차 ffmpeg가 멈추는 것을 막기 위한 필수 동작."""
+        if self._ff.stderr is None:
+            return
+        try:
+            while True:
+                chunk = await self._ff.stderr.read(4096)
+                if not chunk:
+                    break
+                self._stderr_tail.extend(chunk)
+                # 최근 4KB만 유지.
+                if len(self._stderr_tail) > 8192:
+                    del self._stderr_tail[:-4096]
+        except Exception:
+            pass
+
+    def stderr_tail(self, max_chars: int = 512) -> str:
+        """현재까지 수집된 ffmpeg stderr를 사람이 읽기 좋게 정리해 반환."""
+        if not self._stderr_tail:
+            return ""
+        try:
+            raw = bytes(self._stderr_tail[-max_chars:])
+            text = raw.decode("utf-8", errors="replace").strip()
+            return " | ".join(line.strip() for line in text.splitlines() if line.strip())
+        except Exception:
+            return repr(bytes(self._stderr_tail[-max_chars:]))
 
     async def __aiter__(self) -> AsyncIterator[bytes]:
         """JPEG 프레임을 SOI/EOI 마커로 잘라 yield. ffmpeg가 종료하면 자연 정지."""
