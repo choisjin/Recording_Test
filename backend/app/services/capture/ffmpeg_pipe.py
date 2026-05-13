@@ -129,6 +129,13 @@ class FFmpegMjpegPipe:
                 "-pix_fmt", "yuvj420p",
                 # 색상 범위(tv→pc) 변환을 명시적으로 처리해 swscaler의 deprecated 경고 제거.
                 "-vf", "scale=in_range=tv:out_range=pc",
+                # 패킷이 들어오면 muxer가 즉시 stdout으로 flush — idle 후 wake-up 시
+                # 첫 frame을 ffmpeg 내부 buffer에 묶어두지 않고 곧장 내보낸다. wake-up
+                # latency를 100~200ms 수준으로 단축하는 데 효과적.
+                "-flush_packets", "1",
+                # 손상된 frame이 있어도 무시하고 계속 진행. idle 후 wake-up 시 H.264
+                # stream에 작은 갭이나 corruption이 있어도 stream이 끊기지 않게 한다.
+                "-err_detect", "ignore_err",
                 "-q:v", str(quality)]
         if extra_out:
             cmd += extra_out

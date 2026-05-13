@@ -41,6 +41,14 @@ _SEGMENT_SECONDS = 175
 # 한번 성공한 뒤로는 segment 재시작에만 영향 없음.
 _FIRST_FRAME_TIMEOUT = 5.0
 
+# idle 상태에서 keep-alive 재송신 간격 (초).
+# 화면이 정적이면 H.264 인코더가 새 frame 출력을 멈춘다. 이때 WebSocket에 데이터가
+# 전혀 안 가면 일부 클라이언트/proxy가 "끊김"으로 판단할 수 있어, 이 간격으로 마지막
+# frame을 다시 송신해 WS 생존을 유지한다 (실제 화면은 정지 상태이므로 시각적으로 동일).
+# 사용자가 화면을 만져 H.264 frame이 다시 흐르기 시작하면 wait_for가 즉시 풀려
+# 자동 재개되므로 wake-up latency는 SoC 인코더 wake-up 시간만큼만.
+_IDLE_FRAME_TIMEOUT = 1.0
+
 # 재시작 사이 잠깐 쉼 (디바이스 인코더 자원 해제 시간 확보).
 # 50ms는 빠른 재시작에 좋지만 일부 SoC는 codec instance release에 더 오래 걸려
 # 다음 spawn이 frame을 못 받는다. 500ms 정도면 대부분 환경에서 안전.
@@ -200,21 +208,50 @@ class AdbScreenrecordBackend:
         return True
 
     async def stream_jpeg(self) -> AsyncIterator[bytes]:
-        """JPEG 프레임 yield. screenrecord --time-limit 만료 시 자동 재시작.
+        """JPEG 프레임 yield.
 
-        try_start()가 True를 반환했을 때만 호출해야 한다 (첫 프레임이 _first_frame에
-        대기하고 있다고 가정).
+        동작 원칙:
+            * idle (화면 정적 → H.264 인코더가 frame 출력 안 함) 시에도 **segment를
+              강제 재시작하지 않는다**. restart는 화면 멈춤으로 보여 사용자 입장에서
+              "끊김/재연결"로 인식되기 때문.
+            * idle 동안에는 마지막 frame을 keep-alive 간격으로 재송신해 WS 생존 유지.
+              사용자 입장에서는 화면이 그냥 정지된 상태로 보임.
+            * 사용자가 화면을 만져서 H.264 인코더가 wake-up하면 wait_for가 즉시 풀려
+              새 frame 흐름이 자동 재개됨 (SoC wake-up latency만큼만 지연).
+            * screenrecord --time-limit 만료(EOF)는 어쩔 수 없이 segment 재시작.
+              175초마다 1회라 사용자 거의 못 느낌.
+
+        try_start()가 True를 반환했을 때만 호출 가능.
         """
-        # try_start()에서 받아둔 첫 프레임을 가장 먼저 emit.
         first = getattr(self, "_first_frame", None)
+        last_frame: Optional[bytes] = None
         if first is not None:
             self._first_frame = None
+            last_frame = first
             yield first
 
-        # 현재 iterator 소진 (현 segment의 나머지 프레임)
         while not self._closed:
+            segment_had_frames = last_frame is not None
             try:
-                async for frame in self._iter_remaining():
+                while True:
+                    try:
+                        frame = await asyncio.wait_for(
+                            self._iter.__anext__(),
+                            timeout=_IDLE_FRAME_TIMEOUT,
+                        )
+                    except asyncio.TimeoutError:
+                        # idle — restart 하지 않고 마지막 frame을 keep-alive로 재송신.
+                        # WS 끊김 방지 + 사용자 입장에서 화면 정지 상태가 자연스럽게
+                        # 유지된다. wait_for로 돌아가서 다음 timeout/frame 대기.
+                        if last_frame is not None:
+                            yield last_frame
+                        continue
+                    except StopAsyncIteration:
+                        # ffmpeg/screenrecord가 자연 종료 (time-limit 만료 또는 stream
+                        # 에러). 이 케이스만 segment 재시작.
+                        break
+                    segment_had_frames = True
+                    last_frame = frame
                     yield frame
                     if self._closed:
                         return
@@ -226,7 +263,19 @@ class AdbScreenrecordBackend:
             if self._closed:
                 return
 
-            # segment 만료 또는 비정상 EOF → 재시작
+            # spawn 직후 frame을 한 개도 못 받고 종료된 경우 — 디바이스/인코더가
+            # 비정상 상태일 가능성. 폴백으로 양보.
+            if not segment_had_frames:
+                logger.info(
+                    "screenrecord segment produced no frames — giving up (serial=%s)",
+                    self.serial,
+                )
+                return
+
+            # segment 만료 시 재시작 (사용자가 거의 느끼지 못하는 175초 주기).
+            logger.debug(
+                "screenrecord segment ended — restarting (serial=%s)", self.serial,
+            )
             await self._close_pipe()
             await asyncio.sleep(_RESTART_GAP)
             if self._closed:
@@ -235,17 +284,6 @@ class AdbScreenrecordBackend:
                 logger.info("screenrecord restart failed (serial=%s) — giving up", self.serial)
                 return
             self._iter = self._pipe.__aiter__()
-
-    async def _iter_remaining(self) -> AsyncIterator[bytes]:
-        """현재 ffmpeg pipe의 남은 프레임을 소진. StopAsyncIteration까지."""
-        if self._pipe is None or not hasattr(self, "_iter"):
-            return
-        while True:
-            try:
-                frame = await self._iter.__anext__()
-            except StopAsyncIteration:
-                return
-            yield frame
 
     def _drain_stderr(self) -> None:
         """screenrecord stderr를 끝까지 읽어 tail에 보관 (별도 스레드에서 호출).
