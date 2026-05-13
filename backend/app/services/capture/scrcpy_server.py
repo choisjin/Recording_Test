@@ -399,6 +399,9 @@ class ScrcpyServerBackend:
           * crop=-, codec_options=-, encoder_name=-: "기본값" sentinel
           * power_off_on_close=false: 우리 close 시 디바이스 화면 꺼지지 않게
         """
+        # scrcpy v1.25는 crop/codec_options/encoder_name 옵션에 "-" sentinel을 받지 않는다.
+        # ("Crop must contains 4 values separated by colons: -" 에러).
+        # cli도 user 미명시 시 이들을 아예 안 보내므로 우리도 옵션 자체를 생략.
         opts = [
             "log_level=info",
             f"bit_rate={self.bitrate}",
@@ -406,13 +409,10 @@ class ScrcpyServerBackend:
             f"max_fps={self.max_fps}",
             "lock_video_orientation=-1",
             "tunnel_forward=false",
-            "crop=-",
             "control=false",
             f"display_id={self.logical_id}",
             "show_touches=false",
             "stay_awake=false",
-            "codec_options=-",
-            "encoder_name=-",
             "power_off_on_close=false",
             # v1.20+ 옵션: prefix bytes(dummy 1 + device_meta 64) + frame_meta(12/frame)
             # 모두 비활성화. ffmpeg가 raw H.264 NAL stream을 바로 디코딩 가능.
