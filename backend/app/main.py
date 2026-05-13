@@ -664,16 +664,22 @@ async def websocket_screen_mirror(websocket: WebSocket):
                     #   * 폴더블처럼 "일부만" inactive면 그건 신뢰 가능한 정보 → 차단
                     #   * GVM/IVI 환경처럼 "전체" inactive면 dumpsys 정보가 신뢰 불가
                     #     (실제로는 active인데 viewport API가 false 반환). 무시하고 시도.
-                    _displays = (
-                        dev.info.get("displays", []) if (dev and dev.info) else []
-                    )
-                    _all_inactive = bool(_displays) and all(
-                        d.get("is_active") is False for d in _displays
-                    )
+                    # Cython 호환성을 위해 generator expression 대신 명시적 loop 사용.
+                    if dev and dev.info:
+                        _displays = dev.info.get("displays", [])
+                    else:
+                        _displays = []
+                    _all_inactive = False
+                    if _displays:
+                        _all_inactive = True
+                        for _d in _displays:
+                            if _d.get("is_active") is not False:
+                                _all_inactive = False
+                                break
                     _is_active = True
                     if _displays and not _all_inactive:
-                        for d in _displays:
-                            if d.get("id") == adb_display_id and d.get("is_active") is False:
+                        for _d in _displays:
+                            if _d.get("id") == adb_display_id and _d.get("is_active") is False:
                                 _is_active = False
                                 break
                     _logical_id = resolve_input_display_id(
@@ -686,13 +692,19 @@ async def websocket_screen_mirror(websocket: WebSocket):
                     _h264_disabled = adb_service.is_h264_disabled(adb_serial)
 
                     if not adb_dispatch_logged:
+                        # list comprehension도 Cython 호환을 위해 명시적 loop로.
+                        _disp_summary = []
+                        for _d in _displays:
+                            _disp_summary.append({
+                                "id": _d.get("id"),
+                                "active": _d.get("is_active"),
+                                "lid": _d.get("logical_id"),
+                            })
                         logger.info(
                             "ADB mirror dispatch: serial=%s screen_type=%r display_id=%s "
                             "logical_id=%s is_active=%s all_inactive_override=%s displays=%s",
                             adb_serial, screen_type, adb_display_id, _logical_id,
-                            _is_active, _all_inactive,
-                            [{"id": d.get("id"), "active": d.get("is_active"),
-                              "lid": d.get("logical_id")} for d in _displays],
+                            _is_active, _all_inactive, _disp_summary,
                         )
                         adb_dispatch_logged = True
 
@@ -759,7 +771,7 @@ async def websocket_screen_mirror(websocket: WebSocket):
                             # scrcpy도 이미 실패 상태(_now >= scrcpy_retry_after 였는데
                             # 위에서 다시 cooldown 갱신된 상태)이고 GVM 환경으로 추정되면
                             # H.264 영구 비활성으로 등록 → 다음 시도 즉시 screencap 폴백.
-                            if _all_inactive_override and scrcpy_retry_after > _now:
+                            if _all_inactive and scrcpy_retry_after > _now:
                                 adb_service.mark_h264_disabled(adb_serial)
                                 _h264_disabled = True
 
