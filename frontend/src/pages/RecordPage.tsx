@@ -574,6 +574,7 @@ export default function RecordPage() {
     // 백엔드에서 원본 해상도 스크린샷 직접 가져오기 (모달용)
     // win_* 스텝 등 특정 디바이스를 강제하고 싶으면 overrideDeviceId 전달.
     const targetId = overrideDeviceId || screenshotDeviceId;
+    const isWinTarget = targetId === 'WinControl';
     if (targetId) {
       try {
         const dev = primaryDevices.find(d => d.id === targetId)
@@ -584,7 +585,26 @@ export default function RecordPage() {
           const fmt = res.data.format || 'png';
           return `data:image/${fmt};base64,${res.data.image}`;
         }
-      } catch { /* 실패 시 아래 폴백 */ }
+        // WinControl 은 attached=false 또는 일시적 캡처 실패 시 빈 이미지를 반환.
+        // 다른 디바이스의 canvasRef 폴백으로 새지 않도록 즉시 wcCanvas 로 폴백.
+        if (isWinTarget) {
+          const wcCv = wcCanvasRef.current;
+          if (wcCv && wcCv.width > 0 && wcCv.height > 0) {
+            try { return wcCv.toDataURL('image/png'); } catch { /* CORS 등 */ }
+          }
+          return '';  // 명확히 실패 — 호출자가 에러 메시지 표시
+        }
+      } catch {
+        // WinControl 명시적 요청인데 백엔드 에러 — ADB 폴백 금지 (잘못된 디바이스 화면 저장 방지).
+        if (isWinTarget) {
+          const wcCv = wcCanvasRef.current;
+          if (wcCv && wcCv.width > 0 && wcCv.height > 0) {
+            try { return wcCv.toDataURL('image/png'); } catch { /* */ }
+          }
+          return '';
+        }
+        /* 그 외 디바이스는 아래 폴백 진행 */
+      }
     }
 
     // 폴백: 메인 캔버스에서 캡처 (저해상도일 수 있음)
@@ -1796,10 +1816,21 @@ export default function RecordPage() {
     // 현재 화면 스냅샷만 (저장은 사용자가 크롭 확정 시)
     const step = steps[stepIdx];
     const targetDevId = captureDeviceIdForStep(step);
-    captureScreenshotRef.current = await snapshotScreenshot(targetDevId);
+    const snap = await snapshotScreenshot(targetDevId);
+    if (!snap) {
+      // 캡처 실패 — 빈 모달을 열지 말고 사용자에게 원인을 명확히 알린다.
+      // 대표적 케이스: WinControl 이 attach 되지 않음/lost.
+      if (targetDevId === 'WinControl') {
+        message.error(t('record.winControlNoAttach'));
+      } else {
+        message.error(t('record.screenshotFailed'));
+      }
+      return;
+    }
+    captureScreenshotRef.current = snap;
     setCaptureStepIndex(stepIdx);
     setCaptureModalOpen(true);
-  }, [snapshotScreenshot, steps, captureDeviceIdForStep]);
+  }, [snapshotScreenshot, steps, captureDeviceIdForStep, t]);
 
   // 이미지 터치 모달 열기 — 현재 라이브 화면 스냅샷을 캔버스에 띄워 사용자가 크롭하게 함.
   // targetDeviceId 가 주어지면 그 디바이스 화면을 캡처/타깃으로 사용 (WinControl 패널 등).
@@ -2100,10 +2131,13 @@ export default function RecordPage() {
       }
       const isWin = stepForCapture?.type?.startsWith('win_');
       const screenTypeArg = isWin ? undefined : ((isScreenHkmc || isScreenICAS || hasMultiDisplay) ? screenType : undefined);
+      // 매칭크롭이면 백엔드가 step.compare_mode='match_crop' 을 확정 저장하도록 명시 전달.
+      // (sync-steps 가 누락되거나 타이밍 이슈로 in-memory 가 갱신 안 된 경우 대비.)
+      const compareModeArg = stepForCapture?.compare_mode === 'match_crop' ? 'match_crop' : undefined;
       try {
         const res = await scenarioApi.saveExpectedImage(
           scenarioName, captureStepIndex, modalImage, crop,
-          undefined, undefined, undefined,
+          compareModeArg, undefined, undefined,
           screenTypeArg,
         );
         setSteps(prev => prev.map((s, i) => i === captureStepIndex ? {

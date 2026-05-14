@@ -211,7 +211,7 @@ class SaveExpectedImageRequest(BaseModel):
     step_index: int  # 0-based
     image_base64: str  # PNG base64 data (without data:image/png;base64, prefix)
     crop: Optional[dict] = None  # {x, y, width, height} in image pixels
-    compare_mode: Optional[str] = None  # "multi_crop" to append to expected_images
+    compare_mode: Optional[str] = None  # 분기/저장 모드 — "multi_crop"이면 추가, "match_crop"이면 step.compare_mode 보존
     crop_label: str = ""  # label for multi_crop item
     preserve_crops: bool = False  # True: multi_crop items 유지 (multi_crop base 이미지 갱신 시 사용)
     screen_type: Optional[str] = None  # 캡처 시점의 화면 선택값 (rear_left 등) — 스텝에 저장
@@ -311,6 +311,15 @@ async def save_expected_image(req: SaveExpectedImageRequest):
     # 재생 시 front_center 로 잘못 비교되는 문제 방지.
     if req.screen_type:
         step.screen_type = req.screen_type
+
+    # 비교 모드 명시 저장 — 프론트가 selectCompareMode 로 미리 sync 했더라도
+    # 클라이언트가 명시적으로 compare_mode 를 전달하면 동기화 누락 방지 차원에서
+    # 다시 설정한다 (특히 match_crop / single_crop 등 crop 기반 모드).
+    if req.compare_mode and req.compare_mode in {"single_crop", "match_crop", "full_exclude", "multi_crop", "full"}:
+        try:
+            step.compare_mode = CompareMode(req.compare_mode)
+        except ValueError:
+            pass
 
     await recording_svc.save_scenario(scenario)
     return {"status": "ok", "filename": filename, "step_id": step.id}
