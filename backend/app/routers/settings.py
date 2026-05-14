@@ -32,6 +32,7 @@ _DEFAULTS = {
     "threshold_single_crop": 0.90,
     "threshold_full_exclude": 0.93,
     "threshold_multi_crop": 0.85,
+    "threshold_match_crop": 0.85,
 }
 
 
@@ -66,6 +67,7 @@ class UpdateSettingsRequest(BaseModel):
     threshold_single_crop: Optional[float] = None
     threshold_full_exclude: Optional[float] = None
     threshold_multi_crop: Optional[float] = None
+    threshold_match_crop: Optional[float] = None
 
 
 @router.post("")
@@ -93,6 +95,8 @@ async def update_settings(req: UpdateSettingsRequest):
         current["threshold_full_exclude"] = req.threshold_full_exclude
     if req.threshold_multi_crop is not None:
         current["threshold_multi_crop"] = req.threshold_multi_crop
+    if req.threshold_match_crop is not None:
+        current["threshold_match_crop"] = req.threshold_match_crop
     _save(current)
 
     # 관제 서버 URL 변경 시 monitor_client 재연결

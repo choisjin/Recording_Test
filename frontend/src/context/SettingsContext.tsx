@@ -17,6 +17,7 @@ export interface AppSettings {
   threshold_single_crop: number;
   threshold_full_exclude: number;
   threshold_multi_crop: number;
+  threshold_match_crop: number;
 }
 
 interface SettingsContextType {
@@ -42,6 +43,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   threshold_single_crop: 0.90,
   threshold_full_exclude: 0.93,
   threshold_multi_crop: 0.85,
+  threshold_match_crop: 0.85,
 };
 
 const SettingsContext = createContext<SettingsContextType | null>(null);

@@ -82,9 +82,10 @@ class ROI(BaseModel):
 
 class CompareMode(str, Enum):
     FULL = "full"                    # 전체화면 SSIM
-    SINGLE_CROP = "single_crop"      # 단일 크롭 템플릿 매칭
+    SINGLE_CROP = "single_crop"      # 단일 크롭 — 녹화 시 ROI 좌표 그대로 SSIM
     FULL_EXCLUDE = "full_exclude"    # 전체화면에서 영역 제외 SSIM
     MULTI_CROP = "multi_crop"        # 여러 크롭 각각 비교
+    MATCH_CROP = "match_crop"        # 매칭크롭 — 위치 무관하게 template matching 으로 탐색
 
 
 class CropItem(BaseModel):

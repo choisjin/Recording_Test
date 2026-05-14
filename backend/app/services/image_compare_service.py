@@ -424,6 +424,71 @@ class ImageCompareService:
         return {"sub_results": sub_results}
 
     # ------------------------------------------------------------------
+    # Match-crop comparison (위치 무관 단일 템플릿 매칭)
+    # ------------------------------------------------------------------
+
+    def compare_match_crop(
+        self,
+        expected_path: str,
+        actual_path: str,
+        img_exp=None,
+        img_act=None,
+    ) -> dict:
+        """저장된 크롭(expected)을 actual 전체 화면에서 template matching 으로 탐색.
+
+        score 는 cv2.TM_CCOEFF_NORMED 의 최대 응답값(0.0~1.0)을 그대로 사용한다.
+        같은 위치에서의 SSIM 도 함께 계산해 진단·diff 생성에 활용할 수 있도록 반환.
+        match_location 은 매치된 영역의 (x, y, width, height) — 단일크롭과 동일 포맷.
+        """
+        self._require_cv2()
+        img_exp = self._resolve_img(img_exp, expected_path)
+        img_act = self._resolve_img(img_act, actual_path)
+        if img_exp is None or img_act is None:
+            return {"score": 0.0, "error": "Could not read one or both images"}
+
+        # 1) template matching 으로 최고 매치 좌표/신뢰도 획득
+        gray_exp = cv2.cvtColor(img_exp, cv2.COLOR_BGR2GRAY)
+        gray_act = cv2.cvtColor(img_act, cv2.COLOR_BGR2GRAY)
+        if gray_exp.shape[0] > gray_act.shape[0] or gray_exp.shape[1] > gray_act.shape[1]:
+            return {
+                "score": 0.0,
+                "error": "Expected crop is larger than actual screenshot",
+            }
+        res = cv2.matchTemplate(gray_act, gray_exp, cv2.TM_CCOEFF_NORMED)
+        _, max_val, _, max_loc = cv2.minMaxLoc(res)
+        confidence = float(max_val)
+        mx, my = int(max_loc[0]), int(max_loc[1])
+        h, w = gray_exp.shape[:2]
+
+        # 2) 매치된 영역의 SSIM (diff heatmap 용 — 보조 정보)
+        cropped_act = img_act[my:my + h, mx:mx + w]
+        if cropped_act.shape[:2] != img_exp.shape[:2]:
+            # 경계 케이스 — 안전 차원에서 resize
+            cropped_act = cv2.resize(cropped_act, (img_exp.shape[1], img_exp.shape[0]))
+        gray_c_act = cv2.cvtColor(cropped_act, cv2.COLOR_BGR2GRAY)
+        gray_exp_n = self._normalize_for_ssim(gray_exp)
+        gray_act_n = self._normalize_for_ssim(gray_c_act)
+        try:
+            ssim_score, diff = ssim(gray_exp_n, gray_act_n, full=True)
+            diff_uint8 = (diff * 255).astype("uint8")
+        except Exception:
+            ssim_score = 0.0
+            diff_uint8 = None
+
+        logger.info(
+            "match_crop: confidence=%.4f ssim=%.4f match=(%d,%d,%dx%d) actual=%dx%d expected=%dx%d",
+            confidence, float(ssim_score), mx, my, w, h,
+            img_act.shape[1], img_act.shape[0], w, h,
+        )
+
+        return {
+            "score": round(confidence, 4),
+            "ssim_score": round(float(ssim_score), 4),
+            "diff_array": diff_uint8,
+            "match_location": {"x": mx, "y": my, "width": w, "height": h},
+        }
+
+    # ------------------------------------------------------------------
     # Level 2 — SSIM with status-bar masking
     # ------------------------------------------------------------------
 
@@ -594,6 +659,25 @@ class ImageCompareService:
                 "status": status,
                 "sub_results": sub_results,
             }
+
+        # --- Match-crop mode (위치 무관 템플릿 매칭) ---
+        if compare_mode == "match_crop":
+            result = self.compare_match_crop(
+                expected_path, actual_path,
+                img_exp=img_exp, img_act=img_act,
+            )
+            if "error" in result:
+                return {"status": "error", "score": 0.0, "message": result["error"]}
+            score = result["score"]
+            status = "pass" if score >= threshold_pass else "fail"
+            out: dict = {"status": status, "score": score}
+            if "match_location" in result:
+                out["match_location"] = result["match_location"]
+            if "diff_array" in result:
+                out["diff_array"] = result["diff_array"]
+            if "ssim_score" in result:
+                out["ssim_score"] = result["ssim_score"]
+            return out
 
         # --- Full-exclude mode ---
         if compare_mode == "full_exclude" and exclude_rois:

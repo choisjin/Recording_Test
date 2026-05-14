@@ -1023,6 +1023,57 @@ class PlaybackService:
 
                             step_result.message = f"Exclude {len(step.exclude_rois)} regions: {judgement['score']:.4f}"
 
+                    elif mode == CompareMode.MATCH_CROP:
+                        # --- Match-crop mode: 위치 무관 template matching ---
+                        # expected_path 는 단일크롭과 동일 — 녹화 시 잘라 둔 작은 PNG.
+                        # actual 전체에서 expected 를 찾아 score(confidence)와 match_location 반환.
+                        judgement = await asyncio.to_thread(
+                            self.image_compare.judge,
+                            expected_path,
+                            actual_path,
+                            threshold_pass=step.similarity_threshold,
+                            compare_mode="match_crop",
+                            img_exp=exp_img_ndarray,
+                            img_act=act_img_ndarray,
+                        )
+                        step_result.status = judgement["status"]
+                        step_result.similarity_score = judgement["score"]
+                        _diff_array = judgement.get("diff_array")
+
+                        if judgement["status"] == "error":
+                            step_result.message = judgement.get("message", "Match-crop comparison error")
+                        else:
+                            match_loc = judgement.get("match_location")
+                            if match_loc:
+                                step_result.match_location = match_loc
+                                def _build_match_annotated():
+                                    import cv2
+                                    if act_img_ndarray is None:
+                                        return False
+                                    img_annotated = act_img_ndarray.copy()
+                                    x, y = match_loc["x"], match_loc["y"]
+                                    w, h = match_loc["width"], match_loc["height"]
+                                    color = (0, 255, 0) if step_result.status == "pass" else (0, 0, 255)
+                                    cv2.rectangle(img_annotated, (x, y), (x + w, y + h), color, 3)
+                                    annotated_path = str(actual_dir / f"{file_prefix}_annotated.png")
+                                    safe_imwrite(annotated_path, img_annotated)
+                                    return True
+                                try:
+                                    if await asyncio.to_thread(_build_match_annotated):
+                                        step_result.actual_annotated_image = self._rel_path(
+                                            str(actual_dir / f"{file_prefix}_annotated.png"), scenario_name,
+                                        )
+                                except Exception as e:
+                                    logger.warning("Failed to generate match-crop annotated image: %s", e)
+
+                            ssim_score = judgement.get("ssim_score")
+                            if ssim_score is not None:
+                                step_result.message = (
+                                    f"Match-crop: confidence={judgement['score']:.4f}, ssim={ssim_score:.4f}"
+                                )
+                            else:
+                                step_result.message = f"Match-crop: confidence={judgement['score']:.4f}"
+
                     else:
                         # --- Full / Single-crop mode ---
                         compare_actual_path = actual_path

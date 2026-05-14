@@ -113,7 +113,7 @@ interface Step {
   on_fail_goto?: number | null;
   roi?: ROI | null;
   similarity_threshold?: number;
-  compare_mode?: 'full' | 'single_crop' | 'full_exclude' | 'multi_crop';
+  compare_mode?: 'full' | 'single_crop' | 'full_exclude' | 'multi_crop' | 'match_crop';
   exclude_rois?: ROI[];
   expected_images?: CropItem[];
   screenshot_device_id?: string | null;
@@ -3625,12 +3625,13 @@ export default function RecordPage() {
       single_crop: settings.threshold_single_crop,
       full_exclude: settings.threshold_full_exclude,
       multi_crop: settings.threshold_multi_crop,
+      match_crop: settings.threshold_match_crop,
     };
     const defaultThreshold = thresholdMap[mode] ?? 0.95;
     setSteps(prev => prev.map((s, i) => i === index ? { ...s, similarity_threshold: defaultThreshold } : s));
     setTimeout(() => {
       if (mode === 'full') saveExpectedFull(index);
-      else if (mode === 'single_crop') openCaptureModal(index);
+      else if (mode === 'single_crop' || mode === 'match_crop') openCaptureModal(index);
       else if (mode === 'full_exclude') openExcludeRoiModal(index);
       else if (mode === 'multi_crop') openMultiCropModal(index);
     }, 100);
@@ -3749,7 +3750,10 @@ export default function RecordPage() {
                 <Tag color="red">F→{s.on_fail_goto === -1 ? 'END' : `#${s.on_fail_goto}`}</Tag>
               )}
               {s.expected_image && scenarioName && (() => {
-                const modeLabel = (s.expected_images?.length || 0) > 0 ? 'MULTI'
+                // match_crop 는 단일크롭과 같은 데이터(roi+expected_image)를 갖지만
+                // compare_mode 로만 구분되므로 우선 검사.
+                const modeLabel = s.compare_mode === 'match_crop' ? 'MATCH'
+                  : (s.expected_images?.length || 0) > 0 ? 'MULTI'
                   : (s.exclude_rois?.length || 0) > 0 ? 'EXCLUDE'
                   : s.roi ? 'CROP' : 'FULL';
                 const threshPct = Math.round((s.similarity_threshold ?? 0.95) * 100);
@@ -3842,6 +3846,9 @@ export default function RecordPage() {
                       </Button>
                       <Button size="small" block onClick={() => selectCompareMode(index, 'multi_crop')}>
                         <ScissorOutlined /> {t('record.multiCrop')}
+                      </Button>
+                      <Button size="small" block onClick={() => selectCompareMode(index, 'match_crop')}>
+                        <ScissorOutlined /> {t('record.matchCrop')}
                       </Button>
                       <Button size="small" block disabled title={t('record.fullScreenDeprecated')}>
                         <CameraOutlined /> {t('record.fullScreen')}
