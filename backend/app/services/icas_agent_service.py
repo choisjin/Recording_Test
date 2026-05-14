@@ -612,6 +612,33 @@ class ICASAgentService:
         time.sleep(hold_s)
         self._ksend_many([release], interval_s=0)
 
+        # POWER 전용 추가 커맨드 (ref ABTpower: command03~05)
+        # HU의 power state 전환을 위한 별도 주소(src2/dst2) 메시지
+        if key_name == "POWER":
+            self._ksend_power_extra()
+
+
+    def _ksend_power_extra(self) -> None:
+        """ABTpower의 command03~05에 해당하는 추가 ksend 송신.
+        market에 따라 src2/dst2 주소가 다름 (ref RemoteController.ABTpower).
+        """
+        if self.market in ("EU", "NAR", "CN"):
+            src2 = "0x40000000000"
+            dst2 = "0x8000000000000000"
+        else:
+            src2 = "42"
+            dst2 = "63"
+        payloads = [
+            "0x01 0x91 0xF0 0x01 0x4C 0x00 0x00",
+            "0x01 0x91 0xF0 0x02 0x38 0x00 0x00",
+            "0x01 0x91 0xF0 0x01 0x01 0x00 0x00",
+        ]
+        cmds = [
+            f'/lge/app_ro/bin/ksend -s {src2} -d {dst2} -b "{p}"'
+            for p in payloads
+        ]
+        self._shell_run(cmds, post_sleep_s=0.1)
+
     def send_key(self, cmd: int, sub_cmd: int, key_data: int,
                  monitor: int = 0x00, direction: Optional[int] = None) -> None:
         """HKMC 호환용 raw send_key. key_data를 KEY_CODE로 해석해 single press/release 수행.
