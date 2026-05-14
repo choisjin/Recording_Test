@@ -1037,8 +1037,8 @@ async def device_input(req: InputRequest):
             # Watchdog: 대상 앱 메시지 펌프가 막혀 native API 가 영영 안 끝나는 경우
             # 워커 스레드가 풀에 못 돌아와 백엔드 전체가 멈추는 문제 방어. 별도
             # 데몬 스레드에 실제 작업을 격리하고 timeout 후 503 으로 반환.
-            # text 입력은 길이 비례 시간이 더 들 수 있어 더 큰 timeout.
-            action_timeout_s = 30.0 if req.action == "win_input_text" else 15.0
+            # text 입력은 글자수 × 10ms 이상 걸릴 수 있어 여유.
+            action_timeout_s = 20.0 if req.action == "win_input_text" else 15.0
             if capture_after_ms > 0:
                 # 액션 + 대기 + 캡처 + 복원을 한 활성화 사이클로 처리.
                 def _action_and_capture():

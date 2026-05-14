@@ -1301,34 +1301,6 @@ class WinControlService:
     # native API 는 파이썬에서 cancel 불가 → 별도 데몬 스레드에 격리하고 호출자는
     # timeout 으로 빠져나와 워커 스레드를 풀에 돌려준다. hang 된 스레드는 leak 되지만
     # 백엔드 서비스는 살아남고 다음 요청을 받을 수 있다.
-    @staticmethod
-    def _run_with_timeout(fn: "Callable[[], _T]", timeout_s: float) -> "_T":
-        """경량 watchdog — 단일 호출 격리용. run_action_with_timeout 의 staticmethod 짝.
-
-        클립보드 OpenClipboard/SetClipboardData 같은 짧은 native 호출이 OS 락에 묶여
-        영영 안 끝나는 케이스를 send_text 내부에서 단계별로 잡기 위함. timeout 시
-        TimeoutError. hang 된 daemon thread 는 leak.
-        """
-        result: dict = {"value": None, "exc": None}
-        done = threading.Event()
-
-        def runner() -> None:
-            try:
-                result["value"] = fn()
-            except BaseException as e:  # noqa: BLE001
-                result["exc"] = e
-            finally:
-                done.set()
-
-        threading.Thread(
-            target=runner, daemon=True, name="WinControlClipboardOp"
-        ).start()
-        if not done.wait(timeout_s):
-            raise TimeoutError(f"operation exceeded {timeout_s:.1f}s")
-        if result["exc"] is not None:
-            raise result["exc"]  # type: ignore[misc]
-        return result["value"]  # type: ignore[return-value]
-
     def run_action_with_timeout(self, fn: "Callable[[], _T]", timeout_s: float = 20.0) -> "_T":
         """fn 을 데몬 스레드에서 실행, timeout 안에 끝나면 결과 반환.
 
@@ -1745,111 +1717,29 @@ class WinControlService:
             time.sleep(hold_s)
         cls._send_input_keybd(vk, 0, KEYEVENTF_KEYUP)
 
-    # ── 클립보드 (CF_UNICODETEXT) ────────────────────────────────────
-    # KEYEVENTF_UNICODE 인젝션은 일부 앱(IME-aware/DirectInput/일부 Win32 컨트롤)에서
-    # 무시되거나 일부 문자만 처리해 누락이 발생. 클립보드 + Ctrl+V 는 거의 모든 Win32
-    # 앱에서 표준 동작 → 한글/이모지/긴 텍스트 모두 안정적.
-    @staticmethod
-    def _clipboard_get_text() -> Optional[str]:
-        """현재 클립보드의 유니코드 텍스트 백업. 텍스트 외 포맷이거나 실패면 None.
-
-        OpenClipboard 는 다른 프로세스가 잠시 잡고 있을 수 있어 짧게 재시도.
-        """
-        if not _WIN32_AVAILABLE:
-            return None
-        try:
-            import win32clipboard  # type: ignore
-        except Exception:
-            return None
-        CF_UNICODETEXT = 13
-        for _ in range(8):
-            try:
-                win32clipboard.OpenClipboard()
-                try:
-                    if win32clipboard.IsClipboardFormatAvailable(CF_UNICODETEXT):
-                        data = win32clipboard.GetClipboardData(CF_UNICODETEXT)
-                        return data if isinstance(data, str) else None
-                    return None
-                finally:
-                    win32clipboard.CloseClipboard()
-            except Exception:
-                time.sleep(0.05)
-        return None
-
-    @staticmethod
-    def _clipboard_set_text(text: str) -> bool:
-        """클립보드에 유니코드 텍스트 세팅. 다른 포맷은 모두 비움. 성공 여부 반환."""
-        if not _WIN32_AVAILABLE:
-            return False
-        try:
-            import win32clipboard  # type: ignore
-        except Exception:
-            return False
-        CF_UNICODETEXT = 13
-        for _ in range(8):
-            try:
-                win32clipboard.OpenClipboard()
-                try:
-                    win32clipboard.EmptyClipboard()
-                    win32clipboard.SetClipboardData(CF_UNICODETEXT, text)
-                    return True
-                finally:
-                    win32clipboard.CloseClipboard()
-            except Exception:
-                time.sleep(0.05)
-        return False
-
-    @classmethod
-    def _send_paste(cls) -> None:
-        """Ctrl+V 전송 — 현재 포커스 컨트롤에 클립보드 붙여넣기.
-
-        키 down/up 사이 짧은 sleep — 일부 앱은 down→up 이 너무 빨리 들어오면 무시.
-        """
-        VK_CONTROL = 0x11
-        VK_V = ord('V')
-        cls._send_input_keybd(VK_CONTROL, 0, 0)
-        time.sleep(0.02)
-        cls._send_input_keybd(VK_V, 0, 0)
-        time.sleep(0.03)
-        cls._send_input_keybd(VK_V, 0, KEYEVENTF_KEYUP)
-        time.sleep(0.02)
-        cls._send_input_keybd(VK_CONTROL, 0, KEYEVENTF_KEYUP)
-
     def send_text(
         self,
         text: str,
         click_first_x: Optional[int] = None,
         click_first_y: Optional[int] = None,
     ) -> None:
-        """텍스트 입력 — 클립보드 + Ctrl+V 붙여넣기 방식.
+        """텍스트 입력 — KEYEVENTF_UNICODE 직접 키 인젝션.
 
-        기존 KEYEVENTF_UNICODE 한 글자씩 인젝션은 일부 앱에서 누락/무시되는 문제가
-        있어, 클립보드에 텍스트를 올린 뒤 Ctrl+V 로 한 번에 붙여넣는 방식으로 변경.
-        한글/이모지/긴 텍스트도 안정적이고 속도도 빠름.
+        클립보드 + Ctrl+V 방식은 일부 레거시 Win32 앱(MFC 기반 CAN/Serial 시뮬레이터 등)
+        에서 OpenClipboard/SetClipboardData 가 OS 락에 묶여 영영 안 끝나는 문제가 있어
+        제거. SendInput + KEYEVENTF_UNICODE 는 키 이벤트를 비동기로 입력 큐에 넣고
+        즉시 반환하므로 hang 위험이 없다. 한글/이모지도 wScan 자리에 codepoint 를
+        그대로 넣으면 OS 가 처리.
 
-        줄바꿈(\\r\\n, \\n, \\r) 은 Enter 키로 분리해서 처리 — 클립보드 한 번에 다
-        넣으면 single-line 에디트박스가 줄바꿈을 잘라먹거나 form submit 으로 동작해서.
+        줄바꿈(\\r\\n, \\n, \\r) 은 Enter 키로 분리해서 처리 — single-line 에디트박스가
+        줄바꿈을 잘라먹거나 form submit 으로 동작하는 케이스 방어.
 
         click_first_x/y 가 지정되면 텍스트 입력 전 그 client 좌표 클릭으로 입력 컨트롤
         포커스 부여. 분리된 win_tap → win_input_text 두 호출로 처리하면 사이의 fg 복원
         때문에 자식 다이얼로그의 포커스가 풀리는 문제가 있어 atomic 으로 합침.
-
-        클립보드 setter 가 실패하거나 (OpenClipboard 경합 등) pywin32 가 없으면
-        기존 KEYEVENTF_UNICODE 인젝션으로 폴백.
-        함수 종료 시 호출 전 클립보드 텍스트는 가능한 한 복원 — 단 텍스트 외 포맷
-        (이미지/HTML 등) 은 보존하지 않음.
         """
         self._check()
         ctx = self._save_context()
-        # 클립보드 백업도 hang 가능 — 짧은 timeout 안에 격리. 실패하면 백업 포기.
-        try:
-            prev_clipboard = self._run_with_timeout(self._clipboard_get_text, 1.5)
-        except TimeoutError:
-            logger.warning("WinControl clipboard backup timed out — skipping restore")
-            prev_clipboard = None
-        # 한 번 클립보드가 hang 으로 판정되면 이 호출 내내 unicode 인젝션 모드로 전환.
-        # leak 된 daemon 이 클립보드 자원을 잡고 있을 가능성이 커서 재시도 무의미.
-        clipboard_disabled = False
         try:
             self._focus()
             # 1) 클릭으로 입력 컨트롤 포커스 — 같은 컨텍스트 안에서 해야 fg 안 풀림.
@@ -1862,7 +1752,7 @@ class WinControlService:
                 self._send_input_button("left", False)
                 # 클릭 → 캐럿 안착 + 입력 큐 처리 시간.
                 time.sleep(0.20)
-            # 2) 텍스트 전송 — 줄 단위로 분리 후 paste, 줄 사이는 Enter.
+            # 2) 텍스트 전송 — 줄 단위로 분리 후 unicode 인젝션, 줄 사이는 Enter.
             if text:
                 normalized = text.replace("\r\n", "\n").replace("\r", "\n")
                 lines = normalized.split("\n")
@@ -1870,48 +1760,11 @@ class WinControlService:
                     if i > 0:
                         self._send_vk(win32con.VK_RETURN)
                         time.sleep(0.05)
-                    if not line:
-                        continue
-                    clip_ok = False
-                    if not clipboard_disabled:
-                        try:
-                            # 클립보드 set 자체 hang 방어 — 2초 안에 못 끝내면 폴백.
-                            clip_ok = self._run_with_timeout(
-                                lambda ln=line: self._clipboard_set_text(ln), 2.0
-                            )
-                        except TimeoutError:
-                            logger.warning(
-                                "WinControl clipboard set timed out — "
-                                "falling back to unicode injection for remaining lines"
-                            )
-                            clipboard_disabled = True
-                            clip_ok = False
-                    if clip_ok:
-                        # 클립보드 반영 시간 — 너무 짧으면 paste 가 빈 클립보드를 본다.
-                        time.sleep(0.05)
-                        self._send_paste()
-                        # paste 처리 — 길이에 비례한 약간의 여유.
-                        time.sleep(min(0.50, max(0.10, len(line) * 0.001)))
-                    else:
-                        # 클립보드 사용 불가 → unicode 인젝션 폴백.
-                        for ch in line:
-                            self._send_unicode_char(ch)
-                            time.sleep(0.010)
+                    for ch in line:
+                        self._send_unicode_char(ch)
+                        time.sleep(0.010)
             time.sleep(0.10)
         finally:
-            # 클립보드 원복 — 사용자 클립보드 텍스트 보존. fire-and-forget 데몬 스레드.
-            # 직접 호출하면 OpenClipboard 가 다시 hang 일으킬 수 있고, 그 hang 이
-            # 외곽 watchdog timeout 후에도 워커를 끌고 갈 수 있어서 분리한다.
-            if prev_clipboard is not None:
-                def _restore_clip(text: str = prev_clipboard) -> None:
-                    try:
-                        self._clipboard_set_text(text)
-                    except Exception:
-                        pass
-                threading.Thread(
-                    target=_restore_clip, daemon=True,
-                    name="WinControlClipboardRestore",
-                ).start()
             self._restore_context(ctx)
 
     def send_key(self, key: str) -> None:
