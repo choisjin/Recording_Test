@@ -4187,20 +4187,22 @@ export default function RecordPage() {
                     </div>
                   </div>
                 )}
-                <div style={{ marginTop: 3, color: subTextColor, fontSize: 10, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  {hoverCoords && (
-                    <span style={{ fontFamily: 'monospace', color: isDark ? '#ddd' : '#333' }}>
-                      ({hoverCoords.x}, {hoverCoords.y})
+                {/* 좌표/제스처 안내(좌) + 이미지 터치 컨트롤(우) — 항상 양끝 정렬.
+                    좌측 텍스트가 길어지면 좌측 영역 내부에서만 wrap 되고, 우측은 절대 줄바꿈/이동 안 함. */}
+                <div style={{ marginTop: 3, color: subTextColor, fontSize: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+                    {hoverCoords && (
+                      <span style={{ fontFamily: 'monospace', color: isDark ? '#ddd' : '#333' }}>
+                        ({hoverCoords.x}, {hoverCoords.y})
+                      </span>
+                    )}
+                    <span>
+                      {lastGesture
+                        ? `${lastGesture} → ${recording ? t('record.gestureRecord') : t('record.directExec')}`
+                        : t('record.gestureHint', { device: screenshotDeviceId || screenDevice?.id || '' })}
                     </span>
-                  )}
-                  <span>
-                    {lastGesture
-                      ? `${lastGesture} → ${recording ? t('record.gestureRecord') : t('record.directExec')}`
-                      : t('record.gestureHint', { device: screenshotDeviceId || screenDevice?.id || '' })}
-                  </span>
-                  {/* 이미지 터치 — 좌표 표시줄의 오른쪽 끝(2열째)에 유사도 + 버튼 배치.
-                      녹화 중에만 활성화. */}
-                  <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  </div>
+                  <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
                     <Tooltip title={recording ? t('record.imageTapTooltip') : t('record.imageTapDisabled')}>
                       <InputNumber
                         size="small"
@@ -4522,9 +4524,10 @@ export default function RecordPage() {
                         }}
                       />
                     </div>
-                    {/* WinControl 이미지 터치 — 디바이스 화면 패널과 동일 UX. 우측 끝 정렬. */}
-                    <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: subTextColor }}>
-                      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    {/* WinControl 이미지 터치 — 우측 고정. flex spacer 로 항상 오른쪽 정렬. */}
+                    <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <div style={{ flex: 1, minWidth: 0 }} />
+                      <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
                         <Tooltip title={recording ? t('record.imageTapTooltip') : t('record.imageTapDisabled')}>
                           <InputNumber
                             size="small"
