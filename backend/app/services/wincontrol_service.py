@@ -10,11 +10,14 @@ import contextlib
 import ctypes
 import io
 import logging
+import threading
 import time
 from ctypes import windll, Structure, Union, c_long, c_short
 from ctypes.wintypes import DWORD, HANDLE, HWND, LONG, WORD
-from typing import Optional
+from typing import Callable, Optional, TypeVar
 
+
+_T = TypeVar("_T")
 
 # SendInput 용 구조체 (keybd_event 대체).
 # keybd_event 는 KEYEVENTF_UNICODE 를 제대로 처리 못 해서 일부 앱(IME-aware,
@@ -1292,6 +1295,47 @@ class WinControlService:
     # 입력 방식: SendInput 만 사용 — UWP/WinUI3/MMC/일반 Win32 앱 모두 호환.
     # 단점: 대상 윈도우에 포커스가 일시적으로 가져가짐 (SetForegroundWindow + 가상
     # 데스크탑 절대 좌표로 마우스 이동 후 클릭). 백그라운드 입력은 지원하지 않음.
+    #
+    # Watchdog: AttachThreadInput + SetForegroundWindow + OpenClipboard 등은 대상 앱의
+    # 메시지 펌프가 막혀 있으면 영영 반환 안 함 (CAN/Serial 통신 중인 MFC 시뮬레이터 등).
+    # native API 는 파이썬에서 cancel 불가 → 별도 데몬 스레드에 격리하고 호출자는
+    # timeout 으로 빠져나와 워커 스레드를 풀에 돌려준다. hang 된 스레드는 leak 되지만
+    # 백엔드 서비스는 살아남고 다음 요청을 받을 수 있다.
+    def run_action_with_timeout(self, fn: "Callable[[], _T]", timeout_s: float = 20.0) -> "_T":
+        """fn 을 데몬 스레드에서 실행, timeout 안에 끝나면 결과 반환.
+
+        timeout 초과 시 TimeoutError raise. hang 된 스레드는 백그라운드에 남지만
+        프로세스 관점에서는 leak 정도이고 새 요청 처리는 가능.
+
+        fn 안에서 예외가 발생하면 그대로 재발생.
+        """
+        result: dict = {"value": None, "exc": None}
+        done = threading.Event()
+
+        def runner() -> None:
+            try:
+                result["value"] = fn()
+            except BaseException as e:  # noqa: BLE001 — propagate everything
+                result["exc"] = e
+            finally:
+                done.set()
+
+        t = threading.Thread(target=runner, daemon=True, name="WinControlAction")
+        t.start()
+        if not done.wait(timeout_s):
+            logger.error(
+                "WinControl action timed out after %.1fs — target window message pump "
+                "likely blocked. Leaking watchdog thread (hwnd=%s pid=%s name=%s).",
+                timeout_s, self._hwnd, self._pid, self._process_name,
+            )
+            raise TimeoutError(
+                f"WinControl action exceeded {timeout_s:.0f}s — "
+                f"target window may be unresponsive"
+            )
+        if result["exc"] is not None:
+            raise result["exc"]  # type: ignore[misc]
+        return result["value"]  # type: ignore[return-value]
+
     def _check(self) -> int:
         if not self.is_attached():
             raise RuntimeError("No window attached")
@@ -1805,12 +1849,19 @@ class WinControlService:
                             time.sleep(0.010)
             time.sleep(0.10)
         finally:
-            # 클립보드 원복 — 사용자 클립보드 텍스트 보존. 실패해도 무시.
+            # 클립보드 원복 — 사용자 클립보드 텍스트 보존. fire-and-forget 데몬 스레드.
+            # 직접 호출하면 OpenClipboard 가 다시 hang 일으킬 수 있고, 그 hang 이
+            # 외곽 watchdog timeout 후에도 워커를 끌고 갈 수 있어서 분리한다.
             if prev_clipboard is not None:
-                try:
-                    self._clipboard_set_text(prev_clipboard)
-                except Exception:
-                    pass
+                def _restore_clip(text: str = prev_clipboard) -> None:
+                    try:
+                        self._clipboard_set_text(text)
+                    except Exception:
+                        pass
+                threading.Thread(
+                    target=_restore_clip, daemon=True,
+                    name="WinControlClipboardRestore",
+                ).start()
             self._restore_context(ctx)
 
     def send_key(self, key: str) -> None:

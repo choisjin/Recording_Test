@@ -1034,6 +1034,11 @@ async def device_input(req: InputRequest):
                         raise ValueError("win_key_combo: empty keys")
                     wc.send_key_combo(keys_list)
 
+            # Watchdog: 대상 앱 메시지 펌프가 막혀 native API 가 영영 안 끝나는 경우
+            # 워커 스레드가 풀에 못 돌아와 백엔드 전체가 멈추는 문제 방어. 별도
+            # 데몬 스레드에 실제 작업을 격리하고 timeout 후 503 으로 반환.
+            # text 입력은 길이 비례 시간이 더 들 수 있어 더 큰 timeout.
+            action_timeout_s = 30.0 if req.action == "win_input_text" else 15.0
             if capture_after_ms > 0:
                 # 액션 + 대기 + 캡처 + 복원을 한 활성화 사이클로 처리.
                 def _action_and_capture():
@@ -1051,10 +1056,22 @@ async def device_input(req: InputRequest):
                     img.save(buf, format="JPEG", quality=70)
                     return _b64.b64encode(buf.getvalue()).decode("ascii")
 
-                img_b64 = await loop.run_in_executor(None, _action_and_capture)
+                try:
+                    img_b64 = await loop.run_in_executor(
+                        None,
+                        lambda: wc.run_action_with_timeout(_action_and_capture, action_timeout_s),
+                    )
+                except TimeoutError as te:
+                    raise HTTPException(status_code=503, detail=str(te))
                 return {"result": "ok", "image": img_b64 or "", "format": "jpeg"}
             else:
-                await loop.run_in_executor(None, _run_action)
+                try:
+                    await loop.run_in_executor(
+                        None,
+                        lambda: wc.run_action_with_timeout(_run_action, action_timeout_s),
+                    )
+                except TimeoutError as te:
+                    raise HTTPException(status_code=503, detail=str(te))
                 return {"result": "ok"}
 
         # ADB actions — allow even if device is not in managed list (race with refresh)
