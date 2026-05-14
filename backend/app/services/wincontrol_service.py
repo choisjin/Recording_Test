@@ -1301,6 +1301,34 @@ class WinControlService:
     # native API 는 파이썬에서 cancel 불가 → 별도 데몬 스레드에 격리하고 호출자는
     # timeout 으로 빠져나와 워커 스레드를 풀에 돌려준다. hang 된 스레드는 leak 되지만
     # 백엔드 서비스는 살아남고 다음 요청을 받을 수 있다.
+    @staticmethod
+    def _run_with_timeout(fn: "Callable[[], _T]", timeout_s: float) -> "_T":
+        """경량 watchdog — 단일 호출 격리용. run_action_with_timeout 의 staticmethod 짝.
+
+        클립보드 OpenClipboard/SetClipboardData 같은 짧은 native 호출이 OS 락에 묶여
+        영영 안 끝나는 케이스를 send_text 내부에서 단계별로 잡기 위함. timeout 시
+        TimeoutError. hang 된 daemon thread 는 leak.
+        """
+        result: dict = {"value": None, "exc": None}
+        done = threading.Event()
+
+        def runner() -> None:
+            try:
+                result["value"] = fn()
+            except BaseException as e:  # noqa: BLE001
+                result["exc"] = e
+            finally:
+                done.set()
+
+        threading.Thread(
+            target=runner, daemon=True, name="WinControlClipboardOp"
+        ).start()
+        if not done.wait(timeout_s):
+            raise TimeoutError(f"operation exceeded {timeout_s:.1f}s")
+        if result["exc"] is not None:
+            raise result["exc"]  # type: ignore[misc]
+        return result["value"]  # type: ignore[return-value]
+
     def run_action_with_timeout(self, fn: "Callable[[], _T]", timeout_s: float = 20.0) -> "_T":
         """fn 을 데몬 스레드에서 실행, timeout 안에 끝나면 결과 반환.
 
@@ -1813,7 +1841,15 @@ class WinControlService:
         """
         self._check()
         ctx = self._save_context()
-        prev_clipboard = self._clipboard_get_text()
+        # 클립보드 백업도 hang 가능 — 짧은 timeout 안에 격리. 실패하면 백업 포기.
+        try:
+            prev_clipboard = self._run_with_timeout(self._clipboard_get_text, 1.5)
+        except TimeoutError:
+            logger.warning("WinControl clipboard backup timed out — skipping restore")
+            prev_clipboard = None
+        # 한 번 클립보드가 hang 으로 판정되면 이 호출 내내 unicode 인젝션 모드로 전환.
+        # leak 된 daemon 이 클립보드 자원을 잡고 있을 가능성이 커서 재시도 무의미.
+        clipboard_disabled = False
         try:
             self._focus()
             # 1) 클릭으로 입력 컨트롤 포커스 — 같은 컨텍스트 안에서 해야 fg 안 풀림.
@@ -1836,7 +1872,21 @@ class WinControlService:
                         time.sleep(0.05)
                     if not line:
                         continue
-                    if self._clipboard_set_text(line):
+                    clip_ok = False
+                    if not clipboard_disabled:
+                        try:
+                            # 클립보드 set 자체 hang 방어 — 2초 안에 못 끝내면 폴백.
+                            clip_ok = self._run_with_timeout(
+                                lambda ln=line: self._clipboard_set_text(ln), 2.0
+                            )
+                        except TimeoutError:
+                            logger.warning(
+                                "WinControl clipboard set timed out — "
+                                "falling back to unicode injection for remaining lines"
+                            )
+                            clipboard_disabled = True
+                            clip_ok = False
+                    if clip_ok:
                         # 클립보드 반영 시간 — 너무 짧으면 paste 가 빈 클립보드를 본다.
                         time.sleep(0.05)
                         self._send_paste()
