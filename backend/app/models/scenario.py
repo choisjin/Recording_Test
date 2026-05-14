@@ -27,6 +27,7 @@ class StepType(str, Enum):
     MULTI_TOUCH = "multi_touch"  # 멀티핑거 제스처 (핀치, 멀티스와이프)
     REPEAT_TAP = "repeat_tap"    # 같은 위치 연속 터치
     ALL_RANDOM = "all_random"    # 랜덤 스트레스 (HK/SK/DRAG 가중 선택)
+    IMAGE_TAP = "image_tap"      # 템플릿 매칭으로 위치를 찾아 중심 클릭 (좌표 비-종속)
     # WinControl 스텝 (Windows 임베드 프로세스 조작)
     WIN_TAP = "win_tap"
     WIN_DOUBLE_CLICK = "win_double_click"

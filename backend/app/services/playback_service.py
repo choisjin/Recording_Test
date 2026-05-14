@@ -1263,6 +1263,10 @@ class PlaybackService:
         p = step.params
         if step.type == StepType.TAP:
             return f"tap ({p.get('x', 0)}, {p.get('y', 0)})"
+        elif step.type == StepType.IMAGE_TAP:
+            tpl = p.get("template", "")
+            sim = float(p.get("similarity", 0.85))
+            return f"image_tap [{tpl}] @sim≥{sim:.2f}"
         elif step.type == StepType.REPEAT_TAP:
             return f"repeat_tap ({p.get('x', 0)}, {p.get('y', 0)}) ×{p.get('count', 5)} @{p.get('interval_ms', 100)}ms"
         elif step.type == StepType.LONG_PRESS:
@@ -1839,6 +1843,13 @@ class PlaybackService:
         """Execute step action on the appropriate device."""
         params = step.params
         real_id = self._resolve_real_device_id(step)
+
+        # IMAGE_TAP — 좌표 비-종속 터치.
+        # 실행 시점에 디바이스에서 현재 화면을 캡처해 template_match 를 돌려 중심 좌표를
+        # 구한 뒤, 디바이스 종류에 따라 적절한 tap 으로 디스패치한다. 매칭 실패 시 RuntimeError.
+        if step.type == StepType.IMAGE_TAP:
+            await self._run_image_tap(step, real_id)
+            return
 
         if step.type == StepType.MODULE_COMMAND:
             module_name = params.get("module", "")
@@ -2437,6 +2448,144 @@ class PlaybackService:
                     await self.adb.multi_finger_tap(points, serial=adb_serial, display_id=adb_display_id)
                 else:
                     await self.adb.multi_finger_swipe(fingers, params.get("duration_ms", 500), serial=adb_serial, display_id=adb_display_id)
+
+    async def _run_image_tap(self, step: Step, real_id: Optional[str]) -> None:
+        """IMAGE_TAP 실행: 현재 화면 캡처 → template_match → 중심 좌표 tap.
+
+        params 에 저장된 template 이미지 파일을 screenshots/{scenario}/ 에서 로드.
+        매칭 실패(confidence < similarity) 시 RuntimeError 를 던져 스텝을 FAIL 로 만든다.
+        """
+        import cv2
+        import numpy as np
+
+        params = step.params or {}
+        tpl_name = params.get("template")
+        scenario_name = getattr(self, "_current_scenario_name", "") or ""
+        if not tpl_name or not scenario_name:
+            raise RuntimeError("image_tap: template 파일명이 없거나 시나리오 컨텍스트 누락")
+        tpl_path = SCREENSHOTS_DIR / scenario_name / tpl_name
+        if not tpl_path.exists():
+            raise RuntimeError(f"image_tap: template not found: {tpl_path}")
+
+        # 1) 디바이스에서 현재 화면 캡처
+        if not real_id:
+            raise ValueError("image_tap: device_id 필요")
+        dev = self.dm.get_device(real_id)
+        if not dev:
+            raise ValueError(f"image_tap: device {real_id} not found")
+        screen_type = step.screen_type or params.get("screen_type")
+
+        png_bytes: Optional[bytes] = None
+        if dev.type == "hkmc_agent":
+            svc = self.dm.get_hkmc_service(real_id)
+            if not svc:
+                raise RuntimeError(f"image_tap: HKMC device {real_id} not connected")
+            png_bytes = await svc.async_screencap_bytes(
+                screen_type=screen_type or "front_center", fmt="png",
+            )
+        elif dev.type == "isap_agent":
+            svc = self.dm.get_isap_service(real_id)
+            if not svc:
+                raise RuntimeError(f"image_tap: iSAP device {real_id} not connected")
+            png_bytes = await svc.async_screencap_bytes(
+                screen_type=screen_type or "front_center", fmt="png",
+            )
+        elif dev.type == "icas_agent":
+            svc = self.dm.get_icas_service(real_id)
+            if not svc:
+                raise RuntimeError(f"image_tap: ICAS device {real_id} not connected")
+            png_bytes = await svc.async_screencap_bytes(
+                screen_type=screen_type or "HU", fmt="png",
+            )
+        elif dev.type == "mib_agent":
+            svc = self.dm.get_mib_service(real_id)
+            if not svc:
+                raise RuntimeError(f"image_tap: MIB device {real_id} not connected")
+            png_bytes = await svc.async_screencap_bytes(
+                screen_type=screen_type or "HU", fmt="png",
+            )
+        elif dev.type == "wincontrol":
+            wc = self.dm.get_wincontrol_service()
+            if not wc.is_attached():
+                raise RuntimeError("image_tap: WinControl: no window attached")
+            import asyncio as _asyncio
+            loop = _asyncio.get_event_loop()
+            png_bytes = await loop.run_in_executor(None, wc.capture_window, "png")
+        else:
+            # ADB
+            adb_serial = dev.address or real_id
+            from .adb_service import resolve_sf_display_id
+            adb_did = None
+            try:
+                adb_did = int(screen_type) if screen_type is not None else None
+            except (ValueError, TypeError):
+                adb_did = None
+            sf_did = resolve_sf_display_id(dev.info, adb_did)
+            png_bytes = await self.adb.screencap_bytes(serial=adb_serial, sf_display_id=sf_did)
+
+        if not png_bytes:
+            raise RuntimeError("image_tap: 화면 캡처 실패")
+
+        # 2) template_match (직접 cv2 사용 — confidence 와 좌표 동시 획득)
+        arr = np.frombuffer(png_bytes, dtype=np.uint8)
+        src_img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        if src_img is None:
+            raise RuntimeError("image_tap: 화면 디코드 실패")
+        tpl_img = cv2.imread(str(tpl_path), cv2.IMREAD_COLOR)
+        if tpl_img is None:
+            raise RuntimeError(f"image_tap: template 로드 실패: {tpl_path}")
+        src_gray = cv2.cvtColor(src_img, cv2.COLOR_BGR2GRAY)
+        tpl_gray = cv2.cvtColor(tpl_img, cv2.COLOR_BGR2GRAY)
+        if tpl_gray.shape[0] > src_gray.shape[0] or tpl_gray.shape[1] > src_gray.shape[1]:
+            raise RuntimeError("image_tap: template 이 화면보다 큼")
+        res = cv2.matchTemplate(src_gray, tpl_gray, cv2.TM_CCOEFF_NORMED)
+        _, max_val, _, max_loc = cv2.minMaxLoc(res)
+        confidence = float(max_val)
+        threshold = float(params.get("similarity", 0.85))
+        if confidence < threshold:
+            raise RuntimeError(
+                f"image_tap: template not found (confidence={confidence:.3f} < {threshold:.3f})"
+            )
+        th, tw = tpl_gray.shape[:2]
+        center_x = int(max_loc[0]) + tw // 2
+        center_y = int(max_loc[1]) + th // 2
+        logger.info(
+            "image_tap match: tpl=%s confidence=%.3f center=(%d,%d) device=%s",
+            tpl_name, confidence, center_x, center_y, real_id,
+        )
+
+        # 3) 디바이스별 tap 실행
+        if dev.type in ("hkmc_agent", "isap_agent"):
+            svc = (self.dm.get_isap_service(real_id) if dev.type == "isap_agent"
+                   else self.dm.get_hkmc_service(real_id))
+            if not svc:
+                raise RuntimeError(f"image_tap: agent {real_id} not connected")
+            await svc.async_tap(center_x, center_y, screen_type or "front_center")
+        elif dev.type in ("icas_agent", "mib_agent"):
+            svc = (self.dm.get_mib_service(real_id) if dev.type == "mib_agent"
+                   else self.dm.get_icas_service(real_id))
+            if not svc:
+                raise RuntimeError(f"image_tap: agent {real_id} not connected")
+            await svc.async_tap(center_x, center_y, screen_type or "HU")
+        elif dev.type == "wincontrol":
+            wc = self.dm.get_wincontrol_service()
+            import asyncio as _asyncio, functools as _ft
+            loop = _asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None, _ft.partial(wc.send_tap, center_x, center_y, "left"),
+            )
+        else:
+            # ADB
+            adb_serial = dev.address or real_id
+            from .adb_service import resolve_input_display_id
+            our_index = None
+            if screen_type is not None:
+                try:
+                    our_index = int(screen_type)
+                except (ValueError, TypeError):
+                    our_index = None
+            adb_display_id = resolve_input_display_id(dev.info, our_index)
+            await self.adb.tap(center_x, center_y, serial=adb_serial, display_id=adb_display_id)
 
     def _rel_path(self, abs_path: str, scenario_name: str) -> str:
         """절대 경로 → 웹 서빙용 상대 경로.

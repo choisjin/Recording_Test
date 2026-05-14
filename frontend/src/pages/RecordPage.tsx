@@ -477,6 +477,16 @@ export default function RecordPage() {
     startX: 0, startY: 0, curX: 0, curY: 0, active: false,
   });
 
+  // 이미지 터치 (image_tap) — 녹화 중 현재 화면에서 영역을 크롭해 템플릿 매칭으로 중심 클릭
+  const [imageTapSimilarity, setImageTapSimilarity] = useState<number>(0.85);
+  const [imageTapModalOpen, setImageTapModalOpen] = useState(false);
+  const [imageTapBusy, setImageTapBusy] = useState(false);
+  const imageTapCanvasRef = useRef<HTMLCanvasElement>(null);
+  const imageTapScreenshotRef = useRef<string>('');
+  const imageTapDragRef = useRef<{ startX: number; startY: number; curX: number; curY: number; active: boolean }>({
+    startX: 0, startY: 0, curX: 0, curY: 0, active: false,
+  });
+
   // Step test
   const [testResultModalOpen, setTestResultModalOpen] = useState(false);
   const [testResult, setTestResult] = useState<any>(null);
@@ -1787,6 +1797,136 @@ export default function RecordPage() {
     setCaptureStepIndex(stepIdx);
     setCaptureModalOpen(true);
   }, [snapshotScreenshot, steps, captureDeviceIdForStep]);
+
+  // 이미지 터치 모달 열기 — 현재 라이브 화면 스냅샷을 캔버스에 띄워 사용자가 크롭하게 함.
+  const openImageTapModal = useCallback(async () => {
+    if (!recording || !scenarioName) {
+      message.warning(t('record.recordingRequired'));
+      return;
+    }
+    if (!screenshotDeviceId) {
+      message.warning(t('record.deviceRequired'));
+      return;
+    }
+    imageTapScreenshotRef.current = await snapshotScreenshot();
+    if (!imageTapScreenshotRef.current) {
+      message.error(t('record.screenshotFailed'));
+      return;
+    }
+    setImageTapModalOpen(true);
+  }, [recording, scenarioName, screenshotDeviceId, snapshotScreenshot, t]);
+
+  // 이미지 터치 캔버스 — 모달 캡처 패턴과 동일 (자체 ref 사용).
+  const drawImageTapCanvas = useCallback((dragRect?: { x: number; y: number; w: number; h: number }) => {
+    const canvas = imageTapCanvasRef.current;
+    const src = imageTapScreenshotRef.current;
+    if (!canvas || !src) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const img = new window.Image();
+    img.onload = () => {
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      ctx.drawImage(img, 0, 0);
+      if (dragRect && dragRect.w > 5 && dragRect.h > 5) {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.clearRect(dragRect.x, dragRect.y, dragRect.w, dragRect.h);
+        ctx.drawImage(img, dragRect.x, dragRect.y, dragRect.w, dragRect.h, dragRect.x, dragRect.y, dragRect.w, dragRect.h);
+        ctx.strokeStyle = '#1890ff';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([6, 4]);
+        ctx.strokeRect(dragRect.x, dragRect.y, dragRect.w, dragRect.h);
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#1890ff';
+        ctx.font = '28px sans-serif';
+        ctx.fillText(`${dragRect.w}×${dragRect.h}`, dragRect.x + 6, dragRect.y - 10);
+      }
+    };
+    img.src = src;
+  }, []);
+
+  const imageTapMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = imageTapCanvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = Math.round((e.clientX - rect.left) * scaleX);
+    const y = Math.round((e.clientY - rect.top) * scaleY);
+    imageTapDragRef.current = { startX: x, startY: y, curX: x, curY: y, active: true };
+  }, []);
+
+  const imageTapMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!imageTapDragRef.current.active) return;
+    const canvas = imageTapCanvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = Math.round((e.clientX - rect.left) * scaleX);
+    const y = Math.round((e.clientY - rect.top) * scaleY);
+    imageTapDragRef.current.curX = x;
+    imageTapDragRef.current.curY = y;
+    const { startX, startY } = imageTapDragRef.current;
+    drawImageTapCanvas({
+      x: Math.min(startX, x), y: Math.min(startY, y),
+      w: Math.abs(x - startX), h: Math.abs(y - startY),
+    });
+  }, [drawImageTapCanvas]);
+
+  // 크롭 확정 → 백엔드에 image_base64 + crop + similarity 전송 → tap 실행 + 스텝 기록.
+  const imageTapMouseUp = useCallback(async () => {
+    if (!imageTapDragRef.current.active) return;
+    imageTapDragRef.current.active = false;
+    const { startX, startY, curX, curY } = imageTapDragRef.current;
+    const rx = Math.min(startX, curX);
+    const ry = Math.min(startY, curY);
+    const rw = Math.abs(curX - startX);
+    const rh = Math.abs(curY - startY);
+    if (rw < 10 || rh < 10) return;  // 너무 작은 영역은 무시 (오작동 방지)
+    if (!scenarioName || !screenshotDeviceId) return;
+    const modalImage = imageTapScreenshotRef.current;
+    if (!modalImage) {
+      message.error(t('record.screenshotFailed'));
+      return;
+    }
+    await ensureSavedForImageOp();
+    const screenTypeArg = (isScreenHkmc || isScreenICAS || hasMultiDisplay) ? screenType : undefined;
+    setImageTapBusy(true);
+    try {
+      const res = await scenarioApi.recordImageTap(
+        scenarioName,
+        screenshotDeviceId,
+        modalImage,
+        { x: rx, y: ry, width: rw, height: rh },
+        imageTapSimilarity,
+        screenTypeArg,
+        delayMs,
+        `image_tap (sim≥${imageTapSimilarity.toFixed(2)})`,
+      );
+      const newStep = res.data.step;
+      const match = res.data.match;
+      setSteps((prev) => [...prev, newStep]);
+      message.success(t('record.imageTapMatched', {
+        confidence: (match.confidence * 100).toFixed(1),
+        x: String(match.center_x),
+        y: String(match.center_y),
+      }));
+      setImageTapModalOpen(false);
+      // 액션 직후 화면 갱신
+      setTimeout(() => refreshScreenshot(), 200);
+    } catch (e: any) {
+      const detail = e.response?.data?.detail;
+      message.error(typeof detail === 'string' ? detail : t('record.imageTapFailed'));
+    } finally {
+      setImageTapBusy(false);
+    }
+  }, [scenarioName, screenshotDeviceId, imageTapSimilarity, isScreenHkmc, isScreenICAS, hasMultiDisplay, screenType, delayMs, refreshScreenshot, t]);
+
+  useEffect(() => {
+    if (imageTapModalOpen) setTimeout(() => drawImageTapCanvas(), 50);
+  }, [imageTapModalOpen, drawImageTapCanvas]);
 
   const testStep = useCallback(async (stepIdx: number) => {
     if (!scenarioName) {
@@ -3572,6 +3712,8 @@ export default function RecordPage() {
                     ? <><Tag color="volcano" style={{ margin: 0 }}>KEY</Tag> {s.params.key_name || `cmd:${s.params.cmd}`}</>
                     : s.type === 'all_random'
                     ? <><Tag color="magenta" style={{ margin: 0 }}>RAND</Tag> ×{s.params.repeat_count ?? 1} @{s.params.interval_ms ?? 0}ms (HK:{(s.params.hk_keys || []).length}{s.params.sk_region ? ' SK▣' : ''}{s.params.drag_region ? ' DRAG▣' : ''})</>
+                    : s.type === 'image_tap'
+                    ? <><Tag color="purple" style={{ margin: 0 }}>IMG</Tag> sim≥{Number(s.params.similarity ?? 0.85).toFixed(2)} {s.params.template_width && s.params.template_height ? `(${s.params.template_width}×${s.params.template_height})` : ''} → ({s.params.matched_x ?? '?'},{s.params.matched_y ?? '?'})</>
                     : JSON.stringify(s.params)}
                 </span>
               )}
@@ -3885,6 +4027,33 @@ export default function RecordPage() {
                       </Button>
                     </Tooltip>
                   )}
+                  {/* 이미지 터치 — 녹화 중에만 활성화. 클릭 시 현재 화면 스냅샷에서
+                      영역을 크롭한 뒤 백엔드가 template matching 으로 중심 좌표를 찾아 tap. */}
+                  <Tooltip title={recording ? t('record.imageTapTooltip') : t('record.imageTapDisabled')}>
+                    <InputNumber
+                      size="small"
+                      min={0.5}
+                      max={1.0}
+                      step={0.01}
+                      value={imageTapSimilarity}
+                      disabled={!recording}
+                      onChange={(v) => setImageTapSimilarity(typeof v === 'number' ? v : 0.85)}
+                      style={{ width: 78 }}
+                      prefix={<span style={{ fontSize: 10, opacity: 0.6 }}>{t('record.imageTapSimShort')}</span>}
+                    />
+                  </Tooltip>
+                  <Tooltip title={recording ? t('record.imageTapTooltip') : t('record.imageTapDisabled')}>
+                    <Button
+                      size="small"
+                      type="default"
+                      icon={<CameraOutlined />}
+                      disabled={!recording || imageTapBusy}
+                      loading={imageTapBusy}
+                      onClick={openImageTapModal}
+                    >
+                      {t('record.imageTapButton')}
+                    </Button>
+                  </Tooltip>
                   {isScreenAdb && <>
                   <Tooltip title={t('record.multiTouch')}>
                     <Radio.Group
@@ -4660,6 +4829,40 @@ export default function RecordPage() {
           </Card>
         </Splitter.Panel>
       </Splitter>
+
+      {/* Image Touch Modal — 녹화 중에만 열림. 크롭 → 백엔드 매칭 → tap 자동 실행. */}
+      <Modal
+        title={t('record.imageTapModalTitle', { sim: imageTapSimilarity.toFixed(2) })}
+        open={imageTapModalOpen}
+        onCancel={() => setImageTapModalOpen(false)}
+        width="90vw"
+        style={{ top: 20 }}
+        maskClosable={!imageTapBusy}
+        closable={!imageTapBusy}
+        footer={
+          <Space>
+            <span style={{ fontSize: 11, color: subTextColor }}>
+              {t('record.imageTapSimLabel')}:&nbsp;{imageTapSimilarity.toFixed(2)}
+            </span>
+            <Button disabled={imageTapBusy} onClick={() => setImageTapModalOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+          </Space>
+        }
+      >
+        <div style={{ overflow: 'auto', maxHeight: '75vh', textAlign: 'center' }}>
+          <canvas
+            ref={imageTapCanvasRef}
+            onMouseDown={imageTapBusy ? undefined : imageTapMouseDown}
+            onMouseMove={imageTapBusy ? undefined : imageTapMouseMove}
+            onMouseUp={imageTapBusy ? undefined : imageTapMouseUp}
+            style={{ cursor: imageTapBusy ? 'wait' : 'crosshair', maxWidth: '100%' }}
+          />
+        </div>
+        <div style={{ marginTop: 6, color: subTextColor, fontSize: 11, textAlign: 'center' }}>
+          {t('record.imageTapModalHint')}
+        </div>
+      </Modal>
 
       {/* Expected Image Crop Modal */}
       <Modal

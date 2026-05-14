@@ -17,6 +17,7 @@ from ..dependencies import device_manager as dm
 from ..dependencies import playback_service as playback_svc
 from ..dependencies import recording_service as recording_svc
 from ..models.scenario import ROI, CompareMode, CropItem, Scenario, StepType
+from ..services.image_compare_service import ImageCompareService
 from ..services.recording_service import SCREENSHOTS_DIR
 
 router = APIRouter(prefix="/api/scenario", tags=["scenario"])
@@ -534,6 +535,181 @@ async def remove_expected_image(req: RemoveExpectedImageRequest):
 
     await recording_svc.save_scenario(scenario)
     return {"status": "ok"}
+
+
+class ImageTapRequest(BaseModel):
+    """녹화 중 '이미지 터치' 1회 실행 요청.
+
+    프론트에서 보고 있던 현재 화면 이미지(image_base64)와 크롭 영역(crop), 유사도 임계값을
+    함께 보내면 백엔드가:
+      1) crop 영역을 template png 로 저장 (screenshots/{scenario}/),
+      2) 같은 image_base64 에서 template_match 를 돌려 최고 매치 위치를 찾고,
+      3) 매치되면 device 에 중심 좌표로 tap 을 즉시 실행,
+      4) IMAGE_TAP 스텝을 시나리오에 기록한다 (params 에 template 파일명/유사도/마지막 매치 좌표).
+
+    재생 시에는 playback_service 가 동일하게 actual 캡처 → template_match → 중심 tap 을 수행.
+    """
+    scenario_name: str
+    device_id: str  # 터치를 실행할 디바이스 (ADB/HKMC/iSAP/ICAS/MIB/WinControl)
+    image_base64: str  # 모달에 표시되던 현재 화면 PNG (data: prefix 허용)
+    crop: dict  # {x, y, width, height} — 사용자가 드래그한 크롭 영역 (image_base64 픽셀 좌표)
+    similarity: float = 0.85  # 0.0~1.0
+    screen_type: Optional[str] = None  # HKMC/ICAS rear_left/HU 등 — 캡처 화면과 일치해야 함
+    delay_after_ms: int = 3000
+    description: str = ""
+
+
+@router.post("/record/image-tap")
+async def record_image_tap(req: ImageTapRequest):
+    """녹화 중 이미지 터치 한 번 실행 + IMAGE_TAP 스텝 기록.
+
+    `current scenario` 와 이름이 일치하지 않으면 400. 반드시 녹화 중이어야 함.
+    """
+    import cv2
+    import numpy as np
+    import time as _time
+
+    if not recording_svc.is_recording or recording_svc._current_scenario is None:
+        raise HTTPException(status_code=400, detail="Not recording")
+    if recording_svc._current_scenario.name != req.scenario_name:
+        raise HTTPException(status_code=400, detail="Scenario name mismatch with current recording")
+
+    scenario = recording_svc._current_scenario
+
+    # 1) base64 디코딩 + crop
+    try:
+        raw = req.image_base64
+        if raw.startswith("data:"):
+            raw = raw.split(",", 1)[1]
+        png_bytes = base64.b64decode(raw)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid base64 image data")
+
+    arr = np.frombuffer(png_bytes, dtype=np.uint8)
+    src_img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if src_img is None:
+        raise HTTPException(status_code=400, detail="Cannot decode screenshot")
+
+    cx = int(req.crop.get("x", 0))
+    cy = int(req.crop.get("y", 0))
+    cw = int(req.crop.get("width", 0))
+    ch = int(req.crop.get("height", 0))
+    if cw < 5 or ch < 5:
+        raise HTTPException(status_code=400, detail="Crop region too small (need >=5×5)")
+    ih, iw = src_img.shape[:2]
+    cx = max(0, min(cx, iw - 1))
+    cy = max(0, min(cy, ih - 1))
+    cw = max(1, min(cw, iw - cx))
+    ch = max(1, min(ch, ih - cy))
+    cropped = src_img[cy:cy + ch, cx:cx + cw]
+
+    # 2) template png 저장
+    save_dir = SCREENSHOTS_DIR / scenario.name
+    save_dir.mkdir(parents=True, exist_ok=True)
+    next_step_id = recording_svc._step_counter + 1
+    ts = int(_time.time() * 1000) % 1000000
+    tpl_filename = f"{scenario.name}_step_{next_step_id:03d}_imgtap_{ts}.png"
+    ok, buf = cv2.imencode(".png", cropped)
+    if not ok:
+        raise HTTPException(status_code=500, detail="Failed to encode template image")
+    (save_dir / tpl_filename).write_bytes(buf.tobytes())
+
+    # 3) 보낸 이미지에서 template_match (저장된 동일 이미지 기준으로 매칭 — 무조건 발견)
+    #    cv2.matchTemplate 직접 사용해 절대 좌표 + 신뢰도를 얻는다.
+    src_gray = cv2.cvtColor(src_img, cv2.COLOR_BGR2GRAY)
+    tpl_gray = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
+    if tpl_gray.shape[0] > src_gray.shape[0] or tpl_gray.shape[1] > src_gray.shape[1]:
+        raise HTTPException(status_code=400, detail="Crop is larger than the screenshot")
+    res = cv2.matchTemplate(src_gray, tpl_gray, cv2.TM_CCOEFF_NORMED)
+    _, max_val, _, max_loc = cv2.minMaxLoc(res)
+    confidence = round(float(max_val), 4)
+    threshold = max(0.0, min(1.0, float(req.similarity)))
+    found = confidence >= threshold
+
+    if not found:
+        # 템플릿이 원본에서 나온 것이므로 보통 1.0 이지만, threshold 가 너무 높을 수 있음.
+        # 실패 시 저장한 템플릿 파일은 남겨두지 않는다.
+        try:
+            (save_dir / tpl_filename).unlink(missing_ok=True)
+        except Exception:
+            pass
+        raise HTTPException(
+            status_code=400,
+            detail=f"Template not found (confidence={confidence:.3f} < threshold={threshold:.3f})",
+        )
+
+    match_x = int(max_loc[0])
+    match_y = int(max_loc[1])
+    center_x = match_x + cw // 2
+    center_y = match_y + ch // 2
+
+    # 4) 디바이스에 tap 실행 — 디바이스 종류에 따라 적절한 step_type 으로 직접 실행.
+    #    추후 IMAGE_TAP 재생 시에도 동일한 디스패치 로직을 사용한다.
+    dev = dm.get_device(req.device_id)
+    dev_type = dev.type if dev else "adb"
+
+    try:
+        if dev_type in ("hkmc_agent", "isap_agent"):
+            await recording_svc._execute_step_action(
+                StepType.HKMC_TOUCH,
+                {"x": center_x, "y": center_y, "screen_type": req.screen_type or "front_center"},
+                req.device_id,
+            )
+        elif dev_type in ("icas_agent", "mib_agent"):
+            await recording_svc._execute_step_action(
+                StepType.ICAS_TOUCH,
+                {"x": center_x, "y": center_y, "screen_type": req.screen_type or "HU"},
+                req.device_id,
+            )
+        elif dev_type == "wincontrol":
+            await recording_svc._execute_step_action(
+                StepType.WIN_TAP,
+                {"x": center_x, "y": center_y},
+                req.device_id,
+            )
+        else:
+            # ADB / 그 외 → 일반 TAP
+            await recording_svc._execute_step_action(
+                StepType.TAP,
+                {"x": center_x, "y": center_y},
+                req.device_id,
+            )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Tap execution failed: {e}")
+
+    # 5) IMAGE_TAP 스텝 기록 (skip_execute=True 로 이미 실행한 액션 중복 방지)
+    step, _resp = await recording_svc.add_step(
+        step_type=StepType.IMAGE_TAP,
+        params={
+            "template": tpl_filename,
+            "similarity": threshold,
+            "screen_type": req.screen_type,
+            "matched_x": center_x,
+            "matched_y": center_y,
+            "template_width": cw,
+            "template_height": ch,
+        },
+        device_id=req.device_id,
+        description=req.description,
+        delay_after_ms=req.delay_after_ms,
+        skip_execute=True,
+    )
+
+    return {
+        "status": "ok",
+        "step": step.model_dump(),
+        "match": {
+            "found": True,
+            "confidence": confidence,
+            "center_x": center_x,
+            "center_y": center_y,
+            "match_x": match_x,
+            "match_y": match_y,
+            "template_width": cw,
+            "template_height": ch,
+        },
+        "template_filename": tpl_filename,
+    }
 
 
 class ImportStepsRequest(BaseModel):
