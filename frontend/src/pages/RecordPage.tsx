@@ -4034,33 +4034,6 @@ export default function RecordPage() {
                       </Button>
                     </Tooltip>
                   )}
-                  {/* 이미지 터치 — 녹화 중에만 활성화. 클릭 시 현재 화면 스냅샷에서
-                      영역을 크롭한 뒤 백엔드가 template matching 으로 중심 좌표를 찾아 tap. */}
-                  <Tooltip title={recording ? t('record.imageTapTooltip') : t('record.imageTapDisabled')}>
-                    <InputNumber
-                      size="small"
-                      min={0.5}
-                      max={1.0}
-                      step={0.01}
-                      value={imageTapSimilarity}
-                      disabled={!recording}
-                      onChange={(v) => setImageTapSimilarity(typeof v === 'number' ? v : 0.85)}
-                      style={{ width: 78 }}
-                      prefix={<span style={{ fontSize: 10, opacity: 0.6 }}>{t('record.imageTapSimShort')}</span>}
-                    />
-                  </Tooltip>
-                  <Tooltip title={recording ? t('record.imageTapTooltip') : t('record.imageTapDisabled')}>
-                    <Button
-                      size="small"
-                      type="default"
-                      icon={<CameraOutlined />}
-                      disabled={!recording || imageTapBusy}
-                      loading={imageTapBusy}
-                      onClick={openImageTapModal}
-                    >
-                      {t('record.imageTapButton')}
-                    </Button>
-                  </Tooltip>
                   {isScreenAdb && <>
                   <Tooltip title={t('record.multiTouch')}>
                     <Radio.Group
@@ -4214,6 +4187,35 @@ export default function RecordPage() {
                       ? `${lastGesture} → ${recording ? t('record.gestureRecord') : t('record.directExec')}`
                       : t('record.gestureHint', { device: screenshotDeviceId || screenDevice?.id || '' })}
                   </span>
+                  {/* 이미지 터치 — 좌표 표시줄의 오른쪽 끝(2열째)에 유사도 + 버튼 배치.
+                      녹화 중에만 활성화. */}
+                  <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <Tooltip title={recording ? t('record.imageTapTooltip') : t('record.imageTapDisabled')}>
+                      <InputNumber
+                        size="small"
+                        min={0.5}
+                        max={1.0}
+                        step={0.01}
+                        value={imageTapSimilarity}
+                        disabled={!recording}
+                        onChange={(v) => setImageTapSimilarity(typeof v === 'number' ? v : 0.85)}
+                        style={{ width: 78 }}
+                        prefix={<span style={{ fontSize: 10, opacity: 0.6 }}>{t('record.imageTapSimShort')}</span>}
+                      />
+                    </Tooltip>
+                    <Tooltip title={recording ? t('record.imageTapTooltip') : t('record.imageTapDisabled')}>
+                      <Button
+                        size="small"
+                        type="default"
+                        icon={<CameraOutlined />}
+                        disabled={!recording || imageTapBusy}
+                        loading={imageTapBusy}
+                        onClick={openImageTapModal}
+                      >
+                        {t('record.imageTapButton')}
+                      </Button>
+                    </Tooltip>
+                  </div>
                 </div>
                 {(isScreenHkmc || isScreenICAS) && hkmcKeys.length > 0 && testingStepIndex == null && (() => {
                   // visible=false 키는 숨김. 그룹별로 details로 묶어 표시.
