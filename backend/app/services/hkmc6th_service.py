@@ -35,6 +35,10 @@ CMD_LCDTOUCH = 0x69
 CMD_LCDTOUCH_DRAG = 0xD6
 CMD_LCDTOUCHEXT = 0xB0
 
+# 진단용: 이 집합에 든 cmd의 송신 패킷은 INFO 레벨로 hex 덤프된다.
+# 길게터치 동작이 펌웨어에서 받아들여지는지 확인하기 위한 임시 조치 — 검증 후 비울 것.
+_DEBUG_LOG_CMDS = {CMD_LCDTOUCH, CMD_LCDTOUCH_DRAG, CMD_LCDTOUCHEXT}
+
 NOTI_CONNECTED = 0x5E
 
 # Key commands
@@ -577,7 +581,11 @@ class HKMC6thService:
         packet.append(END_BIT)
         packet.append(END_BIT)
 
-        logger.debug("[HKMC PACKET] %s", ' '.join(f'{b:02X}' for b in packet))
+        # TODO: 패킷 hex 진단 종료 후 _DEBUG_LOG_CMDS 비우거나 줄을 삭제할 것
+        if cmd in _DEBUG_LOG_CMDS:
+            logger.info("[HKMC PACKET] cmd=0x%02X %s", cmd, ' '.join(f'{b:02X}' for b in packet))
+        else:
+            logger.debug("[HKMC PACKET] %s", ' '.join(f'{b:02X}' for b in packet))
         self._send_raw(packet)
 
     # ------------------------------------------------------------------
