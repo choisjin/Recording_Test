@@ -483,6 +483,9 @@ export default function RecordPage() {
   const [imageTapBusy, setImageTapBusy] = useState(false);
   const imageTapCanvasRef = useRef<HTMLCanvasElement>(null);
   const imageTapScreenshotRef = useRef<string>('');
+  // 어떤 디바이스를 대상으로 이미지 터치를 실행할지 — 디바이스 패널과 WinControl 패널이 공유.
+  // null 이면 screenshotDeviceId 로 폴백.
+  const imageTapTargetRef = useRef<string | null>(null);
   const imageTapDragRef = useRef<{ startX: number; startY: number; curX: number; curY: number; active: boolean }>({
     startX: 0, startY: 0, curX: 0, curY: 0, active: false,
   });
@@ -1799,16 +1802,19 @@ export default function RecordPage() {
   }, [snapshotScreenshot, steps, captureDeviceIdForStep]);
 
   // 이미지 터치 모달 열기 — 현재 라이브 화면 스냅샷을 캔버스에 띄워 사용자가 크롭하게 함.
-  const openImageTapModal = useCallback(async () => {
+  // targetDeviceId 가 주어지면 그 디바이스 화면을 캡처/타깃으로 사용 (WinControl 패널 등).
+  const openImageTapModal = useCallback(async (targetDeviceId?: string) => {
     if (!recording || !scenarioName) {
       message.warning(t('record.recordingRequired'));
       return;
     }
-    if (!screenshotDeviceId) {
+    const target = targetDeviceId || screenshotDeviceId;
+    if (!target) {
       message.warning(t('record.deviceRequired'));
       return;
     }
-    imageTapScreenshotRef.current = await snapshotScreenshot();
+    imageTapTargetRef.current = target;
+    imageTapScreenshotRef.current = await snapshotScreenshot(target);
     if (!imageTapScreenshotRef.current) {
       message.error(t('record.screenshotFailed'));
       return;
@@ -1885,19 +1891,24 @@ export default function RecordPage() {
     const rw = Math.abs(curX - startX);
     const rh = Math.abs(curY - startY);
     if (rw < 10 || rh < 10) return;  // 너무 작은 영역은 무시 (오작동 방지)
-    if (!scenarioName || !screenshotDeviceId) return;
+    const targetDev = imageTapTargetRef.current || screenshotDeviceId;
+    if (!scenarioName || !targetDev) return;
     const modalImage = imageTapScreenshotRef.current;
     if (!modalImage) {
       message.error(t('record.screenshotFailed'));
       return;
     }
     await ensureSavedForImageOp();
-    const screenTypeArg = (isScreenHkmc || isScreenICAS || hasMultiDisplay) ? screenType : undefined;
+    // WinControl 은 screen_type 개념 없음 — undefined 전송. 그 외 멀티 스크린 디바이스는 현재 선택.
+    const isWinTarget = targetDev === 'WinControl';
+    const screenTypeArg = isWinTarget
+      ? undefined
+      : ((isScreenHkmc || isScreenICAS || hasMultiDisplay) ? screenType : undefined);
     setImageTapBusy(true);
     try {
       const res = await scenarioApi.recordImageTap(
         scenarioName,
-        screenshotDeviceId,
+        targetDev,
         modalImage,
         { x: rx, y: ry, width: rw, height: rh },
         imageTapSimilarity,
@@ -4210,7 +4221,7 @@ export default function RecordPage() {
                         icon={<CameraOutlined />}
                         disabled={!recording || imageTapBusy}
                         loading={imageTapBusy}
-                        onClick={openImageTapModal}
+                        onClick={() => openImageTapModal(screenshotDeviceId || undefined)}
                       >
                         {t('record.imageTapButton')}
                       </Button>
@@ -4510,6 +4521,36 @@ export default function RecordPage() {
                           userSelect: 'none',
                         }}
                       />
+                    </div>
+                    {/* WinControl 이미지 터치 — 디바이스 화면 패널과 동일 UX. 우측 끝 정렬. */}
+                    <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: subTextColor }}>
+                      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <Tooltip title={recording ? t('record.imageTapTooltip') : t('record.imageTapDisabled')}>
+                          <InputNumber
+                            size="small"
+                            min={0.5}
+                            max={1.0}
+                            step={0.01}
+                            value={imageTapSimilarity}
+                            disabled={!recording}
+                            onChange={(v) => setImageTapSimilarity(typeof v === 'number' ? v : 0.85)}
+                            style={{ width: 78 }}
+                            prefix={<span style={{ fontSize: 10, opacity: 0.6 }}>{t('record.imageTapSimShort')}</span>}
+                          />
+                        </Tooltip>
+                        <Tooltip title={recording ? t('record.imageTapTooltip') : t('record.imageTapDisabled')}>
+                          <Button
+                            size="small"
+                            type="default"
+                            icon={<CameraOutlined />}
+                            disabled={!recording || imageTapBusy}
+                            loading={imageTapBusy}
+                            onClick={() => openImageTapModal('WinControl')}
+                          >
+                            {t('record.imageTapButton')}
+                          </Button>
+                        </Tooltip>
+                      </div>
                     </div>
                     <Space.Compact style={{ width: '100%', maxWidth: 600 }}>
                       <Input
