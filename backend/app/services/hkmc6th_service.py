@@ -1043,6 +1043,16 @@ class HKMC6thService:
             return CCRC_MONITOR_RIGHT if v == CCRC_MONITOR_LEFT else CCRC_MONITOR_LEFT
         return v
 
+    def _touch_screen_bits_ext(self, screen_type: str) -> int:
+        """CMD_LCDTOUCHEXT 전용 — monitor 바이트는 항상 송신 필수이므로
+        front_center도 0으로 명시 반환한다. CCRC 좌우 swap은 동일하게 적용.
+        """
+        v = self._touch_screen_bits(screen_type)
+        if v is not None:
+            return v
+        # front_center 또는 매핑 미정 — SCREEN_TOUCH_MAP에서 직접 조회 (front=0)
+        return SCREEN_TOUCH_MAP.get(screen_type, 0)
+
     def tap(self, x: int, y: int, screen_type: str = "front_center") -> None:
         """Tap at (x, y) using lcdTouch."""
         x, y = int(x), int(y)
@@ -1072,28 +1082,67 @@ class HKMC6thService:
 
     def long_press(self, x: int, y: int, duration_ms: int = 3000,
                    screen_type: str = "front_center") -> None:
-        """Long press at (x, y) — press, hold, release."""
+        """Long press at (x, y) — PRESS, hold, RELEASE via CMD_LCDTOUCHEXT.
+
+        과거에는 CMD_LCDTOUCH(0x69)를 두 번 송신했으나 0x69는 press+release가
+        하나로 묶인 'tap' 명령이라 두 번 보내면 단순히 탭 2회로 인식되어
+        길게누르기가 동작하지 않았다. CMD_LCDTOUCHEXT(0xB0)의 PRESS_KEY(0x42)
+        / RELEASE_KEY(0x41) 액션을 사용해 명시적으로 press-hold-release 시퀀스를
+        보낸다 (iSAP 구현과 동일 패턴).
+        """
         x, y = int(x), int(y)
-        st = self._touch_screen_bits(screen_type)
+        st = self._touch_screen_bits_ext(screen_type)
         with self._capture_lock:
             time.sleep(0.3)
             with self._send_lock:
-                self._lcd_touch(x, y, st)
-                logger.info("[LONG_PRESS] (%d,%d) %dms", x, y, duration_ms)
+                self._lcd_touch_ext_6th([[x, y, PRESS_KEY, st]])
+                logger.info("[LONG_PRESS] (%d,%d) %dms screen=%s", x, y, duration_ms, screen_type)
                 time.sleep(duration_ms / 1000.0)
-                self._lcd_touch(x, y, st)
+                self._lcd_touch_ext_6th([[x, y, RELEASE_KEY, st]])
             time.sleep(0.05)
 
     def swipe(self, x1: int, y1: int, x2: int, y2: int,
-              screen_type: str = "front_center") -> None:
-        """Swipe (drag) from (x1, y1) to (x2, y2) using lcdDrag."""
+              screen_type: str = "front_center", duration_ms: int = 300) -> None:
+        """Swipe from (x1, y1) to (x2, y2) using PRESS → MOVE*N → RELEASE.
+
+        과거 구현은 CMD_LCDTOUCH_DRAG(0xD6)를 한 번 송신했는데, 일부 IVI는
+        이를 빠른 fling으로 처리하여 길게누르며 끄는 제스처(드래그 정렬, 슬로우
+        스크롤 등)가 인식되지 않는 문제가 있었다. 표준 Android UiAutomator 패턴인
+        PRESS → 중간 MOVE 이벤트 N개 → RELEASE 시퀀스를 사용해 duration_ms 동안
+        선형 보간으로 손가락을 끌어 길게누르며 스와이프 동작을 정확히 재현한다.
+
+        Args:
+            duration_ms: 전체 드래그 소요 시간(밀리초). 0 또는 음수면 즉시 드래그
+                (PRESS→RELEASE)로 fallback. 보통 300ms 정도면 일반 스와이프,
+                500ms 이상이면 long-press-and-drag로 동작한다.
+        """
         x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-        st = self._touch_screen_bits(screen_type)
+        st = self._touch_screen_bits_ext(screen_type)
+        # 중간 MOVE 이벤트 개수 — 60Hz 기준으로 ~16ms 간격이 자연스럽다.
+        # duration_ms를 16ms 단위로 분할하되 최소 4, 최대 30 사이로 클램프.
+        steps = max(4, min(30, int(duration_ms / 16))) if duration_ms > 0 else 1
+        interval = (duration_ms / 1000.0 / steps) if steps > 0 else 0.0
         with self._capture_lock:
             time.sleep(0.3)
             with self._send_lock:
-                self._lcd_drag(x1, y1, x2, y2, st)
-                logger.info("[SWIPE] (%d,%d)->(%d,%d) screen=%s", x1, y1, x2, y2, screen_type)
+                # 1) PRESS at start
+                self._lcd_touch_ext_6th([[x1, y1, PRESS_KEY, st]])
+                # 2) MOVE through intermediate points
+                if steps > 1:
+                    for i in range(1, steps):
+                        t = i / steps
+                        mx = int(round(x1 + (x2 - x1) * t))
+                        my = int(round(y1 + (y2 - y1) * t))
+                        if interval > 0:
+                            time.sleep(interval)
+                        self._lcd_touch_ext_6th([[mx, my, MOVE_KEY, st]])
+                # 3) Final MOVE to end + RELEASE
+                if interval > 0:
+                    time.sleep(interval)
+                self._lcd_touch_ext_6th([[x2, y2, MOVE_KEY, st]])
+                self._lcd_touch_ext_6th([[x2, y2, RELEASE_KEY, st]])
+                logger.info("[SWIPE] (%d,%d)->(%d,%d) %dms steps=%d screen=%s",
+                            x1, y1, x2, y2, duration_ms, steps, screen_type)
             time.sleep(0.05)
 
     def _lcd_touch_ext_6th(self, events: list[list[int]]) -> None:
@@ -1437,9 +1486,10 @@ class HKMC6thService:
         await loop.run_in_executor(None, self.long_press, x, y, duration_ms, screen_type)
 
     async def async_swipe(self, x1: int, y1: int, x2: int, y2: int,
-                          screen_type: str = "front_center") -> None:
+                          screen_type: str = "front_center",
+                          duration_ms: int = 300) -> None:
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, self.swipe, x1, y1, x2, y2, screen_type)
+        await loop.run_in_executor(None, self.swipe, x1, y1, x2, y2, screen_type, duration_ms)
 
     async def async_send_key(self, cmd: int, sub_cmd: int, key_data: int,
                              monitor: int = 0x00, direction: Optional[int] = None) -> None:

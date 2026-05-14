@@ -940,8 +940,9 @@ async def device_input(req: InputRequest):
                 logger.info("[HKMC INPUT] long_press sent: x=%s y=%s ms=%s screen=%s",
                             p["x"], p["y"], p.get("duration_ms", 3000), screen_type)
             elif req.action == "hkmc_swipe":
-                await hkmc.async_swipe(p["x1"], p["y1"], p["x2"], p["y2"], screen_type)
-                logger.info("[HKMC INPUT] swipe sent")
+                await hkmc.async_swipe(p["x1"], p["y1"], p["x2"], p["y2"], screen_type,
+                                       int(p.get("duration_ms", 300)))
+                logger.info("[HKMC INPUT] swipe sent: duration_ms=%s", p.get("duration_ms", 300))
             elif req.action == "hkmc_key":
                 key_name = p.get("key_name")
                 if key_name:
