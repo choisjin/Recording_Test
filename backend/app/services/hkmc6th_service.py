@@ -1043,15 +1043,6 @@ class HKMC6thService:
             return CCRC_MONITOR_RIGHT if v == CCRC_MONITOR_LEFT else CCRC_MONITOR_LEFT
         return v
 
-    def _touch_screen_bits_ext(self, screen_type: str) -> int:
-        """CMD_LCDTOUCHEXT 전용 — monitor 바이트는 항상 송신 필수이므로
-        front_center도 0으로 명시 반환한다. CCRC 좌우 swap은 동일하게 적용.
-        """
-        v = self._touch_screen_bits(screen_type)
-        if v is not None:
-            return v
-        # front_center 또는 매핑 미정 — SCREEN_TOUCH_MAP에서 직접 조회 (front=0)
-        return SCREEN_TOUCH_MAP.get(screen_type, 0)
 
     def tap(self, x: int, y: int, screen_type: str = "front_center") -> None:
         """Tap at (x, y) using lcdTouch."""
@@ -1082,67 +1073,48 @@ class HKMC6thService:
 
     def long_press(self, x: int, y: int, duration_ms: int = 3000,
                    screen_type: str = "front_center") -> None:
-        """Long press at (x, y) — PRESS, hold, RELEASE via CMD_LCDTOUCHEXT.
+        """Long press at (x, y) — 같은 좌표를 시작·끝점으로 갖는 lcdDrag로 구현.
 
-        과거에는 CMD_LCDTOUCH(0x69)를 두 번 송신했으나 0x69는 press+release가
-        하나로 묶인 'tap' 명령이라 두 번 보내면 단순히 탭 2회로 인식되어
-        길게누르기가 동작하지 않았다. CMD_LCDTOUCHEXT(0xB0)의 PRESS_KEY(0x42)
-        / RELEASE_KEY(0x41) 액션을 사용해 명시적으로 press-hold-release 시퀀스를
-        보낸다 (iSAP 구현과 동일 패턴).
+        과거 시도들:
+          - CMD_LCDTOUCH(0x69) × 2: 0x69는 press+release 묶음 'tap' 명령이라
+            두 번 보내면 탭 2회로 인식 (현재 미사용)
+          - CMD_LCDTOUCHEXT(0xB0) PRESS/RELEASE 분리: HKMC 6th 펌웨어가 이 포맷의
+            패킷을 무시 (cad6c2c 커밋에서 폐기됨)
+
+        해결책: CMD_LCDTOUCH_DRAG(0xD6)은 펌웨어가 내부적으로 press-hold-release
+        시퀀스를 발화한다. 시작점과 끝점이 동일하면 그 자리에서 길게누르기가 된다.
+        DraggingTime 필드(4바이트 BE)를 페이로드 끝에 추가해 hold 시간을 지정한다
+        (iSAP 표 136과 동일 포맷).
         """
         x, y = int(x), int(y)
-        st = self._touch_screen_bits_ext(screen_type)
+        st = self._touch_screen_bits(screen_type)
         with self._capture_lock:
             time.sleep(0.3)
             with self._send_lock:
-                self._lcd_touch_ext_6th([[x, y, PRESS_KEY, st]])
+                self._lcd_drag(x, y, x, y, st, duration_ms=duration_ms)
                 logger.info("[LONG_PRESS] (%d,%d) %dms screen=%s", x, y, duration_ms, screen_type)
-                time.sleep(duration_ms / 1000.0)
-                self._lcd_touch_ext_6th([[x, y, RELEASE_KEY, st]])
+            # drag 명령이 펌웨어 측에서 duration_ms 동안 hold하므로 클라이언트에서도
+            # 그만큼 기다려 다음 스텝이 hold 중간에 끼어들지 않게 한다.
+            time.sleep(duration_ms / 1000.0)
             time.sleep(0.05)
 
     def swipe(self, x1: int, y1: int, x2: int, y2: int,
-              screen_type: str = "front_center", duration_ms: int = 300) -> None:
-        """Swipe from (x1, y1) to (x2, y2) using PRESS → MOVE*N → RELEASE.
+              screen_type: str = "front_center", duration_ms: int = 0) -> None:
+        """Swipe (drag) from (x1, y1) to (x2, y2) using lcdDrag.
 
-        과거 구현은 CMD_LCDTOUCH_DRAG(0xD6)를 한 번 송신했는데, 일부 IVI는
-        이를 빠른 fling으로 처리하여 길게누르며 끄는 제스처(드래그 정렬, 슬로우
-        스크롤 등)가 인식되지 않는 문제가 있었다. 표준 Android UiAutomator 패턴인
-        PRESS → 중간 MOVE 이벤트 N개 → RELEASE 시퀀스를 사용해 duration_ms 동안
-        선형 보간으로 손가락을 끌어 길게누르며 스와이프 동작을 정확히 재현한다.
-
-        Args:
-            duration_ms: 전체 드래그 소요 시간(밀리초). 0 또는 음수면 즉시 드래그
-                (PRESS→RELEASE)로 fallback. 보통 300ms 정도면 일반 스와이프,
-                500ms 이상이면 long-press-and-drag로 동작한다.
+        duration_ms > 0 일 때 DraggingTime 4바이트를 페이로드에 추가해
+        길게-끌기(slow drag) 제스처를 발화한다. 0이면 기존 포맷 유지(빠른 fling).
         """
         x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-        st = self._touch_screen_bits_ext(screen_type)
-        # 중간 MOVE 이벤트 개수 — 60Hz 기준으로 ~16ms 간격이 자연스럽다.
-        # duration_ms를 16ms 단위로 분할하되 최소 4, 최대 30 사이로 클램프.
-        steps = max(4, min(30, int(duration_ms / 16))) if duration_ms > 0 else 1
-        interval = (duration_ms / 1000.0 / steps) if steps > 0 else 0.0
+        st = self._touch_screen_bits(screen_type)
         with self._capture_lock:
             time.sleep(0.3)
             with self._send_lock:
-                # 1) PRESS at start
-                self._lcd_touch_ext_6th([[x1, y1, PRESS_KEY, st]])
-                # 2) MOVE through intermediate points
-                if steps > 1:
-                    for i in range(1, steps):
-                        t = i / steps
-                        mx = int(round(x1 + (x2 - x1) * t))
-                        my = int(round(y1 + (y2 - y1) * t))
-                        if interval > 0:
-                            time.sleep(interval)
-                        self._lcd_touch_ext_6th([[mx, my, MOVE_KEY, st]])
-                # 3) Final MOVE to end + RELEASE
-                if interval > 0:
-                    time.sleep(interval)
-                self._lcd_touch_ext_6th([[x2, y2, MOVE_KEY, st]])
-                self._lcd_touch_ext_6th([[x2, y2, RELEASE_KEY, st]])
-                logger.info("[SWIPE] (%d,%d)->(%d,%d) %dms steps=%d screen=%s",
-                            x1, y1, x2, y2, duration_ms, steps, screen_type)
+                self._lcd_drag(x1, y1, x2, y2, st, duration_ms=duration_ms)
+                logger.info("[SWIPE] (%d,%d)->(%d,%d) %dms screen=%s",
+                            x1, y1, x2, y2, duration_ms, screen_type)
+            if duration_ms > 0:
+                time.sleep(duration_ms / 1000.0)
             time.sleep(0.05)
 
     def _lcd_touch_ext_6th(self, events: list[list[int]]) -> None:
@@ -1179,13 +1151,32 @@ class HKMC6thService:
         self._make_send_packet(CMD_LCDTOUCH, 0, 0, data)
 
     def _lcd_drag(self, sx: int, sy: int, ex: int, ey: int,
-                  screen_type: Optional[int] = None) -> None:
-        """LCD drag (swipe)."""
+                  screen_type: Optional[int] = None,
+                  duration_ms: int = 0) -> None:
+        """LCD drag (swipe).
+
+        Payload: StartX(2) StartY(2) EndX(2) EndY(2) [Monitor(2)] [DraggingTime(4)]
+
+        duration_ms > 0 이면 페이로드 끝에 4바이트 BE로 DraggingTime을 붙여
+        펌웨어가 그 시간 동안 손가락을 끌도록 한다 (iSAP 표 136과 동일 포맷).
+        DraggingTime 필드를 쓰려면 Monitor 필드가 반드시 선행해야 하므로
+        front_center(screen_type=None)도 0으로 채워서 보낸다.
+        """
         data = []
         for v in (sx, sy, ex, ey):
             data.append((v >> 8) & 0xFF)
             data.append(v & 0xFF)
-        if screen_type is not None:
+        if duration_ms > 0:
+            # Monitor 필드를 항상 포함 (front_center → 0)
+            st = screen_type if screen_type is not None else 0
+            data.append((st >> 8) & 0xFF)
+            data.append(st & 0xFF)
+            d = max(0, int(duration_ms))
+            data.append((d >> 24) & 0xFF)
+            data.append((d >> 16) & 0xFF)
+            data.append((d >> 8) & 0xFF)
+            data.append(d & 0xFF)
+        elif screen_type is not None:
             data.append((screen_type >> 8) & 0xFF)
             data.append(screen_type & 0xFF)
         self._make_send_packet(CMD_LCDTOUCH_DRAG, 0, 0, data)

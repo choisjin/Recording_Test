@@ -2021,8 +2021,12 @@ class PlaybackService:
                         await svc.async_long_press(params["x"], params["y"],
                                                    int(params.get("duration_ms", 3000)), screen_type)
                     elif step.type == StepType.HKMC_SWIPE:
-                        await svc.async_swipe(params["x1"], params["y1"], params["x2"], params["y2"],
-                                              screen_type, int(params.get("duration_ms", 300)))
+                        if is_isap:
+                            await svc.async_swipe(params["x1"], params["y1"], params["x2"], params["y2"],
+                                                  screen_type, int(params.get("duration_ms", 300)))
+                        else:
+                            await svc.async_swipe(params["x1"], params["y1"], params["x2"], params["y2"],
+                                                  screen_type, int(params.get("duration_ms", 0)))
                     elif step.type == StepType.HKMC_KEY:
                         key_name = params.get("key_name")
                         direction = params.get("direction")
