@@ -11,15 +11,29 @@ logger = logging.getLogger(__name__)
 _ocr_engine = None
 
 
+_engine_init_failed = False
+
+
 def _get_engine():
-    global _ocr_engine
-    if _ocr_engine is None:
+    global _ocr_engine, _engine_init_failed
+    if _ocr_engine is None and not _engine_init_failed:
+        import sys
+        logger.info("OCR: Python 실행 경로 = %s", sys.executable)
         try:
             from rapidocr_onnxruntime import RapidOCR  # type: ignore
             _ocr_engine = RapidOCR()
-            logger.info("RapidOCR engine initialized")
-        except ImportError:
-            logger.warning("rapidocr_onnxruntime not installed. Run: pip install rapidocr-onnxruntime")
+            logger.info("OCR: RapidOCR engine initialized")
+        except ImportError as e:
+            _engine_init_failed = True
+            logger.error(
+                "OCR: rapidocr_onnxruntime import 실패: %s\n"
+                "  현재 Python: %s\n"
+                "  → 백엔드를 venv Python으로 실행하세요: venv/Scripts/python.exe -m uvicorn ...",
+                e, sys.executable,
+            )
+        except Exception as e:
+            _engine_init_failed = True
+            logger.error("OCR: RapidOCR 초기화 실패: %s", e, exc_info=True)
     return _ocr_engine
 
 
