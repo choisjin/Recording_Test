@@ -2,6 +2,13 @@
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
+:: 임베디드 Python 격리 — 시스템 Python의 환경변수가 임베디드 Python에
+:: 영향을 주지 못하도록 차단 (cv2 DLL load 충돌 방지)
+set "PYTHONHOME="
+set "PYTHONPATH="
+set "PYTHONSTARTUP="
+set "PYTHONNOUSERSITE=1"
+
 :: Git PATH 확보
 set "PATH=C:\Program Files\Git\cmd;C:\Program Files (x86)\Git\cmd;%PATH%"
 
@@ -92,7 +99,7 @@ for /f "skip=1 tokens=1" %%h in ('certutil -hashfile "requirements.txt" SHA256 2
 if not defined NEW_HASH goto :eof
 if /i "!NEW_HASH!"=="!OLD_HASH!" goto :eof
 echo [DEPS] requirements.txt changed - installing/updating packages...
-python\python.exe -m pip install -r requirements.txt --no-warn-script-location -q
+python\python.exe -E -s -m pip install -r requirements.txt --no-warn-script-location -q
 if errorlevel 1 (
     echo [DEPS] Install failed - continuing with existing packages.
     goto :eof

@@ -32,6 +32,13 @@ else:
 FRONTEND_DIR = os.path.join(PROJECT_ROOT, "frontend")
 RESTART_FLAG = os.path.join(PROJECT_ROOT, ".restart")
 
+# 임베디드 Python 격리 — 시스템 Python의 환경변수가 자식 subprocess로 전파되지
+# 않도록 server.py 시작 시점에 제거. ReplayKit.bat에서도 정리하지만, server.py를
+# 직접 실행하는 개발 시나리오도 보호.
+for _var in ("PYTHONHOME", "PYTHONPATH", "PYTHONSTARTUP"):
+    os.environ.pop(_var, None)
+os.environ.setdefault("PYTHONNOUSERSITE", "1")
+
 # Backend Python: embedded > venv > system (self)
 _embed_python = os.path.join(PROJECT_ROOT, "python", "python.exe")
 _venv_python = os.path.join(PROJECT_ROOT, "venv", "Scripts", "python.exe")
@@ -95,6 +102,30 @@ _LOG_FILTER_RE = re.compile(
 )
 
 
+def _is_system_python_dir(path: str, embed_dir: str) -> bool:
+    """PATH 항목이 임베디드 Python이 아닌 시스템 Python 디렉토리인지 판별.
+
+    임베디드 Python(self.cmd[0]) 디렉토리는 유지하고,
+    C:\\Python310, C:\\Python311 등 시스템 Python 경로만 제외한다.
+    """
+    if not path:
+        return False
+    try:
+        norm = os.path.normcase(os.path.abspath(path))
+        embed_norm = os.path.normcase(os.path.abspath(embed_dir))
+        if norm == embed_norm or norm.startswith(embed_norm + os.sep):
+            return False
+        # python.exe 또는 python3X.dll 이 있으면 Python 설치 디렉토리로 간주
+        if os.path.isdir(norm):
+            for name in os.listdir(norm):
+                low = name.lower()
+                if low == "python.exe" or (low.startswith("python3") and low.endswith(".dll")):
+                    return True
+    except OSError:
+        pass
+    return False
+
+
 def _run_cmd(cmd, cwd=PROJECT_ROOT, timeout=120):
     """subprocess 실행 후 (returncode, stdout) 반환."""
     try:
@@ -140,6 +171,19 @@ class ServerProcess:
             return False
         env = os.environ.copy()
         env["RECORDING_PROJECT_ROOT"] = PROJECT_ROOT
+        # 임베디드 Python 격리: 시스템 Python의 환경변수가 상속되어
+        # C:\PythonXX\Lib 등이 sys.path에 끼어드는 문제 차단.
+        # python.exe -E -s 플래그와 함께 사용해야 완전 격리됨.
+        for var in ("PYTHONHOME", "PYTHONPATH", "PYTHONSTARTUP"):
+            env.pop(var, None)
+        env["PYTHONNOUSERSITE"] = "1"
+        # PATH에서 시스템 Python 디렉토리 제거 — DLL 검색 시 시스템 Python의
+        # python3X.dll 등이 먼저 잡히는 것을 방지.
+        if sys.platform == "win32" and self.cmd and self.cmd[0]:
+            embed_dir = os.path.dirname(os.path.abspath(self.cmd[0]))
+            path_parts = env.get("PATH", "").split(os.pathsep)
+            filtered = [p for p in path_parts if not _is_system_python_dir(p, embed_dir)]
+            env["PATH"] = os.pathsep.join(filtered)
         try:
             self.proc = subprocess.Popen(
                 self.cmd,
@@ -225,7 +269,10 @@ class ServerManagerApp:
         # cmd 창이 나타나는 문제 방지. GUI의 재시작 버튼으로 대체.
         self.backend = ServerProcess(
             "백엔드",
-            [VENV_PYTHON, "-m", "uvicorn", "backend.app.main:app",
+            # -E: PYTHON* 환경변수 무시 (PYTHONHOME, PYTHONPATH 등)
+            # -s: 사용자 site-packages 비활성화 (%APPDATA%\Python\PythonXX\site-packages)
+            # 시스템 Python이 설치된 환경에서도 임베디드 Python만 사용하도록 격리.
+            [VENV_PYTHON, "-E", "-s", "-m", "uvicorn", "backend.app.main:app",
              "--host", "0.0.0.0", "--port", "8000",
              # 장시간 재생 중 일시적 event loop 지연이 있어도 WS가 끊기지 않도록
              # ping interval/timeout을 기본값(20s) → 60s로 상향.
@@ -447,7 +494,7 @@ class ServerManagerApp:
             old_hash = open(req_hash_file).read().strip() if os.path.exists(req_hash_file) else ""
             if req_hash != old_hash:
                 log_callback("[동기화] Python 의존성 설치 중...")
-                code, out = _run_cmd([VENV_PYTHON, "-m", "pip", "install", "-r", "requirements.txt", "-q"], timeout=120)
+                code, out = _run_cmd([VENV_PYTHON, "-E", "-s", "-m", "pip", "install", "-r", "requirements.txt", "-q"], timeout=120)
                 if code != 0:
                     log_callback(f"[동기화] pip install 실패: {out[:200]}")
                 try:
