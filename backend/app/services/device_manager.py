@@ -2392,6 +2392,19 @@ class DeviceManager:
             module_name = dev.info.get("module", "")
             if not module_name:
                 return f"Module {dev.id}: no module configured"
+            # 가상 모듈 (plugins/*.py(.pyd)에도 lge.auto에도 클래스 없음) — 인스턴스 생성 불필요.
+            # 예: "OCR" — playback_service가 직접 처리. _ensure_default_*가 설정한 connected를 유지.
+            # open_all_serial_connections와 동일한 가드 — 부팅 시뿐 아니라 전체연결/개별연결 시에도 skip.
+            try:
+                from .module_service import _import_module_class
+                if _import_module_class(module_name) is None:
+                    dev.status = "connected"
+                    _mark_connected()
+                    logger.info("Module %s is virtual (no class file); marking connected", dev.id)
+                    return f"Module ready (virtual): {dev.id} ({module_name})"
+            except Exception as e:
+                logger.debug("Virtual module check for %s failed (continuing with init): %s",
+                             module_name, e)
             # 시리얼 기반 모듈: COM 포트 존재 여부 선검증 (DLL 모듈 오탐 차단)
             if dev.info.get("connect_type") == "serial":
                 if not await loop.run_in_executor(None, self._com_port_exists, dev.address):
@@ -2543,8 +2556,9 @@ class DeviceManager:
         if not dev:
             return f"Device {device_id} not found"
 
-        # Common: 항상 연결 상태 유지 (no-op). WinControl은 사용자가 명시적으로 disconnect 가능.
-        if device_id == self.DEFAULT_COMMON_DEVICE_ID:
+        # Common/OCR: 항상 연결 상태 유지 (no-op) — 가상 모듈 디바이스로 외부 연결 없음.
+        # WinControl은 사용자가 명시적으로 disconnect 가능 (별도 처리).
+        if device_id in (self.DEFAULT_COMMON_DEVICE_ID, self.DEFAULT_OCR_DEVICE_ID):
             return f"Device '{device_id}' is a protected system default (no-op)"
 
         self._ever_connected.discard(device_id)
