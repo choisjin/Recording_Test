@@ -2067,8 +2067,8 @@ export default function RecordPage() {
       height: String(rh),
     }));
     setOcrCropModalOpen(false);
-    message.success(`영역 선택 완료: (${rx}, ${ry}) ${rw}×${rh}`);
-  }, []);
+    message.success(`${t('record.ocr.cropDone')}: (${rx}, ${ry}) ${rw}×${rh}`);
+  }, [t]);
 
   useEffect(() => {
     if (ocrCropModalOpen) setTimeout(() => drawOcrCropCanvas(), 50);
@@ -4869,16 +4869,16 @@ export default function RecordPage() {
                               {fn.description}
                             </div>
                           )}
-                          {/* OCR CheckText 영역지정 모드: 크롭 버튼 */}
+                          {/* OCR CheckText Region 모드: 크롭 버튼 */}
                           {selectedModuleName === 'OCR' && selectedModuleFunc === 'CheckText' &&
-                           moduleFuncArgs['mode'] === '영역지정' && (
+                           moduleFuncArgs['mode'] === 'Region' && (
                             <Button
                               size="small"
                               icon={<span>✂</span>}
                               onClick={openOcrCropModal}
                               style={{ alignSelf: 'flex-start' }}
                             >
-                              화면에서 영역 선택
+                              {t('record.ocr.cropButton')}
                             </Button>
                           )}
                           {fn.params.length > 0 && fn.params.map(p => {
@@ -4896,7 +4896,7 @@ export default function RecordPage() {
                               selectedModuleName === 'OCR' &&
                               selectedModuleFunc === 'CheckText' &&
                               ['x', 'y', 'width', 'height'].includes(p.name);
-                            if (isOcrRegionParam && moduleFuncArgs['mode'] !== '영역지정') return null;
+                            if (isOcrRegionParam && moduleFuncArgs['mode'] !== 'Region') return null;
                             return (
                             <div key={p.name} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                               <div style={{ display: 'flex', gap: 4, alignItems: 'center', width: '100%' }}>
@@ -4904,14 +4904,14 @@ export default function RecordPage() {
                                 {isOcrMode ? (
                                   <Select
                                     size="small"
-                                    value={moduleFuncArgs[p.name] || '전체화면'}
+                                    value={moduleFuncArgs[p.name] || 'Full Screen'}
                                     onChange={(v) => {
                                       setModuleFuncArgs(prev => ({ ...prev, [p.name]: v }));
                                     }}
                                     style={{ flex: 1, minWidth: 0 }}
                                     options={[
-                                      { value: '전체화면', label: '전체화면 — 화면 전체에서 텍스트 검색' },
-                                      { value: '영역지정', label: '영역지정 — 지정 영역에서 텍스트 검색' },
+                                      { value: 'Full Screen', label: 'Full Screen' },
+                                      { value: 'Region', label: 'Region' },
                                     ]}
                                   />
                                 ) : isAdbSerialCombo ? (
@@ -4942,11 +4942,24 @@ export default function RecordPage() {
                                   />
                                 )}
                               </div>
-                              {p.description && (
-                                <div style={{ marginLeft: 74, fontSize: 10, color: isDark ? '#888' : '#999', lineHeight: 1.4 }}>
-                                  {p.description}
-                                </div>
-                              )}
+                              {(() => {
+                                // OCR 모듈: 백엔드의 한글 description 대신 i18n 키로 변환 (언어별 표시)
+                                let desc = p.description;
+                                if (selectedModuleName === 'OCR') {
+                                  const fnKey = selectedModuleFunc === 'CheckText' ? 'checkText'
+                                              : selectedModuleFunc === 'ClickText' ? 'clickText' : '';
+                                  if (fnKey) {
+                                    const i18nKey = `record.ocr.${fnKey}.${p.name}` as TranslationKey;
+                                    const translated = t(i18nKey);
+                                    if (translated !== i18nKey) desc = translated;
+                                  }
+                                }
+                                return desc ? (
+                                  <div style={{ marginLeft: 74, fontSize: 10, color: isDark ? '#888' : '#999', lineHeight: 1.4 }}>
+                                    {desc}
+                                  </div>
+                                ) : null;
+                              })()}
                             </div>
                             );
                           })}
@@ -5125,7 +5138,7 @@ export default function RecordPage() {
 
       {/* OCR ExtractRegion 크롭 모달 */}
       <Modal
-        title="OCR 영역 선택 — 드래그하여 텍스트 추출 영역을 지정하세요"
+        title={t('record.ocr.cropModalTitle')}
         open={ocrCropModalOpen}
         onCancel={() => setOcrCropModalOpen(false)}
         width="90vw"
@@ -5144,7 +5157,7 @@ export default function RecordPage() {
           />
         </div>
         <div style={{ marginTop: 6, color: subTextColor, fontSize: 11, textAlign: 'center' }}>
-          드래그하여 영역을 선택하면 x, y, width, height 파라미터에 자동 입력됩니다.
+          {t('record.ocr.cropModalHint')}
         </div>
       </Modal>
 

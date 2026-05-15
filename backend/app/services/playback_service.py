@@ -1816,8 +1816,8 @@ class PlaybackService:
         if func_name == "CheckText":
             target = str(func_args.get("text", ""))
             threshold = float(func_args.get("threshold", "0.8") or 0.8)
-            mode = str(func_args.get("mode", "전체화면"))
-            if mode == "영역지정":
+            mode = str(func_args.get("mode", "Full Screen"))
+            if mode == "Region":
                 rx = int(func_args.get("x", 0) or 0)
                 ry = int(func_args.get("y", 0) or 0)
                 rw = int(func_args.get("width", 0) or 0)
