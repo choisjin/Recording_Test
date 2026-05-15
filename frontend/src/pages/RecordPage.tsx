@@ -3864,7 +3864,17 @@ export default function RecordPage() {
                     : s.type === 'all_random'
                     ? <><Tag color="magenta" style={{ margin: 0 }}>RAND</Tag> ×{s.params.repeat_count ?? 1} @{s.params.interval_ms ?? 0}ms (HK:{(s.params.hk_keys || []).length}{s.params.sk_region ? ' SK▣' : ''}{s.params.drag_region ? ' DRAG▣' : ''})</>
                     : s.type === 'image_tap'
-                    ? <><Tag color="purple" style={{ margin: 0 }}>IMG</Tag> sim≥{Number(s.params.similarity ?? 0.85).toFixed(2)} {s.params.template_width && s.params.template_height ? `(${s.params.template_width}×${s.params.template_height})` : ''} → ({s.params.matched_x ?? '?'},{s.params.matched_y ?? '?'})</>
+                    ? <><Tag
+                        color="purple"
+                        style={{ margin: 0, cursor: s.params.template && scenarioName ? 'pointer' : 'default' }}
+                        title={s.params.template && scenarioName ? t('record.imageTapShowTemplate') : undefined}
+                        onClick={(e) => {
+                          if (!s.params.template || !scenarioName) return;
+                          e.stopPropagation();
+                          setAnnotatedPreviewSrc(`/screenshots/${scenarioName}/${s.params.template}?v=${s._imageVer || ''}`);
+                          setAnnotatedPreviewVisible(true);
+                        }}
+                      >IMG</Tag> sim≥{Number(s.params.similarity ?? 0.85).toFixed(2)} {s.params.template_width && s.params.template_height ? `(${s.params.template_width}×${s.params.template_height})` : ''} → ({s.params.matched_x ?? '?'},{s.params.matched_y ?? '?'})</>
                     : JSON.stringify(s.params)}
                 </span>
               )}
