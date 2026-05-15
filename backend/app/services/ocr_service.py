@@ -55,19 +55,55 @@ def run_ocr(image_bytes: bytes) -> List[OcrItem]:
     """이미지에서 OCR 실행."""
     engine = _get_engine()
     if engine is None:
+        logger.warning("OCR: engine 없음 (rapidocr_onnxruntime 미설치)")
         return []
     img = _bytes_to_array(image_bytes)
     if img is None:
-        logger.warning("OCR: 이미지 디코딩 실패")
+        logger.warning("OCR: 이미지 디코딩 실패 (bytes len=%d)", len(image_bytes) if image_bytes else 0)
         return []
+    logger.info("OCR: 이미지 크기 %dx%d, channels=%d", img.shape[1], img.shape[0], img.shape[2] if img.ndim == 3 else 1)
     try:
-        result, _ = engine(img)
+        raw = engine(img)
     except Exception as e:
         logger.error("OCR 엔진 오류: %s", e)
         return []
-    if not result:
+    # RapidOCR 결과 형식이 버전마다 다름:
+    #  - 구버전: (result, elapse_list) — result는 [[box, [text, score]], ...]
+    #  - 신버전: TextRecResult 객체 또는 단일 result만 반환할 수도 있음
+    if raw is None:
+        logger.info("OCR: 결과 None (텍스트 미검출)")
         return []
-    return [OcrItem(text=item[1][0], box=item[0], score=item[1][1]) for item in result]
+    if isinstance(raw, tuple) and len(raw) == 2:
+        result = raw[0]
+    else:
+        result = raw
+    if result is None or not result:
+        logger.info("OCR: 결과 empty")
+        return []
+    items = []
+    for idx, item in enumerate(result):
+        try:
+            if hasattr(item, "txt") and hasattr(item, "box"):
+                # 신버전 객체 형태
+                items.append(OcrItem(text=item.txt, box=item.box, score=getattr(item, "score", 1.0)))
+            elif isinstance(item, (list, tuple)):
+                if len(item) >= 3 and not isinstance(item[1], (list, tuple)):
+                    # [box, text, score] 형식
+                    items.append(OcrItem(text=str(item[1]), box=item[0], score=float(item[2])))
+                elif len(item) >= 2:
+                    # [box, [text, score]] 형식
+                    box = item[0]
+                    ts = item[1]
+                    if isinstance(ts, (tuple, list)) and len(ts) >= 2:
+                        items.append(OcrItem(text=str(ts[0]), box=box, score=float(ts[1])))
+                    else:
+                        items.append(OcrItem(text=str(ts), box=box, score=1.0))
+        except Exception as e:
+            logger.warning("OCR 결과 파싱 실패 idx=%d item=%r err=%s", idx, item, e)
+            continue
+    logger.info("OCR: %d개 텍스트 검출 — 샘플: %s", len(items),
+                [(it.text, round(it.score, 2)) for it in items[:5]])
+    return items
 
 
 def has_text(
