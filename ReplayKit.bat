@@ -97,13 +97,34 @@ for /f "skip=1 tokens=1" %%h in ('certutil -hashfile "requirements.txt" SHA256 2
     if not defined NEW_HASH set "NEW_HASH=%%h"
 )
 if not defined NEW_HASH goto :eof
-if /i "!NEW_HASH!"=="!OLD_HASH!" goto :eof
-echo [DEPS] requirements.txt changed - installing/updating packages...
+
+:: 핵심 모듈 import 가능 여부 — requirements.txt 미동기화 대비 안전장치.
+:: 누락이면 해시가 같아도 강제 재설치.
+set "NEED_INSTALL="
+if /i not "!NEW_HASH!"=="!OLD_HASH!" set "NEED_INSTALL=1"
+python\python.exe -c "import rapidocr_onnxruntime, rapidfuzz" >nul 2>nul
+if errorlevel 1 (
+    set "NEED_INSTALL=1"
+    set "CRITICAL_MISSING=1"
+)
+if not defined NEED_INSTALL goto :eof
+
+echo [DEPS] Installing/updating packages...
 python\python.exe -E -s -m pip install -r requirements.txt --no-warn-script-location -q
 if errorlevel 1 (
     echo [DEPS] Install failed - continuing with existing packages.
     goto :eof
 )
+
+:: requirements.txt 동기화 누락 시 핵심 모듈 직접 설치 (requirements 에 없을 수도 있음)
+if defined CRITICAL_MISSING (
+    python\python.exe -c "import rapidocr_onnxruntime, rapidfuzz" >nul 2>nul
+    if !errorlevel! NEQ 0 (
+        echo [DEPS] Critical modules still missing - installing directly...
+        python\python.exe -E -s -m pip install rapidocr-onnxruntime rapidfuzz --no-warn-script-location -q
+    )
+)
+
 >"%REQ_HASH_FILE%" echo !NEW_HASH!
 echo [DEPS] Dependencies updated.
 goto :eof

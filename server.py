@@ -484,7 +484,7 @@ class ServerManagerApp:
             if removed:
                 log_callback(f"[동기화] 배포 보호: .py 소스 {removed}개 삭제 (.pyd 우선)")
 
-        # 2) pip install (requirements.txt 변경 시에만)
+        # 2) pip install (requirements.txt 변경 또는 핵심 모듈 누락 시)
         log_callback("[동기화] Python 의존성 확인 중...")
         try:
             import hashlib
@@ -492,9 +492,24 @@ class ServerManagerApp:
             req_hash_file = os.path.join(PROJECT_ROOT, ".req_hash")
             req_hash = hashlib.md5(open(req_file, "rb").read()).hexdigest() if os.path.exists(req_file) else ""
             old_hash = open(req_hash_file).read().strip() if os.path.exists(req_hash_file) else ""
+
+            # 핵심 모듈 import 체크 — requirements.txt 동기화 누락에 대비한 안전장치.
+            # 해시 비교만 의지하면 배포 환경 requirements.txt 가 갱신되지 않은 경우
+            # 누락된 패키지를 영영 발견하지 못하므로 import 가능 여부로 직접 확인.
+            CRITICAL_MODULES = ["rapidocr_onnxruntime", "rapidfuzz"]
+            critical_missing: list[str] = []
+            if VENV_PYTHON and os.path.exists(VENV_PYTHON):
+                for mod in CRITICAL_MODULES:
+                    try:
+                        check_code, _ = _run_cmd([VENV_PYTHON, "-c", f"import {mod}"], timeout=15)
+                        if check_code != 0:
+                            critical_missing.append(mod)
+                    except Exception:
+                        critical_missing.append(mod)
+
             if req_hash != old_hash:
-                log_callback("[동기화] Python 의존성 설치 중...")
-                code, out = _run_cmd([VENV_PYTHON, "-E", "-s", "-m", "pip", "install", "-r", "requirements.txt", "-q"], timeout=120)
+                log_callback("[동기화] Python 의존성 설치 중... (requirements.txt 변경 감지)")
+                code, out = _run_cmd([VENV_PYTHON, "-E", "-s", "-m", "pip", "install", "-r", "requirements.txt", "-q"], timeout=180)
                 if code != 0:
                     log_callback(f"[동기화] pip install 실패: {out[:200]}")
                 try:
@@ -504,6 +519,28 @@ class ServerManagerApp:
                     pass
             else:
                 log_callback("[동기화] Python 의존성 변경 없음 — 건너뜀")
+
+            # 핵심 모듈이 여전히 누락된 경우 직접 설치 (requirements.txt 동기화 무관)
+            if critical_missing:
+                # 위에서 -r requirements.txt 가 실행됐어도 여기 누락이면 requirements 자체에
+                # 빠진 패키지이므로 명시적으로 설치.
+                still_missing = []
+                for mod in critical_missing:
+                    check_code, _ = _run_cmd([VENV_PYTHON, "-c", f"import {mod}"], timeout=15)
+                    if check_code != 0:
+                        still_missing.append(mod)
+                if still_missing:
+                    log_callback(f"[동기화] 핵심 모듈 누락 — 직접 설치: {still_missing}")
+                    # 패키지 이름은 hyphen 형태로 통일
+                    pkg_names = [m.replace("_", "-") for m in still_missing]
+                    code, out = _run_cmd(
+                        [VENV_PYTHON, "-E", "-s", "-m", "pip", "install", *pkg_names, "-q"],
+                        timeout=180,
+                    )
+                    if code != 0:
+                        log_callback(f"[동기화] 핵심 모듈 설치 실패: {out[:200]}")
+                    else:
+                        log_callback(f"[동기화] 핵심 모듈 설치 완료: {pkg_names}")
         except Exception as e:
             log_callback(f"[동기화] Python 의존성 확인 오류: {e}")
 
