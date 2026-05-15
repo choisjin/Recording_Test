@@ -196,6 +196,18 @@ const AnnotatedThumbnail = React.memo(({ src, regions, color, height = 48 }: {
 const LONG_PRESS_THRESHOLD_MS = 500;
 const SWIPE_DISTANCE_THRESHOLD = 20;
 
+// scrcpy 방식: 마우스 down→move→up 동안 캡처한 좌표를 그대로 디바이스에 전송.
+// 점이 너무 많으면 sendevent 스크립트가 비대해지므로 균등 다운샘플 (≤80점).
+function downsamplePath(points: { x: number; y: number }[], maxPoints: number = 80): { x: number; y: number }[] {
+  if (points.length <= maxPoints) return points.slice();
+  const stride = (points.length - 1) / (maxPoints - 1);
+  const out: { x: number; y: number }[] = [];
+  for (let i = 0; i < maxPoints; i++) {
+    out.push(points[Math.round(i * stride)]);
+  }
+  return out;
+}
+
 // HKMC key sub commands
 const HKMC_SHORT_KEY = 0x43;
 const HKMC_LONG_KEY = 0x44;
@@ -431,6 +443,13 @@ export default function RecordPage() {
   const [repeatTapCount, setRepeatTapCount] = useState(5);
   const [repeatTapInterval, setRepeatTapInterval] = useState(100);
   const repeatTapCoordsRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  // 스마트 스와이프: 한 번의 드래그 궤적을 분석해서 직선/L/Z 등으로 자동 인식하여 전송.
+  // ON이면 mousemove 중 좌표를 캡처하고 mouseup에서 RDP+8방향 스냅+병합으로 단순화.
+  const [smartSwipe, setSmartSwipe] = useState(false);
+  // 드래그 중 캡처된 raw 좌표 (smart 모드일 때만 사용)
+  const gesturePathRef = useRef<{ x: number; y: number }[]>([]);
+  // 드래그 중 화면 표시용 — rAF 단위로 갱신해 SVG가 다시 그려지도록 함
+  const [livePathTick, setLivePathTick] = useState(0);
 
   // 웹캠 설정(노출) 모달
   const [webcamExposureOpen, setWebcamExposureOpen] = useState(false);
@@ -923,6 +942,39 @@ export default function RecordPage() {
     const y = Math.round((clientY - rect.top - by) * scaleY);
     if (isScreenHkmc && hkmcDisplayMode === 'integrated') x += 1920;
     return { x, y };
+  };
+
+  // 디바이스 좌표 → 캔버스 display 좌표(rect 기준 px). 패턴 오버레이용 역변환.
+  const toDisplayCoords = (el: HTMLCanvasElement | null, deviceX: number, deviceY: number) => {
+    if (!el) return { x: 0, y: 0 };
+    const cw = el.clientWidth;
+    const ch = el.clientHeight;
+    const isIsap = screenDevice?.type === 'isap_agent';
+    let refW = deviceRes.width;
+    let refH = deviceRes.height;
+    if (isIsap) {
+      let natW = el.width || 0;
+      let natH = el.height || 0;
+      if (viewCropEnabled && natW > 0 && natH > 0) {
+        const cropFracW = viewCropX[1] - viewCropX[0];
+        const cropFracH = viewCropY[1] - viewCropY[0];
+        if (cropFracW > 0 && cropFracH > 0) {
+          natW = Math.round(natW / cropFracW);
+          natH = Math.round(natH / cropFracH);
+        }
+      }
+      if (natW > 0 && natH > 0) { refW = natW; refH = natH; }
+    }
+    let dx = deviceX;
+    if (isScreenHkmc && hkmcDisplayMode === 'integrated') dx = deviceX - 1920;
+    if (viewCropEnabled) {
+      const cropW = viewCropX[1] - viewCropX[0];
+      const cropH = viewCropY[1] - viewCropY[0];
+      const fracX = (dx / refW - viewCropX[0]) / (cropW || 1);
+      const fracY = (deviceY / refH - viewCropY[0]) / (cropH || 1);
+      return { x: fracX * cw, y: fracY * ch };
+    }
+    return { x: (dx / refW) * cw, y: (deviceY / refH) * ch };
   };
 
   // Map generic gesture actions to agent-specific equivalents based on device type
@@ -2668,6 +2720,9 @@ export default function RecordPage() {
     if (!el) return;
     const { x, y } = toDeviceCoords(el, e.clientX, e.clientY);
     gestureRef.current = { startX: x, startY: y, startTime: Date.now(), active: true };
+    // 스마트 모드: 드래그 궤적 캡처 시작
+    gesturePathRef.current = [{ x, y }];
+    setLivePathTick(t => t + 1);
   }, [screenshotDeviceId, deviceRes, hkmcDisplayMode, isScreenHkmc, viewCropEnabled, viewCropX, viewCropY]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -2684,8 +2739,17 @@ export default function RecordPage() {
       if (!cur) return;
       const { x, y } = toDeviceCoords(cur, clientX, clientY);
       setHoverCoords({ x, y, clientX, clientY });
+      // 스마트 모드: 드래그 중일 때 좌표 누적 (중복점 제거)
+      if (gestureRef.current.active && smartSwipe) {
+        const path = gesturePathRef.current;
+        const last = path[path.length - 1];
+        if (!last || Math.hypot(x - last.x, y - last.y) >= 3) {
+          path.push({ x, y });
+          setLivePathTick(t => t + 1);
+        }
+      }
     });
-  }, [screenshotDeviceId, deviceRes, hkmcDisplayMode, isScreenHkmc, viewCropEnabled, viewCropX, viewCropY]);
+  }, [screenshotDeviceId, deviceRes, hkmcDisplayMode, isScreenHkmc, viewCropEnabled, viewCropX, viewCropY, smartSwipe]);
 
   const handleMouseLeave = useCallback(() => {
     if (hoverRafRef.current != null) {
@@ -2702,9 +2766,46 @@ export default function RecordPage() {
     if (!el) return;
 
     const { startX, startY, startTime } = gestureRef.current;
-    const { x: endX, y: endY } = toDeviceCoords(el, e.clientX, e.clientY);
-    const dist = Math.sqrt((endX - startX) ** 2 + (endY - startY) ** 2);
+    const { x: rawEndX, y: rawEndY } = toDeviceCoords(el, e.clientX, e.clientY);
+    const rawDist = Math.sqrt((rawEndX - startX) ** 2 + (rawEndY - startY) ** 2);
     const elapsed = Date.now() - startTime;
+
+    // scrcpy 방식: 캡처한 raw 궤적을 그대로 전송 (1핑거 normal 모드).
+    // 보정/분석 없이 마우스가 지나간 좌표 그대로 — 곡선/L자/Z자 모두 자연 반영.
+    if (smartSwipe && gestureMode === 'normal' && fingerCount === 1 && rawDist > SWIPE_DISTANCE_THRESHOLD) {
+      const path = gesturePathRef.current.slice();
+      const tail = path[path.length - 1];
+      if (!tail || Math.hypot(rawEndX - tail.x, rawEndY - tail.y) > 1) {
+        path.push({ x: rawEndX, y: rawEndY });
+      }
+      gesturePathRef.current = [];
+      setLivePathTick(t => t + 1);
+      const sampled = downsamplePath(path);
+      if (sampled.length >= 2) {
+        const first = sampled[0];
+        const last = sampled[sampled.length - 1];
+        const durationMs = Math.max(200, Math.min(elapsed, 5000));
+        if (sampled.length === 2) {
+          const params = { x1: first.x, y1: first.y, x2: last.x, y2: last.y, duration_ms: durationMs };
+          executeAction('swipe', params, `swipe (${first.x},${first.y})→(${last.x},${last.y}) ${durationMs}ms`);
+          setLastGesture(`${t('record.gestureSwipe')} (${first.x},${first.y})→(${last.x},${last.y})`);
+        } else {
+          const params = {
+            x1: first.x, y1: first.y, x2: last.x, y2: last.y,
+            duration_ms: durationMs,
+            points: sampled.map(p => ({ x: p.x, y: p.y })),
+          };
+          executeAction('swipe', params,
+            `pattern_swipe ${sampled.length}pt (${first.x},${first.y})→(${last.x},${last.y}) ${durationMs}ms`);
+          setLastGesture(`${t('record.gestureSwipe')} ${sampled.length}pt (${first.x},${first.y})→(${last.x},${last.y})`);
+        }
+        return;
+      }
+    }
+
+    const endX = rawEndX;
+    const endY = rawEndY;
+    const dist = rawDist;
 
     // 줌인/줌아웃 모드: 스와이프한 방향과 거리만큼 핀치 제스처
     if (gestureMode !== 'normal') {
@@ -2792,7 +2893,7 @@ export default function RecordPage() {
       executeAction('tap', params, `tap (${startX},${startY})`);
       setLastGesture(`${t('record.gestureTap')} (${startX},${startY})`);
     }
-  }, [screenshotDeviceId, executeAction, deviceRes, hkmcDisplayMode, isScreenHkmc, viewCropEnabled, viewCropX, viewCropY, fingerCount, fingerSpread, gestureMode, repeatTapMode]);
+  }, [screenshotDeviceId, executeAction, deviceRes, hkmcDisplayMode, isScreenHkmc, viewCropEnabled, viewCropX, viewCropY, fingerCount, fingerSpread, gestureMode, repeatTapMode, smartSwipe, t]);
 
   const executeRepeatTap = useCallback(() => {
     const { x, y } = repeatTapCoordsRef.current;
@@ -4222,6 +4323,18 @@ export default function RecordPage() {
                       />
                     </Tooltip>
                   )}
+                  {fingerCount === 1 && (
+                    <Tooltip title={t('record.smartSwipeHint')}>
+                      <Button
+                        size="small"
+                        type={smartSwipe ? 'primary' : 'default'}
+                        onClick={() => setSmartSwipe(v => !v)}
+                        style={{ fontWeight: smartSwipe ? 700 : 400 }}
+                      >
+                        {t('record.smartSwipe')}
+                      </Button>
+                    </Tooltip>
+                  )}
                   </>}
                 </Space>
               )
@@ -4270,6 +4383,31 @@ export default function RecordPage() {
                     <Tag color="processing" style={{ fontSize: 12, padding: '4px 12px' }}>{t('record.stepTesting')}</Tag>
                   </div>
                 )}
+                {smartSwipe && gestureRef.current.active && gesturePathRef.current.length > 1 && testingStepIndex == null && (() => {
+                  // livePathTick은 강제 리렌더용 의존성. 사용은 ref에서 직접.
+                  void livePathTick;
+                  const cv = canvasRef.current;
+                  if (!cv) return null;
+                  const rect = cv.getBoundingClientRect();
+                  const raw = gesturePathRef.current.map(p => toDisplayCoords(cv, p.x, p.y));
+                  const rawStr = raw.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+                  const head = raw[0];
+                  const tail = raw[raw.length - 1];
+                  return (
+                    <svg
+                      style={{
+                        position: 'absolute', left: 0, top: 0,
+                        width: rect.width, height: rect.height,
+                        pointerEvents: 'none', zIndex: 8,
+                      }}
+                    >
+                      <polyline points={rawStr} fill="none" stroke="#52c41a" strokeWidth={3}
+                                strokeLinejoin="round" strokeLinecap="round" opacity={0.95} />
+                      <circle cx={head.x} cy={head.y} r={5} fill="#52c41a" stroke="#fff" strokeWidth={2} />
+                      <circle cx={tail.x} cy={tail.y} r={5} fill="#52c41a" stroke="#fff" strokeWidth={2} />
+                    </svg>
+                  );
+                })()}
                 {hoverCoords && testingStepIndex == null && (() => {
                   // 캔버스 기준 상대 좌표로 변환 (커서 옆에 배지 표시)
                   const cv = canvasRef.current;

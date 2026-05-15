@@ -1095,7 +1095,11 @@ async def device_input(req: InputRequest):
         elif req.action == "long_press":
             await adb.long_press(p["x"], p["y"], p.get("duration_ms", 1000), serial=adb_serial, display_id=display_id)
         elif req.action == "swipe":
-            await adb.swipe(p["x1"], p["y1"], p["x2"], p["y2"], p.get("duration_ms", 300), serial=adb_serial, display_id=display_id)
+            pts = p.get("points") or []
+            if isinstance(pts, list) and len(pts) >= 2:
+                await adb.pattern_swipe(pts, p.get("duration_ms", 600), serial=adb_serial, display_id=display_id)
+            else:
+                await adb.swipe(p["x1"], p["y1"], p["x2"], p["y2"], p.get("duration_ms", 300), serial=adb_serial, display_id=display_id)
         elif req.action == "input_text":
             await adb.input_text(p["text"], serial=adb_serial, display_id=display_id)
         elif req.action == "key_event":

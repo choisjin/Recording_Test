@@ -49,6 +49,9 @@ class SwipeParams(BaseModel):
     x2: int
     y2: int
     duration_ms: int = 300
+    # 패턴(연속 스와이프) — 2개 이상의 waypoint가 주어지면 L자 등 다구간 연속 터치.
+    # 비어 있거나 길이 < 2면 (x1,y1)→(x2,y2) 일반 스와이프로 동작.
+    points: list[dict[str, int]] = Field(default_factory=list)
 
 
 class InputTextParams(BaseModel):

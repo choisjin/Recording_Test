@@ -1323,6 +1323,10 @@ class PlaybackService:
         elif step.type == StepType.LONG_PRESS:
             return f"long_press ({p.get('x', 0)}, {p.get('y', 0)}) {p.get('duration_ms', 1000)}ms"
         elif step.type == StepType.SWIPE:
+            pts = p.get("points") or []
+            if isinstance(pts, list) and len(pts) >= 2:
+                path = "→".join(f"({pt.get('x',0)},{pt.get('y',0)})" for pt in pts)
+                return f"pattern_swipe {path} {p.get('duration_ms', 600)}ms"
             return f"swipe ({p.get('x1',0)},{p.get('y1',0)})→({p.get('x2',0)},{p.get('y2',0)})"
         elif step.type == StepType.INPUT_TEXT:
             return f"input_text \"{p.get('text', '')}\""
@@ -2649,12 +2653,19 @@ class PlaybackService:
             elif step.type == StepType.LONG_PRESS:
                 await self.adb.long_press(params["x"], params["y"], params.get("duration_ms", 1000), serial=adb_serial, display_id=adb_display_id)
             elif step.type == StepType.SWIPE:
-                await self.adb.swipe(
-                    params["x1"], params["y1"],
-                    params["x2"], params["y2"],
-                    params.get("duration_ms", 300),
-                    serial=adb_serial, display_id=adb_display_id,
-                )
+                pts = params.get("points") or []
+                if isinstance(pts, list) and len(pts) >= 2:
+                    await self.adb.pattern_swipe(
+                        pts, params.get("duration_ms", 600),
+                        serial=adb_serial, display_id=adb_display_id,
+                    )
+                else:
+                    await self.adb.swipe(
+                        params["x1"], params["y1"],
+                        params["x2"], params["y2"],
+                        params.get("duration_ms", 300),
+                        serial=adb_serial, display_id=adb_display_id,
+                    )
             elif step.type == StepType.INPUT_TEXT:
                 await self.adb.input_text(params["text"], serial=adb_serial, display_id=adb_display_id)
             elif step.type == StepType.KEY_EVENT:

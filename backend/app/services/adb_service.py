@@ -365,6 +365,161 @@ class ADBService:
         dflag = self._display_flag(display_id)
         return await self._run_device(s, f"shell input {dflag}swipe {x1} {y1} {x2} {y2} {duration_ms}")
 
+    async def pattern_swipe(
+        self, points: list[dict], duration_ms: int = 600,
+        serial: Optional[str] = None, display_id: Optional[int] = None,
+    ) -> str:
+        """다구간(waypoint) 연속 스와이프. L자/Z자 등 손가락을 떼지 않는 패턴 입력.
+
+        points: [{"x": int, "y": int}, ...] — 최소 2개.
+        sendevent 기반(권한 자동 폴백). sendevent 사용 불가시 input swipe로 구간별 분할
+        실행하지만 손가락이 떼지므로 진정한 연속 입력이 아니라는 점 주의.
+        """
+        s = serial or self._active_serial
+        if not s:
+            raise ValueError("No device selected")
+        clean = [
+            {"x": int(p.get("x", 0)), "y": int(p.get("y", 0))}
+            for p in points
+            if "x" in p and "y" in p
+        ]
+        if len(clean) < 2:
+            raise ValueError("pattern_swipe requires at least 2 points")
+
+        # sendevent 가용성 캐시 검사 (없으면 0-byte SYN 만으로 권한 탐지 — 실제 터치 없음)
+        cached = self._sendevent_mode.get(s)
+        if cached is None:
+            touch = await self._find_touch_device(s)
+            if touch:
+                loop = asyncio.get_event_loop()
+                dev = touch[0]
+                test_cmd = f'{ADB_PATH} -s {s} shell "sendevent {dev} 0 0 0"'
+                _, test_err, test_rc = await loop.run_in_executor(None, functools.partial(_run_sync, test_cmd, 3))
+                if test_rc == 0 and "Permission denied" not in test_err:
+                    self._sendevent_mode[s] = "direct"
+                else:
+                    test_su = f'{ADB_PATH} -s {s} shell "su 0 sendevent {dev} 0 0 0"'
+                    _, test_err, test_rc = await loop.run_in_executor(None, functools.partial(_run_sync, test_su, 3))
+                    if test_rc == 0 and "not found" not in test_err and "Permission denied" not in test_err:
+                        self._sendevent_mode[s] = "su"
+                    else:
+                        self._sendevent_mode[s] = "none"
+            else:
+                self._sendevent_mode[s] = "none"
+            cached = self._sendevent_mode.get(s)
+
+        if cached in ("direct", "su"):
+            return await self._sendevent_pattern_raw(clean, duration_ms, s, su=(cached == "su"))
+
+        # fallback: 구간 분할 input swipe (연속 아님)
+        dflag = self._display_flag(display_id)
+        cmds: list[str] = []
+        per_segment = max(50, duration_ms // max(1, len(clean) - 1))
+        for i in range(len(clean) - 1):
+            a, b = clean[i], clean[i + 1]
+            cmds.append(f"input {dflag}swipe {a['x']} {a['y']} {b['x']} {b['y']} {per_segment}")
+        joined = " && ".join(cmds)
+        return await self._run_device(s, f'shell "{joined}"')
+
+    def _build_sendevent_pattern_cmd(
+        self, points: list[dict], duration_ms: int,
+        touch: tuple[str, int, int],
+        display_size: tuple[int, int] = (0, 0),
+    ) -> str:
+        """다구간 연속 터치(single-finger) sendevent 시퀀스 생성.
+        BTN_TOUCH DOWN → SLOT/TRACKING_ID/POSITION → 각 구간을 단계별로 MOVE → UP.
+        """
+        dev, max_x, max_y = touch
+        dw, dh = display_size if display_size[0] > 0 else (max_x + 1, max_y + 1)
+
+        def sx(x: float) -> int:
+            return max(0, min(max_x, int(x * max_x / dw)))
+        def sy(y: float) -> int:
+            return max(0, min(max_y, int(y * max_y / dh)))
+
+        SE = f"sendevent {dev}"
+        cmds: list[str] = []
+
+        # DOWN at points[0]
+        cmds.append(f"{SE} 1 330 1")
+        cmds += [
+            f"{SE} 3 47 0",
+            f"{SE} 3 57 0",
+            f"{SE} 3 53 {sx(points[0]['x'])}",
+            f"{SE} 3 54 {sy(points[0]['y'])}",
+            f"{SE} 3 48 5",
+        ]
+        cmds.append(f"{SE} 0 0 0")
+
+        # 각 segment 를 시간에 비례하여 분할
+        total_len = 0.0
+        seg_lens: list[float] = []
+        for i in range(len(points) - 1):
+            dx = points[i + 1]["x"] - points[i]["x"]
+            dy = points[i + 1]["y"] - points[i]["y"]
+            d = (dx * dx + dy * dy) ** 0.5
+            seg_lens.append(d)
+            total_len += d
+        if total_len <= 0:
+            total_len = 1.0
+
+        # 전체 step 수 ~ duration / 30ms, 최소 6 최대 60
+        total_steps = max(6, min(60, duration_ms // 25))
+        sleep_s = duration_ms / 1000 / total_steps
+        use_sleep = sleep_s > 0.02
+
+        for i in range(len(points) - 1):
+            seg_steps = max(2, int(round(total_steps * seg_lens[i] / total_len)))
+            a, b = points[i], points[i + 1]
+            for step in range(1, seg_steps + 1):
+                t = step / seg_steps
+                ix = a["x"] + (b["x"] - a["x"]) * t
+                iy = a["y"] + (b["y"] - a["y"]) * t
+                if use_sleep:
+                    cmds.append(f"sleep {sleep_s:.3f}")
+                cmds += [
+                    f"{SE} 3 47 0",
+                    f"{SE} 3 53 {sx(ix)}",
+                    f"{SE} 3 54 {sy(iy)}",
+                ]
+                cmds.append(f"{SE} 0 0 0")
+
+        # UP
+        cmds.append("sleep 0.03")
+        cmds += [f"{SE} 3 47 0", f"{SE} 3 57 -1"]
+        cmds.append(f"{SE} 1 330 0")
+        cmds.append(f"{SE} 0 0 0")
+        return "\n".join(cmds)
+
+    async def _sendevent_pattern_raw(
+        self, points: list[dict], duration_ms: int, serial: str, su: bool = False,
+    ) -> str:
+        touch = await self._find_touch_device(serial)
+        if not touch:
+            return ""
+        display_size = await self._get_display_size(serial)
+        script = self._build_sendevent_pattern_cmd(points, duration_ms, touch, display_size)
+        loop = asyncio.get_event_loop()
+        timeout = max(15, duration_ms // 1000 + 10)
+
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".sh", delete=False, newline="\n") as f:
+            f.write(script)
+            local_path = f.name
+        try:
+            push_cmd = f'{ADB_PATH} -s {serial} push "{local_path}" {self._MT_SCRIPT_REMOTE}'
+            await loop.run_in_executor(None, functools.partial(_run_sync, push_cmd, 5))
+            if su:
+                adb_cmd = f'{ADB_PATH} -s {serial} shell "su 0 sh {self._MT_SCRIPT_REMOTE}"'
+            else:
+                adb_cmd = f'{ADB_PATH} -s {serial} shell "sh {self._MT_SCRIPT_REMOTE}"'
+            stdout, stderr, rc = await loop.run_in_executor(None, functools.partial(_run_sync, adb_cmd, timeout))
+            if rc != 0:
+                logger.error("pattern sendevent failed: %s", stderr.strip())
+            return stdout
+        finally:
+            Path(local_path).unlink(missing_ok=True)
+
     # ------------------------------------------------------------------
     # 멀티터치 (sendevent 기반)
     # ------------------------------------------------------------------
