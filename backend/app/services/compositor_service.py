@@ -26,8 +26,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Any
 
-import cv2
-import numpy as np
+from ..utils.cv2_loader import cv2
+
+try:
+    import numpy as np
+except ImportError:
+    np = None  # type: ignore
+
+if cv2 is None or np is None:
+    raise ImportError("CompositorService requires opencv-python and numpy")
 
 logger = logging.getLogger(__name__)
 

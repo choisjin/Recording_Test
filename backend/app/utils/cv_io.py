@@ -4,12 +4,19 @@ Windows에서 cv2.imread/imwrite는 비-ASCII 경로(한글 등)를 처리하지
 바이트 기반 imdecode/imencode로 우회.
 """
 
-import cv2
-import numpy as np
 from pathlib import Path
 
+from .cv2_loader import cv2
 
-def safe_imread(path: str | Path, flags: int = cv2.IMREAD_COLOR):
+try:
+    import numpy as np
+except ImportError:
+    np = None  # type: ignore
+
+_IMREAD_COLOR = cv2.IMREAD_COLOR if cv2 is not None else 1
+
+
+def safe_imread(path: str | Path, flags: int = _IMREAD_COLOR):
     """cv2.imread 대체. 한글 경로에서도 동작.
 
     np.fromfile은 파일을 곧바로 uint8 배열로 읽어 중간 bytes 객체 체류를 제거한다

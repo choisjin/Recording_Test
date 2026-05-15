@@ -33,47 +33,16 @@ def _env_blur_params() -> tuple[int, float]:
 def _env_debug() -> bool:
     return os.environ.get("IMG_COMPARE_DEBUG", "").strip() in ("1", "true", "yes")
 
-def _load_cv2_direct():
-    """Fallback: load cv2.pyd directly, bypassing the package __init__.py.
-
-    On some Windows environments the cv2 package bootstrap fails with
-    'DLL load failed' even though cv2.pyd itself loads fine.
-    """
-    import importlib.util
-    import site
-    for sp in site.getsitepackages():
-        pyd = Path(sp) / "cv2" / "cv2.pyd"
-        if pyd.exists():
-            spec = importlib.util.spec_from_file_location("cv2", str(pyd))
-            if spec and spec.loader:
-                mod = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(mod)  # type: ignore
-                return mod
-    return None
-
+from ..utils.cv2_loader import cv2
 
 try:
-    import cv2
     import numpy as np
     from skimage.metrics import structural_similarity as ssim
-    _CV2_AVAILABLE = True
+    _CV2_AVAILABLE = cv2 is not None
 except (ImportError, OSError):
-    # Fallback: load cv2.pyd directly (bypasses broken __init__.py bootstrap)
-    try:
-        import numpy as np
-        _cv2_mod = _load_cv2_direct()
-        if _cv2_mod is None:
-            raise ImportError("cv2.pyd not found")
-        import sys
-        sys.modules["cv2"] = _cv2_mod
-        cv2 = _cv2_mod
-        from skimage.metrics import structural_similarity as ssim
-        _CV2_AVAILABLE = True
-    except (ImportError, OSError):
-        _CV2_AVAILABLE = False
-        cv2 = None  # type: ignore
-        np = None  # type: ignore
-        ssim = None  # type: ignore
+    _CV2_AVAILABLE = False
+    np = None  # type: ignore
+    ssim = None  # type: ignore
 
 from ..utils.cv_io import safe_imread, safe_imwrite
 
