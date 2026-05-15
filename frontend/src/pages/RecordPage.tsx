@@ -4813,7 +4813,8 @@ export default function RecordPage() {
                   }))}
                   optionRender={(opt) => {
                     const dev = (opt.data as any)._device;
-                    const moduleName = dev?.info?.module || '';
+                    // OCR은 Common 그룹 하위 — CMD 태그로 표시하여 그룹 일관성 유지
+                    const moduleName = dev?.id === 'OCR' ? 'CMD' : (dev?.info?.module || '');
                     return (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
                         <Tag color="purple" style={{ margin: 0 }}>{moduleName}</Tag>

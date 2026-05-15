@@ -41,8 +41,8 @@ interface SerialPort {
 // 디바이스 ID에서 prefix 추출 (Android_1 → Android, POWER_2 → POWER)
 function getDevicePrefix(id: string): string {
   // 시스템 기본 디바이스 — 단독 그룹을 만들지 않고 Common 그룹에 합쳐서 표시.
-  // (사용자 요청: "WinControl 그룹 없애고 Common 안에 넣어달라")
   if (id === 'WinControl') return 'Common';
+  if (id === 'OCR') return 'Common';
   const m = id.match(/^(.+?)_\d+$/);
   return m ? m[1] : id;
 }
@@ -1038,7 +1038,7 @@ export default function DevicePage() {
     }
   };
 
-  const renderDeviceRow = (d: ManagedDevice) => (
+  const renderDeviceRow = (d: ManagedDevice, extraModuleTags?: string[]) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
       <Checkbox
         checked={selectedDeviceIds.has(d.id)}
@@ -1053,6 +1053,7 @@ export default function DevicePage() {
       {d.protected && <Tag color="gold" style={{ flexShrink: 0 }}>SYSTEM</Tag>}
       <span style={{ color: '#aaa', fontSize: 11, flexShrink: 0 }}>{d.address}</span>
       {d.info?.module && <Tag color="cyan" style={{ flexShrink: 0 }}>{d.info.module}</Tag>}
+      {extraModuleTags?.map(tag => <Tag key={tag} color="cyan" style={{ flexShrink: 0 }}>{tag}</Tag>)}
       {d.info?.baudrate && <Tag style={{ flexShrink: 0 }}>{d.info.baudrate}</Tag>}
       {d.info?.resolution && <Tag style={{ flexShrink: 0 }}>{d.info.resolution.width}x{d.info.resolution.height}</Tag>}
       <div style={{ marginLeft: 'auto', display: 'flex', gap: 3, flexShrink: 0 }}>
@@ -1287,12 +1288,21 @@ export default function DevicePage() {
               styles={{ body: { padding: 0 } }}
             >
               {isCommonGroup ? (
-                // 드래그 없이 단순 렌더 — 보호 디바이스(Common, WinControl) 순서 고정.
-                group.map(d => (
-                  <div key={d.id} style={{ padding: '6px 12px', borderTop: '1px solid rgba(0,0,0,0.06)' }}>
-                    {renderDeviceRow(d)}
-                  </div>
-                ))
+                // 드래그 없이 단순 렌더 — 보호 디바이스(Common, WinControl, OCR) 순서 고정.
+                // OCR은 별도 행 없이 Common 행에 모듈 태그로 통합.
+                (() => {
+                  const ocrDev = group.find(d => d.id === 'OCR');
+                  return group
+                    .filter(d => d.id !== 'OCR')
+                    .map(d => (
+                      <div key={d.id} style={{ padding: '6px 12px', borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+                        {renderDeviceRow(
+                          d,
+                          d.id === 'Common' && ocrDev?.info?.module ? [ocrDev.info.module] : undefined
+                        )}
+                      </div>
+                    ));
+                })()
               ) : (
                 <DndContext sensors={dndSensors} collisionDetection={closestCenter}
                   onDragEnd={(e) => handleGroupDragEnd(prefix, e)}>
