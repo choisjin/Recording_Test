@@ -12,6 +12,9 @@ set "PYTHONNOUSERSITE=1"
 :: Git PATH 확보
 set "PATH=C:\Program Files\Git\cmd;C:\Program Files (x86)\Git\cmd;%PATH%"
 
+REM Stop existing server BEFORE git pull / pip install — required to release .pyd locks
+call :stop_existing_server
+
 :: --home 옵션: git_remote_home.txt 사용
 set "GIT_REMOTE_FILE=git_remote.txt"
 if "%~1"=="--home" (
@@ -83,33 +86,32 @@ goto :eof
 
 :after_git
 
-:: 의존성 자동 업데이트 — git pull로 requirements.txt가 변경된 경우에만 pip install
-:: build_dist.py와 동일한 .req_hash 패턴 사용 (python\.req_hash)
+:: Auto dependency update - pip install only when requirements.txt changed
+:: Uses .req_hash pattern same as build_dist.py (python\.req_hash)
 if exist "python\python.exe" if exist "requirements.txt" call :update_deps
-
-:: 기존 서버 종료 — 새 서버 시작 전 충돌 방지
-call :stop_existing_server
 goto :start_server
 
+REM ────────────────────────────────────────────────────────────
+REM  stop_existing_server: kill running backend / frontend / python
+REM ────────────────────────────────────────────────────────────
 :stop_existing_server
 echo [STOP] Checking for running server...
-:: 1) 포트 8000 (백엔드 uvicorn) 점유 프로세스 종료
+REM 1) Kill backend (port 8000)
 for /f "tokens=5" %%p in ('netstat -ano 2^>nul ^| findstr /r /c:":8000 .*LISTENING"') do (
     taskkill /F /PID %%p >nul 2>&1
     if not errorlevel 1 echo [STOP] Killed backend PID %%p ^(port 8000^)
 )
-:: 2) 포트 5173 (프론트엔드 Vite dev 서버) 점유 프로세스 종료
+REM 2) Kill frontend Vite dev server (port 5173)
 for /f "tokens=5" %%p in ('netstat -ano 2^>nul ^| findstr /r /c:":5173 .*LISTENING"') do (
     taskkill /F /PID %%p >nul 2>&1
     if not errorlevel 1 echo [STOP] Killed frontend PID %%p ^(port 5173^)
 )
-:: 3) server.py / _launcher.py 를 실행 중인 python(w).exe 종료
-::    포트 바인딩 전 상태(부팅 중) 또는 GUI 트레이 모드 정리
+REM 3) Kill python(w).exe running server.py / _launcher.py (covers tray/GUI mode)
 where powershell.exe >nul 2>&1
 if not errorlevel 1 (
     powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='python.exe' or Name='pythonw.exe'\" | Where-Object { $_.CommandLine -match 'server\.py|_launcher\.py' } | ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; Write-Host ('[STOP] Killed Python PID ' + $_.ProcessId) } catch {} }" 2>nul
 )
-:: 4) 포트 해제 대기 (TIME_WAIT 회피)
+REM 4) Wait for port release (TIME_WAIT)
 timeout /t 1 /nobreak >nul 2>&1
 goto :eof
 
