@@ -4386,10 +4386,9 @@ export default function RecordPage() {
                         step={1}
                         value={Math.round(imageTapSimilarity * 100)}
                         disabled={!recording}
-                        formatter={(v) => `${v}%`}
-                        parser={(s) => Number(String(s ?? '').replace('%', '')) as 50 | 100}
                         onChange={(v) => setImageTapSimilarity(typeof v === 'number' ? v / 100 : 0.85)}
-                        style={{ width: 72 }}
+                        suffix="%"
+                        style={{ width: 75 }}
                       />
                     </Tooltip>
                   </div>
