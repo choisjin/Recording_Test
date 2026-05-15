@@ -377,7 +377,7 @@ const translations = {
     'record.imageTapButton': '이미지 터치',
     'record.imageTapTooltip': '현재 화면에서 영역을 크롭하면 유사 이미지를 찾아 중심을 클릭합니다 (좌표 비-종속)',
     'record.imageTapDisabled': '녹화 중에만 사용 가능합니다',
-    'record.imageTapSimShort': '유사',
+    'record.imageTapSimShort': '유사도',
     'record.imageTapSimLabel': '유사도',
     'record.imageTapModalTitle': '이미지 터치 — 찾을 영역을 드래그하세요 (유사도 ≥ {sim})',
     'record.imageTapModalHint': '마우스로 영역을 드래그하면 같은 화면에서 해당 이미지의 중심을 클릭하고 image_tap 스텝으로 기록됩니다',
