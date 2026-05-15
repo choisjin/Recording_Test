@@ -61,12 +61,6 @@ def _load_scan_settings() -> dict:
             for entry in data.get("custom", []) or []:
                 if isinstance(entry, dict) and entry.get("module") == "CCIC_BENCH":
                     entry["module"] = "WoohyunBench"
-            # plugin_migration: SerialPlugin → SerialLogging 등 신규 통합 매핑 일괄 적용
-            try:
-                from ..services.plugin_migration_service import migrate_scan_settings_inplace
-                migrate_scan_settings_inplace(data)
-            except Exception as e:
-                logger.debug("plugin_migration on scan_settings skipped: %s", e)
             # 새로 추가된 기본 스캔 항목 자동 주입 (누락 키만 보충 — 사용자 수정값 유지)
             for key, default_entry in _DEFAULT_SCAN_SETTINGS["builtin"].items():
                 if key not in builtin:
@@ -155,12 +149,6 @@ def _load_device_catalog() -> dict:
             for a in data.get("agents", []) or []:
                 if a.get("type") == "hkmc6th":
                     a["type"] = "hkmc_agent"
-            # plugin_migration: module_visibility의 SerialPlugin → SerialLogging 키 통합
-            try:
-                from ..services.plugin_migration_service import migrate_device_catalog_inplace
-                migrate_device_catalog_inplace(data)
-            except Exception as e:
-                logger.debug("plugin_migration on device_catalog skipped: %s", e)
             # 새 기본값 누락 보충 — 기본 카탈로그의 project/agent가 사용자 카탈로그에 없으면 추가.
             # 사용자가 enabled 토글한 기존 항목은 그대로 유지 (이름 매칭으로 식별).
             existing_proj_names = {p.get("name") for p in (data.get("projects") or []) if p.get("name")}
@@ -288,39 +276,6 @@ async def save_device_catalog(request: Request):
         raise HTTPException(status_code=400, detail="body must be an object")
     _save_device_catalog(body)
     return {"status": "ok"}
-
-
-# ── 플러그인 일괄 마이그레이션 ─────────────────────────────────────────────
-# 레거시 플러그인(SerialPlugin 등)이 신규 통합 플러그인(SerialLogging 등)으로
-# 흡수될 때, 사용자가 한 번 클릭으로 등록 디바이스 + 스캔 설정 + 카탈로그 +
-# 모든 시나리오 파일의 module/function 참조를 새 이름으로 일괄 갱신할 수 있다.
-
-@router.get("/migrate-plugin")
-async def preview_plugin_migration():
-    """변경 사항 미리보기 — dry_run. 디스크에 쓰지 않고 영향 받는 파일/카운트만 반환."""
-    from ..services.plugin_migration_service import run_full_migration
-    return run_full_migration(dry_run=True)
-
-
-@router.post("/migrate-plugin")
-async def apply_plugin_migration():
-    """레거시 → 신규 플러그인 참조를 일괄 적용. auxiliary_devices, scan_settings,
-    device_catalog, scenarios/*.json을 모두 재기록한다."""
-    from ..services.plugin_migration_service import run_full_migration
-    report = run_full_migration(dry_run=False)
-    # 메모리에 이미 로드된 보조 디바이스 인스턴스의 info.module 도 즉시 갱신 — 화면 새로고침 없이 반영,
-    # 디바이스 연결 상태/세션은 유지 (전체 reload하면 status="unknown"으로 초기화되어버림).
-    try:
-        from ..services.plugin_migration_service import MODULE_RENAMES
-        for dev in dm._devices.values():
-            info = getattr(dev, "info", None)
-            if isinstance(info, dict):
-                mod = info.get("module")
-                if isinstance(mod, str) and mod in MODULE_RENAMES:
-                    info["module"] = MODULE_RENAMES[mod]
-    except Exception as e:
-        logger.warning("post-migration in-memory device sync failed: %s", e)
-    return report
 
 
 @router.get("/scan")

@@ -716,20 +716,12 @@ class DeviceManager:
         레거시 자동 마이그레이션:
           - type "hkmc6th" → "hkmc_agent"
           - info.module "CCIC_BENCH" → "WoohyunBench"
-          - info.module "SerialPlugin" → "SerialLogging" (plugin_migration_service의 MODULE_RENAMES)
         """
         if not _AUX_DEVICES_FILE.exists():
             return
         try:
             data = json.loads(_AUX_DEVICES_FILE.read_text(encoding="utf-8"))
             migrated = False
-            # plugin_migration: SerialPlugin → SerialLogging 등 신규 통합 매핑 일괄 적용
-            try:
-                from .plugin_migration_service import migrate_auxiliary_devices_inplace
-                if migrate_auxiliary_devices_inplace(data) > 0:
-                    migrated = True
-            except Exception as e:
-                logger.debug("plugin_migration on aux_devices skipped: %s", e)
             for d in data:
                 dev_type = d.get("type", "")
                 if dev_type == "hkmc6th":

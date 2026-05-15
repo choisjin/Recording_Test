@@ -65,9 +65,6 @@ export const deviceApi = {
   winDetach: () => api.post('/device/wincontrol/detach'),
   winResize: (clientW: number, clientH: number) =>
     api.post('/device/wincontrol/resize', { client_w: clientW, client_h: clientH }),
-  // Plugin migration (레거시 → 신규 통합 플러그인 일괄 변환)
-  previewPluginMigration: () => api.get('/device/migrate-plugin'),
-  applyPluginMigration: () => api.post('/device/migrate-plugin'),
 };
 
 // Scenario APIs
