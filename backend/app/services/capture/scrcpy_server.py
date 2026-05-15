@@ -62,8 +62,10 @@ SCRCPY_VERSION = "1.25"
 # 디바이스 측 jar 경로.
 DEVICE_JAR_PATH = "/data/local/tmp/scrcpy-server.jar"
 
-# 첫 JPEG 프레임 수신 timeout (초). 정적 화면 케이스에 대응해 넉넉히.
-_FIRST_FRAME_TIMEOUT = 8.0
+# 첫 JPEG 프레임 수신 timeout (초). IVI 등 정적 화면에서 첫 IDR이 늦게 오는 케이스에
+# 대응해 12초로 넉넉히 잡음. codec_options.i-frame-interval=1 로도 보완되지만 디바이스
+# 별로 적용 시점에 차이가 있어 timeout 여유와 함께 사용.
+_FIRST_FRAME_TIMEOUT = 12.0
 
 # idle keep-alive 간격 (초). screenrecord 백엔드와 동일 의미.
 _IDLE_FRAME_TIMEOUT = 1.0
@@ -417,6 +419,9 @@ class ScrcpyServerBackend:
             # v1.20+ 옵션: prefix bytes(dummy 1 + device_meta 64) + frame_meta(12/frame)
             # 모두 비활성화. ffmpeg가 raw H.264 NAL stream을 바로 디코딩 가능.
             "raw_video_stream=true",
+            # MediaCodec 인코더 옵션 — 1초마다 IDR 키프레임 강제.
+            # LG AIVI 등 정적 화면 디바이스에서 첫 IDR 대기로 인한 first-frame timeout 방지.
+            "codec_options=i-frame-interval=1",
         ]
         inner = (
             f"CLASSPATH={DEVICE_JAR_PATH} "

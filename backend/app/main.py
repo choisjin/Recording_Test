@@ -503,14 +503,17 @@ async def websocket_screen_mirror(websocket: WebSocket):
     h264_mode = False
     recv_task = None
 
-    # ADB 라이브 미러링 백엔드 우선순위 (단순화: screenrecord 제거):
-    #   1순위: scrcpy-server (idle/wake-up 동작 우수, 30~60fps)
-    #   2순위: screencap PNG 폴링 (모든 환경에서 동작, 1~5fps)
-    # scrcpy 실패 시 30초 cooldown 후 자동 재시도.
+    # ADB 라이브 미러링 전략:
+    #   - 즉시: screencap PNG 폴링으로 화면을 띄움 (사용자 대기시간 0초)
+    #   - 백그라운드: scrcpy try_start (~1~12초 소요)
+    #   - 준비 완료: 다음 iteration에서 scrcpy stream으로 자연스러운 전환
+    #   - 영구 실패: screencap PNG 폴링 유지
     BACKEND_RETRY_COOLDOWN = 30.0
     scrcpy_retry_after = 0.0
-    # WS 세션 진입 시 ADB 분기에 한 번만 dispatch 의도를 INFO 로그로 출력 — 어떤 백엔드가
-    # 활성/비활성 판단됐는지 운영 시점에 추적할 수 있게 한다.
+    # WS 세션별 백그라운드 scrcpy try_start task와 그 결과 backend
+    scrcpy_task: Optional[asyncio.Task] = None
+    scrcpy_backend = None
+    # WS 세션 진입 시 ADB 분기에 한 번만 dispatch 의도를 INFO 로그로 출력
     adb_dispatch_logged = False
 
     try:
@@ -680,12 +683,9 @@ async def websocket_screen_mirror(websocket: WebSocket):
                     )
 
                     _now = asyncio.get_event_loop().time()
-                    # 디바이스 단위 cache 확인:
-                    #   _scrcpy_disabled : scrcpy 불가 (GVM 등) → screencap 직행
                     _scrcpy_disabled = adb_service.is_scrcpy_disabled(adb_serial)
 
                     if not adb_dispatch_logged:
-                        # list comprehension도 Cython 호환을 위해 명시적 loop로.
                         _disp_summary = []
                         for _d in _displays:
                             _disp_summary.append({
@@ -703,47 +703,64 @@ async def websocket_screen_mirror(websocket: WebSocket):
                         )
                         adb_dispatch_logged = True
 
-                    # 1순위: scrcpy-server
-                    if not _scrcpy_disabled and _is_active and _now >= scrcpy_retry_after:
-                        scrcpy_backend = await adb_service.ensure_scrcpy_backend(
-                            adb_serial, _logical_id,
+                    # ──────────────────────────────────────────────────────────────
+                    # 백그라운드 scrcpy try_start — main loop는 차단되지 않음.
+                    # 첫 iteration에서 task 시작, 이후 매번 done 여부만 확인.
+                    # ──────────────────────────────────────────────────────────────
+                    if (not _scrcpy_disabled and _is_active and _now >= scrcpy_retry_after
+                            and scrcpy_task is None and scrcpy_backend is None):
+                        scrcpy_task = asyncio.create_task(
+                            adb_service.ensure_scrcpy_backend(adb_serial, _logical_id),
                         )
-                        if scrcpy_backend:
-                            try:
-                                async for jpeg in scrcpy_backend.stream_jpeg():
-                                    await websocket.send_bytes(jpeg)
-                            except WebSocketDisconnect:
-                                raise
-                            except Exception as e:
-                                logger.warning(
-                                    "scrcpy stream error (%s): %s", adb_serial, e,
-                                )
-                            scrcpy_retry_after = (
-                                asyncio.get_event_loop().time()
-                                + BACKEND_RETRY_COOLDOWN
-                            )
-                            await adb_service.close_scrcpy_backend(adb_serial)
-                            continue
-                        else:
-                            # try_start 2회 모두 실패 → 디바이스 단위 영구 비활성으로 마크.
+                        logger.info(
+                            "scrcpy try_start dispatched in background (serial=%s display=%s) — "
+                            "screencap polling will serve frames until ready",
+                            adb_serial, adb_display_id,
+                        )
+
+                    # 백그라운드 task 완료 처리
+                    if scrcpy_task is not None and scrcpy_task.done():
+                        try:
+                            scrcpy_backend = scrcpy_task.result()
+                        except Exception as e:
+                            logger.warning("scrcpy try_start error (%s): %s", adb_serial, e)
+                            scrcpy_backend = None
+                        scrcpy_task = None
+                        if scrcpy_backend is None:
+                            # 디바이스 단위 영구 비활성으로 마크 → 다음 시도부터 즉시 screencap 직행
                             adb_service.mark_scrcpy_disabled(adb_serial)
                             _scrcpy_disabled = True
                             scrcpy_retry_after = float("inf")
                             logger.info(
                                 "scrcpy unavailable for %s (display=%s) — "
-                                "falling back to screencap PNG polling",
+                                "screencap PNG polling will be used permanently",
                                 adb_serial, adb_display_id,
                             )
 
-                    # 2순위 폴백: screencap PNG streamer + fps throttle
-                    # scrcpy가 비활성된 디바이스(GVM 등)는 조작용 미러링이 부드러워야
-                    # 사용자가 입력하기 편하므로 fps를 자동으로 올린다.
+                    # scrcpy 준비됨 → stream 진입 (실패/종료 시 다시 폴링으로 복귀)
+                    if scrcpy_backend is not None:
+                        try:
+                            async for jpeg in scrcpy_backend.stream_jpeg():
+                                await websocket.send_bytes(jpeg)
+                        except WebSocketDisconnect:
+                            raise
+                        except Exception as e:
+                            logger.warning("scrcpy stream error (%s): %s", adb_serial, e)
+                        scrcpy_retry_after = (
+                            asyncio.get_event_loop().time() + BACKEND_RETRY_COOLDOWN
+                        )
+                        await adb_service.close_scrcpy_backend(adb_serial)
+                        scrcpy_backend = None
+                        continue
+
+                    # 폴백/대기: screencap PNG streamer + fps throttle.
+                    # scrcpy 준비 중이거나 영구 비활성일 때 사용자가 즉시 화면을 볼 수 있게.
                     sf_did = resolve_sf_display_id(
                         dev.info if dev else None, adb_display_id
                     )
                     _interval = adb_frame_interval
                     if _scrcpy_disabled:
-                        # GVM은 native fps 미상이라 5fps 정도가 부드러움/부하의 균형점.
+                        # 영구 폴백 — 5fps 정도가 부드러움/부하의 균형점.
                         _interval = min(_interval, 0.2)
                     loop = asyncio.get_event_loop()
                     frame_t0 = loop.time()
@@ -778,6 +795,13 @@ async def websocket_screen_mirror(websocket: WebSocket):
     finally:
         if recv_task and not recv_task.done():
             recv_task.cancel()
+        # 백그라운드 scrcpy try_start task가 진행 중이면 정리
+        if scrcpy_task is not None and not scrcpy_task.done():
+            scrcpy_task.cancel()
+            try:
+                await scrcpy_task
+            except (asyncio.CancelledError, Exception):
+                pass
 
 
 # 현재 백그라운드 재생 태스크 (단일 재생만 허용)
