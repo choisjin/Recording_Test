@@ -485,6 +485,10 @@ def get_module_functions(module_name: str) -> list[dict]:
                 "description": "현재 화면에서 텍스트를 찾아 클릭합니다. 찾지 못하면 FAIL 반환.",
                 "params": [
                     {"name": "text", "required": True, "description": "클릭할 텍스트"},
+                    {"name": "mode", "required": False, "default": "'Full Screen'",
+                     "description": "검색 범위: 'Full Screen' 또는 'Region'"},
+                    {"name": "region", "required": False, "default": "'0,0,0,0'",
+                     "description": "영역 'x,y,width,height' (Region 모드, 쉼표 구분)"},
                     {"name": "threshold", "required": False, "default": "'0.8'",
                      "description": "유사도 임계값 (0.0~1.0, 기본 0.8)"},
                 ],

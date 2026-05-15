@@ -4900,8 +4900,9 @@ export default function RecordPage() {
                               {fn.description}
                             </div>
                           )}
-                          {/* OCR CheckText Region 모드: 크롭 버튼 */}
-                          {selectedModuleName === 'OCR' && selectedModuleFunc === 'CheckText' &&
+                          {/* OCR CheckText/ClickText Region 모드: 크롭 버튼 */}
+                          {selectedModuleName === 'OCR' &&
+                           (selectedModuleFunc === 'CheckText' || selectedModuleFunc === 'ClickText') &&
                            moduleFuncArgs['mode'] === 'Region' && (
                             <Button
                               size="small"
@@ -4917,15 +4918,15 @@ export default function RecordPage() {
                               selectedModuleName === 'Android' &&
                               selectedModuleFunc === 'Send_adb_command' &&
                               p.name === 'serial';
-                            // OCR CheckText: mode 파라미터 → 콤보박스
+                            // OCR CheckText/ClickText: mode 파라미터 → 콤보박스
                             const isOcrMode =
                               selectedModuleName === 'OCR' &&
-                              selectedModuleFunc === 'CheckText' &&
+                              (selectedModuleFunc === 'CheckText' || selectedModuleFunc === 'ClickText') &&
                               p.name === 'mode';
-                            // OCR CheckText: 영역 파라미터(region)는 Region 모드일 때만 표시
+                            // OCR CheckText/ClickText: 영역 파라미터(region)는 Region 모드일 때만 표시
                             const isOcrRegionParam =
                               selectedModuleName === 'OCR' &&
-                              selectedModuleFunc === 'CheckText' &&
+                              (selectedModuleFunc === 'CheckText' || selectedModuleFunc === 'ClickText') &&
                               p.name === 'region';
                             if (isOcrRegionParam && moduleFuncArgs['mode'] !== 'Region') return null;
                             return (

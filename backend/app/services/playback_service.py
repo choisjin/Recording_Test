@@ -1801,7 +1801,7 @@ class PlaybackService:
 
     async def _execute_ocr_step(self, step: Step, func_name: str, func_args: dict) -> str:
         """OCR 가상 모듈 스텝 실행."""
-        from .ocr_service import has_text, find_text_center, check_text_in_region
+        from .ocr_service import has_text, find_text_center, check_text_in_region, find_text_center_in_region
 
         dev_info = self._find_ocr_device(step)
         if dev_info is None:
@@ -1857,7 +1857,24 @@ class PlaybackService:
         elif func_name == "ClickText":
             target = str(func_args.get("text", ""))
             threshold = float(func_args.get("threshold", "0.8") or 0.8)
-            center = await loop.run_in_executor(None, find_text_center, img_bytes, target, threshold)
+            mode = str(func_args.get("mode", "Full Screen"))
+            if mode == "Region":
+                # region = "x,y,width,height" (쉼표 구분). 토큰 부족/변환 실패 시 0으로 채움.
+                parts = [p.strip() for p in str(func_args.get("region", "") or "").split(",")]
+                def _to_int(v: str) -> int:
+                    try:
+                        return int(v)
+                    except (TypeError, ValueError):
+                        return 0
+                rx = _to_int(parts[0]) if len(parts) > 0 else 0
+                ry = _to_int(parts[1]) if len(parts) > 1 else 0
+                rw = _to_int(parts[2]) if len(parts) > 2 else 0
+                rh = _to_int(parts[3]) if len(parts) > 3 else 0
+                center = await loop.run_in_executor(
+                    None, find_text_center_in_region, img_bytes, target, rx, ry, rw, rh, threshold
+                )
+            else:
+                center = await loop.run_in_executor(None, find_text_center, img_bytes, target, threshold)
             if center is None:
                 return f"FAIL: '{target}' 텍스트를 찾을 수 없음"
             x, y = center

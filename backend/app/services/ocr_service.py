@@ -153,6 +153,38 @@ def check_text_in_region(
     return _fuzzy_score(region_text, target) >= threshold
 
 
+def find_text_center_in_region(
+    image_bytes: bytes, target: str, x: int, y: int, width: int, height: int, threshold: float = 0.8
+) -> Optional[Tuple[int, int]]:
+    """지정 영역 내에서 target 텍스트 검색 후 원본 이미지 기준 중심 좌표 반환."""
+    import cv2
+    img = _bytes_to_array(image_bytes)
+    if img is None:
+        return None
+    h, w = img.shape[:2]
+    x1, y1 = max(0, x), max(0, y)
+    x2, y2 = min(w, x + width), min(h, y + height)
+    if x2 <= x1 or y2 <= y1:
+        return None
+    crop = img[y1:y2, x1:x2]
+    _, buf = cv2.imencode(".png", crop)
+    if buf is None:
+        return None
+    items = run_ocr(buf.tobytes())
+    best_score = 0.0
+    best_center: Optional[Tuple[int, int]] = None
+    for item in items:
+        score = _fuzzy_score(item.text, target)
+        if score > best_score:
+            best_score = score
+            best_center = item.center
+    if best_score < threshold or best_center is None:
+        return None
+    # 크롭 오프셋을 더해 원본 이미지 좌표로 변환
+    cx, cy = best_center
+    return (cx + x1, cy + y1)
+
+
 def extract_region_text(
     image_bytes: bytes, x: int, y: int, width: int, height: int
 ) -> str:
