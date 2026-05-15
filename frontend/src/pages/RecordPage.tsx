@@ -4367,21 +4367,6 @@ export default function RecordPage() {
                   </div>
                   <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
                     <Tooltip title={recording ? t('record.imageTapTooltip') : t('record.imageTapDisabled')}>
-                      <InputNumber
-                        size="small"
-                        min={50}
-                        max={100}
-                        step={1}
-                        value={Math.round(imageTapSimilarity * 100)}
-                        disabled={!recording}
-                        formatter={(v) => `${v}%`}
-                        parser={(s) => Number(String(s ?? '').replace('%', '')) as 50 | 100}
-                        onChange={(v) => setImageTapSimilarity(typeof v === 'number' ? v / 100 : 0.85)}
-                        style={{ width: 92 }}
-                        prefix={<span style={{ fontSize: 10, opacity: 0.6 }}>{t('record.imageTapSimShort')}</span>}
-                      />
-                    </Tooltip>
-                    <Tooltip title={recording ? t('record.imageTapTooltip') : t('record.imageTapDisabled')}>
                       <Button
                         size="small"
                         type="default"
@@ -4392,6 +4377,20 @@ export default function RecordPage() {
                       >
                         {t('record.imageTapButton')}
                       </Button>
+                    </Tooltip>
+                    <Tooltip title={recording ? t('record.imageTapTooltip') : t('record.imageTapDisabled')}>
+                      <InputNumber
+                        size="small"
+                        min={50}
+                        max={100}
+                        step={1}
+                        value={Math.round(imageTapSimilarity * 100)}
+                        disabled={!recording}
+                        formatter={(v) => `${v}%`}
+                        parser={(s) => Number(String(s ?? '').replace('%', '')) as 50 | 100}
+                        onChange={(v) => setImageTapSimilarity(typeof v === 'number' ? v / 100 : 0.85)}
+                        style={{ width: 72 }}
+                      />
                     </Tooltip>
                   </div>
                 </div>
@@ -4704,21 +4703,6 @@ export default function RecordPage() {
                       <div style={{ flex: 1, minWidth: 0 }} />
                       <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
                         <Tooltip title={recording ? t('record.imageTapTooltip') : t('record.imageTapDisabled')}>
-                          <InputNumber
-                            size="small"
-                            min={50}
-                            max={100}
-                            step={1}
-                            value={Math.round(imageTapSimilarity * 100)}
-                            disabled={!recording}
-                            formatter={(v) => `${v}%`}
-                            parser={(s) => Number(String(s ?? '').replace('%', '')) as 50 | 100}
-                            onChange={(v) => setImageTapSimilarity(typeof v === 'number' ? v / 100 : 0.85)}
-                            style={{ width: 92 }}
-                            prefix={<span style={{ fontSize: 10, opacity: 0.6 }}>{t('record.imageTapSimShort')}</span>}
-                          />
-                        </Tooltip>
-                        <Tooltip title={recording ? t('record.imageTapTooltip') : t('record.imageTapDisabled')}>
                           <Button
                             size="small"
                             type="default"
@@ -4729,6 +4713,20 @@ export default function RecordPage() {
                           >
                             {t('record.imageTapButton')}
                           </Button>
+                        </Tooltip>
+                        <Tooltip title={recording ? t('record.imageTapTooltip') : t('record.imageTapDisabled')}>
+                          <InputNumber
+                            size="small"
+                            min={50}
+                            max={100}
+                            step={1}
+                            value={Math.round(imageTapSimilarity * 100)}
+                            disabled={!recording}
+                            formatter={(v) => `${v}%`}
+                            parser={(s) => Number(String(s ?? '').replace('%', '')) as 50 | 100}
+                            onChange={(v) => setImageTapSimilarity(typeof v === 'number' ? v / 100 : 0.85)}
+                            style={{ width: 72 }}
+                          />
                         </Tooltip>
                       </div>
                     </div>
