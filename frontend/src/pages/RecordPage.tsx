@@ -2785,11 +2785,11 @@ export default function RecordPage() {
       const { x, y } = toDeviceCoords(cur, clientX, clientY);
       setHoverCoords({ x, y, clientX, clientY });
       // 스마트 모드: 드래그 중일 때 좌표 누적 (ADB 전용)
-      // 6px 이상 이동했을 때만 점 추가 — 천천히 그릴 때의 손떨림/픽셀 노이즈 1차 제거.
+      // 5px 이상 이동했을 때만 점 추가 — 픽셀 단위 떨림만 거르고 곡선 디테일은 보존.
       if (gestureRef.current.active && smartSwipe && isScreenAdb) {
         const path = gesturePathRef.current;
         const last = path[path.length - 1];
-        if (!last || Math.hypot(x - last.x, y - last.y) >= 6) {
+        if (!last || Math.hypot(x - last.x, y - last.y) >= 5) {
           path.push({ x, y });
           setLivePathTick(t => t + 1);
         }
@@ -2817,7 +2817,7 @@ export default function RecordPage() {
     const elapsed = Date.now() - startTime;
 
     // scrcpy 방식: 캡처한 raw 궤적 전송 (ADB·1핑거·normal 모드 전용).
-    // 약간의 보정: RDP(eps=4px)로 직선 위 잡점 제거 + 끝부분 짧은 잔여 segment 제거.
+    // 약간의 보정: RDP(eps=3px)로 직선 위 잡점 제거 + 끝부분 짧은 잔여 segment 제거.
     // 각도 스냅은 하지 않음 — 사용자가 그린 곡선/L자 형태는 보존.
     if (smartSwipe && isScreenAdb && gestureMode === 'normal' && fingerCount === 1 && rawDist > SWIPE_DISTANCE_THRESHOLD) {
       const path = gesturePathRef.current.slice();
@@ -2827,13 +2827,14 @@ export default function RecordPage() {
       }
       gesturePathRef.current = [];
       setLivePathTick(t => t + 1);
-      const denoised = rdpDenoise(path, 4);
-      const trimmed = trimTinyTail(denoised, 10);
+      const denoised = rdpDenoise(path, 3);
+      const trimmed = trimTinyTail(denoised, 8);
       const sampled = downsamplePath(trimmed);
       if (sampled.length >= 2) {
         const first = sampled[0];
         const last = sampled[sampled.length - 1];
-        const durationMs = Math.max(200, Math.min(elapsed, 5000));
+        // 입력 속도 빠르게 — 사용자가 그린 시간의 40%, 150~1200ms 사이로 클램프.
+        const durationMs = Math.max(150, Math.min(Math.round(elapsed * 0.4), 1200));
         if (sampled.length === 2) {
           const params = { x1: first.x, y1: first.y, x2: last.x, y2: last.y, duration_ms: durationMs };
           executeAction('swipe', params, `swipe (${first.x},${first.y})→(${last.x},${last.y}) ${durationMs}ms`);
