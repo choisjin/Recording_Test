@@ -1814,9 +1814,15 @@ class PlaybackService:
         loop = asyncio.get_event_loop()
 
         if func_name == "CheckText":
-            target = str(func_args.get("text", ""))
+            # text는 쉼표 구분으로 여러 개 지정 가능 — 모두 존재해야 PASS (AND 조건).
+            # 토큰별로 strip + 빈 토큰 제외. 입력 자체가 비어있으면 FAIL.
+            raw_text = str(func_args.get("text", ""))
+            targets = [t.strip() for t in raw_text.split(",") if t.strip()]
+            if not targets:
+                return "FAIL: text 파라미터가 비어 있습니다"
             threshold = float(func_args.get("threshold", "0.8") or 0.8)
             mode = str(func_args.get("mode", "Full Screen"))
+
             if mode == "Region":
                 # region = "x,y,width,height" (쉼표 구분). 토큰이 모자라거나 정수 변환 실패 시 0으로 채움.
                 parts = [p.strip() for p in str(func_args.get("region", "") or "").split(",")]
@@ -1829,14 +1835,24 @@ class PlaybackService:
                 ry = _to_int(parts[1]) if len(parts) > 1 else 0
                 rw = _to_int(parts[2]) if len(parts) > 2 else 0
                 rh = _to_int(parts[3]) if len(parts) > 3 else 0
-                found = await loop.run_in_executor(
-                    None, check_text_in_region, img_bytes, target, rx, ry, rw, rh, threshold
-                )
+                missing: list[str] = []
+                for target in targets:
+                    ok = await loop.run_in_executor(
+                        None, check_text_in_region, img_bytes, target, rx, ry, rw, rh, threshold
+                    )
+                    if not ok:
+                        missing.append(target)
             else:
-                found, _ = await loop.run_in_executor(None, has_text, img_bytes, target, threshold)
-            if found:
-                return "PASS"
-            return f"FAIL: '{target}' 텍스트를 찾을 수 없음"
+                missing = []
+                for target in targets:
+                    ok, _ = await loop.run_in_executor(None, has_text, img_bytes, target, threshold)
+                    if not ok:
+                        missing.append(target)
+
+            if not missing:
+                return f"PASS: 모든 텍스트 검출됨 ({len(targets)}개)" if len(targets) > 1 else "PASS"
+            joined = ", ".join(f"'{m}'" for m in missing)
+            return f"FAIL: {joined} 텍스트를 찾을 수 없음"
 
         elif func_name == "ClickText":
             target = str(func_args.get("text", ""))

@@ -468,9 +468,10 @@ def get_module_functions(module_name: str) -> list[dict]:
         functions = [
             {
                 "name": "CheckText",
-                "description": "현재 화면에서 텍스트 존재 여부를 판단합니다. 있으면 PASS, 없으면 FAIL 반환.",
+                "description": "현재 화면에서 텍스트 존재 여부를 판단합니다. 쉼표 구분으로 여러 개 지정 시 모두 존재해야 PASS (AND 조건).",
                 "params": [
-                    {"name": "text", "required": True, "description": "찾을 텍스트"},
+                    {"name": "text", "required": True,
+                     "description": "찾을 텍스트 (쉼표로 여러 개 지정 가능, 예: 'OK,Save')"},
                     {"name": "mode", "required": False, "default": "'Full Screen'",
                      "description": "검색 범위: 'Full Screen' 또는 'Region'"},
                     {"name": "region", "required": False, "default": "'0,0,0,0'",

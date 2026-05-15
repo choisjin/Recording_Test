@@ -819,7 +819,7 @@ const translations = {
     'settings.adminServerUrlDesc': '공지사항/채팅 서비스 서버 주소 (예: http://192.168.0.10:9000)',
 
     // === OCR module (record page) ===
-    'record.ocr.checkText.text': '찾을 텍스트',
+    'record.ocr.checkText.text': "찾을 텍스트 (쉼표로 여러 개 지정 시 모두 존재해야 PASS, 예: 'OK,Save')",
     'record.ocr.checkText.mode': "검색 범위: 'Full Screen' 또는 'Region'",
     'record.ocr.checkText.region': "영역 'x,y,width,height' (쉼표 구분, 예: 100,200,300,150)",
     'record.ocr.checkText.threshold': '유사도 임계값 (0.0~1.0, 기본 0.8)',
@@ -1650,7 +1650,7 @@ const translations = {
     'settings.adminServerUrlDesc': 'Announcements/Chat server URL (e.g. http://192.168.0.10:9000)',
 
     // === OCR module (record page) ===
-    'record.ocr.checkText.text': 'Text to find',
+    'record.ocr.checkText.text': "Text to find (comma-separated for multiple — all must be present to PASS, e.g. 'OK,Save')",
     'record.ocr.checkText.mode': "Search scope: 'Full Screen' or 'Region'",
     'record.ocr.checkText.region': "Region 'x,y,width,height' (comma-separated, e.g. 100,200,300,150)",
     'record.ocr.checkText.threshold': 'Similarity threshold (0.0-1.0, default 0.8)',
