@@ -619,11 +619,14 @@ class DeviceManager:
         self._load_auxiliary_devices()
         self._ensure_default_common_device()
         self._ensure_default_wincontrol_device()
+        self._ensure_default_ocr_device()
 
     # 기본 Common 디바이스 ID — 삭제/수정 금지
     DEFAULT_COMMON_DEVICE_ID = "Common"
     # 기본 WinControl 디바이스 ID — 삭제/수정 금지. 미연결 상태가 기본.
     DEFAULT_WINCONTROL_DEVICE_ID = "WinControl"
+    # 기본 OCR 디바이스 ID — 삭제/수정 금지
+    DEFAULT_OCR_DEVICE_ID = "OCR"
 
     def _ensure_default_common_device(self) -> None:
         """Common(CMD) 디바이스를 기본값으로 등록 + 상태를 항상 connected로 고정."""
@@ -646,6 +649,27 @@ class DeviceManager:
         self._devices[self.DEFAULT_COMMON_DEVICE_ID] = dev
         self._save_auxiliary_devices()
         logger.info("Registered default 'Common' device (CMD module)")
+
+    def _ensure_default_ocr_device(self) -> None:
+        """OCR 가상 디바이스를 기본값으로 등록 + 상태를 항상 connected로 고정."""
+        existing = self._devices.get(self.DEFAULT_OCR_DEVICE_ID)
+        if existing and existing.info.get("module") == "OCR":
+            existing.status = "connected"
+            existing.type = "module"
+            existing.category = "auxiliary"
+            return
+        dev = ManagedDevice(
+            id=self.DEFAULT_OCR_DEVICE_ID,
+            type="module",
+            category="auxiliary",
+            address="",
+            status="connected",
+            name="Common",
+            info={"module": "OCR", "connect_type": "none"},
+        )
+        self._devices[self.DEFAULT_OCR_DEVICE_ID] = dev
+        self._save_auxiliary_devices()
+        logger.info("Registered default 'OCR' device (OCR module)")
 
     def _ensure_default_wincontrol_device(self) -> None:
         """WinControl 디바이스를 기본값으로 등록 (미연결 상태가 기본).
@@ -684,7 +708,7 @@ class DeviceManager:
 
     def is_protected_device(self, device_id: str) -> bool:
         """삭제/수정이 금지된 시스템 기본 디바이스인지 여부."""
-        return device_id in (self.DEFAULT_COMMON_DEVICE_ID, self.DEFAULT_WINCONTROL_DEVICE_ID)
+        return device_id in (self.DEFAULT_COMMON_DEVICE_ID, self.DEFAULT_WINCONTROL_DEVICE_ID, self.DEFAULT_OCR_DEVICE_ID)
 
     def _load_auxiliary_devices(self) -> None:
         """Load saved auxiliary devices from disk.

@@ -1721,6 +1721,128 @@ class PlaybackService:
             return self.dm.get_mib_service(device_id), "icas"
         return None, None
 
+    # ── OCR 가상 모듈 헬퍼 ─────────────────────────────────────────────────
+
+    def _find_ocr_device(self, step: Step) -> Optional[dict]:
+        """OCR 스텝에서 스크린샷 대상 디바이스 정보 반환.
+        step.screenshot_device_id 우선, 없으면 주 디바이스 첫 번째로 fallback."""
+        device_id = step.screenshot_device_id
+        if device_id:
+            resolved = self._resolve_alias(device_id, self._device_map)
+            dev = self.dm.get_device(resolved) or self.dm.get_device(device_id)
+            if dev:
+                screen_type = step.screen_type or "front_center"
+                return {"type": dev.type, "id": dev.id, "address": dev.address, "screen_type": screen_type}
+        # fallback: 주 디바이스 중 첫 번째
+        for d in self.dm.list_primary():
+            if d.type in ("adb", "hkmc_agent", "isap_agent", "icas_agent", "mib_agent", "vision_camera", "webcam"):
+                return {"type": d.type, "id": d.id, "address": d.address, "screen_type": "front_center"}
+        return None
+
+    async def _screencap_bytes(self, dev_info: dict) -> Optional[bytes]:
+        """디바이스 정보로부터 스크린샷 bytes 반환."""
+        dev_type = dev_info["type"]
+        dev_id = dev_info["id"]
+        screen_type = dev_info.get("screen_type", "front_center")
+        try:
+            if dev_type == "adb":
+                return await self.adb.screencap_bytes(serial=dev_info.get("address") or dev_id, fmt="png")
+            elif dev_type == "hkmc_agent":
+                svc = self.dm.get_hkmc_service(dev_id)
+                if svc:
+                    return await svc.async_screencap_bytes(screen_type=screen_type, fmt="png")
+            elif dev_type == "isap_agent":
+                svc = self.dm.get_isap_service(dev_id)
+                if svc:
+                    return await svc.async_screencap_bytes(screen_type=screen_type, fmt="png")
+            elif dev_type == "icas_agent":
+                svc = self.dm.get_icas_service(dev_id)
+                if svc:
+                    return await svc.async_screencap_bytes(screen_type=screen_type or "HU", fmt="png")
+            elif dev_type == "mib_agent":
+                svc = self.dm.get_mib_service(dev_id)
+                if svc:
+                    return await svc.async_screencap_bytes(screen_type=screen_type or "HU", fmt="png")
+            elif dev_type in ("webcam", "vision_camera"):
+                cam = (self.dm.get_webcam_device(dev_id) if dev_type == "webcam"
+                       else self.dm.get_vision_camera(dev_id))
+                if cam:
+                    loop = asyncio.get_event_loop()
+                    return await loop.run_in_executor(None, cam.CaptureBytes, "png")
+        except Exception as e:
+            logger.error("OCR screencap 실패 (device=%s type=%s): %s", dev_id, dev_type, e)
+        return None
+
+    async def _tap_ocr_device(self, dev_info: dict, x: int, y: int) -> None:
+        """OCR이 찾은 좌표로 해당 디바이스에 탭 실행."""
+        dev_type = dev_info["type"]
+        dev_id = dev_info["id"]
+        screen_type = dev_info.get("screen_type", "front_center")
+        if dev_type == "adb":
+            await self.adb.tap(x, y, serial=dev_info.get("address") or dev_id)
+        elif dev_type == "hkmc_agent":
+            svc = self.dm.get_hkmc_service(dev_id)
+            if svc:
+                await svc.async_tap(x, y, screen_type)
+        elif dev_type == "isap_agent":
+            svc = self.dm.get_isap_service(dev_id)
+            if svc:
+                await svc.async_tap(x, y, screen_type)
+        elif dev_type == "icas_agent":
+            svc = self.dm.get_icas_service(dev_id)
+            if svc:
+                await svc.async_touch(x, y, screen_type or "HU")
+        elif dev_type == "mib_agent":
+            svc = self.dm.get_mib_service(dev_id)
+            if svc:
+                await svc.async_touch(x, y, screen_type or "HU")
+        else:
+            logger.warning("OCR ClickText: 탭 미지원 디바이스 타입 %s", dev_type)
+
+    async def _execute_ocr_step(self, step: Step, func_name: str, func_args: dict) -> str:
+        """OCR 가상 모듈 스텝 실행."""
+        from .ocr_service import has_text, find_text_center, extract_region_text
+
+        dev_info = self._find_ocr_device(step)
+        if dev_info is None:
+            return "FAIL: 스크린샷 디바이스를 찾을 수 없음"
+
+        img_bytes = await self._screencap_bytes(dev_info)
+        if img_bytes is None:
+            return "FAIL: 스크린샷 캡처 실패"
+
+        loop = asyncio.get_event_loop()
+
+        if func_name == "CheckText":
+            target = str(func_args.get("text", ""))
+            threshold = float(func_args.get("threshold", "0.8") or 0.8)
+            found, _ = await loop.run_in_executor(None, has_text, img_bytes, target, threshold)
+            if found:
+                return "PASS"
+            return f"FAIL: '{target}' 텍스트를 찾을 수 없음"
+
+        elif func_name == "ClickText":
+            target = str(func_args.get("text", ""))
+            threshold = float(func_args.get("threshold", "0.8") or 0.8)
+            center = await loop.run_in_executor(None, find_text_center, img_bytes, target, threshold)
+            if center is None:
+                return f"FAIL: '{target}' 텍스트를 찾을 수 없음"
+            x, y = center
+            await self._tap_ocr_device(dev_info, x, y)
+            return f"PASS: '{target}' 클릭 완료 (x={x}, y={y})"
+
+        elif func_name == "ExtractRegion":
+            rx = int(func_args.get("x", 0) or 0)
+            ry = int(func_args.get("y", 0) or 0)
+            rw = int(func_args.get("width", 0) or 0)
+            rh = int(func_args.get("height", 0) or 0)
+            text = await loop.run_in_executor(None, extract_region_text, img_bytes, rx, ry, rw, rh)
+            return text if text else "(텍스트 없음)"
+
+        return f"FAIL: 알 수 없는 OCR 함수 '{func_name}'"
+
+    # ── /OCR 가상 모듈 헬퍼 ────────────────────────────────────────────────
+
     def _resolve_screenshot_device(self, step: Step) -> Optional[dict]:
         """Resolve which device to take screenshots from.
 
@@ -1906,6 +2028,12 @@ class PlaybackService:
             module_name = params.get("module", "")
             func_name = params.get("function", "")
             func_args = params.get("args", {})
+
+            # OCR 가상 모듈 — 별도 처리 후 즉시 반환
+            if module_name == "OCR":
+                self._last_module_result = await self._execute_ocr_step(step, func_name, func_args)
+                return
+
             # Pass device connection info as constructor kwargs
             ctor_kwargs = None
             shared_conn = None

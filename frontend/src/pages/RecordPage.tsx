@@ -490,6 +490,14 @@ export default function RecordPage() {
     startX: 0, startY: 0, curX: 0, curY: 0, active: false,
   });
 
+  // OCR ExtractRegion 크롭 모달
+  const [ocrCropModalOpen, setOcrCropModalOpen] = useState(false);
+  const ocrCropCanvasRef = useRef<HTMLCanvasElement>(null);
+  const ocrCropScreenshotRef = useRef<string>('');
+  const ocrCropDragRef = useRef<{ startX: number; startY: number; curX: number; curY: number; active: boolean }>({
+    startX: 0, startY: 0, curX: 0, curY: 0, active: false,
+  });
+
   // Step test
   const [testResultModalOpen, setTestResultModalOpen] = useState(false);
   const [testResult, setTestResult] = useState<any>(null);
@@ -1970,6 +1978,104 @@ export default function RecordPage() {
     if (imageTapModalOpen) setTimeout(() => drawImageTapCanvas(), 50);
   }, [imageTapModalOpen, drawImageTapCanvas]);
 
+  // ── OCR ExtractRegion 크롭 모달 ─────────────────────────────────────────
+
+  const drawOcrCropCanvas = useCallback((dragRect?: { x: number; y: number; w: number; h: number }) => {
+    const canvas = ocrCropCanvasRef.current;
+    const src = ocrCropScreenshotRef.current;
+    if (!canvas || !src) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const img = new window.Image();
+    img.onload = () => {
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      ctx.drawImage(img, 0, 0);
+      if (dragRect && dragRect.w > 5 && dragRect.h > 5) {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.clearRect(dragRect.x, dragRect.y, dragRect.w, dragRect.h);
+        ctx.drawImage(img, dragRect.x, dragRect.y, dragRect.w, dragRect.h,
+                      dragRect.x, dragRect.y, dragRect.w, dragRect.h);
+        ctx.strokeStyle = '#52c41a';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([6, 4]);
+        ctx.strokeRect(dragRect.x, dragRect.y, dragRect.w, dragRect.h);
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#52c41a';
+        ctx.font = '24px sans-serif';
+        ctx.fillText(`${dragRect.x},${dragRect.y}  ${dragRect.w}×${dragRect.h}`, dragRect.x + 4, dragRect.y - 8);
+      }
+    };
+    img.src = src;
+  }, []);
+
+  const openOcrCropModal = useCallback(async () => {
+    const snap = await snapshotScreenshot(screenshotDeviceId || undefined);
+    if (!snap) {
+      message.error(t('record.screenshotFailed'));
+      return;
+    }
+    ocrCropScreenshotRef.current = snap;
+    setOcrCropModalOpen(true);
+  }, [snapshotScreenshot, screenshotDeviceId, t]);
+
+  const ocrCropMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = ocrCropCanvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = Math.round((e.clientX - rect.left) * scaleX);
+    const y = Math.round((e.clientY - rect.top) * scaleY);
+    ocrCropDragRef.current = { startX: x, startY: y, curX: x, curY: y, active: true };
+  }, []);
+
+  const ocrCropMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!ocrCropDragRef.current.active) return;
+    const canvas = ocrCropCanvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = Math.round((e.clientX - rect.left) * scaleX);
+    const y = Math.round((e.clientY - rect.top) * scaleY);
+    ocrCropDragRef.current.curX = x;
+    ocrCropDragRef.current.curY = y;
+    const { startX, startY } = ocrCropDragRef.current;
+    drawOcrCropCanvas({
+      x: Math.min(startX, x), y: Math.min(startY, y),
+      w: Math.abs(x - startX), h: Math.abs(y - startY),
+    });
+  }, [drawOcrCropCanvas]);
+
+  const ocrCropMouseUp = useCallback(() => {
+    if (!ocrCropDragRef.current.active) return;
+    ocrCropDragRef.current.active = false;
+    const { startX, startY, curX, curY } = ocrCropDragRef.current;
+    const rx = Math.min(startX, curX);
+    const ry = Math.min(startY, curY);
+    const rw = Math.abs(curX - startX);
+    const rh = Math.abs(curY - startY);
+    if (rw < 5 || rh < 5) return;
+    // x, y, width, height 파라미터에 자동 입력
+    setModuleFuncArgs(prev => ({
+      ...prev,
+      x: String(rx),
+      y: String(ry),
+      width: String(rw),
+      height: String(rh),
+    }));
+    setOcrCropModalOpen(false);
+    message.success(`영역 선택 완료: (${rx}, ${ry}) ${rw}×${rh}`);
+  }, []);
+
+  useEffect(() => {
+    if (ocrCropModalOpen) setTimeout(() => drawOcrCropCanvas(), 50);
+  }, [ocrCropModalOpen, drawOcrCropCanvas]);
+
+  // ── /OCR ExtractRegion 크롭 모달 ────────────────────────────────────────
+
   const testStep = useCallback(async (stepIdx: number) => {
     if (!scenarioName) {
       message.warning(t('record.saveScenarioFirst'));
@@ -2756,6 +2862,8 @@ export default function RecordPage() {
       const res = await scenarioApi.addStep({
         type: 'module_command',
         device_id: selectedDeviceId,
+        // OCR 스텝: 현재 화면 디바이스를 screenshot_device_id로 저장 (재생 시 스크린샷 대상)
+        ...(selectedModuleName === 'OCR' && screenshotDeviceId ? { screenshot_device_id: screenshotDeviceId } : {}),
         params,
         description: `${selectedModuleName}::${funcName}()`,
         delay_after_ms: delayMs,
@@ -4700,7 +4808,7 @@ export default function RecordPage() {
                   notFoundContent={t('record.noMatchedDevice')}
                   options={moduleDevices.map(d => ({
                     value: d.id,
-                    label: `${d.info?.module} ${d.id}`,
+                    label: `${d.info?.module} ${d.name || d.id}`,
                     _device: d,
                   }))}
                   optionRender={(opt) => {
@@ -4759,6 +4867,17 @@ export default function RecordPage() {
                             <div style={{ padding: '4px 8px', background: isDark ? '#1a2332' : '#f0f7ff', borderRadius: 4, fontSize: 11, color: isDark ? '#8bb4e0' : '#1677ff', lineHeight: 1.5, border: `1px solid ${isDark ? '#1a3a5c' : '#d6e8fc'}` }}>
                               {fn.description}
                             </div>
+                          )}
+                          {/* OCR ExtractRegion: 크롭 버튼을 파라미터 목록 위에 표시 */}
+                          {selectedModuleName === 'OCR' && selectedModuleFunc === 'ExtractRegion' && (
+                            <Button
+                              size="small"
+                              icon={<span>✂</span>}
+                              onClick={openOcrCropModal}
+                              style={{ alignSelf: 'flex-start' }}
+                            >
+                              화면에서 영역 선택
+                            </Button>
                           )}
                           {fn.params.length > 0 && fn.params.map(p => {
                             const isAdbSerialCombo =
@@ -4975,6 +5094,31 @@ export default function RecordPage() {
         </div>
         <div style={{ marginTop: 6, color: subTextColor, fontSize: 11, textAlign: 'center' }}>
           {t('record.cropModalHint')}
+        </div>
+      </Modal>
+
+      {/* OCR ExtractRegion 크롭 모달 */}
+      <Modal
+        title="OCR 영역 선택 — 드래그하여 텍스트 추출 영역을 지정하세요"
+        open={ocrCropModalOpen}
+        onCancel={() => setOcrCropModalOpen(false)}
+        width="90vw"
+        style={{ top: 20 }}
+        footer={
+          <Button onClick={() => setOcrCropModalOpen(false)}>{t('common.cancel')}</Button>
+        }
+      >
+        <div style={{ overflow: 'auto', maxHeight: '75vh', textAlign: 'center' }}>
+          <canvas
+            ref={ocrCropCanvasRef}
+            onMouseDown={ocrCropMouseDown}
+            onMouseMove={ocrCropMouseMove}
+            onMouseUp={ocrCropMouseUp}
+            style={{ cursor: 'crosshair', maxWidth: '100%' }}
+          />
+        </div>
+        <div style={{ marginTop: 6, color: subTextColor, fontSize: 11, textAlign: 'center' }}>
+          드래그하여 영역을 선택하면 x, y, width, height 파라미터에 자동 입력됩니다.
         </div>
       </Modal>
 
