@@ -2016,6 +2016,19 @@ class DeviceManager:
                 module_name = dev.info.get("module", "")
                 if not module_name:
                     continue
+                # 가상 모듈 (plugins/*.py(.pyd)에도 lge.auto에도 클래스 없음) — 실제 인스턴스 생성 불필요.
+                # 예: "OCR" — module_service가 직접 처리(playback_service에서 가상 핸들러).
+                # _ensure_default_ocr_device가 미리 설정한 status="connected"를 유지하기 위해 skip.
+                # 일반 모듈은 _import_module_class가 클래스를 찾아 반환 → 아래 _get_instance 경로로 진입.
+                try:
+                    from .module_service import _import_module_class
+                    if _import_module_class(module_name) is None:
+                        logger.info("Module %s is virtual (no class file); keeping status=%s",
+                                    dev.id, dev.status)
+                        continue
+                except Exception as e:
+                    logger.debug("Virtual module check for %s failed (continuing with init): %s",
+                                 module_name, e)
                 # 시리얼 기반 모듈: COM 포트 존재 여부 선검증 (DLL 모듈 오탐 차단)
                 if dev.info.get("connect_type") == "serial":
                     if not await loop.run_in_executor(None, self._com_port_exists, dev.address):
