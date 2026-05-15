@@ -4327,8 +4327,22 @@ export default function RecordPage() {
                   </div>
                 )}
                 {/* 좌표/제스처 안내(좌) + 이미지 터치 컨트롤(우) — 항상 양끝 정렬.
-                    좌측 텍스트가 길어지면 좌측 영역 내부에서만 wrap 되고, 우측은 절대 줄바꿈/이동 안 함. */}
-                <div style={{ marginTop: 3, color: subTextColor, fontSize: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    좌측 텍스트가 길어지면 좌측 영역 내부에서만 wrap 되고, 우측은 절대 줄바꿈/이동 안 함.
+                    sticky bottom: 카드 body 스크롤 시에도 항상 하단에 고정. */}
+                <div style={{
+                  position: 'sticky',
+                  bottom: 0,
+                  marginTop: 3,
+                  width: '100%',
+                  color: subTextColor,
+                  fontSize: 10,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '4px 0',
+                  background: isDark ? '#1f1f1f' : '#fff',
+                  zIndex: 5,
+                }}>
                   <div style={{ flex: 1, minWidth: 0, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
                     {hoverCoords && (
                       <span style={{ fontFamily: 'monospace', color: isDark ? '#ddd' : '#333' }}>
@@ -4663,8 +4677,18 @@ export default function RecordPage() {
                         }}
                       />
                     </div>
-                    {/* WinControl 이미지 터치 — 우측 고정. flex spacer 로 항상 오른쪽 정렬. */}
-                    <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    {/* WinControl 이미지 터치 — 우측 하단 고정. sticky bottom 으로 스크롤 시에도 보임. */}
+                    <div style={{
+                      position: 'sticky',
+                      bottom: 0,
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      padding: '4px 0',
+                      background: isDark ? '#1f1f1f' : '#fff',
+                      zIndex: 5,
+                    }}>
                       <div style={{ flex: 1, minWidth: 0 }} />
                       <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
                         <Tooltip title={recording ? t('record.imageTapTooltip') : t('record.imageTapDisabled')}>
