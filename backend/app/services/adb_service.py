@@ -15,7 +15,6 @@ from typing import Optional
 # 주의: build_dist.py가 배포 시 모든 __init__.py를 빈 파일로 덮어쓰므로
 # `from .capture import ...` 형태는 ImportError를 일으킨다. 반드시 서브모듈을
 # 직접 명시해서 import해야 .pyd 컴파일 배포본에서도 정상 동작한다.
-from .capture.adb_screenrecord import AdbScreenrecordBackend
 from .capture.scrcpy_server import ScrcpyServerBackend, detect_scrcpy_server
 from .capture.ffmpeg_runtime import detect_ffmpeg
 
@@ -145,21 +144,11 @@ class ADBService:
         # 장기 screencap 세션 (serial|sf_display_id → streamer) — 연결 시 선제 생성
         self._streamers: dict[str, "AdbScreencapStreamer"] = {}
         self._streamer_lock = asyncio.Lock()
-        # 라이브 미러링용 H.264 백엔드 (디바이스당 단일 디스플레이 동시 미러링 제약).
-        # ffmpeg 미설치/디바이스 미지원 시 자동으로 None 폴백되어 screencap streamer 사용.
-        self._screenrecord_backends: dict[str, AdbScreenrecordBackend] = {}
-        self._screenrecord_lock = asyncio.Lock()
-        # 1순위 H.264 백엔드 — scrcpy-server. screenrecord보다 idle/wake-up 동작이 우수.
-        # jar 부재 또는 디바이스 미지원 시 자동으로 screenrecord 백엔드로 폴백.
+        # 1순위 라이브 미러링: scrcpy-server. 미지원/실패 시 screencap PNG 폴링으로 폴백.
         self._scrcpy_backends: dict[str, ScrcpyServerBackend] = {}
         self._scrcpy_lock = asyncio.Lock()
-        # GVM/IVI 환경처럼 H.264 백엔드(scrcpy + screenrecord) 모두 동작 불가한 디바이스
-        # 캐시. 한 번 두 백엔드 모두 실패하면 등록되어 다음 시도부터 즉시 screencap 폴백.
-        # 매 WS 세션마다 5~10초 시도 비용을 반복하지 않게 한다.
-        # 디바이스 disconnect/remove 시 해제되어 다음 연결에서 다시 시도 가능.
-        self._h264_disabled: set[str] = set()
-        # scrcpy만 막히고 screenrecord는 동작하는 디바이스 (HMG IVI 등) 캐시.
-        # scrcpy 시도 비용(10초)을 매 cooldown마다 반복하지 않고 screenrecord로 직행.
+        # scrcpy 사용 불가 디바이스 캐시 — 한 번 실패하면 등록되어 다음 시도부터 즉시
+        # screencap PNG 폴링으로 직행. 매 WS 세션마다 시도 비용 반복 회피.
         self._scrcpy_disabled: set[str] = set()
 
     # ------------------------------------------------------------------
@@ -365,6 +354,41 @@ class ADBService:
         dflag = self._display_flag(display_id)
         return await self._run_device(s, f"shell input {dflag}swipe {x1} {y1} {x2} {y2} {duration_ms}")
 
+    async def _probe_sendevent_mode(self, serial: str) -> str:
+        """sendevent 권한 모드를 탐지하고 캐시에 저장. 'direct'|'su'|'none' 반환.
+        실제 터치 입력은 일으키지 않는 0-byte SYN 만으로 권한 확인."""
+        cached = self._sendevent_mode.get(serial)
+        if cached is not None:
+            return cached
+        touch = await self._find_touch_device(serial)
+        if not touch:
+            self._sendevent_mode[serial] = "none"
+            return "none"
+        loop = asyncio.get_event_loop()
+        dev = touch[0]
+        test_cmd = f'{ADB_PATH} -s {serial} shell "sendevent {dev} 0 0 0"'
+        _, test_err, test_rc = await loop.run_in_executor(None, functools.partial(_run_sync, test_cmd, 3))
+        if test_rc == 0 and "Permission denied" not in test_err:
+            self._sendevent_mode[serial] = "direct"
+            return "direct"
+        test_su = f'{ADB_PATH} -s {serial} shell "su 0 sendevent {dev} 0 0 0"'
+        _, test_err, test_rc = await loop.run_in_executor(None, functools.partial(_run_sync, test_su, 3))
+        if test_rc == 0 and "not found" not in test_err and "Permission denied" not in test_err:
+            self._sendevent_mode[serial] = "su"
+            return "su"
+        self._sendevent_mode[serial] = "none"
+        return "none"
+
+    async def prewarm_touch_input(self, serial: str) -> None:
+        """디바이스 연결 직후 백그라운드에서 호출 — touch device 경로와 sendevent 권한을
+        미리 캐시에 적재해서 첫 pattern_swipe 시 ADB shell 점유로 인한 화면 멈춤을 방지."""
+        try:
+            await self._find_touch_device(serial)
+            await self._probe_sendevent_mode(serial)
+            logger.info("touch input prewarmed: serial=%s mode=%s", serial, self._sendevent_mode.get(serial))
+        except Exception as e:
+            logger.debug("touch input prewarm failed for %s: %s", serial, e)
+
     async def pattern_swipe(
         self, points: list[dict], duration_ms: int = 600,
         serial: Optional[str] = None, display_id: Optional[int] = None,
@@ -386,27 +410,7 @@ class ADBService:
         if len(clean) < 2:
             raise ValueError("pattern_swipe requires at least 2 points")
 
-        # sendevent 가용성 캐시 검사 (없으면 0-byte SYN 만으로 권한 탐지 — 실제 터치 없음)
-        cached = self._sendevent_mode.get(s)
-        if cached is None:
-            touch = await self._find_touch_device(s)
-            if touch:
-                loop = asyncio.get_event_loop()
-                dev = touch[0]
-                test_cmd = f'{ADB_PATH} -s {s} shell "sendevent {dev} 0 0 0"'
-                _, test_err, test_rc = await loop.run_in_executor(None, functools.partial(_run_sync, test_cmd, 3))
-                if test_rc == 0 and "Permission denied" not in test_err:
-                    self._sendevent_mode[s] = "direct"
-                else:
-                    test_su = f'{ADB_PATH} -s {s} shell "su 0 sendevent {dev} 0 0 0"'
-                    _, test_err, test_rc = await loop.run_in_executor(None, functools.partial(_run_sync, test_su, 3))
-                    if test_rc == 0 and "not found" not in test_err and "Permission denied" not in test_err:
-                        self._sendevent_mode[s] = "su"
-                    else:
-                        self._sendevent_mode[s] = "none"
-            else:
-                self._sendevent_mode[s] = "none"
-            cached = self._sendevent_mode.get(s)
+        cached = await self._probe_sendevent_mode(s)
 
         if cached in ("direct", "su"):
             return await self._sendevent_pattern_raw(clean, duration_ms, s, su=(cached == "su"))
@@ -1034,81 +1038,7 @@ class ADBService:
                 pass
 
     # ------------------------------------------------------------------
-    # H.264 라이브 미러링 백엔드 (screenrecord + ffmpeg)
-    # ------------------------------------------------------------------
-
-    async def ensure_screenrecord_backend(
-        self,
-        serial: str,
-        logical_id: Optional[int],
-        *,
-        size: Optional[str] = None,
-        bitrate: int = 4_000_000,
-    ) -> Optional[AdbScreenrecordBackend]:
-        """디바이스의 screenrecord 백엔드를 보장.
-
-        - 같은 (serial, logical_id) 조합으로 살아있으면 재사용.
-        - 디스플레이가 바뀐 경우 기존 인스턴스를 close 후 새로 시작.
-        - 시작 실패(ffmpeg 미설치, 디바이스 미지원, 첫 프레임 timeout 등) 시 None →
-          호출자는 screencap 폴백 사용.
-
-        디바이스당 단일 디스플레이 미러링 제약(설계상)에 따라 key는 serial만 사용.
-        """
-        if not detect_ffmpeg():
-            return None
-        async with self._screenrecord_lock:
-            existing = self._screenrecord_backends.get(serial)
-            if existing and existing.is_alive() and existing.logical_id == logical_id:
-                return existing
-            if existing:
-                try:
-                    await existing.close()
-                except Exception as e:
-                    logger.debug("screenrecord existing close error: %s", e)
-                self._screenrecord_backends.pop(serial, None)
-
-            # try_start 한 번이 실패할 때 디바이스 HW 인코더 cooldown이 짧게
-            # 끝나면 두 번째 시도가 잡힌다. 두 번 다 실패하면 폴백.
-            for attempt in range(2):
-                backend = AdbScreenrecordBackend(
-                    serial, logical_id, size=size, bitrate=bitrate,
-                )
-                ok = await backend.try_start()
-                if ok:
-                    self._screenrecord_backends[serial] = backend
-                    return backend
-                # 실패한 backend는 close에서 디바이스 측 정리까지 수행 (pkill).
-                try:
-                    await backend.close()
-                except Exception:
-                    pass
-                if attempt == 0:
-                    await asyncio.sleep(0.5)
-            return None
-
-    async def close_screenrecord_backend(self, serial: str) -> None:
-        """특정 디바이스의 screenrecord 백엔드 종료. 디바이스 disconnect 훅에서 호출."""
-        async with self._screenrecord_lock:
-            backend = self._screenrecord_backends.pop(serial, None)
-        if backend:
-            try:
-                await backend.close()
-            except Exception as e:
-                logger.debug("screenrecord close error (%s): %s", serial, e)
-
-    async def close_all_screenrecord_backends(self) -> None:
-        """셧다운용 — 모든 screenrecord 백엔드 정리."""
-        async with self._screenrecord_lock:
-            backends = list(self._screenrecord_backends.values())
-            self._screenrecord_backends.clear()
-        for b in backends:
-            try:
-                await b.close()
-            except Exception:
-                pass
-
-    # ------------------------------------------------------------------
-    # 1순위 H.264 라이브 미러링 백엔드 (scrcpy-server)
+    # H.264 라이브 미러링 백엔드 (scrcpy-server)
     # ------------------------------------------------------------------
 
     async def ensure_scrcpy_backend(
@@ -1123,7 +1053,7 @@ class ADBService:
         - 같은 (serial, logical_id) 조합으로 살아있으면 재사용.
         - 디스플레이 변경 시 기존 close 후 새로 시작.
         - jar 부재, push 실패, server 실행 실패, 첫 프레임 timeout 등으로 실패 시 None →
-          호출자는 screenrecord/screencap 폴백 사용.
+          호출자는 screencap PNG 폴링 폴백 사용.
         """
         if not detect_scrcpy_server() or not detect_ffmpeg():
             return None
@@ -1175,40 +1105,25 @@ class ADBService:
                 pass
 
     # ------------------------------------------------------------------
-    # H.264 비활성 캐시 (GVM 등 두 백엔드 모두 동작 불가한 디바이스)
+    # scrcpy 비활성 캐시 (GVM 등 scrcpy 동작 불가 디바이스)
     # ------------------------------------------------------------------
 
-    def is_h264_disabled(self, serial: str) -> bool:
-        return serial in self._h264_disabled
-
-    def mark_h264_disabled(self, serial: str) -> None:
-        """디바이스가 H.264 미러링을 지원 못 함을 캐시. 다음 시도부터 즉시 screencap 폴백."""
-        if serial not in self._h264_disabled:
-            self._h264_disabled.add(serial)
-            logger.info(
-                "H.264 mirroring permanently disabled for %s "
-                "(both scrcpy and screenrecord failed — likely GVM/IVI environment). "
-                "Using screencap fallback until device disconnects.",
-                serial,
-            )
-
-    def clear_h264_disabled(self, serial: str) -> None:
-        """디바이스 disconnect 시 호출 — 다음 연결에서 다시 시도 가능하게."""
-        self._h264_disabled.discard(serial)
-        self._scrcpy_disabled.discard(serial)
-
     def is_scrcpy_disabled(self, serial: str) -> bool:
-        return serial in self._scrcpy_disabled or serial in self._h264_disabled
+        return serial in self._scrcpy_disabled
 
     def mark_scrcpy_disabled(self, serial: str) -> None:
-        """디바이스가 scrcpy를 지원 못 함을 캐시. screenrecord는 그대로 시도."""
+        """디바이스가 scrcpy를 지원 못 함을 캐시. 다음 시도부터 즉시 screencap PNG 폴링."""
         if serial not in self._scrcpy_disabled:
             self._scrcpy_disabled.add(serial)
             logger.info(
                 "scrcpy permanently disabled for %s (try_start failed). "
-                "Will use screenrecord/screencap fallback until device disconnects.",
+                "Using screencap PNG polling fallback until device disconnects.",
                 serial,
             )
+
+    def clear_scrcpy_disabled(self, serial: str) -> None:
+        """디바이스 disconnect 시 호출 — 다음 연결에서 다시 시도 가능하게."""
+        self._scrcpy_disabled.discard(serial)
 
 
 class AdbScreencapStreamer:

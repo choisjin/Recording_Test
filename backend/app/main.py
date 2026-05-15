@@ -334,10 +334,6 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.debug("close_all_streamers: %s", e)
     try:
-        await adb_service.close_all_screenrecord_backends()
-    except Exception as e:
-        logger.debug("close_all_screenrecord_backends: %s", e)
-    try:
         await adb_service.close_all_scrcpy_backends()
     except Exception as e:
         logger.debug("close_all_scrcpy_backends: %s", e)
@@ -507,14 +503,12 @@ async def websocket_screen_mirror(websocket: WebSocket):
     h264_mode = False
     recv_task = None
 
-    # ADB 라이브 미러링 백엔드 우선순위:
-    #   1순위: scrcpy-server (idle/wake-up 동작 우수)
-    #   2순위: screenrecord + ffmpeg
-    #   3순위: screencap PNG 폴링 (모든 환경에서 동작)
-    # 각 단계별로 마지막 실패 시각을 기록해 30초 cooldown 후 자동 재시도.
+    # ADB 라이브 미러링 백엔드 우선순위 (단순화: screenrecord 제거):
+    #   1순위: scrcpy-server (idle/wake-up 동작 우수, 30~60fps)
+    #   2순위: screencap PNG 폴링 (모든 환경에서 동작, 1~5fps)
+    # scrcpy 실패 시 30초 cooldown 후 자동 재시도.
     BACKEND_RETRY_COOLDOWN = 30.0
     scrcpy_retry_after = 0.0
-    screenrecord_retry_after = 0.0
     # WS 세션 진입 시 ADB 분기에 한 번만 dispatch 의도를 INFO 로그로 출력 — 어떤 백엔드가
     # 활성/비활성 판단됐는지 운영 시점에 추적할 수 있게 한다.
     adb_dispatch_logged = False
@@ -645,10 +639,9 @@ async def websocket_screen_mirror(websocket: WebSocket):
                         await asyncio.sleep(0.3)
                         continue
                 else:
-                    # ADB 라이브 미러링 — 3단계 폴백 체인
+                    # ADB 라이브 미러링 — 2단계 폴백 체인 (screenrecord 제거)
                     #   1순위: scrcpy-server (MediaCodec 직접 제어, idle 문제 없음)
-                    #   2순위: screenrecord(H.264) + ffmpeg(MJPEG) — 30~60fps, HW 인코더
-                    #   3순위: screencap PNG streamer — 1~5fps, 모든 환경에서 동작
+                    #   2순위: screencap PNG streamer — 1~5fps, 모든 환경에서 동작
                     # 검증/녹화 캡처(screencap_bytes)와는 별개 채널.
                     adb_display_id = None
                     try:
@@ -688,9 +681,7 @@ async def websocket_screen_mirror(websocket: WebSocket):
 
                     _now = asyncio.get_event_loop().time()
                     # 디바이스 단위 cache 확인:
-                    #   _h264_disabled : scrcpy + screenrecord 모두 불가 (GVM 등) → screencap 직행
-                    #   _scrcpy_disabled : scrcpy만 불가, screenrecord는 OK (HMG IVI 등)
-                    _h264_disabled = adb_service.is_h264_disabled(adb_serial)
+                    #   _scrcpy_disabled : scrcpy 불가 (GVM 등) → screencap 직행
                     _scrcpy_disabled = adb_service.is_scrcpy_disabled(adb_serial)
 
                     if not adb_dispatch_logged:
@@ -705,10 +696,10 @@ async def websocket_screen_mirror(websocket: WebSocket):
                         logger.info(
                             "ADB mirror dispatch: serial=%s screen_type=%r display_id=%s "
                             "logical_id=%s is_active=%s all_inactive_override=%s "
-                            "h264_disabled=%s scrcpy_disabled=%s displays=%s",
+                            "scrcpy_disabled=%s displays=%s",
                             adb_serial, screen_type, adb_display_id, _logical_id,
                             _is_active, _all_inactive,
-                            _h264_disabled, _scrcpy_disabled, _disp_summary,
+                            _scrcpy_disabled, _disp_summary,
                         )
                         adb_dispatch_logged = True
 
@@ -735,64 +726,23 @@ async def websocket_screen_mirror(websocket: WebSocket):
                             continue
                         else:
                             # try_start 2회 모두 실패 → 디바이스 단위 영구 비활성으로 마크.
-                            # screenrecord 백엔드는 그대로 시도하므로 HMG처럼 scrcpy만 막힌
-                            # 디바이스에서도 미러링 부드러움을 유지할 수 있다.
                             adb_service.mark_scrcpy_disabled(adb_serial)
                             _scrcpy_disabled = True
                             scrcpy_retry_after = float("inf")
                             logger.info(
                                 "scrcpy unavailable for %s (display=%s) — "
-                                "falling back to screenrecord",
+                                "falling back to screencap PNG polling",
                                 adb_serial, adb_display_id,
                             )
 
-                    # 2순위 시도: screenrecord
-                    if not _h264_disabled and _is_active and _now >= screenrecord_retry_after:
-                        sr_backend = await adb_service.ensure_screenrecord_backend(
-                            adb_serial, _logical_id,
-                        )
-                        if sr_backend:
-                            try:
-                                async for jpeg in sr_backend.stream_jpeg():
-                                    await websocket.send_bytes(jpeg)
-                            except WebSocketDisconnect:
-                                raise
-                            except Exception as e:
-                                logger.warning(
-                                    "screenrecord stream error (%s): %s",
-                                    adb_serial, e,
-                                )
-                            screenrecord_retry_after = (
-                                asyncio.get_event_loop().time()
-                                + BACKEND_RETRY_COOLDOWN
-                            )
-                            await adb_service.close_screenrecord_backend(adb_serial)
-                            continue
-                        else:
-                            screenrecord_retry_after = _now + BACKEND_RETRY_COOLDOWN
-                            logger.info(
-                                "screenrecord unavailable for %s (display=%s) — "
-                                "falling back to screencap, will retry in %ds",
-                                adb_serial, adb_display_id,
-                                int(BACKEND_RETRY_COOLDOWN),
-                            )
-                            # scrcpy도 이미 실패 상태(_now >= scrcpy_retry_after 였는데
-                            # 위에서 다시 cooldown 갱신된 상태)이고 GVM 환경으로 추정되면
-                            # H.264 영구 비활성으로 등록 → 다음 시도 즉시 screencap 폴백.
-                            if _all_inactive and scrcpy_retry_after > _now:
-                                adb_service.mark_h264_disabled(adb_serial)
-                                _h264_disabled = True
-
-                    # 3순위 폴백: screencap PNG streamer + fps throttle
-                    # H.264 백엔드가 비활성된 디바이스(GVM 등)는 조작용 미러링이 부드러워야
-                    # 사용자가 입력하기 편하므로 fps를 자동으로 올린다 (조작은 실제 화면
-                    # 좌표 정확도가 중요해 native screencap이 적합 — virtual display로 우회
-                    # 불가). 일반 폰은 1순위 H.264가 활성이라 여기 거의 안 옴.
+                    # 2순위 폴백: screencap PNG streamer + fps throttle
+                    # scrcpy가 비활성된 디바이스(GVM 등)는 조작용 미러링이 부드러워야
+                    # 사용자가 입력하기 편하므로 fps를 자동으로 올린다.
                     sf_did = resolve_sf_display_id(
                         dev.info if dev else None, adb_display_id
                     )
                     _interval = adb_frame_interval
-                    if _h264_disabled:
+                    if _scrcpy_disabled:
                         # GVM은 native fps 미상이라 5fps 정도가 부드러움/부하의 균형점.
                         _interval = min(_interval, 0.2)
                     loop = asyncio.get_event_loop()

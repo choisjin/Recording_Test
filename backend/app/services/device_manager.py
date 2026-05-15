@@ -1302,17 +1302,13 @@ class DeviceManager:
                             await self.adb.ensure_streamer(dev.address)
                         except Exception as se:
                             logger.debug("ADB streamer restart on reconnect %s: %s", dev.id, se)
-                        # H.264 미러링 백엔드도 재시작이 필요 (이전 screenrecord 프로세스는 끊김)
-                        try:
-                            await self.adb.close_screenrecord_backend(dev.address)
-                        except Exception as se:
-                            logger.debug("ADB screenrecord close on reconnect %s: %s", dev.id, se)
+                        # scrcpy 미러링 백엔드도 재시작이 필요 (이전 프로세스는 끊김)
                         try:
                             await self.adb.close_scrcpy_backend(dev.address)
                         except Exception as se:
                             logger.debug("ADB scrcpy close on reconnect %s: %s", dev.id, se)
-                        # 재연결 시 H.264 비활성 캐시 초기화 — 디바이스 환경이 바뀌었을 수 있음.
-                        self.adb.clear_h264_disabled(dev.address)
+                        # 재연결 시 scrcpy 비활성 캐시 초기화 — 디바이스 환경이 바뀌었을 수 있음.
+                        self.adb.clear_scrcpy_disabled(dev.address)
                     self._adb_reconnect_attempts.pop(dev.id, None)
                     dev.status = "device"
                     continue
@@ -1833,14 +1829,10 @@ class DeviceManager:
             except Exception as se:
                 logger.debug("ADB streamer close on remove failed for %s: %s", dev.id, se)
             try:
-                await self.adb.close_screenrecord_backend(dev.address)
-            except Exception as se:
-                logger.debug("ADB screenrecord close on remove failed for %s: %s", dev.id, se)
-            try:
                 await self.adb.close_scrcpy_backend(dev.address)
             except Exception as se:
                 logger.debug("ADB scrcpy close on remove failed for %s: %s", dev.id, se)
-            self.adb.clear_h264_disabled(dev.address)
+            self.adb.clear_scrcpy_disabled(dev.address)
 
         if dev.type == "adb" and ":" in dev.address:
             result = await self.adb.disconnect_device(dev.address)
@@ -2538,6 +2530,10 @@ class DeviceManager:
                             await self.adb.ensure_streamer(dev.address)
                         except Exception as se:
                             logger.debug("ADB streamer pre-start failed for %s: %s", dev.id, se)
+                        # 패턴 스와이프용 touch input 캐시 백그라운드 적재
+                        # (첫 패턴 입력 시 _find_touch_device + 권한 탐지로 ADB shell이 점유되어
+                        #  화면 캡처가 멈춰 보이는 현상 방지)
+                        asyncio.create_task(self.adb.prewarm_touch_input(dev.address))
                         return f"ADB connected: {dev.id} ({dev.address})"
                     if attempt < 2:
                         await asyncio.sleep(1)
@@ -2648,14 +2644,10 @@ class DeviceManager:
             except Exception as se:
                 logger.debug("ADB streamer close failed for %s: %s", dev.id, se)
             try:
-                await self.adb.close_screenrecord_backend(dev.address)
-            except Exception as se:
-                logger.debug("ADB screenrecord close failed for %s: %s", dev.id, se)
-            try:
                 await self.adb.close_scrcpy_backend(dev.address)
             except Exception as se:
                 logger.debug("ADB scrcpy close failed for %s: %s", dev.id, se)
-            self.adb.clear_h264_disabled(dev.address)
+            self.adb.clear_scrcpy_disabled(dev.address)
             if ":" in dev.address:
                 try:
                     await self.adb._run(f"disconnect {dev.address}")
