@@ -208,6 +208,51 @@ function downsamplePath(points: { x: number; y: number }[], maxPoints: number = 
   return out;
 }
 
+// 노이즈 제거용 RDP — 작은 epsilon으로 떨림/잡점만 걸러내고 곡선 모양은 보존.
+// 각도 스냅은 하지 않음. 사용자가 그린 형태(곡선/대각선/L자)는 그대로 살림.
+function rdpDenoise(points: { x: number; y: number }[], epsilon: number): { x: number; y: number }[] {
+  if (points.length < 3) return points.slice();
+  const perpSq = (p: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) => {
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 === 0) { const ex = p.x - a.x, ey = p.y - a.y; return ex * ex + ey * ey; }
+    const t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / d2;
+    const tc = Math.max(0, Math.min(1, t));
+    const px = a.x + tc * dx, py = a.y + tc * dy;
+    return (p.x - px) ** 2 + (p.y - py) ** 2;
+  };
+  const eps2 = epsilon * epsilon;
+  const out: { x: number; y: number }[] = [points[0]];
+  const walk = (start: number, end: number) => {
+    let maxD = 0, idx = -1;
+    for (let i = start + 1; i < end; i++) {
+      const d = perpSq(points[i], points[start], points[end]);
+      if (d > maxD) { maxD = d; idx = i; }
+    }
+    if (maxD > eps2 && idx >= 0) {
+      walk(start, idx);
+      out.push(points[idx]);
+      walk(idx, end);
+    }
+  };
+  walk(0, points.length - 1);
+  out.push(points[points.length - 1]);
+  return out;
+}
+
+// 끝부분 잔여 짧은 segment 제거 (사용자가 마우스 떼며 살짝 흔든 경우).
+function trimTinyTail(points: { x: number; y: number }[], minLen: number): { x: number; y: number }[] {
+  if (points.length < 3) return points.slice();
+  const out = points.slice();
+  while (out.length >= 3) {
+    const a = out[out.length - 2], b = out[out.length - 1];
+    if (Math.hypot(b.x - a.x, b.y - a.y) < minLen) {
+      out.splice(out.length - 2, 1);
+    } else break;
+  }
+  return out;
+}
+
 // HKMC key sub commands
 const HKMC_SHORT_KEY = 0x43;
 const HKMC_LONG_KEY = 0x44;
@@ -2739,11 +2784,12 @@ export default function RecordPage() {
       if (!cur) return;
       const { x, y } = toDeviceCoords(cur, clientX, clientY);
       setHoverCoords({ x, y, clientX, clientY });
-      // 스마트 모드: 드래그 중일 때 좌표 누적 (ADB 전용, 중복점 제거)
+      // 스마트 모드: 드래그 중일 때 좌표 누적 (ADB 전용)
+      // 6px 이상 이동했을 때만 점 추가 — 천천히 그릴 때의 손떨림/픽셀 노이즈 1차 제거.
       if (gestureRef.current.active && smartSwipe && isScreenAdb) {
         const path = gesturePathRef.current;
         const last = path[path.length - 1];
-        if (!last || Math.hypot(x - last.x, y - last.y) >= 3) {
+        if (!last || Math.hypot(x - last.x, y - last.y) >= 6) {
           path.push({ x, y });
           setLivePathTick(t => t + 1);
         }
@@ -2770,8 +2816,9 @@ export default function RecordPage() {
     const rawDist = Math.sqrt((rawEndX - startX) ** 2 + (rawEndY - startY) ** 2);
     const elapsed = Date.now() - startTime;
 
-    // scrcpy 방식: 캡처한 raw 궤적을 그대로 전송 (ADB·1핑거·normal 모드 전용).
-    // 보정/분석 없이 마우스가 지나간 좌표 그대로 — 곡선/L자/Z자 모두 자연 반영.
+    // scrcpy 방식: 캡처한 raw 궤적 전송 (ADB·1핑거·normal 모드 전용).
+    // 약간의 보정: RDP(eps=4px)로 직선 위 잡점 제거 + 끝부분 짧은 잔여 segment 제거.
+    // 각도 스냅은 하지 않음 — 사용자가 그린 곡선/L자 형태는 보존.
     if (smartSwipe && isScreenAdb && gestureMode === 'normal' && fingerCount === 1 && rawDist > SWIPE_DISTANCE_THRESHOLD) {
       const path = gesturePathRef.current.slice();
       const tail = path[path.length - 1];
@@ -2780,7 +2827,9 @@ export default function RecordPage() {
       }
       gesturePathRef.current = [];
       setLivePathTick(t => t + 1);
-      const sampled = downsamplePath(path);
+      const denoised = rdpDenoise(path, 4);
+      const trimmed = trimTinyTail(denoised, 10);
+      const sampled = downsamplePath(trimmed);
       if (sampled.length >= 2) {
         const first = sampled[0];
         const last = sampled[sampled.length - 1];
