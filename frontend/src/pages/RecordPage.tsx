@@ -443,12 +443,12 @@ export default function RecordPage() {
   const [repeatTapCount, setRepeatTapCount] = useState(5);
   const [repeatTapInterval, setRepeatTapInterval] = useState(100);
   const repeatTapCoordsRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  // 스마트 스와이프: 한 번의 드래그 궤적을 분석해서 직선/L/Z 등으로 자동 인식하여 전송.
-  // ON이면 mousemove 중 좌표를 캡처하고 mouseup에서 RDP+8방향 스냅+병합으로 단순화.
+  // 패턴(scrcpy 방식) 스와이프: 마우스 down→move→up 캡처 좌표를 그대로 전송.
+  // ADB 전용 (sendevent 연속 터치). HKMC/ICAS 등은 다구간 지원 안 됨.
   const [smartSwipe, setSmartSwipe] = useState(false);
-  // 드래그 중 캡처된 raw 좌표 (smart 모드일 때만 사용)
+  // 드래그 중 캡처된 raw 좌표
   const gesturePathRef = useRef<{ x: number; y: number }[]>([]);
-  // 드래그 중 화면 표시용 — rAF 단위로 갱신해 SVG가 다시 그려지도록 함
+  // 드래그 중 SVG 오버레이 강제 리렌더용 카운터
   const [livePathTick, setLivePathTick] = useState(0);
 
   // 웹캠 설정(노출) 모달
@@ -2739,8 +2739,8 @@ export default function RecordPage() {
       if (!cur) return;
       const { x, y } = toDeviceCoords(cur, clientX, clientY);
       setHoverCoords({ x, y, clientX, clientY });
-      // 스마트 모드: 드래그 중일 때 좌표 누적 (중복점 제거)
-      if (gestureRef.current.active && smartSwipe) {
+      // 스마트 모드: 드래그 중일 때 좌표 누적 (ADB 전용, 중복점 제거)
+      if (gestureRef.current.active && smartSwipe && isScreenAdb) {
         const path = gesturePathRef.current;
         const last = path[path.length - 1];
         if (!last || Math.hypot(x - last.x, y - last.y) >= 3) {
@@ -2749,7 +2749,7 @@ export default function RecordPage() {
         }
       }
     });
-  }, [screenshotDeviceId, deviceRes, hkmcDisplayMode, isScreenHkmc, viewCropEnabled, viewCropX, viewCropY, smartSwipe]);
+  }, [screenshotDeviceId, deviceRes, hkmcDisplayMode, isScreenHkmc, viewCropEnabled, viewCropX, viewCropY, smartSwipe, isScreenAdb]);
 
   const handleMouseLeave = useCallback(() => {
     if (hoverRafRef.current != null) {
@@ -2770,9 +2770,9 @@ export default function RecordPage() {
     const rawDist = Math.sqrt((rawEndX - startX) ** 2 + (rawEndY - startY) ** 2);
     const elapsed = Date.now() - startTime;
 
-    // scrcpy 방식: 캡처한 raw 궤적을 그대로 전송 (1핑거 normal 모드).
+    // scrcpy 방식: 캡처한 raw 궤적을 그대로 전송 (ADB·1핑거·normal 모드 전용).
     // 보정/분석 없이 마우스가 지나간 좌표 그대로 — 곡선/L자/Z자 모두 자연 반영.
-    if (smartSwipe && gestureMode === 'normal' && fingerCount === 1 && rawDist > SWIPE_DISTANCE_THRESHOLD) {
+    if (smartSwipe && isScreenAdb && gestureMode === 'normal' && fingerCount === 1 && rawDist > SWIPE_DISTANCE_THRESHOLD) {
       const path = gesturePathRef.current.slice();
       const tail = path[path.length - 1];
       if (!tail || Math.hypot(rawEndX - tail.x, rawEndY - tail.y) > 1) {
@@ -2893,7 +2893,7 @@ export default function RecordPage() {
       executeAction('tap', params, `tap (${startX},${startY})`);
       setLastGesture(`${t('record.gestureTap')} (${startX},${startY})`);
     }
-  }, [screenshotDeviceId, executeAction, deviceRes, hkmcDisplayMode, isScreenHkmc, viewCropEnabled, viewCropX, viewCropY, fingerCount, fingerSpread, gestureMode, repeatTapMode, smartSwipe, t]);
+  }, [screenshotDeviceId, executeAction, deviceRes, hkmcDisplayMode, isScreenHkmc, viewCropEnabled, viewCropX, viewCropY, fingerCount, fingerSpread, gestureMode, repeatTapMode, smartSwipe, isScreenAdb, t]);
 
   const executeRepeatTap = useCallback(() => {
     const { x, y } = repeatTapCoordsRef.current;
@@ -4383,7 +4383,7 @@ export default function RecordPage() {
                     <Tag color="processing" style={{ fontSize: 12, padding: '4px 12px' }}>{t('record.stepTesting')}</Tag>
                   </div>
                 )}
-                {smartSwipe && gestureRef.current.active && gesturePathRef.current.length > 1 && testingStepIndex == null && (() => {
+                {smartSwipe && isScreenAdb && gestureRef.current.active && gesturePathRef.current.length > 1 && testingStepIndex == null && (() => {
                   // livePathTick은 강제 리렌더용 의존성. 사용은 ref에서 직접.
                   void livePathTick;
                   const cv = canvasRef.current;
