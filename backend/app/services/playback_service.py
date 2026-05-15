@@ -1818,25 +1818,17 @@ class PlaybackService:
             threshold = float(func_args.get("threshold", "0.8") or 0.8)
             mode = str(func_args.get("mode", "Full Screen"))
             if mode == "Region":
-                # 신 포맷: region="x,y,width,height". 비어있거나 누락이면 legacy x/y/width/height로 fallback.
-                region_str = str(func_args.get("region", "") or "").strip()
-                if region_str:
-                    parts = [p.strip() for p in region_str.split(",")]
-                    def _to_int(v: str) -> int:
-                        try:
-                            return int(v)
-                        except (TypeError, ValueError):
-                            return 0
-                    rx = _to_int(parts[0]) if len(parts) > 0 else 0
-                    ry = _to_int(parts[1]) if len(parts) > 1 else 0
-                    rw = _to_int(parts[2]) if len(parts) > 2 else 0
-                    rh = _to_int(parts[3]) if len(parts) > 3 else 0
-                else:
-                    # legacy 시나리오 호환 — 개별 키 4개로 저장된 케이스
-                    rx = int(func_args.get("x", 0) or 0)
-                    ry = int(func_args.get("y", 0) or 0)
-                    rw = int(func_args.get("width", 0) or 0)
-                    rh = int(func_args.get("height", 0) or 0)
+                # region = "x,y,width,height" (쉼표 구분). 토큰이 모자라거나 정수 변환 실패 시 0으로 채움.
+                parts = [p.strip() for p in str(func_args.get("region", "") or "").split(",")]
+                def _to_int(v: str) -> int:
+                    try:
+                        return int(v)
+                    except (TypeError, ValueError):
+                        return 0
+                rx = _to_int(parts[0]) if len(parts) > 0 else 0
+                ry = _to_int(parts[1]) if len(parts) > 1 else 0
+                rw = _to_int(parts[2]) if len(parts) > 2 else 0
+                rh = _to_int(parts[3]) if len(parts) > 3 else 0
                 found = await loop.run_in_executor(
                     None, check_text_in_region, img_bytes, target, rx, ry, rw, rh, threshold
                 )
