@@ -4869,8 +4869,9 @@ export default function RecordPage() {
                               {fn.description}
                             </div>
                           )}
-                          {/* OCR ExtractRegion: 크롭 버튼을 파라미터 목록 위에 표시 */}
-                          {selectedModuleName === 'OCR' && selectedModuleFunc === 'ExtractRegion' && (
+                          {/* OCR CheckText 영역지정 모드: 크롭 버튼 */}
+                          {selectedModuleName === 'OCR' && selectedModuleFunc === 'CheckText' &&
+                           moduleFuncArgs['mode'] === '영역지정' && (
                             <Button
                               size="small"
                               icon={<span>✂</span>}
@@ -4885,11 +4886,35 @@ export default function RecordPage() {
                               selectedModuleName === 'Android' &&
                               selectedModuleFunc === 'Send_adb_command' &&
                               p.name === 'serial';
+                            // OCR CheckText: mode 파라미터 → 콤보박스
+                            const isOcrMode =
+                              selectedModuleName === 'OCR' &&
+                              selectedModuleFunc === 'CheckText' &&
+                              p.name === 'mode';
+                            // OCR CheckText: 영역 파라미터는 영역지정 모드일 때만 표시
+                            const isOcrRegionParam =
+                              selectedModuleName === 'OCR' &&
+                              selectedModuleFunc === 'CheckText' &&
+                              ['x', 'y', 'width', 'height'].includes(p.name);
+                            if (isOcrRegionParam && moduleFuncArgs['mode'] !== '영역지정') return null;
                             return (
                             <div key={p.name} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                               <div style={{ display: 'flex', gap: 4, alignItems: 'center', width: '100%' }}>
                                 <Tag style={{ minWidth: 70, textAlign: 'center', margin: 0, flexShrink: 0 }}>{p.name}{p.required && <span style={{ color: '#ff4d4f' }}>*</span>}</Tag>
-                                {isAdbSerialCombo ? (
+                                {isOcrMode ? (
+                                  <Select
+                                    size="small"
+                                    value={moduleFuncArgs[p.name] || '전체화면'}
+                                    onChange={(v) => {
+                                      setModuleFuncArgs(prev => ({ ...prev, [p.name]: v }));
+                                    }}
+                                    style={{ flex: 1, minWidth: 0 }}
+                                    options={[
+                                      { value: '전체화면', label: '전체화면 — 화면 전체에서 텍스트 검색' },
+                                      { value: '영역지정', label: '영역지정 — 지정 영역에서 텍스트 검색' },
+                                    ]}
+                                  />
+                                ) : isAdbSerialCombo ? (
                                   <Select
                                     size="small"
                                     showSearch

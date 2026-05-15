@@ -95,6 +95,14 @@ def find_text_center(
     return center if found else None
 
 
+def check_text_in_region(
+    image_bytes: bytes, target: str, x: int, y: int, width: int, height: int, threshold: float = 0.8
+) -> bool:
+    """지정 영역을 크롭한 뒤 target 텍스트 포함 여부 검증."""
+    region_text = extract_region_text(image_bytes, x, y, width, height)
+    return _fuzzy_score(region_text, target) >= threshold
+
+
 def extract_region_text(
     image_bytes: bytes, x: int, y: int, width: int, height: int
 ) -> str:

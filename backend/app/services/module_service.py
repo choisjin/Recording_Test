@@ -463,7 +463,7 @@ def get_module_functions(module_name: str) -> list[dict]:
         _module_functions_cache[module_name] = (plugin_mtime, guides_mtime, functions)
         return functions
 
-    # OCR: 가상 모듈 — ocr_service를 통해 현재 화면 텍스트 검출/클릭/추출
+    # OCR: 가상 모듈 — ocr_service를 통해 현재 화면 텍스트 검출/클릭
     if module_name == "OCR":
         functions = [
             {
@@ -471,6 +471,12 @@ def get_module_functions(module_name: str) -> list[dict]:
                 "description": "현재 화면에서 텍스트 존재 여부를 판단합니다. 있으면 PASS, 없으면 FAIL 반환.",
                 "params": [
                     {"name": "text", "required": True, "description": "찾을 텍스트"},
+                    {"name": "mode", "required": False, "default": "'전체화면'",
+                     "description": "검색 범위: '전체화면' 또는 '영역지정'"},
+                    {"name": "x", "required": False, "default": "'0'", "description": "영역 좌상단 X (영역지정 모드)"},
+                    {"name": "y", "required": False, "default": "'0'", "description": "영역 좌상단 Y (영역지정 모드)"},
+                    {"name": "width", "required": False, "default": "'0'", "description": "영역 너비 (영역지정 모드)"},
+                    {"name": "height", "required": False, "default": "'0'", "description": "영역 높이 (영역지정 모드)"},
                     {"name": "threshold", "required": False, "default": "'0.8'",
                      "description": "유사도 임계값 (0.0~1.0, 기본 0.8)"},
                 ],
@@ -482,16 +488,6 @@ def get_module_functions(module_name: str) -> list[dict]:
                     {"name": "text", "required": True, "description": "클릭할 텍스트"},
                     {"name": "threshold", "required": False, "default": "'0.8'",
                      "description": "유사도 임계값 (0.0~1.0, 기본 0.8)"},
-                ],
-            },
-            {
-                "name": "ExtractRegion",
-                "description": "현재 화면의 지정 영역에서 텍스트를 추출합니다.",
-                "params": [
-                    {"name": "x", "required": True, "description": "영역 좌상단 X 좌표"},
-                    {"name": "y", "required": True, "description": "영역 좌상단 Y 좌표"},
-                    {"name": "width", "required": True, "description": "영역 너비"},
-                    {"name": "height", "required": True, "description": "영역 높이"},
                 ],
             },
         ]

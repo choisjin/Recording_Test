@@ -1801,7 +1801,7 @@ class PlaybackService:
 
     async def _execute_ocr_step(self, step: Step, func_name: str, func_args: dict) -> str:
         """OCR 가상 모듈 스텝 실행."""
-        from .ocr_service import has_text, find_text_center, extract_region_text
+        from .ocr_service import has_text, find_text_center, check_text_in_region
 
         dev_info = self._find_ocr_device(step)
         if dev_info is None:
@@ -1816,7 +1816,17 @@ class PlaybackService:
         if func_name == "CheckText":
             target = str(func_args.get("text", ""))
             threshold = float(func_args.get("threshold", "0.8") or 0.8)
-            found, _ = await loop.run_in_executor(None, has_text, img_bytes, target, threshold)
+            mode = str(func_args.get("mode", "전체화면"))
+            if mode == "영역지정":
+                rx = int(func_args.get("x", 0) or 0)
+                ry = int(func_args.get("y", 0) or 0)
+                rw = int(func_args.get("width", 0) or 0)
+                rh = int(func_args.get("height", 0) or 0)
+                found = await loop.run_in_executor(
+                    None, check_text_in_region, img_bytes, target, rx, ry, rw, rh, threshold
+                )
+            else:
+                found, _ = await loop.run_in_executor(None, has_text, img_bytes, target, threshold)
             if found:
                 return "PASS"
             return f"FAIL: '{target}' 텍스트를 찾을 수 없음"
@@ -1830,14 +1840,6 @@ class PlaybackService:
             x, y = center
             await self._tap_ocr_device(dev_info, x, y)
             return f"PASS: '{target}' 클릭 완료 (x={x}, y={y})"
-
-        elif func_name == "ExtractRegion":
-            rx = int(func_args.get("x", 0) or 0)
-            ry = int(func_args.get("y", 0) or 0)
-            rw = int(func_args.get("width", 0) or 0)
-            rh = int(func_args.get("height", 0) or 0)
-            text = await loop.run_in_executor(None, extract_region_text, img_bytes, rx, ry, rw, rh)
-            return text if text else "(텍스트 없음)"
 
         return f"FAIL: 알 수 없는 OCR 함수 '{func_name}'"
 
