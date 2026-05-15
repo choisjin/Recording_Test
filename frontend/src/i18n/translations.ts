@@ -249,6 +249,14 @@ const translations = {
     'settings.thresholdMulti': '멀티크롭',
     'settings.language': '언어 / Language',
     'settings.languageDesc': '시스템 언어를 변경합니다. / Change system language.',
+    'settings.pluginMigration': '플러그인 일괄 마이그레이션',
+    'settings.pluginMigrationDesc': '레거시 플러그인(SerialPlugin 등)이 신규 통합 플러그인(SerialLogging 등)으로 흡수되었을 때, 등록 디바이스/스캔 설정/카탈로그/모든 시나리오 스텝의 module·function 참조를 일괄로 갱신합니다. 부팅 시 자동 적용되지만 이 버튼으로 즉시 강제 갱신 + 결과 리포트를 확인할 수 있습니다.',
+    'settings.pluginMigrationPreview': '미리보기',
+    'settings.pluginMigrationApply': '일괄 적용',
+    'settings.pluginMigrationNoChange': '변경할 항목이 없습니다 — 모든 참조가 이미 신규 이름입니다.',
+    'settings.pluginMigrationApplied': '마이그레이션 완료',
+    'settings.pluginMigrationFailed': '마이그레이션 실패',
+    'settings.pluginMigrationUnmapped': '자동 매핑되지 않은 함수 (수동 수정 필요)',
 
     // === Record Page ===
     'record.control': '녹화 제어',
@@ -1068,6 +1076,14 @@ const translations = {
     'settings.thresholdMulti': 'Multi Crop',
     'settings.language': 'Language / 언어',
     'settings.languageDesc': 'Change system language. / 시스템 언어를 변경합니다.',
+    'settings.pluginMigration': 'Plugin Bulk Migration',
+    'settings.pluginMigrationDesc': 'When legacy plugins (e.g. SerialPlugin) have been absorbed into a new unified plugin (e.g. SerialLogging), this updates module/function references across registered devices, scan settings, the catalog, and every scenario step in one shot. This runs automatically on startup; the button below lets you force an immediate refresh and inspect the resulting report.',
+    'settings.pluginMigrationPreview': 'Preview',
+    'settings.pluginMigrationApply': 'Apply',
+    'settings.pluginMigrationNoChange': 'Nothing to change — all references already use the new names.',
+    'settings.pluginMigrationApplied': 'Migration completed',
+    'settings.pluginMigrationFailed': 'Migration failed',
+    'settings.pluginMigrationUnmapped': 'Functions without automatic mapping (manual fix needed)',
 
     // === Record Page ===
     'record.control': 'Recording Control',

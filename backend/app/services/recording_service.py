@@ -253,6 +253,14 @@ class RecordingService:
         data = json.loads(filepath.read_text(encoding="utf-8"))
         # 레거시 cmd_send / cmd_check → module_command CMD.* 로 자동 마이그레이션
         migrated = _migrate_legacy_step_types(data)
+        # plugin_migration: module_command 스텝의 SerialPlugin → SerialLogging 자동 변환
+        try:
+            from .plugin_migration_service import migrate_scenario_inplace
+            changed, _unmapped = migrate_scenario_inplace(data)
+            if changed > 0:
+                migrated = True
+        except Exception:
+            pass
         scenario = Scenario(**data)
         # 이미지 참조 자동 수리: 파일이 없으면 폴더 내에서 같은 step ID 파일 탐색
         if self._repair_image_refs(name, scenario) or migrated:
