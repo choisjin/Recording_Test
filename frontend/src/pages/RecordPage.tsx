@@ -4378,19 +4378,31 @@ export default function RecordPage() {
                         {t('record.imageTapButton')}
                       </Button>
                     </Tooltip>
-                    <Tooltip title={recording ? t('record.imageTapTooltip') : t('record.imageTapDisabled')}>
-                      <InputNumber
-                        size="small"
-                        min={50}
-                        max={100}
-                        step={1}
-                        value={Math.round(imageTapSimilarity * 100)}
-                        disabled={!recording}
-                        onChange={(v) => setImageTapSimilarity(typeof v === 'number' ? v / 100 : 0.85)}
-                        suffix="%"
-                        style={{ width: 75 }}
-                      />
-                    </Tooltip>
+                    <Popover
+                      trigger="click"
+                      placement="bottom"
+                      content={
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                          <InputNumber
+                            size="small"
+                            min={50}
+                            max={100}
+                            step={1}
+                            value={Math.round(imageTapSimilarity * 100)}
+                            disabled={!recording}
+                            onChange={(v) => { if (typeof v === 'number') setImageTapSimilarity(v / 100); }}
+                            suffix="%"
+                            style={{ width: 75 }}
+                          />
+                        </div>
+                      }
+                    >
+                      <Tooltip title={recording ? t('record.imageTapTooltip') : t('record.imageTapDisabled')}>
+                        <Tag style={{ margin: 0, cursor: 'pointer', fontSize: 10, opacity: recording ? 1 : 0.5 }}>
+                          {Math.round(imageTapSimilarity * 100)}%
+                        </Tag>
+                      </Tooltip>
+                    </Popover>
                   </div>
                 </div>
                 {(isScreenHkmc || isScreenICAS) && hkmcKeys.length > 0 && testingStepIndex == null && (() => {
@@ -4713,20 +4725,31 @@ export default function RecordPage() {
                             {t('record.imageTapButton')}
                           </Button>
                         </Tooltip>
-                        <Tooltip title={recording ? t('record.imageTapTooltip') : t('record.imageTapDisabled')}>
-                          <InputNumber
-                            size="small"
-                            min={50}
-                            max={100}
-                            step={1}
-                            value={Math.round(imageTapSimilarity * 100)}
-                            disabled={!recording}
-                            formatter={(v) => `${v}%`}
-                            parser={(s) => Number(String(s ?? '').replace('%', '')) as 50 | 100}
-                            onChange={(v) => setImageTapSimilarity(typeof v === 'number' ? v / 100 : 0.85)}
-                            style={{ width: 72 }}
-                          />
-                        </Tooltip>
+                        <Popover
+                          trigger="click"
+                          placement="bottom"
+                          content={
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                              <InputNumber
+                                size="small"
+                                min={50}
+                                max={100}
+                                step={1}
+                                value={Math.round(imageTapSimilarity * 100)}
+                                disabled={!recording}
+                                onChange={(v) => { if (typeof v === 'number') setImageTapSimilarity(v / 100); }}
+                                suffix="%"
+                                style={{ width: 75 }}
+                              />
+                            </div>
+                          }
+                        >
+                          <Tooltip title={recording ? t('record.imageTapTooltip') : t('record.imageTapDisabled')}>
+                            <Tag style={{ margin: 0, cursor: 'pointer', fontSize: 10, opacity: recording ? 1 : 0.5 }}>
+                              {Math.round(imageTapSimilarity * 100)}%
+                            </Tag>
+                          </Tooltip>
+                        </Popover>
                       </div>
                     </div>
                     <Space.Compact style={{ width: '100%', maxWidth: 600 }}>
