@@ -2058,13 +2058,10 @@ export default function RecordPage() {
     const rw = Math.abs(curX - startX);
     const rh = Math.abs(curY - startY);
     if (rw < 5 || rh < 5) return;
-    // x, y, width, height 파라미터에 자동 입력
+    // region 파라미터에 "x,y,width,height" 형식으로 자동 입력
     setModuleFuncArgs(prev => ({
       ...prev,
-      x: String(rx),
-      y: String(ry),
-      width: String(rw),
-      height: String(rh),
+      region: `${rx},${ry},${rw},${rh}`,
     }));
     setOcrCropModalOpen(false);
     message.success(`${t('record.ocr.cropDone')}: (${rx}, ${ry}) ${rw}×${rh}`);
@@ -4891,11 +4888,11 @@ export default function RecordPage() {
                               selectedModuleName === 'OCR' &&
                               selectedModuleFunc === 'CheckText' &&
                               p.name === 'mode';
-                            // OCR CheckText: 영역 파라미터는 영역지정 모드일 때만 표시
+                            // OCR CheckText: 영역 파라미터(region)는 Region 모드일 때만 표시
                             const isOcrRegionParam =
                               selectedModuleName === 'OCR' &&
                               selectedModuleFunc === 'CheckText' &&
-                              ['x', 'y', 'width', 'height'].includes(p.name);
+                              p.name === 'region';
                             if (isOcrRegionParam && moduleFuncArgs['mode'] !== 'Region') return null;
                             return (
                             <div key={p.name} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
