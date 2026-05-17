@@ -524,9 +524,15 @@ def get_module_functions(module_name: str) -> list[dict]:
     if cls is None:
         return []
 
+    # 모듈 스텝 UI에서 숨길 메서드 (시나리오는 자동으로 연결을 관리하므로 노출 불필요)
+    per_module_excluded: dict[str, set[str]] = {
+        "SerialLogging": {"Connect", "Disconnect", "IsConnected"},
+    }
+    excluded = per_module_excluded.get(module_name, set())
+
     functions = []
     for name in sorted(dir(cls)):
-        if name.startswith("_"):
+        if name.startswith("_") or name in excluded:
             continue
         attr = getattr(cls, name, None)
         if not callable(attr):
