@@ -727,15 +727,26 @@ async def websocket_screen_mirror(websocket: WebSocket):
                             scrcpy_backend = None
                         scrcpy_task = None
                         if scrcpy_backend is None:
-                            # 디바이스 단위 영구 비활성으로 마크 → 다음 시도부터 즉시 screencap 직행
-                            adb_service.mark_scrcpy_disabled(adb_serial)
-                            _scrcpy_disabled = True
-                            scrcpy_retry_after = float("inf")
-                            logger.info(
-                                "scrcpy unavailable for %s (display=%s) — "
-                                "screencap PNG polling will be used permanently",
-                                adb_serial, adb_display_id,
-                            )
+                            # 영구 disable은 ADBService 내부 카운터가 임계치 도달 시 자동 처리.
+                            # 여기선 cooldown만 갱신 — 다음 cooldown 후 자동 재시도.
+                            # (ADBService.SCRCPY_FAILURE_THRESHOLD 회 연속 실패 시 영구화)
+                            _scrcpy_disabled = adb_service.is_scrcpy_disabled(adb_serial)
+                            if _scrcpy_disabled:
+                                scrcpy_retry_after = float("inf")
+                                logger.info(
+                                    "scrcpy unavailable for %s (display=%s) — "
+                                    "screencap PNG polling will be used permanently",
+                                    adb_serial, adb_display_id,
+                                )
+                            else:
+                                scrcpy_retry_after = (
+                                    asyncio.get_event_loop().time() + BACKEND_RETRY_COOLDOWN
+                                )
+                                logger.info(
+                                    "scrcpy try_start failed for %s — "
+                                    "will retry in %.0fs (screencap PNG polling meanwhile)",
+                                    adb_serial, BACKEND_RETRY_COOLDOWN,
+                                )
 
                     # scrcpy 준비됨 → stream 진입 (실패/종료 시 다시 폴링으로 복귀)
                     if scrcpy_backend is not None:
