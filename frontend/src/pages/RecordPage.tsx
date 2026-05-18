@@ -2849,6 +2849,8 @@ export default function RecordPage() {
             `pattern_swipe ${sampled.length}pt (${first.x},${first.y})→(${last.x},${last.y}) ${durationMs}ms`);
           setLastGesture(`${t('record.gestureSwipe')} ${sampled.length}pt (${first.x},${first.y})→(${last.x},${last.y})`);
         }
+        // 패턴 모드는 1회 동작 후 자동 해제
+        setSmartSwipe(false);
         return;
       }
     }
@@ -2925,6 +2927,8 @@ export default function RecordPage() {
         executeAction('multi_touch', params, `${fingerCount}-finger tap (${startX},${startY})`);
         setLastGesture(`${fingerCount}-finger tap (${startX},${startY})`);
       }
+      // 멀티핑거(2/3) 모드는 1회 동작 후 1핑거로 자동 복귀
+      setFingerCount(1);
     } else if (dist > SWIPE_DISTANCE_THRESHOLD) {
       const durationMs = Math.max(200, Math.min(elapsed, 3000));
       const params = { x1: startX, y1: startY, x2: endX, y2: endY, duration_ms: durationMs };
