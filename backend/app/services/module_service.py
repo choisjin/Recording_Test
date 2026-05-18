@@ -495,12 +495,14 @@ def get_module_functions(module_name: str) -> list[dict]:
             },
             {
                 "name": "ExtractAllText",
-                "description": "현재 화면(또는 지정 영역)의 모든 텍스트를 추출하여 결과 메시지로 반환합니다. 디버깅 및 시나리오 작성 시 화면에 어떤 텍스트가 있는지 데이터로 확인하는 용도. 항상 PASS (텍스트가 없어도 PASS).",
+                "description": "현재 화면(또는 지정 영역)의 모든 텍스트를 추출하여 결과 메시지로 반환합니다. 디버깅 및 시나리오 작성 시 화면에 어떤 텍스트가 있는지 데이터로 확인하는 용도. 항상 PASS (텍스트가 없어도 PASS). 한 글자짜리 검출은 아이콘 오인식이 많아 기본 제외 (min_length=2).",
                 "params": [
                     {"name": "mode", "required": False, "default": "'Full Screen'",
                      "description": "검색 범위: 'Full Screen' 또는 'Region'"},
                     {"name": "region", "required": False, "default": "'0,0,0,0'",
                      "description": "영역 'x,y,width,height' (Region 모드, 쉼표 구분)"},
+                    {"name": "min_length", "required": False, "default": "'2'",
+                     "description": "결과에 포함할 최소 글자 수 (기본 2 — 아이콘 오인식 제거). 1로 설정하면 모든 결과 표시."},
                 ],
             },
         ]

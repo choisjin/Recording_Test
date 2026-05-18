@@ -1888,6 +1888,14 @@ class PlaybackService:
             # 디버깅/시나리오 작성용 — 화면(또는 영역)의 모든 텍스트를 결과로 반환.
             # 항상 PASS (텍스트 미검출도 정상 결과로 취급, OCR 엔진 자체 실패만 FAIL).
             mode = str(func_args.get("mode", "Full Screen"))
+            # min_length: 1글자짜리 결과는 아이콘 오인식인 경우가 많아 기본 2자 이상만 표시.
+            # 1로 두면 모든 결과 노출 (디버그용).
+            try:
+                min_length = int(func_args.get("min_length", "2") or 2)
+            except (TypeError, ValueError):
+                min_length = 2
+            min_length = max(1, min_length)
+
             offset_x = 0
             offset_y = 0
             if mode == "Region":
@@ -1900,11 +1908,20 @@ class PlaybackService:
                 items = await loop.run_in_executor(None, run_ocr, img_bytes)
                 scope = "Full Screen"
 
-            if not items:
-                return f"PASS: {scope} — 텍스트 미검출"
+            total_raw = len(items)
+            # 글자 수 필터 — strip 후 길이로 판단
+            kept = [it for it in items if len(it.text.strip()) >= min_length]
+            dropped = total_raw - len(kept)
 
-            lines = [f"PASS: {scope} — {len(items)}개 텍스트 검출"]
-            for i, it in enumerate(items, 1):
+            if not kept:
+                tail = f" (필터로 {dropped}개 제외)" if dropped else ""
+                return f"PASS: {scope} — 텍스트 미검출{tail}"
+
+            header = f"PASS: {scope} — {len(kept)}개 텍스트 검출"
+            if dropped:
+                header += f" (min_length={min_length}로 {dropped}개 제외)"
+            lines = [header]
+            for i, it in enumerate(kept, 1):
                 cx, cy = it.center
                 # Region 모드면 크롭 좌표를 원본 이미지 좌표로 환산
                 cx += offset_x
