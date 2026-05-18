@@ -204,3 +204,30 @@ def extract_region_text(
         return ""
     items = run_ocr(buf.tobytes())
     return " ".join(item.text for item in items).strip()
+
+
+def extract_region_items(
+    image_bytes: bytes, x: int, y: int, width: int, height: int
+) -> Tuple[List[OcrItem], int, int]:
+    """지정 영역 크롭 후 OCR로 모든 텍스트 아이템 추출.
+
+    Returns:
+        (items, offset_x, offset_y) — items의 box/center 좌표는 크롭 로컬 좌표계.
+        호출자가 offset_x/y를 더해 원본 이미지 좌표로 환산해야 한다.
+        영역이 잘못되거나 디코딩 실패 시 ([], 0, 0).
+    """
+    import cv2
+    img = _bytes_to_array(image_bytes)
+    if img is None:
+        return [], 0, 0
+    h, w = img.shape[:2]
+    x1, y1 = max(0, x), max(0, y)
+    x2, y2 = min(w, x + width), min(h, y + height)
+    if x2 <= x1 or y2 <= y1:
+        return [], 0, 0
+    crop = img[y1:y2, x1:x2]
+    ok, buf = cv2.imencode(".png", crop)
+    if not ok or buf is None:
+        return [], 0, 0
+    items = run_ocr(buf.tobytes())
+    return items, x1, y1

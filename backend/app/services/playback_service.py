@@ -1806,7 +1806,10 @@ class PlaybackService:
 
     async def _execute_ocr_step(self, step: Step, func_name: str, func_args: dict) -> str:
         """OCR 가상 모듈 스텝 실행."""
-        from .ocr_service import has_text, find_text_center, check_text_in_region, find_text_center_in_region
+        from .ocr_service import (
+            has_text, find_text_center, check_text_in_region, find_text_center_in_region,
+            run_ocr, extract_region_items,
+        )
 
         dev_info = self._find_ocr_device(step)
         if dev_info is None:
@@ -1817,6 +1820,21 @@ class PlaybackService:
             return "FAIL: 스크린샷 캡처 실패"
 
         loop = asyncio.get_event_loop()
+
+        def _parse_region(raw: str) -> tuple[int, int, int, int]:
+            """region 문자열 'x,y,w,h' 파싱 — 토큰 부족/변환 실패 시 0으로 채움."""
+            parts = [p.strip() for p in str(raw or "").split(",")]
+            def _i(v: str) -> int:
+                try:
+                    return int(v)
+                except (TypeError, ValueError):
+                    return 0
+            return (
+                _i(parts[0]) if len(parts) > 0 else 0,
+                _i(parts[1]) if len(parts) > 1 else 0,
+                _i(parts[2]) if len(parts) > 2 else 0,
+                _i(parts[3]) if len(parts) > 3 else 0,
+            )
 
         if func_name == "CheckText":
             # text는 쉼표 구분으로 여러 개 지정 가능 — 모두 존재해야 PASS (AND 조건).
@@ -1829,17 +1847,7 @@ class PlaybackService:
             mode = str(func_args.get("mode", "Full Screen"))
 
             if mode == "Region":
-                # region = "x,y,width,height" (쉼표 구분). 토큰이 모자라거나 정수 변환 실패 시 0으로 채움.
-                parts = [p.strip() for p in str(func_args.get("region", "") or "").split(",")]
-                def _to_int(v: str) -> int:
-                    try:
-                        return int(v)
-                    except (TypeError, ValueError):
-                        return 0
-                rx = _to_int(parts[0]) if len(parts) > 0 else 0
-                ry = _to_int(parts[1]) if len(parts) > 1 else 0
-                rw = _to_int(parts[2]) if len(parts) > 2 else 0
-                rh = _to_int(parts[3]) if len(parts) > 3 else 0
+                rx, ry, rw, rh = _parse_region(func_args.get("region", ""))
                 missing: list[str] = []
                 for target in targets:
                     ok = await loop.run_in_executor(
@@ -1864,17 +1872,7 @@ class PlaybackService:
             threshold = float(func_args.get("threshold", "0.8") or 0.8)
             mode = str(func_args.get("mode", "Full Screen"))
             if mode == "Region":
-                # region = "x,y,width,height" (쉼표 구분). 토큰 부족/변환 실패 시 0으로 채움.
-                parts = [p.strip() for p in str(func_args.get("region", "") or "").split(",")]
-                def _to_int(v: str) -> int:
-                    try:
-                        return int(v)
-                    except (TypeError, ValueError):
-                        return 0
-                rx = _to_int(parts[0]) if len(parts) > 0 else 0
-                ry = _to_int(parts[1]) if len(parts) > 1 else 0
-                rw = _to_int(parts[2]) if len(parts) > 2 else 0
-                rh = _to_int(parts[3]) if len(parts) > 3 else 0
+                rx, ry, rw, rh = _parse_region(func_args.get("region", ""))
                 center = await loop.run_in_executor(
                     None, find_text_center_in_region, img_bytes, target, rx, ry, rw, rh, threshold
                 )
@@ -1885,6 +1883,36 @@ class PlaybackService:
             x, y = center
             await self._tap_ocr_device(dev_info, x, y)
             return f"PASS: '{target}' 클릭 완료 (x={x}, y={y})"
+
+        elif func_name == "ExtractAllText":
+            # 디버깅/시나리오 작성용 — 화면(또는 영역)의 모든 텍스트를 결과로 반환.
+            # 항상 PASS (텍스트 미검출도 정상 결과로 취급, OCR 엔진 자체 실패만 FAIL).
+            mode = str(func_args.get("mode", "Full Screen"))
+            offset_x = 0
+            offset_y = 0
+            if mode == "Region":
+                rx, ry, rw, rh = _parse_region(func_args.get("region", ""))
+                items, offset_x, offset_y = await loop.run_in_executor(
+                    None, extract_region_items, img_bytes, rx, ry, rw, rh
+                )
+                scope = f"Region({rx},{ry},{rw},{rh})"
+            else:
+                items = await loop.run_in_executor(None, run_ocr, img_bytes)
+                scope = "Full Screen"
+
+            if not items:
+                return f"PASS: {scope} — 텍스트 미검출"
+
+            lines = [f"PASS: {scope} — {len(items)}개 텍스트 검출"]
+            for i, it in enumerate(items, 1):
+                cx, cy = it.center
+                # Region 모드면 크롭 좌표를 원본 이미지 좌표로 환산
+                cx += offset_x
+                cy += offset_y
+                # 개행/탭은 공백으로 치환하여 한 줄에 표시
+                clean = it.text.replace("\n", " ").replace("\t", " ").strip()
+                lines.append(f"  [{i}] (x={cx}, y={cy}) score={it.score:.2f}: \"{clean}\"")
+            return "\n".join(lines)
 
         return f"FAIL: 알 수 없는 OCR 함수 '{func_name}'"
 

@@ -5116,9 +5116,9 @@ export default function RecordPage() {
                               {fn.description}
                             </div>
                           )}
-                          {/* OCR CheckText/ClickText Region 모드: 크롭 버튼 */}
+                          {/* OCR CheckText/ClickText/ExtractAllText Region 모드: 크롭 버튼 */}
                           {selectedModuleName === 'OCR' &&
-                           (selectedModuleFunc === 'CheckText' || selectedModuleFunc === 'ClickText') &&
+                           (selectedModuleFunc === 'CheckText' || selectedModuleFunc === 'ClickText' || selectedModuleFunc === 'ExtractAllText') &&
                            moduleFuncArgs['mode'] === 'Region' && (
                             <Button
                               size="small"
@@ -5134,15 +5134,15 @@ export default function RecordPage() {
                               selectedModuleName === 'Android' &&
                               selectedModuleFunc === 'Send_adb_command' &&
                               p.name === 'serial';
-                            // OCR CheckText/ClickText: mode 파라미터 → 콤보박스
+                            // OCR CheckText/ClickText/ExtractAllText: mode 파라미터 → 콤보박스
                             const isOcrMode =
                               selectedModuleName === 'OCR' &&
-                              (selectedModuleFunc === 'CheckText' || selectedModuleFunc === 'ClickText') &&
+                              (selectedModuleFunc === 'CheckText' || selectedModuleFunc === 'ClickText' || selectedModuleFunc === 'ExtractAllText') &&
                               p.name === 'mode';
-                            // OCR CheckText/ClickText: 영역 파라미터(region)는 Region 모드일 때만 표시
+                            // OCR CheckText/ClickText/ExtractAllText: 영역 파라미터(region)는 Region 모드일 때만 표시
                             const isOcrRegionParam =
                               selectedModuleName === 'OCR' &&
-                              (selectedModuleFunc === 'CheckText' || selectedModuleFunc === 'ClickText') &&
+                              (selectedModuleFunc === 'CheckText' || selectedModuleFunc === 'ClickText' || selectedModuleFunc === 'ExtractAllText') &&
                               p.name === 'region';
                             if (isOcrRegionParam && moduleFuncArgs['mode'] !== 'Region') return null;
                             return (
@@ -5195,7 +5195,8 @@ export default function RecordPage() {
                                 let desc = p.description;
                                 if (selectedModuleName === 'OCR') {
                                   const fnKey = selectedModuleFunc === 'CheckText' ? 'checkText'
-                                              : selectedModuleFunc === 'ClickText' ? 'clickText' : '';
+                                              : selectedModuleFunc === 'ClickText' ? 'clickText'
+                                              : selectedModuleFunc === 'ExtractAllText' ? 'extractAllText' : '';
                                   if (fnKey) {
                                     const i18nKey = `record.ocr.${fnKey}.${p.name}` as TranslationKey;
                                     const translated = t(i18nKey);

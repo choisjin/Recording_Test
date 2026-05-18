@@ -493,6 +493,16 @@ def get_module_functions(module_name: str) -> list[dict]:
                      "description": "유사도 임계값 (0.0~1.0, 기본 0.8)"},
                 ],
             },
+            {
+                "name": "ExtractAllText",
+                "description": "현재 화면(또는 지정 영역)의 모든 텍스트를 추출하여 결과 메시지로 반환합니다. 디버깅 및 시나리오 작성 시 화면에 어떤 텍스트가 있는지 데이터로 확인하는 용도. 항상 PASS (텍스트가 없어도 PASS).",
+                "params": [
+                    {"name": "mode", "required": False, "default": "'Full Screen'",
+                     "description": "검색 범위: 'Full Screen' 또는 'Region'"},
+                    {"name": "region", "required": False, "default": "'0,0,0,0'",
+                     "description": "영역 'x,y,width,height' (Region 모드, 쉼표 구분)"},
+                ],
+            },
         ]
         _module_functions_cache[module_name] = (plugin_mtime, guides_mtime, functions)
         return functions
