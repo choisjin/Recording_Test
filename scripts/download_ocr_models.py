@@ -7,8 +7,9 @@
   4) backend/app/services/ocr_models/{lang}/ 아래 배치
 
 요구사항:
-    pip install paddle2onnx
-    (paddlepaddle은 inference 모델 변환에 필수가 아님 — paddle2onnx만으로 충분)
+    pip install paddle2onnx paddlepaddle
+    (paddle2onnx 1.x+는 import 시 paddle을 필요로 함 — paddlepaddle CPU 빌드 ~150MB.
+     변환만 끝나면 더 이상 paddle은 필요 없으므로 dist에는 포함하지 않는다.)
 
 실행:
     python scripts/download_ocr_models.py              # 기본 4종(korean/english/japan/chinese)
@@ -88,9 +89,14 @@ DEFAULT_LANGS = ["korean", "english", "japan", "chinese"]
 
 
 def _check_paddle2onnx() -> bool:
+    """paddle2onnx + paddle 둘 다 import 가능한지 확인.
+
+    paddle2onnx 1.x/2.x는 __init__에서 paddle을 import하므로 paddlepaddle 없이는 동작 불가.
+    CLI 진입점은 `python -m paddle2onnx.command`.
+    """
     try:
         subprocess.run(
-            [sys.executable, "-m", "paddle2onnx", "--version"],
+            [sys.executable, "-m", "paddle2onnx.command", "--version"],
             check=True, capture_output=True, text=True,
         )
         return True
@@ -120,9 +126,10 @@ def _extract_tar(tar_path: Path, extract_to: Path) -> Path:
 
 
 def _convert_to_onnx(infer_dir: Path, out_onnx: Path) -> None:
-    """paddle2onnx로 .pdmodel + .pdiparams → .onnx 변환."""
+    """paddle2onnx로 .pdmodel + .pdiparams → .onnx 변환.
+    CLI 진입점은 `paddle2onnx.command` (entry point)."""
     cmd = [
-        sys.executable, "-m", "paddle2onnx",
+        sys.executable, "-m", "paddle2onnx.command",
         "--model_dir", str(infer_dir),
         "--model_filename", "inference.pdmodel",
         "--params_filename", "inference.pdiparams",
@@ -205,8 +212,9 @@ def main():
         return 2
 
     if not _check_paddle2onnx():
-        print("paddle2onnx가 설치되어 있지 않습니다.", file=sys.stderr)
-        print(f"  설치: {sys.executable} -m pip install paddle2onnx", file=sys.stderr)
+        print("paddle2onnx + paddlepaddle이 동작 가능한 상태가 아닙니다.", file=sys.stderr)
+        print(f"  설치: {sys.executable} -m pip install paddle2onnx paddlepaddle", file=sys.stderr)
+        print("  (paddle2onnx는 paddle을 import하므로 paddlepaddle CPU 빌드 ~150MB 필요)", file=sys.stderr)
         return 1
 
     if args.force:

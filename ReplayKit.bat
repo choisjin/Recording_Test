@@ -170,19 +170,23 @@ REM ------------------------------------------------------------
 :update_ocr_models
 set "OCR_SENTINEL=backend\app\services\ocr_models\korean\rec_infer.onnx"
 if exist "%OCR_SENTINEL%" goto :eof
-echo [OCR] Multilingual models not found - first-time setup (downloads ~40MB)...
-REM 1) paddle2onnx 설치 확인
-python\python.exe -c "import paddle2onnx" >nul 2>nul
+echo [OCR] Multilingual models not found - first-time setup...
+echo [OCR]   ^(downloads ~40MB models + ~150MB paddlepaddle one-time^)
+REM paddle2onnx + paddlepaddle 둘 다 필요 (paddle2onnx __init__이 paddle import)
+python\python.exe -m paddle2onnx.command --version >nul 2>nul
 if errorlevel 1 (
-    echo [OCR] Installing paddle2onnx ^(one-time, ~10MB^)...
-    python\python.exe -E -s -m pip install paddle2onnx --no-warn-script-location -q
+    echo [OCR] Installing paddle2onnx + paddlepaddle ^(one-time, ~160MB^)...
+    python\python.exe -E -s -m pip install paddle2onnx paddlepaddle --no-warn-script-location -q
     if errorlevel 1 (
-        echo [OCR] paddle2onnx install failed - skipping OCR model setup.
+        echo [OCR] paddle2onnx/paddlepaddle install failed - skipping OCR model setup.
         echo [OCR] Korean OCR will fall back to bundled Chinese model.
+        echo [OCR] To install manually later:
+        echo [OCR]   python\python.exe -m pip install paddle2onnx paddlepaddle
+        echo [OCR]   python\python.exe scripts\download_ocr_models.py
         goto :eof
     )
 )
-REM 2) 기본 4종(korean/english/japan/chinese) 다운로드 + ONNX 변환
+REM 기본 4종(korean/english/japan/chinese) 다운로드 + ONNX 변환
 python\python.exe scripts\download_ocr_models.py
 if errorlevel 1 (
     echo [OCR] Model download partially failed - check logs above.
