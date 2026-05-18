@@ -89,6 +89,10 @@ goto :eof
 REM Auto dependency update - pip install only when requirements.txt changed
 REM Uses .req_hash pattern same as build_dist.py (python\.req_hash)
 if exist "python\python.exe" if exist "requirements.txt" call :update_deps
+
+REM Auto OCR multilingual model install (first boot only)
+if exist "python\python.exe" if exist "scripts\download_ocr_models.py" call :update_ocr_models
+
 goto :start_server
 
 REM ------------------------------------------------------------
@@ -154,6 +158,36 @@ if defined CRITICAL_MISSING (
 
 >"%REQ_HASH_FILE%" echo !NEW_HASH!
 echo [DEPS] Dependencies updated.
+goto :eof
+
+REM ------------------------------------------------------------
+REM  update_ocr_models: download multilingual OCR rec models on first boot
+REM  - Sentinel file: backend\app\services\ocr_models\korean\rec_infer.onnx
+REM  - If present  -> skip (already installed)
+REM  - If missing  -> install paddle2onnx (one-time) + run download script
+REM  - Failures are non-fatal; server starts anyway
+REM ------------------------------------------------------------
+:update_ocr_models
+set "OCR_SENTINEL=backend\app\services\ocr_models\korean\rec_infer.onnx"
+if exist "%OCR_SENTINEL%" goto :eof
+echo [OCR] Multilingual models not found - first-time setup (downloads ~40MB)...
+REM 1) paddle2onnx 설치 확인
+python\python.exe -c "import paddle2onnx" >nul 2>nul
+if errorlevel 1 (
+    echo [OCR] Installing paddle2onnx ^(one-time, ~10MB^)...
+    python\python.exe -E -s -m pip install paddle2onnx --no-warn-script-location -q
+    if errorlevel 1 (
+        echo [OCR] paddle2onnx install failed - skipping OCR model setup.
+        echo [OCR] Korean OCR will fall back to bundled Chinese model.
+        goto :eof
+    )
+)
+REM 2) 기본 4종(korean/english/japan/chinese) 다운로드 + ONNX 변환
+python\python.exe scripts\download_ocr_models.py
+if errorlevel 1 (
+    echo [OCR] Model download partially failed - check logs above.
+    echo [OCR] Missing languages fall back to bundled Chinese model.
+)
 goto :eof
 
 :start_server
