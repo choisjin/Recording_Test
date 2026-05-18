@@ -552,6 +552,7 @@ def get_module_functions(module_name: str) -> list[dict]:
     # 모듈 스텝 UI에서 숨길 메서드 (시나리오는 자동으로 연결을 관리하므로 노출 불필요)
     per_module_excluded: dict[str, set[str]] = {
         "SerialLogging": {"Connect", "Disconnect", "IsConnected"},
+        "CMD": {"CheckCapture", "RunCapture", "RunBackground", "ListBackground"},
     }
     excluded = per_module_excluded.get(module_name, set())
 

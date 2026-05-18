@@ -1254,16 +1254,26 @@ async def get_cmd_result(task_id: str):
             # CheckCapture 결과: 비교 수행
             actual = combined.strip()
             exp = (expected or "").strip()
-            if match_mode == "exact":
-                passed = actual == exp
+            if not exp:
+                # expected가 비어있으면 "출력 없음"일 때만 pass
+                passed = actual == ""
+                if passed:
+                    result["final_message"] = "(no output)"
+                    result["final_status"] = "pass"
+                else:
+                    result["final_message"] = f"FAIL: expected({match_mode}): (no output)\n---\n{combined}"
+                    result["final_status"] = "fail"
             else:
-                passed = exp in actual
-            if passed:
-                result["final_message"] = combined if combined else f"(exit code: {rc})"
-                result["final_status"] = "pass"
-            else:
-                result["final_message"] = f"FAIL: expected({match_mode}): {expected}\n---\n{combined}"
-                result["final_status"] = "fail"
+                if match_mode == "exact":
+                    passed = actual == exp
+                else:
+                    passed = exp in actual
+                if passed:
+                    result["final_message"] = combined if combined else f"(exit code: {rc})"
+                    result["final_status"] = "pass"
+                else:
+                    result["final_message"] = f"FAIL: expected({match_mode}): {expected}\n---\n{combined}"
+                    result["final_status"] = "fail"
         else:
             # RunCapture 결과: 메시지만 제공, 상태는 변경하지 않음
             result["final_message"] = combined if combined else f"(exit code: {rc})"

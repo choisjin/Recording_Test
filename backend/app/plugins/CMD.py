@@ -50,18 +50,29 @@ class CMD:
 
         Args:
             command: 실행할 명령어
-            expected: 기대값 (출력에 포함되거나 완전히 일치해야 하는 문자열)
+            expected: 기대값 (출력에 포함되거나 완전히 일치해야 하는 문자열).
+                      비어있으면 "리턴값이 없을 때만 pass"로 동작 (no-output 검증).
             match_mode: "contains" (부분 일치) 또는 "exact" (완전 일치). 기본값: contains
             timeout: 최대 대기 시간 (초). 기본값: 300
 
         Returns:
-            통과 시: stdout 원문
+            통과 시: stdout 원문 (출력이 없을 경우 "(no output)")
             실패 시: "FAIL: expected(<mode>): <expected>\\n---\\n<stdout>"
                     ("FAIL:" 접두사로 module_command가 자동으로 fail 처리)
         """
         output = self.Run(command, timeout)
         actual = output.strip()
         exp = (expected or "").strip()
+        # exit code 라인만 있는 경우는 실질적으로 출력 없음으로 간주
+        actual_for_empty = actual
+        if actual_for_empty.startswith("(exit code:") and actual_for_empty.endswith(")"):
+            actual_for_empty = ""
+        if not exp:
+            # expected가 비어있으면 "출력 없음"일 때만 pass
+            passed = actual_for_empty == ""
+            if passed:
+                return "(no output)"
+            return f"FAIL: expected({match_mode}): (no output)\n---\n{output}"
         if match_mode == "exact":
             passed = actual == exp
         else:
@@ -69,6 +80,37 @@ class CMD:
         if passed:
             return output
         return f"FAIL: expected({match_mode}): {expected}\n---\n{output}"
+
+    def Check_Logic(self, command: str, keywords: str, logic: str = "and", timeout: int = 300) -> str:
+        """명령어를 실행하고 두 개 이상의 키워드를 and/or 로직으로 합부 판정 (블로킹).
+
+        Args:
+            command: 실행할 명령어
+            keywords: 키워드 목록. "," 로 구분 (예: "OK,ready,done")
+            logic: "and" (모든 키워드 포함 시 pass) 또는 "or" (하나 이상 포함 시 pass).
+                   기본값: and
+            timeout: 최대 대기 시간 (초). 기본값: 300
+
+        Returns:
+            통과 시: stdout 원문
+            실패 시: "FAIL: logic(<mode>): <keywords>\\n---\\n<stdout>"
+                    ("FAIL:" 접두사로 module_command가 자동으로 fail 처리)
+        """
+        output = self.Run(command, timeout)
+        actual = output.strip()
+        kw_list = [k.strip() for k in (keywords or "").split(",") if k.strip()]
+        if not kw_list:
+            return f"FAIL: logic({logic}): no keywords provided\n---\n{output}"
+        mode = (logic or "and").strip().lower()
+        if mode not in ("and", "or"):
+            return f"FAIL: logic: unknown mode '{logic}' (use 'and' or 'or')\n---\n{output}"
+        if mode == "and":
+            passed = all(k in actual for k in kw_list)
+        else:
+            passed = any(k in actual for k in kw_list)
+        if passed:
+            return output
+        return f"FAIL: logic({mode}): {keywords}\n---\n{output}"
 
     def RunCapture(self, command: str) -> str:
         """명령어를 백그라운드로 실행 (비블로킹). 결과 회수 가능.
