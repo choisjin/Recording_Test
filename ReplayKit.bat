@@ -3,20 +3,19 @@ chcp 65001 >nul
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
-:: 임베디드 Python 격리 — 시스템 Python의 환경변수가 임베디드 Python에
-:: 영향을 주지 못하도록 차단 (cv2 DLL load 충돌 방지)
+REM Isolate embedded Python from system Python env vars (prevents cv2 DLL load conflicts)
 set "PYTHONHOME="
 set "PYTHONPATH="
 set "PYTHONSTARTUP="
 set "PYTHONNOUSERSITE=1"
 
-:: Git PATH 확보
+REM Ensure Git is on PATH
 set "PATH=C:\Program Files\Git\cmd;C:\Program Files (x86)\Git\cmd;%PATH%"
 
-REM Stop existing server BEFORE git pull / pip install — required to release .pyd locks
+REM Stop existing server BEFORE git pull / pip install - required to release .pyd locks
 call :stop_existing_server
 
-:: --home 옵션: git_remote_home.txt 사용
+REM --home option: use git_remote_home.txt instead of git_remote.txt
 set "GIT_REMOTE_FILE=git_remote.txt"
 if "%~1"=="--home" (
     if exist "git_remote_home.txt" (
@@ -27,10 +26,10 @@ if "%~1"=="--home" (
     )
 )
 
-:: 정식 remote URL — 이 주소가 아니면 자동 교정
+REM Canonical remote URL - auto-correct if origin differs
 set "CANONICAL_REMOTE=http://mod.lge.com/hub/dqa_replay_kit/replay_kit.git"
 
-:: Git 초기화 또는 업데이트
+REM Git init or update
 if not exist ".git" (
     if exist "%GIT_REMOTE_FILE%" (
         where git.exe >nul 2>nul
@@ -68,7 +67,7 @@ echo [GIT] Initialized: %GIT_REMOTE%
 goto :eof
 
 :fix_remote
-:: 현재 origin URL이 정식 주소가 아니면 교정
+REM Correct origin URL if it does not match the canonical address
 set "SAFE_DIR=%CD:\=/%"
 for /f "delims=" %%u in ('git -c safe.directory="%SAFE_DIR%" remote get-url origin 2^>nul') do set "CUR_REMOTE=%%u"
 if not "!CUR_REMOTE!"=="!CANONICAL_REMOTE!" (
@@ -78,7 +77,7 @@ if not "!CUR_REMOTE!"=="!CANONICAL_REMOTE!" (
 goto :eof
 
 :git_pull
-:: --home 옵션일 때는 origin URL을 건드리지 않고 현재 설정 그대로 fetch+reset
+REM In --home mode, do not touch origin URL; just fetch+reset against current setting
 set "SAFE_DIR=%CD:\=/%"
 git -c safe.directory="%SAFE_DIR%" fetch origin main
 git -c safe.directory="%SAFE_DIR%" reset --hard origin/main
@@ -87,14 +86,14 @@ goto :eof
 
 :after_git
 
-:: Auto dependency update - pip install only when requirements.txt changed
-:: Uses .req_hash pattern same as build_dist.py (python\.req_hash)
+REM Auto dependency update - pip install only when requirements.txt changed
+REM Uses .req_hash pattern same as build_dist.py (python\.req_hash)
 if exist "python\python.exe" if exist "requirements.txt" call :update_deps
 goto :start_server
 
-REM ────────────────────────────────────────────────────────────
+REM ------------------------------------------------------------
 REM  stop_existing_server: kill running backend / frontend / python
-REM ────────────────────────────────────────────────────────────
+REM ------------------------------------------------------------
 :stop_existing_server
 echo [STOP] Checking for running server...
 REM 1) Kill backend (port 8000)
@@ -126,8 +125,8 @@ for /f "skip=1 tokens=1" %%h in ('certutil -hashfile "requirements.txt" SHA256 2
 )
 if not defined NEW_HASH goto :eof
 
-:: 핵심 모듈 import 가능 여부 — requirements.txt 미동기화 대비 안전장치.
-:: 누락이면 해시가 같아도 강제 재설치.
+REM Verify critical modules can be imported - safety net for missing entries in requirements.txt.
+REM If any are missing, force reinstall even when the hash matches.
 set "NEED_INSTALL="
 if /i not "!NEW_HASH!"=="!OLD_HASH!" set "NEED_INSTALL=1"
 python\python.exe -c "import rapidocr_onnxruntime, rapidfuzz" >nul 2>nul
@@ -144,7 +143,7 @@ if errorlevel 1 (
     goto :eof
 )
 
-:: requirements.txt 동기화 누락 시 핵심 모듈 직접 설치 (requirements 에 없을 수도 있음)
+REM If critical modules are still missing (not listed in requirements.txt), install them directly
 if defined CRITICAL_MISSING (
     python\python.exe -c "import rapidocr_onnxruntime, rapidfuzz" >nul 2>nul
     if !errorlevel! NEQ 0 (
