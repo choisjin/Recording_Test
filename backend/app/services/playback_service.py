@@ -575,8 +575,9 @@ class PlaybackService:
             _set_sleep_block(False)
             set_current_step_context(None, 1)
             # 중단된 경우 run_dir 참조를 유지 — 호출자(_run_play_job.finally)가
-            # cleanup_active_instances로 StopLogging을 호출할 때 결과 폴더의
-            # logs/에 시리얼/DLT 로그가 저장되도록 하기 위함. 정상 완료에선 그대로 정리.
+            # cleanup_active_instances로 StopLogging(또는 SerialLogging의 경우 Disconnect가
+            # 내부적으로 StopLogging 우선 호출)을 호출할 때 결과 폴더의 logs/에 시리얼/DLT
+            # 로그가 저장되도록 하기 위함. 정상 완료에선 그대로 정리.
             if not _is_group_member and not self._should_stop:
                 self._cleanup_run_output_dir()
 

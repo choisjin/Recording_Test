@@ -1181,7 +1181,9 @@ def cleanup_active_instances(reason: str = "") -> dict[str, str]:
         if inst is None:
             continue
         called = False
-        # Disconnect → Close → close 순서로 시도 (대소문자 다양성)
+        # Disconnect → Close → close → StopLogging/StopSave 순서로 시도 (대소문자 다양성).
+        # SerialLogging은 Disconnect가 진행 중 로깅 세션 발견 시 자체적으로 StopLogging을 먼저
+        # 호출하므로, 여기서 StopLogging을 별도로 부를 필요 없음.
         for method_name in ("Disconnect", "disconnect", "Close", "close",
                              "StopLogging", "StopSave"):
             method = getattr(inst, method_name, None)

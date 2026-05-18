@@ -6,11 +6,18 @@
   - SendCommand_fail_on_keyword / SendCommand_pass_on_keyword 로
     명령 전송 + 응답 캡처를 한 호출로 묶어 합부 판정
 
+연결 수명 주기:
+  - 시리얼 포트의 open/close는 Device 탭의 Connect/Disconnect가 관리.
+  - StartLogging은 (이미 열려 있으면) 포트를 재open하지 않고 캡처 세션만 시작.
+  - StopLogging은 메모리 로그를 파일로 일괄 저장하고 캡처를 멈추되 포트는 유지.
+    → 일부 장비는 connect 시 모든 설정이 초기화되므로, 캡처를 멈춰도 포트는
+      살아 있어야 후속 SendCommand가 디바이스를 리셋시키지 않는다.
+
 사용 예 (시나리오 스텝):
-  SerialLogging.StartLogging()                                          # 연결 + 캡처 시작
+  SerialLogging.StartLogging()                                          # 캡처 시작 (포트는 Device 탭 Connect로 이미 열림)
   SerialLogging.SendCommand_pass_on_keyword("ping", "OK", time=3)       # 응답 OK 검사
   SerialLogging.SendCommand_fail_on_keyword("self_test", "ERROR", 10)   # ERROR 검출 모니터링
-  SerialLogging.StopLogging()                                           # 캡처 종료 + 파일 저장
+  SerialLogging.StopLogging()                                           # 캡처 종료 + 파일 저장 (포트는 유지)
 """
 
 import logging
@@ -271,9 +278,18 @@ class SerialLogging:
         Connect 시점에 session_started를 emit하지 않았으므로 대칭으로 생략.
         StartLogging→StopLogging 사이클로 만든 세션은 StopLogging이 자체적으로
         session_stopped를 emit하므로 영향 없음.
+
+        진행 중인 로깅 세션(capture 활성 + 미저장 버퍼)이 있으면 포트 close 전에
+        자동 저장 — 시나리오 비정상 종료(cleanup_active_instances) 시 로그 유실 방지.
         """
         if not self._serial or not self._serial.is_open:
             return "Already disconnected"
+        # 진행 중인 로깅 세션이 있으면 먼저 저장 (cleanup 안전성)
+        if self._capturing and self._logs:
+            try:
+                self.StopLogging()
+            except Exception as e:
+                logger.warning("[SerialLogging] auto-save during Disconnect failed: %s", e)
         self._disconnect()
         return f"Disconnected: {self._port}"
 
@@ -281,7 +297,7 @@ class SerialLogging:
         return f"{self._port}@{self._bps}"
 
     # ------------------------------------------------------------------
-    # 뷰어 연동: StartLogging / StopLogging (DLTLogging과 동일 시그니처)
+    # 뷰어 연동: StartLogging / StopLogging (DLTLogging과 유사 시그니처)
     # ------------------------------------------------------------------
 
     def StartLogging(self, settle_ms: int = 500) -> str:
@@ -290,16 +306,29 @@ class SerialLogging:
         Args:
             settle_ms: 포트 open 후 안정화 대기 시간(ms). 기본 500ms — USB-Serial
                        드라이버 reset/buffer settle 동안 다음 스텝의 SendCommand가 씹히지
-                       않도록 보장. 디바이스가 빠르게 준비되면 100~200으로 줄여도 되고,
+                       않도록 보장. 이미 포트가 열려 있으면 이 대기는 스킵됨(재연결 안 함).
                        Arduino처럼 DTR-reset되는 보드는 1500~2000으로 늘릴 수 있다.
 
-        리턴 시점에는 포트가 열리고, 입력/출력 버퍼가 비워졌으며, capture 스레드가 첫
-        readline 루프에 진입한 상태이므로 다음 스텝에서 즉시 SendCommand해도 안전하다.
-        SERIAL_HUB에 session_started 이벤트를 emit하여 뷰어가 자동 오픈된다.
+        리턴 시점에는 포트가 열리고, capture 스레드가 첫 readline 루프에 진입한 상태이므로
+        다음 스텝에서 즉시 SendCommand해도 안전하다. SERIAL_HUB에 session_started 이벤트를
+        emit하여 뷰어가 자동 오픈된다.
+
+        포트가 이미 열려 있으면(_connect의 idempotent 가드) 재연결/안정화 대기 없이 캡처
+        세션만 새로 시작 — 일부 장비가 connect 시 설정이 초기화되는 문제를 피한다.
+        StopLogging 후 재호출 시 capture 스레드와 로그 버퍼는 새로 초기화된다.
         """
         err = self._connect(settle_ms=settle_ms)
         if err:
             return err
+        # _connect의 idempotent 분기로 빠진 경우 capture가 중단된 상태일 수 있음 (StopLogging 후).
+        # 새 로깅 세션 시작 — 버퍼 초기화 + capture 스레드 재기동.
+        if not self._capturing:
+            with self._lock:
+                self._logs.clear()
+                self._log_capture_ts.clear()
+            self._line_counter = 0
+            self._start_capture()
+            time.sleep(0.05)
         SERIAL_HUB.emit_lifecycle({
             "type": "session_started",
             "session_id": self._session_id(),
@@ -312,16 +341,21 @@ class SerialLogging:
         return f"Logging started: {self._port} @ {self._bps} (settle={settle_ms}ms)"
 
     def StopLogging(self, save_path: str = "") -> str:
-        """뷰어 연동용: 시리얼 연결 종료 + 메모리 버퍼를 파일로 일괄 저장.
+        """뷰어 연동용: 메모리 버퍼를 파일로 일괄 저장하고 캡처 세션을 종료한다.
+        **시리얼 포트는 그대로 유지** — Device 탭에서 명시적으로 Disconnect 하기 전까지
+        연결이 살아 있어 후속 SendCommand 등이 디바이스를 재초기화하지 않는다.
 
         Args:
             save_path: 저장할 파일 경로. 빈 값이면 컨텍스트별 자동 저장:
                 - 재생 중: {run_dir}/logs/serial_{timestamp}.log
                 - 스텝 테스트: backend/results/Temp_logs/serial_{timestamp}.log
 
-        파일 저장 단계의 어떤 예외(경로 해석/mkdir/open)가 발생해도 finally에서
-        _close_save_file + _disconnect를 무조건 실행하여 COM 포트 leak을 방지한다.
-        cleanup_active_instances가 재생 중단 시 자동 호출하는 진입점이기도 하다.
+        파일 저장 단계의 어떤 예외(경로 해석/mkdir/open)가 발생해도 finally에서 캡처
+        스레드는 무조건 정지되어 리소스 누수를 막는다. 포트 close가 필요하면 별도로
+        Disconnect를 호출하거나 Device 탭에서 연결 해제하면 된다.
+
+        cleanup_active_instances가 재생 중단 시 호출하는 Disconnect 내부에서도 진행
+        중인 로깅이 있으면 이 메서드가 먼저 호출되어 로그 유실을 방지한다.
         """
         sid = self._session_id()
         with self._lock:
@@ -347,13 +381,21 @@ class SerialLogging:
                 logger.error("[SerialLogging] Save failed: %s", e)
                 save_error = str(e)
         except Exception as e:
-            # _auto_save_path 등 경로 해석 자체가 실패해도 finally의 _disconnect를 보장
+            # _auto_save_path 등 경로 해석이 실패해도 finally에서 capture는 무조건 정리
             logger.error("[SerialLogging] StopLogging path resolution failed: %s", e)
             save_error = save_error or str(e)
         finally:
-            # 저장 파일 누수 방지 + 캡처/시리얼 무조건 정리
+            # 캡처 세션은 종료 — 포트는 유지 (연결 끊지 않음)
             self._close_save_file()
-            self._disconnect()
+            try:
+                self._stop_capture()
+            except Exception as e:
+                logger.warning("[SerialLogging] stop_capture during StopLogging raised: %s", e)
+            # 다음 StartLogging이 새 세션으로 시작될 수 있도록 버퍼 초기화
+            with self._lock:
+                self._logs.clear()
+                self._log_capture_ts.clear()
+            self._line_counter = 0
             try:
                 SERIAL_HUB.emit_lifecycle({
                     "type": "session_stopped",
@@ -366,7 +408,7 @@ class SerialLogging:
 
         if save_error:
             return f"ERROR: 저장 실패 — {save_error}"
-        return f"Logging stopped. Saved {len(logs_snapshot)} lines to: {saved_path}"
+        return f"Logging saved ({len(logs_snapshot)} lines) to: {saved_path} (port kept open)"
 
     # ------------------------------------------------------------------
     # 뷰어용 조회 (DLT와 동일 인터페이스)

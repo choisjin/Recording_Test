@@ -940,16 +940,16 @@
     }
   },
   "SerialLogging": {
-    "_description": "시리얼 로깅 — 시리얼 포트에 연결하여 로그를 캡처·저장하고 키워드 검출하는 모듈.\n\n**⚠️ 사용법: StartLogging과 StopLogging은 반드시 한 셋트로 사용해야 합니다.**\n- StartLogging만 호출하고 StopLogging을 누락하면: 로그가 파일로 저장되지 않고, 시리얼 포트 연결이 종료되지 않아 다음 실행에서 포트 점유 오류가 발생할 수 있습니다.\n- 시나리오의 시작 부분에 StartLogging, 끝 부분에 StopLogging을 배치하여 한 쌍으로 운영하세요.\n- 시나리오 중간에 오류가 나도 cleanup이 자동으로 StopLogging을 호출해 포트를 닫지만, 정상 흐름에서는 명시적으로 StopLogging을 두는 것이 권장됩니다.\n\n표준 사용 패턴:\n  1) StartLogging()                              ← 시나리오 첫 스텝\n  2) SendCommand / SendCommand_*_on_keyword ...  ← 중간 스텝들\n  3) StopLogging()                               ← 시나리오 마지막 스텝 (로그 파일 저장 + 포트 해제)",
+    "_description": "시리얼 로깅 — 시리얼 포트의 로그를 캡처·저장하고 키워드 검출하는 모듈.\n\n**연결 수명 주기**: 시리얼 포트의 open/close는 Device 탭의 Connect/Disconnect가 관리합니다. StartLogging은 포트가 이미 열려 있으면 재open하지 않고 캡처 세션만 시작하므로, connect 시 설정이 초기화되는 장비도 안전하게 사용할 수 있습니다.\n\n**⚠️ 사용법: StartLogging과 StopLogging은 한 셋트로 사용하세요.**\n- StartLogging만 호출하고 StopLogging을 누락하면 메모리 버퍼가 파일로 저장되지 않습니다.\n- StopLogging은 캡처 세션을 종료하지만 **포트 연결은 그대로 유지**합니다. 포트를 닫고 싶다면 Device 탭에서 Disconnect 하세요.\n- 시나리오가 비정상 종료되어도 cleanup이 Disconnect 시 미저장 로그를 자동 저장합니다.\n\n표준 사용 패턴:\n  1) StartLogging()                              ← 시나리오 첫 스텝 (캡처 시작, 포트는 Device 탭에서 미리 Connect)\n  2) SendCommand / SendCommand_*_on_keyword ...  ← 중간 스텝들\n  3) StopLogging()                               ← 시나리오 마지막 스텝 (로그 파일 저장 + 캡처 종료, 포트는 유지)",
     "functions": {
       "StartLogging": {
-        "description": "시리얼 연결 + 캡처 시작 (메모리만, 파일 저장 없음). 뷰어 모달이 자동 오픈됩니다. **리턴 시점에 포트가 안정화되고 capture 스레드가 ready 상태**라 다음 스텝의 SendCommand가 씹히지 않음.\n\n**⚠️ 반드시 StopLogging과 한 셋트로 사용하세요.** StopLogging이 호출되어야 메모리 버퍼가 파일로 저장되고 시리얼 포트가 정상적으로 해제됩니다. StopLogging 누락 시 로그가 디스크에 저장되지 않고 포트가 점유 상태로 남습니다.",
+        "description": "시리얼 캡처 시작 (메모리만, 파일 저장 없음). 뷰어 모달이 자동 오픈됩니다. **포트가 이미 열려 있으면 재연결 없이 캡처 세션만 시작**하므로 connect 시 설정이 초기화되는 장비도 안전합니다. 리턴 시점에 capture 스레드가 ready 상태라 다음 스텝의 SendCommand가 씹히지 않습니다.\n\n**⚠️ 반드시 StopLogging과 한 셋트로 사용하세요.** StopLogging이 호출되어야 메모리 버퍼가 .log 파일로 저장됩니다.",
         "params": {
-          "settle_ms": "포트 open 후 안정화 대기(ms). 기본 500. USB-Serial 어댑터 reset/buffer settle 동안 다음 스텝이 씹히지 않게 확보. Arduino처럼 DTR-reset되는 보드는 1500~2000으로 늘리고, 빠른 산업용 시리얼은 100~200까지 낮출 수 있음."
+          "settle_ms": "포트 open 후 안정화 대기(ms). 기본 500. **포트가 이미 열려 있으면 이 대기는 스킵됨.** 첫 open에서만 사용되며, USB-Serial 어댑터 reset/buffer settle 동안 다음 스텝이 씹히지 않게 확보. Arduino처럼 DTR-reset되는 보드는 1500~2000으로 늘릴 수 있음."
         }
       },
       "StopLogging": {
-        "description": "시리얼 캡처 종료 + 메모리 버퍼를 파일로 일괄 저장 + 시리얼 포트 해제. 자동 경로 또는 지정 경로로 저장.\n\n**⚠️ StartLogging과 반드시 짝으로 호출하세요.** 이 함수가 호출되어야:\n  • 메모리에 누적된 로그가 .log 파일로 디스크에 저장됨\n  • 시리얼 포트 연결이 정상적으로 닫혀 다음 실행에서 재사용 가능\n  • capture 스레드가 정리되어 리소스 누수 방지\n파일 저장 단계에서 예외가 발생해도 finally에서 포트 해제는 무조건 수행됩니다.",
+        "description": "메모리 버퍼를 파일로 일괄 저장 + 캡처 세션 종료. **시리얼 포트는 그대로 유지** — 후속 SendCommand 등이 디바이스를 재초기화하지 않습니다. 포트를 닫고 싶다면 Device 탭에서 Disconnect 하세요.\n\n**⚠️ StartLogging과 반드시 짝으로 호출하세요.** 이 함수가 호출되어야:\n  • 메모리에 누적된 로그가 .log 파일로 디스크에 저장됨\n  • capture 스레드가 정리되어 리소스 누수 방지\n  • 다음 StartLogging이 새 세션으로 시작 가능\n파일 저장 단계에서 예외가 발생해도 finally에서 캡처 정리는 무조건 수행됩니다.",
         "params": {
           "save_path": "저장 파일 경로. 빈 값이면 자동 (재생 중: run_dir/logs/serial_*.log, 스텝 테스트: backend/results/Temp_logs/serial_*.log)"
         }
