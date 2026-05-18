@@ -1,10 +1,14 @@
-"""scrcpy-server (v1.25) 기반 H.264 라이브 미러링 백엔드.
+"""scrcpy-server (v1.25) 기반 H.264 라이브 미러링 백엔드 (video 전용).
 
 scrcpy-server.jar를 디바이스에 push 후 app_process로 실행해 MediaCodec API를
 직접 호출한다. screenrecord와 달리:
   * idle 시에도 frame 출력이 자연스러움 (인코더 직접 제어)
   * 무한 streaming (segment 175초 제한 없음)
   * raw_video_stream=true 모드로 prefix bytes 없이 순수 H.264 NAL stream 수신
+
+이 백엔드는 **video 미러링 전용**이다. 입력(touch/key/text)은 scrcpy 동작 여부와
+무관하게 모든 디바이스에서 동일하게 동작하도록 ADBService의 shell input 경로로
+일원화되어 있어, 이 모듈은 control_socket을 사용하지 않는다 (control=false).
 
 v1.25 + adb reverse 선택 이유:
   * v2.x SurfaceControl direct API는 자동차 IVI 컨테이너(HMG 등)에서 차단됨
@@ -14,8 +18,7 @@ v1.25 + adb reverse 선택 이유:
     reverse 방향(PC listen, device connect)은 허용되는 경우가 많다.
 
 디코딩 파이프라인:
-  * 과거: socket → ffmpeg subprocess → MJPEG → JPEG (ffmpeg 100MB 의존)
-  * 현재: socket → PyAV CodecContext (H.264 직접 디코딩) → cv2.imencode JPEG
+  socket → PyAV CodecContext (H.264 직접 디코딩) → cv2.imencode JPEG
   PyAV 미설치/실패 시 try_start False 반환 → 호출자가 screencap PNG 폴백 사용.
 
 흐름:
@@ -44,12 +47,11 @@ import hashlib
 import logging
 import os
 import socket
-import struct
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import AsyncIterator, Awaitable, Callable, Optional, Tuple
+from typing import AsyncIterator, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -79,28 +81,6 @@ _READ_CHUNK = 64 * 1024
 
 # JPEG 인코딩 품질 (cv2.IMWRITE_JPEG_QUALITY). 75~85 사이가 시각적/대역폭 균형점.
 _JPEG_QUALITY = 80
-
-
-# ----------------------------------------------------------------------
-# scrcpy v1.x Control protocol constants
-# ----------------------------------------------------------------------
-
-# Control message types (server-side enum ControlMessage.TYPE_*)
-SC_TYPE_INJECT_KEYCODE = 0
-SC_TYPE_INJECT_TEXT = 1
-SC_TYPE_INJECT_TOUCH_EVENT = 2
-SC_TYPE_INJECT_SCROLL_EVENT = 3
-SC_TYPE_BACK_OR_SCREEN_ON = 4
-SC_TYPE_EXPAND_NOTIFICATION_PANEL = 5
-SC_TYPE_COLLAPSE_PANELS = 7
-
-# MotionEvent actions (Android KeyEvent.ACTION_*)
-SC_ACTION_DOWN = 0
-SC_ACTION_UP = 1
-SC_ACTION_MOVE = 2
-
-# AKEY_EVENT_ACTION_* mirror Android KeyEvent.ACTION_DOWN/UP (0/1).
-# scrcpy 1.x ControlSender의 inject_keycode와 동일 의미.
 
 
 # ----------------------------------------------------------------------
@@ -226,13 +206,8 @@ def _file_sha256(path: str) -> str:
 class ScrcpyServerBackend:
     """scrcpy-server.jar → PyAV (H.264 디코딩) → cv2 JPEG 인코딩 파이프라인.
 
-    하나의 인스턴스는 (serial, logical_id) 조합 하나에 1:1 대응.
-
-    동작 모델:
-      * asyncio task가 socket에서 H.264 chunk 비동기 read
-      * 백엔드 전용 single-thread executor에 디코딩+인코딩 위임 (codec context는
-        스레드 안전성 보장 없음 → 워커 1개로 고정해 race 차단)
-      * 인코딩된 JPEG bytes를 asyncio.Queue에 put → stream_jpeg()에서 yield
+    하나의 인스턴스는 (serial, logical_id) 조합 하나에 1:1 대응. 입력은 이 모듈
+    바깥(ADBService.shell input)에서 처리하므로 video 단방향 스트림만 다룬다.
     """
 
     name = "scrcpy_server"
@@ -245,46 +220,20 @@ class ScrcpyServerBackend:
         bitrate: int = 4_000_000,
         max_fps: int = 0,
         jpeg_quality: int = _JPEG_QUALITY,
-        enable_control: bool = True,
-        resolution_provider: Optional[Callable[[], Tuple[int, int]]] = None,
     ):
-        """
-        enable_control: control=true 모드로 server 기동 (입력 채널 활성).
-        resolution_provider: 디바이스 해상도 (w, h)를 동기 반환하는 callable.
-            scrcpy v1.x INJECT_TOUCH_EVENT 패킷에 디바이스 해상도가 필요하지만
-            raw_video_stream=true 모드에서는 video stream 헤더에 해상도가 없으므로
-            외부(ADBService.wm size)에서 주입받는다. None이면 control 비활성화.
-        """
         self.serial = serial
         self.logical_id = logical_id or 0
         self.bitrate = bitrate
         self.max_fps = max_fps
         self.jpeg_quality = jpeg_quality
-        # control은 resolution_provider가 있을 때만 의미 있음
-        # control은 video frame 또는 외부 provider로 resolution을 알 수 있을 때 활성.
-        # 우선 video frame에서 자동 추출 (scrcpy server의 videoSize와 정확히 일치),
-        # 부재 시 외부 resolution_provider로 폴백.
-        self.enable_control = enable_control
-        self._fallback_resolution_provider = resolution_provider
-        # 디코더가 첫 frame을 만들면 그 width/height를 여기 저장. control_socket touch
-        # 패킷의 screen_w/screen_h에 그대로 사용 — scrcpy server는 클라이언트가 보낸
-        # screenSize가 자체 videoSize와 정확히 일치하지 않으면 touch event를 무시함
-        # ("Ignore touch event, it was generated for a different device size").
-        self._video_size: Tuple[int, int] = (0, 0)
         # scrcpy v1.x는 single-instance 설계 — socket name "scrcpy" 고정, scid 옵션 없음.
         self.local_port = 0
         self._server_proc: Optional[subprocess.Popen] = None
         # adb reverse 방식: PC가 TCP listen, 디바이스 server.jar가 connect 옴.
-        # control=true 모드에서는 두 개의 connection이 순차로 들어온다:
-        # 첫 번째 = video socket, 두 번째 = control socket.
         self._listener: Optional[asyncio.base_events.Server] = None
-        self._video_accept_event: Optional[asyncio.Event] = None
-        self._control_accept_event: Optional[asyncio.Event] = None
+        self._accept_event: Optional[asyncio.Event] = None
         self._reader: Optional[asyncio.StreamReader] = None
         self._writer: Optional[asyncio.StreamWriter] = None
-        self._control_reader: Optional[asyncio.StreamReader] = None
-        self._control_writer: Optional[asyncio.StreamWriter] = None
-        self._control_sender: Optional[ControlSender] = None
         # 디코더 task와 디코더 전용 single-thread executor
         self._decoder_task: Optional[asyncio.Task] = None
         self._decoder_executor: Optional[ThreadPoolExecutor] = None
@@ -299,12 +248,6 @@ class ScrcpyServerBackend:
         # 디코딩 통계 (진단용)
         self._total_bytes_in: int = 0
         self._total_frames_decoded: int = 0
-
-    @property
-    def control(self) -> Optional["ControlSender"]:
-        """control_socket 기반 입력 sender. enable_control이 False거나 아직
-        connection 미수립이면 None."""
-        return self._control_sender
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -424,29 +367,18 @@ class ScrcpyServerBackend:
     async def _setup_reverse_listener(self) -> bool:
         """PC에서 TCP listen 시작. server.jar의 connect를 받는다.
 
-        control=true 모드에서는 2개의 connection이 순서대로 들어온다:
-          1. video socket
-          2. control socket
-        control=false 모드에서는 1개만 들어옴.
+        control=false 모드이므로 connection은 1개(video)만 들어온다.
         """
-        self._video_accept_event = asyncio.Event()
-        self._control_accept_event = asyncio.Event()
+        self._accept_event = asyncio.Event()
 
         async def _on_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+            # 첫 connect만 받고 나머지는 차단 (single instance).
             if self._reader is None:
-                # 첫 번째 = video socket
                 self._reader = reader
                 self._writer = writer
-                if self._video_accept_event:
-                    self._video_accept_event.set()
-            elif self.enable_control and self._control_reader is None:
-                # 두 번째 = control socket
-                self._control_reader = reader
-                self._control_writer = writer
-                if self._control_accept_event:
-                    self._control_accept_event.set()
+                if self._accept_event:
+                    self._accept_event.set()
             else:
-                # 추가 connect는 거절 (single instance / control 비활성).
                 try:
                     writer.close()
                 except Exception:
@@ -514,17 +446,14 @@ class ScrcpyServerBackend:
           * tunnel_forward=false: adb reverse 사용 (PC listen, device connect)
             HMG IVI 같은 컨테이너 환경에서 forward 방향 socket binding이 막혀있어
             반대 방향인 reverse가 통하는 경우가 많다 (CLI 검증됨).
-          * control=false: 입력 채널 비활성 (현재는 ADB input 경로 사용 — Phase 3에서 변경)
+          * control=false: 입력 채널 비활성. 입력은 ADBService.shell input 경로로
+            scrcpy 동작 여부 무관하게 단일화되어 있다.
           * power_off_on_close=false: 우리 close 시 디바이스 화면 꺼지지 않게
           * raw_video_stream=true: prefix bytes(dummy 1 + device_meta 64) +
             frame_meta(12/frame) 모두 비활성화. PyAV가 raw H.264 NAL stream을 바로
             디코딩 가능.
           * codec_options=i-frame-interval=1: 1초마다 IDR 키프레임 강제. 정적 화면
             디바이스에서 첫 IDR 대기로 인한 first-frame timeout 방지.
-
-        scrcpy v1.25는 crop/codec_options/encoder_name 옵션에 "-" sentinel을 받지
-        않는다 ("Crop must contains 4 values separated by colons: -" 에러). cli도
-        user 미명시 시 이들을 안 보내므로 우리도 옵션 자체를 생략.
         """
         opts = [
             "log_level=info",
@@ -533,7 +462,7 @@ class ScrcpyServerBackend:
             f"max_fps={self.max_fps}",
             "lock_video_orientation=-1",
             "tunnel_forward=false",
-            f"control={'true' if self.enable_control else 'false'}",
+            "control=false",
             f"display_id={self.logical_id}",
             "show_touches=false",
             "stay_awake=false",
@@ -549,11 +478,7 @@ class ScrcpyServerBackend:
         return [ADB_PATH, "-s", self.serial, "shell", inner]
 
     async def _spawn_server(self) -> bool:
-        """server 프로세스를 백그라운드로 spawn. stdout/stderr 모두 진단용으로 캡처.
-
-        scrcpy의 app_process는 일부 로그를 stdout, 일부를 stderr로 출력하므로
-        한 쪽만 받으면 단서를 놓칠 수 있음.
-        """
+        """server 프로세스를 백그라운드로 spawn. stdout/stderr 모두 진단용으로 캡처."""
         try:
             self._server_proc = subprocess.Popen(
                 self._build_server_cmd(),
@@ -624,48 +549,19 @@ class ScrcpyServerBackend:
 
         adb reverse 방식이라 connect 시작 주체는 디바이스. server.jar가 시작 후
         localabstract:scrcpy로 connect → adb reverse가 우리 TCP listen으로 forward.
-
-        control=true인 경우 video socket이 먼저 들어오고 control socket이 뒤따른다.
-        control socket이 늦게 들어와도 video stream은 별개라 즉시 시작 가능 —
-        control_socket은 일정 시간 폴링하면서 best-effort로 대기.
         """
-        if not self._video_accept_event:
+        if not self._accept_event:
             return False
         try:
             # server 기동 + connect 까지 약 3초 안에 들어옴. 여유 5초.
-            await asyncio.wait_for(self._video_accept_event.wait(), timeout=5.0)
+            await asyncio.wait_for(self._accept_event.wait(), timeout=5.0)
+            return self._reader is not None
         except asyncio.TimeoutError:
             logger.info(
                 "scrcpy accept timed out (%s): server_err=%s",
                 self.serial, self._stderr_tail_str(),
             )
             return False
-        if self._reader is None:
-            return False
-
-        # control socket은 video 직후 들어옴 — 짧은 대기 후 best-effort. control 미수신
-        # 시에도 video stream은 정상 동작하므로 fail로 처리하지 않음.
-        if self.enable_control and self._control_accept_event:
-            try:
-                await asyncio.wait_for(self._control_accept_event.wait(), timeout=2.0)
-            except asyncio.TimeoutError:
-                logger.info(
-                    "scrcpy control socket not received within 2s (%s) — "
-                    "video only, falling back to ADB input",
-                    self.serial,
-                )
-            if self._control_writer is not None:
-                # resolution_provider 우선순위:
-                #   1) 디코더가 채운 self._video_size (정확)
-                #   2) 외부 fallback (wm size — mismatch 시 server가 touch 무시할 수 있음)
-                def _res() -> Tuple[int, int]:
-                    if self._video_size[0] > 0 and self._video_size[1] > 0:
-                        return self._video_size
-                    if self._fallback_resolution_provider is not None:
-                        return self._fallback_resolution_provider()
-                    return (0, 0)
-                self._control_sender = ControlSender(self._control_writer, _res)
-        return True
 
     # ------------------------------------------------------------------
     # PyAV 디코딩 파이프라인
@@ -713,9 +609,9 @@ class ScrcpyServerBackend:
                     break
                 self._total_bytes_in += len(chunk)
 
-                # CPU bound 디코딩+인코딩을 executor로 위임. 각 entry는 (jpeg, w, h).
+                # CPU bound 디코딩+인코딩을 executor로 위임.
                 try:
-                    entries = await loop.run_in_executor(
+                    jpegs = await loop.run_in_executor(
                         executor, _decode_chunk_to_jpegs,
                         codec, chunk, self.jpeg_quality,
                     )
@@ -723,24 +619,8 @@ class ScrcpyServerBackend:
                     logger.debug("scrcpy decode error: %s", e)
                     continue
 
-                for jpeg, fw, fh in entries:
+                for jpeg in jpegs:
                     self._total_frames_decoded += 1
-                    # 첫 frame(또는 size 변경 시) video 해상도 캡처 — control_socket이
-                    # 이 값을 그대로 다시 server로 보내야 server의 videoSize와 일치하여
-                    # touch event가 무시되지 않는다.
-                    if fw > 0 and fh > 0 and (fw, fh) != self._video_size:
-                        if self._video_size == (0, 0):
-                            logger.info(
-                                "scrcpy video size detected: serial=%s %dx%d",
-                                self.serial, fw, fh,
-                            )
-                        else:
-                            logger.info(
-                                "scrcpy video size changed: serial=%s %dx%d → %dx%d",
-                                self.serial,
-                                self._video_size[0], self._video_size[1], fw, fh,
-                            )
-                        self._video_size = (fw, fh)
                     # backpressure: queue가 가득 차면 가장 오래된 프레임 드롭.
                     # 라이브 스트림에서 stale 프레임은 가치가 낮으므로 drop이 정답.
                     if self._jpeg_queue.full():
@@ -833,21 +713,7 @@ class ScrcpyServerBackend:
                 pass
             self._decoder_executor = None
 
-        # 3) control socket close (있을 때만)
-        self._control_sender = None
-        if self._control_writer:
-            try:
-                self._control_writer.close()
-                try:
-                    await asyncio.wait_for(self._control_writer.wait_closed(), timeout=1.0)
-                except asyncio.TimeoutError:
-                    pass
-            except Exception:
-                pass
-            self._control_writer = None
-        self._control_reader = None
-
-        # 4) video socket close → server.jar가 자연 종료
+        # 3) video socket close → server.jar가 자연 종료
         if self._writer:
             try:
                 self._writer.close()
@@ -860,7 +726,7 @@ class ScrcpyServerBackend:
             self._writer = None
         self._reader = None
 
-        # 5) server 프로세스 종료
+        # 4) server 프로세스 종료
         if self._server_proc and self._server_proc.poll() is None:
             try:
                 self._server_proc.terminate()
@@ -872,7 +738,7 @@ class ScrcpyServerBackend:
                 pass
         self._server_proc = None
 
-        # 6) PC listener 종료
+        # 5) PC listener 종료
         if self._listener:
             try:
                 self._listener.close()
@@ -881,10 +747,10 @@ class ScrcpyServerBackend:
                 pass
             self._listener = None
 
-        # 7) 디바이스 측 잔존 app_process 정리
+        # 6) 디바이스 측 잔존 app_process 정리
         await self._cleanup_device_side()
 
-        # 8) adb reverse 제거
+        # 7) adb reverse 제거
         await self._remove_reverse()
 
         logger.info(
@@ -934,24 +800,19 @@ class ScrcpyServerBackend:
 _EOF_SENTINEL: object = object()
 
 
-def _decode_chunk_to_jpegs(
-    codec, chunk: bytes, jpeg_quality: int,
-) -> list[tuple[bytes, int, int]]:
-    """단일 H.264 chunk → (JPEG, width, height) 튜플 리스트.
+def _decode_chunk_to_jpegs(codec, chunk: bytes, jpeg_quality: int) -> list[bytes]:
+    """단일 H.264 chunk → JPEG 프레임 리스트.
 
     같은 codec context를 반복 호출해야 SPS/PPS 컨텍스트가 유지된다. ThreadPoolExecutor
     worker가 1개이므로 race 없음.
 
     raw H.264 NAL stream에서 chunk 경계는 NAL 경계와 일치하지 않을 수 있어,
     codec.parse(chunk)로 demuxer에 일임해 packet 단위로 정리한 뒤 decode.
-
-    width/height는 디코딩된 frame에서 직접 추출 — scrcpy server의 videoSize와
-    완벽히 일치하므로 control_socket touch 패킷 size mismatch가 발생하지 않는다.
     """
     import av
     import cv2
 
-    out: list[tuple[bytes, int, int]] = []
+    out: list[bytes] = []
     try:
         packets = codec.parse(chunk)
     except av.InvalidDataError:
@@ -978,178 +839,5 @@ def _decode_chunk_to_jpegs(
             except Exception:
                 continue
             if ok:
-                out.append((bytes(buf), int(frame.width), int(frame.height)))
+                out.append(bytes(buf))
     return out
-
-
-# ----------------------------------------------------------------------
-# ControlSender — scrcpy v1.x control_socket 입력 채널
-# ----------------------------------------------------------------------
-
-class ControlSender:
-    """scrcpy v1.x ControlMessage wire format으로 입력 이벤트 전송.
-
-    동작 방식:
-      * 모든 send 메서드는 asyncio.Lock으로 직렬화 — 동시 다발 호출 시 패킷 인터리브 방지
-      * 디바이스 해상도가 touch 패킷에 인코딩되어야 하므로 외부 provider로부터 주입
-        (raw_video_stream=true 모드라 video 헤더에 해상도가 없음)
-
-    wire format 참고 (scrcpy v1.25 ControlMessageReader.java):
-
-      INJECT_KEYCODE:
-        type(1) + action(1) + keycode(4) + repeat(4) + metastate(4) = 14 bytes
-      INJECT_TEXT:
-        type(1) + text_len(4) + text(utf-8 bytes)
-      INJECT_TOUCH_EVENT:
-        type(1) + action(1) + pointerId(8) + x(4) + y(4)
-        + screenWidth(2) + screenHeight(2) + pressure(2) + buttons(4) = 28 bytes
-      INJECT_SCROLL_EVENT:
-        type(1) + x(4) + y(4) + screenWidth(2) + screenHeight(2)
-        + hScroll(4) + vScroll(4) = 21 bytes
-      BACK_OR_SCREEN_ON:
-        type(1) + action(1) = 2 bytes
-    """
-
-    # 기본 pointer ID (single-touch 가상 손가락).
-    DEFAULT_POINTER_ID = -1
-
-    def __init__(
-        self,
-        writer: asyncio.StreamWriter,
-        resolution_provider: Callable[[], Tuple[int, int]],
-    ):
-        self._writer = writer
-        self._resolution_provider = resolution_provider
-        self._lock = asyncio.Lock()
-        self._closed = False
-
-    def is_alive(self) -> bool:
-        return not self._closed and not self._writer.is_closing()
-
-    async def _send(self, payload: bytes) -> bool:
-        """단일 패킷 직렬화 송신. socket 닫힘 등 실패 시 False."""
-        if self._closed or self._writer.is_closing():
-            return False
-        async with self._lock:
-            try:
-                self._writer.write(payload)
-                await self._writer.drain()
-                return True
-            except (ConnectionResetError, BrokenPipeError, OSError) as e:
-                logger.debug("ControlSender send failed: %s", e)
-                self._closed = True
-                return False
-
-    async def touch(
-        self,
-        x: int,
-        y: int,
-        action: int = SC_ACTION_DOWN,
-        pointer_id: int = DEFAULT_POINTER_ID,
-        pressure: int = 0xFFFF,
-        buttons: int = 1,
-    ) -> bool:
-        """터치 이벤트. action: SC_ACTION_DOWN/UP/MOVE."""
-        w, h = self._resolution_provider()
-        if w <= 0 or h <= 0:
-            return False
-        x = max(0, min(int(x), w - 1))
-        y = max(0, min(int(y), h - 1))
-        # >BBqiiHHHi = type(1) + action(1) + pointer_id(8) + x(4) + y(4)
-        #             + w(2) + h(2) + pressure(2) + buttons(4) = 28 bytes
-        pkt = struct.pack(
-            ">BBqiiHHHi",
-            SC_TYPE_INJECT_TOUCH_EVENT, action & 0xFF,
-            int(pointer_id), x, y,
-            w & 0xFFFF, h & 0xFFFF,
-            pressure & 0xFFFF, buttons,
-        )
-        return await self._send(pkt)
-
-    async def tap(self, x: int, y: int, hold_ms: int = 50) -> bool:
-        """DOWN → hold_ms 대기 → UP. tap 시퀀스 송신.
-
-        scrcpy v1.x references 클라이언트는 마우스 press/release 자연 시간차로 동작.
-        프로그래매틱 호출 시 hold_ms로 사람 손가락 tap에 가까운 간격을 만든다.
-        """
-        if not await self.touch(x, y, SC_ACTION_DOWN):
-            return False
-        if hold_ms > 0:
-            await asyncio.sleep(hold_ms / 1000.0)
-        return await self.touch(x, y, SC_ACTION_UP)
-
-    async def long_press(self, x: int, y: int, duration_ms: int = 1000) -> bool:
-        """DOWN → duration 만큼 sleep → UP."""
-        if not await self.touch(x, y, SC_ACTION_DOWN):
-            return False
-        await asyncio.sleep(duration_ms / 1000.0)
-        return await self.touch(x, y, SC_ACTION_UP)
-
-    async def swipe(
-        self,
-        x1: int, y1: int, x2: int, y2: int,
-        duration_ms: int = 300,
-        steps: int = 0,
-    ) -> bool:
-        """단일 핑거 스와이프 — DOWN → MOVE×N → UP.
-
-        scrcpy v1.x control_socket에는 native swipe primitive가 없으므로 직접 합성.
-        멀티핑거나 정교한 sendevent가 필요한 케이스는 호출자가 ADB 폴백으로 보냄.
-        """
-        if steps <= 0:
-            # 약 16ms (60fps) 간격으로 자동 결정
-            steps = max(2, min(60, duration_ms // 16))
-        if not await self.touch(x1, y1, SC_ACTION_DOWN):
-            return False
-        sleep_s = duration_ms / 1000.0 / steps
-        for i in range(1, steps + 1):
-            t = i / steps
-            ix = int(x1 + (x2 - x1) * t)
-            iy = int(y1 + (y2 - y1) * t)
-            if not await self.touch(ix, iy, SC_ACTION_MOVE):
-                return False
-            if sleep_s > 0:
-                await asyncio.sleep(sleep_s)
-        return await self.touch(x2, y2, SC_ACTION_UP)
-
-    async def keycode(
-        self,
-        keycode: int,
-        action: int = SC_ACTION_DOWN,
-        repeat: int = 0,
-        metastate: int = 0,
-    ) -> bool:
-        """Android KeyEvent.* 키코드 주입.
-
-        wire: type(1) + action(1) + keycode(4) + repeat(4) + metastate(4)
-        scrcpy 1.x ControlMessageReader는 keycode와 metastate를 int(signed 32)로 읽음.
-        """
-        pkt = struct.pack(
-            ">BBiii",
-            SC_TYPE_INJECT_KEYCODE, action & 0xFF,
-            int(keycode), int(repeat), int(metastate),
-        )
-        return await self._send(pkt)
-
-    async def key_press(self, keycode: int) -> bool:
-        """DOWN + UP을 즉시 송신."""
-        if not await self.keycode(keycode, SC_ACTION_DOWN):
-            return False
-        return await self.keycode(keycode, SC_ACTION_UP)
-
-    async def back_or_screen_on(self, action: int = SC_ACTION_DOWN) -> bool:
-        """BACK 키 (화면 꺼져있으면 DOWN 시 화면만 켜짐).
-
-        wire: type(1) + action(1) = 2 bytes
-        """
-        pkt = struct.pack(">BB", SC_TYPE_BACK_OR_SCREEN_ON, action & 0xFF)
-        return await self._send(pkt)
-
-    async def text(self, text: str) -> bool:
-        """UTF-8 텍스트 주입. 길이 prefix(int32) + 본문 bytes.
-
-        wire: type(1) + len(4) + utf8_bytes
-        """
-        buf = text.encode("utf-8")
-        pkt = struct.pack(">Bi", SC_TYPE_INJECT_TEXT, len(buf)) + buf
-        return await self._send(pkt)

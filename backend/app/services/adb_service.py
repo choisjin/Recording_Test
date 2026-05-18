@@ -79,64 +79,6 @@ def resolve_input_display_id(dev_info: dict | None, our_index: int | None) -> in
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
 
-# scrcpy control_socket 경로에서 사용할 Android KeyEvent 매핑.
-# 자주 쓰이는 키만 포함 — 미매핑 키는 ADB shell input keyevent 폴백으로 자연 처리.
-_ANDROID_KEYCODES = {
-    "KEYCODE_HOME": 3, "HOME": 3,
-    "KEYCODE_BACK": 4, "BACK": 4,
-    "KEYCODE_CALL": 5,
-    "KEYCODE_ENDCALL": 6,
-    "KEYCODE_DPAD_UP": 19, "DPAD_UP": 19, "UP": 19,
-    "KEYCODE_DPAD_DOWN": 20, "DPAD_DOWN": 20, "DOWN": 20,
-    "KEYCODE_DPAD_LEFT": 21, "DPAD_LEFT": 21, "LEFT": 21,
-    "KEYCODE_DPAD_RIGHT": 22, "DPAD_RIGHT": 22, "RIGHT": 22,
-    "KEYCODE_DPAD_CENTER": 23, "DPAD_CENTER": 23, "CENTER": 23,
-    "KEYCODE_VOLUME_UP": 24, "VOLUME_UP": 24,
-    "KEYCODE_VOLUME_DOWN": 25, "VOLUME_DOWN": 25,
-    "KEYCODE_POWER": 26, "POWER": 26,
-    "KEYCODE_CAMERA": 27,
-    "KEYCODE_ENTER": 66, "ENTER": 66,
-    "KEYCODE_DEL": 67, "DEL": 67,
-    "KEYCODE_TAB": 61, "TAB": 61,
-    "KEYCODE_SPACE": 62, "SPACE": 62,
-    "KEYCODE_ESCAPE": 111, "ESCAPE": 111, "ESC": 111,
-    "KEYCODE_FORWARD_DEL": 112,
-    "KEYCODE_MENU": 82, "MENU": 82,
-    "KEYCODE_NOTIFICATION": 83,
-    "KEYCODE_SEARCH": 84, "SEARCH": 84,
-    "KEYCODE_APP_SWITCH": 187, "APP_SWITCH": 187,
-    "KEYCODE_MEDIA_PLAY_PAUSE": 85,
-    "KEYCODE_MEDIA_NEXT": 87,
-    "KEYCODE_MEDIA_PREVIOUS": 88,
-    "KEYCODE_MUTE": 91,
-    "KEYCODE_PAGE_UP": 92, "PAGE_UP": 92,
-    "KEYCODE_PAGE_DOWN": 93, "PAGE_DOWN": 93,
-}
-
-
-def _parse_android_keycode(keycode: str | int) -> Optional[int]:
-    """문자열/정수 입력을 Android KeyEvent 정수 keycode로 변환.
-
-    수용 포맷:
-      * 정수 ("3", "66") → 그대로 int 반환
-      * "KEYCODE_HOME" / "HOME" 등 잘 알려진 이름
-      * 미매핑이면 None 반환 → 호출자는 ADB shell input keyevent로 폴백 (이름 그대로 지원)
-    """
-    if isinstance(keycode, int):
-        return keycode
-    if not isinstance(keycode, str):
-        return None
-    s = keycode.strip()
-    if not s:
-        return None
-    if s.isdigit() or (s.startswith("-") and s[1:].isdigit()):
-        try:
-            return int(s)
-        except ValueError:
-            return None
-    return _ANDROID_KEYCODES.get(s.upper())
-
-
 def _run_sync(cmd: str, timeout: int = 10) -> tuple[str, str, int]:
     """Run a command synchronously and return (stdout, stderr, returncode)."""
     try:
@@ -379,33 +321,10 @@ class ADBService:
             return f"-d {display_id} "
         return ""
 
-    def _scrcpy_control_for(self, serial: str, display_id: Optional[int]) -> Optional["ControlSender"]:  # noqa: F821
-        """해당 serial+display에 대해 scrcpy control_socket 입력 경로가 가능하면 sender 반환.
-
-        backend가 살아있고 display_id가 일치하며 ControlSender가 연결되어 있을 때만 활성.
-        ADB shell input 경로보다 1자릿수 ms 빠르고 spawn 비용이 없다.
-        """
-        backend = self._scrcpy_backends.get(serial)
-        if backend is None or not backend.is_alive():
-            return None
-        # display_id 미지정 시 backend의 기본 display 사용 가정.
-        if display_id is not None and int(display_id) != int(backend.logical_id):
-            return None
-        ctrl = backend.control
-        if ctrl is None or not ctrl.is_alive():
-            return None
-        return ctrl
-
     async def tap(self, x: int, y: int, serial: Optional[str] = None, display_id: Optional[int] = None) -> str:
         s = serial or self._active_serial
         if not s:
             raise ValueError("No device selected")
-        # 1순위: scrcpy control_socket — 매우 빠름 (~1ms). 실패 시 ADB shell 폴백.
-        ctrl = self._scrcpy_control_for(s, display_id)
-        if ctrl is not None:
-            if await ctrl.tap(int(x), int(y)):
-                return ""
-            logger.debug("scrcpy tap failed, falling back to ADB shell: %s", s)
         dflag = self._display_flag(display_id)
         return await self._run_device(s, f"shell input {dflag}tap {x} {y}")
 
@@ -844,12 +763,6 @@ class ADBService:
         s = serial or self._active_serial
         if not s:
             raise ValueError("No device selected")
-        # scrcpy control 우선 — DOWN/UP 분리로 정확한 duration 보장 가능.
-        ctrl = self._scrcpy_control_for(s, display_id)
-        if ctrl is not None:
-            if await ctrl.long_press(int(x), int(y), int(duration_ms)):
-                return ""
-            logger.debug("scrcpy long_press failed, falling back to ADB shell: %s", s)
         dflag = self._display_flag(display_id)
         return await self._run_device(s, f"shell input {dflag}swipe {x} {y} {x} {y} {duration_ms}")
 
@@ -857,13 +770,6 @@ class ADBService:
         s = serial or self._active_serial
         if not s:
             raise ValueError("No device selected")
-        # scrcpy control은 UTF-8 텍스트 주입을 지원 — input shell은 일부 특수문자 escape
-        # 처리에 결함이 있어 control_socket 경로가 더 정확하다.
-        ctrl = self._scrcpy_control_for(s, display_id)
-        if ctrl is not None:
-            if await ctrl.text(text):
-                return ""
-            logger.debug("scrcpy text failed, falling back to ADB shell: %s", s)
         escaped = text.replace(" ", "%s").replace("&", "\\&").replace("<", "\\<").replace(">", "\\>")
         dflag = self._display_flag(display_id)
         return await self._run_device(s, f'shell input {dflag}text "{escaped}"')
@@ -872,15 +778,6 @@ class ADBService:
         s = serial or self._active_serial
         if not s:
             raise ValueError("No device selected")
-        # scrcpy control은 정수 keycode를 받음. 라우터/녹화 코드는 문자열(예: "KEYCODE_HOME"
-        # 또는 "3")로 전달하므로 변환 시도. 변환 실패 시 ADB shell input keyevent로 폴백.
-        ctrl = self._scrcpy_control_for(s, display_id)
-        if ctrl is not None:
-            kc_int = _parse_android_keycode(keycode)
-            if kc_int is not None:
-                if await ctrl.key_press(kc_int):
-                    return ""
-                logger.debug("scrcpy key_event failed, falling back to ADB shell: %s", s)
         dflag = self._display_flag(display_id)
         return await self._run_device(s, f"shell input {dflag}keyevent {keycode}")
 
@@ -1171,16 +1068,6 @@ class ADBService:
         if serial in self._scrcpy_disabled:
             return None
 
-        # control_socket touch 패킷에 필요한 디바이스 해상도 캐시를 미리 채워둠.
-        # wm size 호출은 처음 한 번 후 _display_size_cache에 보관되므로 폴링 시 추가 비용 없음.
-        try:
-            await self._get_display_size(serial)
-        except Exception as e:
-            logger.debug("display size prewarm failed for %s: %s", serial, e)
-
-        def _resolution_provider() -> tuple[int, int]:
-            return self._display_size_cache.get(serial, (0, 0))
-
         async with self._scrcpy_lock:
             existing = self._scrcpy_backends.get(serial)
             if existing and existing.is_alive() and existing.logical_id == (logical_id or 0):
@@ -1196,8 +1083,6 @@ class ADBService:
             for attempt in range(2):
                 backend = ScrcpyServerBackend(
                     serial, logical_id, bitrate=bitrate,
-                    enable_control=True,
-                    resolution_provider=_resolution_provider,
                 )
                 ok = await backend.try_start()
                 if ok:
