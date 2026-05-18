@@ -384,7 +384,7 @@ def step_package(force=False) -> bool:
         if item.name in _PRESERVE_NAMES or item.suffix in _PRESERVE_EXTS:
             continue
         if item.is_dir():
-            if item.name in {"backend", "frontend", "docs"}:
+            if item.name in {"backend", "frontend", "docs", "scripts"}:
                 shutil.rmtree(item)
         else:
             if item.suffix in {".py", ".bat", ".ico", ".txt"} and item.name != "git_remote.txt":
@@ -398,6 +398,9 @@ def step_package(force=False) -> bool:
 
     # ── 루트 파일 + server.py/.pyd ──
     _copy_root_files()
+
+    # ── scripts/ (download_ocr_models.py 등 운영 보조 스크립트) ──
+    _copy_scripts()
 
     # ── 외부 리소스 (보존 우선) ──
     _copy_external_resources()
@@ -485,6 +488,22 @@ def _copy_frontend():
     dst = DIST_DIR / "frontend" / "dist"
     if src.exists():
         shutil.copytree(str(src), str(dst))
+
+
+def _copy_scripts():
+    """운영 보조 스크립트 복사 (download_ocr_models.py 등).
+
+    ReplayKit.bat의 자동 OCR 모델 설치(:update_ocr_models)가 폴백으로
+    호출할 수 있어야 하므로 dist에 포함시킨다."""
+    src = PROJECT_ROOT / "scripts"
+    dst = DIST_DIR / "scripts"
+    if not src.exists():
+        return
+    print("  scripts 복사 중...")
+    dst.mkdir(parents=True, exist_ok=True)
+    for f in src.iterdir():
+        if f.is_file() and f.suffix in (".py", ".bat", ".ps1"):
+            shutil.copy2(str(f), str(dst / f.name))
 
 
 def _copy_root_files():
