@@ -1,40 +1,103 @@
-"""OCR 서비스 — RapidOCR 기반 텍스트 검출 및 추출."""
+"""OCR 서비스 — RapidOCR 기반 다국어 텍스트 검출 및 추출.
+
+언어별 인식 모델은 backend/app/services/ocr_models/{lang}/{rec_infer.onnx, rec_keys.txt}
+에 배치되어야 한다. 모델 설치는 `scripts/download_ocr_models.py`로 수행.
+
+지원 언어 ID(폴더명): korean, english, japan, chinese, latin, cyrillic, arabic, devanagari.
+설치되지 않은 언어를 요청하면 번들된 RapidOCR 기본(중국어 PP-OCRv4) 엔진으로 폴백한다.
+"""
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import List, Optional, Tuple
 
 import numpy as np
 
 logger = logging.getLogger(__name__)
 
-_ocr_engine = None
+DEFAULT_LANGUAGE = "korean"
+_MODELS_ROOT = Path(__file__).resolve().parent / "ocr_models"
+
+# 언어별 엔진 캐시 — RapidOCR 인스턴스는 무겁고 thread-safe하므로 1회 생성 후 재사용.
+# 키: language ID (예: "korean", "english"). 값: RapidOCR instance 또는 None(초기화 실패).
+_engines: dict[str, object] = {}
+# 언어별 초기화 실패 플래그 — 재시도 시 같은 import/init 비용 반복 방지.
+_init_failed: set[str] = set()
 
 
-_engine_init_failed = False
+def _language_paths(language: str) -> Tuple[Optional[Path], Optional[Path]]:
+    """(rec_model_path, rec_keys_path) — 존재하지 않으면 (None, None)."""
+    if not language:
+        return None, None
+    base = _MODELS_ROOT / language
+    onnx = base / "rec_infer.onnx"
+    keys = base / "rec_keys.txt"
+    if onnx.exists() and keys.exists():
+        return onnx, keys
+    return None, None
 
 
-def _get_engine():
-    global _ocr_engine, _engine_init_failed
-    if _ocr_engine is None and not _engine_init_failed:
-        import sys
-        logger.info("OCR: Python 실행 경로 = %s", sys.executable)
-        try:
-            from rapidocr_onnxruntime import RapidOCR  # type: ignore
-            _ocr_engine = RapidOCR()
-            logger.info("OCR: RapidOCR engine initialized")
-        except ImportError as e:
-            _engine_init_failed = True
-            logger.error(
-                "OCR: rapidocr_onnxruntime import 실패: %s\n"
-                "  현재 Python: %s\n"
-                "  → 백엔드를 venv Python으로 실행하세요: venv/Scripts/python.exe -m uvicorn ...",
-                e, sys.executable,
+def _get_engine(language: Optional[str] = None):
+    """언어별 RapidOCR 엔진 반환. 모델 미설치 시 번들 기본 엔진으로 폴백."""
+    lang = (language or DEFAULT_LANGUAGE).lower().strip() or DEFAULT_LANGUAGE
+
+    if lang in _engines:
+        return _engines[lang]
+    if lang in _init_failed:
+        # 폴백 엔진(""키)이 있으면 사용, 없으면 None
+        return _engines.get("")
+
+    import sys
+    logger.info("OCR[%s]: Python 실행 경로 = %s", lang, sys.executable)
+    try:
+        from rapidocr_onnxruntime import RapidOCR  # type: ignore
+    except ImportError as e:
+        _init_failed.add(lang)
+        logger.error(
+            "OCR: rapidocr_onnxruntime import 실패: %s\n"
+            "  현재 Python: %s\n"
+            "  → 백엔드를 venv Python으로 실행하세요: venv/Scripts/python.exe -m uvicorn ...",
+            e, sys.executable,
+        )
+        return None
+
+    rec_model, rec_keys = _language_paths(lang)
+    try:
+        if rec_model is not None and rec_keys is not None:
+            engine = RapidOCR(rec_model_path=str(rec_model), rec_keys_path=str(rec_keys))
+            logger.info("OCR[%s]: 언어별 모델 로드 — %s", lang, rec_model.name)
+        else:
+            # 미설치 언어 → 번들 기본 엔진 사용 (한 번만 생성)
+            if "" not in _engines:
+                _engines[""] = RapidOCR()
+                logger.info("OCR: 기본 번들 엔진(ch_PP-OCRv4) 초기화")
+            _engines[lang] = _engines[""]  # 같은 객체 재사용
+            logger.warning(
+                "OCR[%s]: 모델 미설치 — 기본 번들 엔진으로 폴백. "
+                "설치하려면 'python scripts/download_ocr_models.py %s' 실행.",
+                lang, lang,
             )
-        except Exception as e:
-            _engine_init_failed = True
-            logger.error("OCR: RapidOCR 초기화 실패: %s", e, exc_info=True)
-    return _ocr_engine
+            return _engines[lang]
+        _engines[lang] = engine
+        return engine
+    except Exception as e:
+        _init_failed.add(lang)
+        logger.error("OCR[%s] 초기화 실패: %s", lang, e, exc_info=True)
+        return None
+
+
+def available_languages() -> list[str]:
+    """`ocr_models/`에 설치된 언어 목록 (rec_infer.onnx + rec_keys.txt 쌍이 있는 것만)."""
+    if not _MODELS_ROOT.exists():
+        return []
+    out = []
+    for child in sorted(_MODELS_ROOT.iterdir()):
+        if not child.is_dir() or child.name.startswith("_"):
+            continue
+        if (child / "rec_infer.onnx").exists() and (child / "rec_keys.txt").exists():
+            out.append(child.name)
+    return out
 
 
 def _bytes_to_array(image_bytes: bytes):
@@ -65,17 +128,19 @@ class OcrItem:
         return (int(sum(xs) / 4), int(sum(ys) / 4))
 
 
-def run_ocr(image_bytes: bytes) -> List[OcrItem]:
-    """이미지에서 OCR 실행."""
-    engine = _get_engine()
+def run_ocr(image_bytes: bytes, language: Optional[str] = None) -> List[OcrItem]:
+    """이미지에서 OCR 실행. language로 인식 모델 선택 (기본 korean)."""
+    engine = _get_engine(language)
     if engine is None:
-        logger.warning("OCR: engine 없음 (rapidocr_onnxruntime 미설치)")
+        logger.warning("OCR: engine 없음 (rapidocr_onnxruntime 미설치 또는 초기화 실패)")
         return []
     img = _bytes_to_array(image_bytes)
     if img is None:
         logger.warning("OCR: 이미지 디코딩 실패 (bytes len=%d)", len(image_bytes) if image_bytes else 0)
         return []
-    logger.info("OCR: 이미지 크기 %dx%d, channels=%d", img.shape[1], img.shape[0], img.shape[2] if img.ndim == 3 else 1)
+    logger.info("OCR[%s]: 이미지 크기 %dx%d, channels=%d",
+                language or DEFAULT_LANGUAGE,
+                img.shape[1], img.shape[0], img.shape[2] if img.ndim == 3 else 1)
     try:
         raw = engine(img)
     except Exception as e:
@@ -121,10 +186,11 @@ def run_ocr(image_bytes: bytes) -> List[OcrItem]:
 
 
 def has_text(
-    image_bytes: bytes, target: str, threshold: float = 0.8
+    image_bytes: bytes, target: str, threshold: float = 0.8,
+    language: Optional[str] = None,
 ) -> Tuple[bool, Optional[Tuple[int, int]]]:
     """이미지에서 target 텍스트 존재 여부 판단. (found, center_xy)"""
-    items = run_ocr(image_bytes)
+    items = run_ocr(image_bytes, language=language)
     best_score = 0.0
     best_center = None
     for item in items:
@@ -138,23 +204,26 @@ def has_text(
 
 
 def find_text_center(
-    image_bytes: bytes, target: str, threshold: float = 0.8
+    image_bytes: bytes, target: str, threshold: float = 0.8,
+    language: Optional[str] = None,
 ) -> Optional[Tuple[int, int]]:
     """텍스트 중심 좌표 반환. 없으면 None."""
-    found, center = has_text(image_bytes, target, threshold)
+    found, center = has_text(image_bytes, target, threshold, language=language)
     return center if found else None
 
 
 def check_text_in_region(
-    image_bytes: bytes, target: str, x: int, y: int, width: int, height: int, threshold: float = 0.8
+    image_bytes: bytes, target: str, x: int, y: int, width: int, height: int,
+    threshold: float = 0.8, language: Optional[str] = None,
 ) -> bool:
     """지정 영역을 크롭한 뒤 target 텍스트 포함 여부 검증."""
-    region_text = extract_region_text(image_bytes, x, y, width, height)
+    region_text = extract_region_text(image_bytes, x, y, width, height, language=language)
     return _fuzzy_score(region_text, target) >= threshold
 
 
 def find_text_center_in_region(
-    image_bytes: bytes, target: str, x: int, y: int, width: int, height: int, threshold: float = 0.8
+    image_bytes: bytes, target: str, x: int, y: int, width: int, height: int,
+    threshold: float = 0.8, language: Optional[str] = None,
 ) -> Optional[Tuple[int, int]]:
     """지정 영역 내에서 target 텍스트 검색 후 원본 이미지 기준 중심 좌표 반환."""
     import cv2
@@ -170,7 +239,7 @@ def find_text_center_in_region(
     _, buf = cv2.imencode(".png", crop)
     if buf is None:
         return None
-    items = run_ocr(buf.tobytes())
+    items = run_ocr(buf.tobytes(), language=language)
     best_score = 0.0
     best_center: Optional[Tuple[int, int]] = None
     for item in items:
@@ -186,7 +255,8 @@ def find_text_center_in_region(
 
 
 def extract_region_text(
-    image_bytes: bytes, x: int, y: int, width: int, height: int
+    image_bytes: bytes, x: int, y: int, width: int, height: int,
+    language: Optional[str] = None,
 ) -> str:
     """지정 영역 크롭 후 OCR로 텍스트 추출."""
     import cv2
@@ -202,12 +272,13 @@ def extract_region_text(
     _, buf = cv2.imencode(".png", crop)
     if buf is None:
         return ""
-    items = run_ocr(buf.tobytes())
+    items = run_ocr(buf.tobytes(), language=language)
     return " ".join(item.text for item in items).strip()
 
 
 def extract_region_items(
-    image_bytes: bytes, x: int, y: int, width: int, height: int
+    image_bytes: bytes, x: int, y: int, width: int, height: int,
+    language: Optional[str] = None,
 ) -> Tuple[List[OcrItem], int, int]:
     """지정 영역 크롭 후 OCR로 모든 텍스트 아이템 추출.
 
@@ -229,5 +300,5 @@ def extract_region_items(
     ok, buf = cv2.imencode(".png", crop)
     if not ok or buf is None:
         return [], 0, 0
-    items = run_ocr(buf.tobytes())
+    items = run_ocr(buf.tobytes(), language=language)
     return items, x1, y1

@@ -30,6 +30,9 @@ backend/auxiliary_devices.json
 backend/settings.json
 Results/
 
+# 다국어 OCR 모델 (scripts/download_ocr_models.py로 사용자가 직접 받음, 용량 큼)
+backend/app/services/ocr_models/
+
 # Large binaries (배포에만 포함)
 *.whl
 # tools/ 폴더는 binary들이 들어있어 기본적으로 ignore.

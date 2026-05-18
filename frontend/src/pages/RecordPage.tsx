@@ -5144,6 +5144,11 @@ export default function RecordPage() {
                               selectedModuleName === 'OCR' &&
                               (selectedModuleFunc === 'CheckText' || selectedModuleFunc === 'ClickText' || selectedModuleFunc === 'ExtractAllText') &&
                               p.name === 'region';
+                            // OCR 공통 language 파라미터 → 콤보박스
+                            const isOcrLanguage =
+                              selectedModuleName === 'OCR' &&
+                              (selectedModuleFunc === 'CheckText' || selectedModuleFunc === 'ClickText' || selectedModuleFunc === 'ExtractAllText') &&
+                              p.name === 'language';
                             if (isOcrRegionParam && moduleFuncArgs['mode'] !== 'Region') return null;
                             return (
                             <div key={p.name} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -5160,6 +5165,23 @@ export default function RecordPage() {
                                     options={[
                                       { value: 'Full Screen', label: 'Full Screen' },
                                       { value: 'Region', label: 'Region' },
+                                    ]}
+                                  />
+                                ) : isOcrLanguage ? (
+                                  <Select
+                                    size="small"
+                                    value={moduleFuncArgs[p.name] || 'korean'}
+                                    onChange={(v) => setModuleFuncArgs(prev => ({ ...prev, [p.name]: v }))}
+                                    style={{ flex: 1, minWidth: 0 }}
+                                    options={[
+                                      { value: 'korean',     label: 'Korean (한국어 + 영어 + 숫자)' },
+                                      { value: 'english',    label: 'English' },
+                                      { value: 'japan',      label: 'Japanese (日本語)' },
+                                      { value: 'chinese',    label: 'Chinese (中文)' },
+                                      { value: 'latin',      label: 'Latin (ES/FR/DE/IT...)' },
+                                      { value: 'cyrillic',   label: 'Cyrillic (Русский...)' },
+                                      { value: 'arabic',     label: 'Arabic (العربية)' },
+                                      { value: 'devanagari', label: 'Devanagari (हिन्दी)' },
                                     ]}
                                   />
                                 ) : isAdbSerialCombo ? (

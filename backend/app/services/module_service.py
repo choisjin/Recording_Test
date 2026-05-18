@@ -465,6 +465,16 @@ def get_module_functions(module_name: str) -> list[dict]:
 
     # OCR: 가상 모듈 — ocr_service를 통해 현재 화면 텍스트 검출/클릭
     if module_name == "OCR":
+        # 공통 language 파라미터 정의 — 모든 OCR 함수에 동일하게 추가
+        _language_param = {
+            "name": "language", "required": False, "default": "'korean'",
+            "description": (
+                "OCR 인식 언어. 'korean'(한+영+숫자, 기본), 'english', 'japan', 'chinese', "
+                "'latin'(스/프/독/이 등), 'cyrillic', 'arabic', 'devanagari'. "
+                "모델 미설치 언어는 번들 기본(중국어)으로 폴백 — "
+                "설치: python scripts/download_ocr_models.py <language>"
+            ),
+        }
         functions = [
             {
                 "name": "CheckText",
@@ -478,6 +488,7 @@ def get_module_functions(module_name: str) -> list[dict]:
                      "description": "영역 'x,y,width,height' (Region 모드, 쉼표 구분)"},
                     {"name": "threshold", "required": False, "default": "'0.8'",
                      "description": "유사도 임계값 (0.0~1.0, 기본 0.8)"},
+                    _language_param,
                 ],
             },
             {
@@ -491,6 +502,7 @@ def get_module_functions(module_name: str) -> list[dict]:
                      "description": "영역 'x,y,width,height' (Region 모드, 쉼표 구분)"},
                     {"name": "threshold", "required": False, "default": "'0.8'",
                      "description": "유사도 임계값 (0.0~1.0, 기본 0.8)"},
+                    _language_param,
                 ],
             },
             {
@@ -503,6 +515,7 @@ def get_module_functions(module_name: str) -> list[dict]:
                      "description": "영역 'x,y,width,height' (Region 모드, 쉼표 구분)"},
                     {"name": "min_length", "required": False, "default": "'2'",
                      "description": "결과에 포함할 최소 글자 수 (기본 2 — 아이콘 오인식 제거). 1로 설정하면 모든 결과 표시."},
+                    _language_param,
                 ],
             },
         ]

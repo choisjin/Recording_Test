@@ -1820,6 +1820,8 @@ class PlaybackService:
             return "FAIL: 스크린샷 캡처 실패"
 
         loop = asyncio.get_event_loop()
+        # 모든 OCR 함수가 공유하는 language 인자 — 빈 값이면 ocr_service의 기본(korean) 사용
+        language = str(func_args.get("language", "") or "").strip() or None
 
         def _parse_region(raw: str) -> tuple[int, int, int, int]:
             """region 문자열 'x,y,w,h' 파싱 — 토큰 부족/변환 실패 시 0으로 채움."""
@@ -1851,14 +1853,14 @@ class PlaybackService:
                 missing: list[str] = []
                 for target in targets:
                     ok = await loop.run_in_executor(
-                        None, check_text_in_region, img_bytes, target, rx, ry, rw, rh, threshold
+                        None, check_text_in_region, img_bytes, target, rx, ry, rw, rh, threshold, language
                     )
                     if not ok:
                         missing.append(target)
             else:
                 missing = []
                 for target in targets:
-                    ok, _ = await loop.run_in_executor(None, has_text, img_bytes, target, threshold)
+                    ok, _ = await loop.run_in_executor(None, has_text, img_bytes, target, threshold, language)
                     if not ok:
                         missing.append(target)
 
@@ -1874,10 +1876,10 @@ class PlaybackService:
             if mode == "Region":
                 rx, ry, rw, rh = _parse_region(func_args.get("region", ""))
                 center = await loop.run_in_executor(
-                    None, find_text_center_in_region, img_bytes, target, rx, ry, rw, rh, threshold
+                    None, find_text_center_in_region, img_bytes, target, rx, ry, rw, rh, threshold, language
                 )
             else:
-                center = await loop.run_in_executor(None, find_text_center, img_bytes, target, threshold)
+                center = await loop.run_in_executor(None, find_text_center, img_bytes, target, threshold, language)
             if center is None:
                 return f"FAIL: '{target}' 텍스트를 찾을 수 없음"
             x, y = center
@@ -1901,11 +1903,11 @@ class PlaybackService:
             if mode == "Region":
                 rx, ry, rw, rh = _parse_region(func_args.get("region", ""))
                 items, offset_x, offset_y = await loop.run_in_executor(
-                    None, extract_region_items, img_bytes, rx, ry, rw, rh
+                    None, extract_region_items, img_bytes, rx, ry, rw, rh, language
                 )
                 scope = f"Region({rx},{ry},{rw},{rh})"
             else:
-                items = await loop.run_in_executor(None, run_ocr, img_bytes)
+                items = await loop.run_in_executor(None, run_ocr, img_bytes, language)
                 scope = "Full Screen"
 
             total_raw = len(items)
