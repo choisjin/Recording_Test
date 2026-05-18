@@ -1030,10 +1030,17 @@ class ControlSender:
         )
         return await self._send(pkt)
 
-    async def tap(self, x: int, y: int) -> bool:
-        """DOWN + UP 시퀀스를 즉시 송신 (탭)."""
+    async def tap(self, x: int, y: int, hold_ms: int = 50) -> bool:
+        """DOWN → hold_ms 대기 → UP. tap 시퀀스 송신.
+
+        hold_ms는 0 또는 너무 작으면 Android가 tap으로 인식하지 못하고 hover로
+        처리하거나 아예 무시하는 디바이스가 있다 (특히 ViewConfiguration의 tap
+        timeout 검사). 50ms 정도가 일반 사용자 입력과 가장 가까운 값.
+        """
         if not await self.touch(x, y, SC_ACTION_DOWN):
             return False
+        if hold_ms > 0:
+            await asyncio.sleep(hold_ms / 1000.0)
         return await self.touch(x, y, SC_ACTION_UP)
 
     async def long_press(self, x: int, y: int, duration_ms: int = 1000) -> bool:
