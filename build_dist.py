@@ -439,7 +439,11 @@ def _copy_backend():
     skip_files = {"auxiliary_devices.json", "settings.json"}
 
     for root, dirs, files in os.walk(src):
-        dirs[:] = [d for d in dirs if d not in ("__pycache__", "scenarios", "results", "screenshots")]
+        # 빌드 산출물에서 제외할 디렉토리:
+        #  - __pycache__: 컴파일 캐시
+        #  - scenarios/results/screenshots: 런타임 사용자 데이터
+        #  - _tmp: download_ocr_models.py의 임시 다운로드/추출 디렉토리 (정상 종료 시 정리되지만 안전망)
+        dirs[:] = [d for d in dirs if d not in ("__pycache__", "scenarios", "results", "screenshots", "_tmp")]
         rel_root = Path(root).relative_to(src)
         dst_root = dst / rel_root
         dst_root.mkdir(parents=True, exist_ok=True)

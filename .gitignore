@@ -30,8 +30,9 @@ backend/auxiliary_devices.json
 backend/settings.json
 Results/
 
-# 다국어 OCR 모델 (scripts/download_ocr_models.py로 사용자가 직접 받음, 용량 큼)
-backend/app/services/ocr_models/
+# 다국어 OCR 모델 — 파일 자체는 추적(git 공유 + 빌드 패키지 포함)하되 임시 디렉토리만 제외.
+# 모델 설치: python scripts/download_ocr_models.py 실행 후 변경분 커밋.
+backend/app/services/ocr_models/_tmp/
 
 # Large binaries (배포에만 포함)
 *.whl
