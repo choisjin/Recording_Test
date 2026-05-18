@@ -19,12 +19,12 @@ class CMD:
     def __init__(self):
         self._bg_processes: dict[int, subprocess.Popen] = {}
 
-    def Run(self, command: str, timeout: int = 300) -> str:
+    def Run(self, command: str, timeout: int = 30) -> str:
         """명령어를 실행하고 완료될 때까지 대기.
 
         Args:
             command: 실행할 명령어 (예: "ping 127.0.0.1 -n 3")
-            timeout: 최대 대기 시간 (초, 기본 300)
+            timeout: 최대 대기 시간 (초, 기본 30)
 
         Returns:
             stdout + stderr 출력 결과
@@ -45,7 +45,7 @@ class CMD:
         except Exception as e:
             return f"ERROR: {e}"
 
-    def Check(self, command: str, expected: str, match_mode: str = "contains", timeout: int = 300) -> str:
+    def Check(self, command: str, expected: str, match_mode: str = "contains", timeout: int = 30) -> str:
         """명령어를 실행하고 출력 결과를 기대값과 비교 (블로킹).
 
         Args:
@@ -53,7 +53,7 @@ class CMD:
             expected: 기대값 (출력에 포함되거나 완전히 일치해야 하는 문자열).
                       비어있으면 "리턴값이 없을 때만 pass"로 동작 (no-output 검증).
             match_mode: "contains" (부분 일치) 또는 "exact" (완전 일치). 기본값: contains
-            timeout: 최대 대기 시간 (초). 기본값: 300
+            timeout: 최대 대기 시간 (초). 기본값: 30
 
         Returns:
             통과 시: stdout 원문 (출력이 없을 경우 "(no output)")
@@ -81,7 +81,7 @@ class CMD:
             return output
         return f"FAIL: expected({match_mode}): {expected}\n---\n{output}"
 
-    def Check_Logic(self, command: str, keywords: str, logic: str = "and", timeout: int = 300) -> str:
+    def Check_Logic(self, command: str, keywords: str, logic: str = "and", timeout: int = 30) -> str:
         """명령어를 실행하고 두 개 이상의 키워드를 and/or 로직으로 합부 판정 (블로킹).
 
         Args:
@@ -89,7 +89,7 @@ class CMD:
             keywords: 키워드 목록. "," 로 구분 (예: "OK,ready,done")
             logic: "and" (모든 키워드 포함 시 pass) 또는 "or" (하나 이상 포함 시 pass).
                    기본값: and
-            timeout: 최대 대기 시간 (초). 기본값: 300
+            timeout: 최대 대기 시간 (초). 기본값: 30
 
         Returns:
             통과 시: stdout 원문

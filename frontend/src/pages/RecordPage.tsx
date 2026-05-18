@@ -5161,6 +5161,16 @@ export default function RecordPage() {
                               selectedModuleName === 'OCR' &&
                               (selectedModuleFunc === 'CheckText' || selectedModuleFunc === 'ClickText' || selectedModuleFunc === 'ExtractAllText') &&
                               p.name === 'language';
+                            // CMD.Check: match_mode → contains/exact 콤보박스
+                            const isCmdMatchMode =
+                              selectedModuleName === 'CMD' &&
+                              selectedModuleFunc === 'Check' &&
+                              p.name === 'match_mode';
+                            // CMD.Check_Logic: logic → and/or 콤보박스
+                            const isCmdLogic =
+                              selectedModuleName === 'CMD' &&
+                              selectedModuleFunc === 'Check_Logic' &&
+                              p.name === 'logic';
                             if (isOcrRegionParam && moduleFuncArgs['mode'] !== 'Region') return null;
                             return (
                             <div key={p.name} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -5213,6 +5223,28 @@ export default function RecordPage() {
                                         ? `${d.address} (${d.name || d.id}) ★`
                                         : `${d.address} (${d.name || d.id})`,
                                     }))}
+                                  />
+                                ) : isCmdMatchMode ? (
+                                  <Select
+                                    size="small"
+                                    value={moduleFuncArgs[p.name] || 'contains'}
+                                    onChange={(v) => setModuleFuncArgs(prev => ({ ...prev, [p.name]: v }))}
+                                    style={{ flex: 1, minWidth: 0 }}
+                                    options={[
+                                      { value: 'contains', label: 'contains (부분 일치)' },
+                                      { value: 'exact', label: 'exact (완전 일치)' },
+                                    ]}
+                                  />
+                                ) : isCmdLogic ? (
+                                  <Select
+                                    size="small"
+                                    value={moduleFuncArgs[p.name] || 'and'}
+                                    onChange={(v) => setModuleFuncArgs(prev => ({ ...prev, [p.name]: v }))}
+                                    style={{ flex: 1, minWidth: 0 }}
+                                    options={[
+                                      { value: 'and', label: 'and (모든 키워드 포함 시 pass)' },
+                                      { value: 'or', label: 'or (하나 이상 포함 시 pass)' },
+                                    ]}
                                   />
                                 ) : (
                                   <Input
