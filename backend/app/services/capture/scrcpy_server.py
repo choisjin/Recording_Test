@@ -261,8 +261,16 @@ class ScrcpyServerBackend:
         self.max_fps = max_fps
         self.jpeg_quality = jpeg_quality
         # control은 resolution_provider가 있을 때만 의미 있음
-        self.enable_control = enable_control and resolution_provider is not None
-        self._resolution_provider = resolution_provider
+        # control은 video frame 또는 외부 provider로 resolution을 알 수 있을 때 활성.
+        # 우선 video frame에서 자동 추출 (scrcpy server의 videoSize와 정확히 일치),
+        # 부재 시 외부 resolution_provider로 폴백.
+        self.enable_control = enable_control
+        self._fallback_resolution_provider = resolution_provider
+        # 디코더가 첫 frame을 만들면 그 width/height를 여기 저장. control_socket touch
+        # 패킷의 screen_w/screen_h에 그대로 사용 — scrcpy server는 클라이언트가 보낸
+        # screenSize가 자체 videoSize와 정확히 일치하지 않으면 touch event를 무시함
+        # ("Ignore touch event, it was generated for a different device size").
+        self._video_size: Tuple[int, int] = (0, 0)
         # scrcpy v1.x는 single-instance 설계 — socket name "scrcpy" 고정, scid 옵션 없음.
         self.local_port = 0
         self._server_proc: Optional[subprocess.Popen] = None
@@ -646,10 +654,17 @@ class ScrcpyServerBackend:
                     "video only, falling back to ADB input",
                     self.serial,
                 )
-            if self._control_writer is not None and self._resolution_provider is not None:
-                self._control_sender = ControlSender(
-                    self._control_writer, self._resolution_provider,
-                )
+            if self._control_writer is not None:
+                # resolution_provider 우선순위:
+                #   1) 디코더가 채운 self._video_size (정확)
+                #   2) 외부 fallback (wm size — mismatch 시 server가 touch 무시할 수 있음)
+                def _res() -> Tuple[int, int]:
+                    if self._video_size[0] > 0 and self._video_size[1] > 0:
+                        return self._video_size
+                    if self._fallback_resolution_provider is not None:
+                        return self._fallback_resolution_provider()
+                    return (0, 0)
+                self._control_sender = ControlSender(self._control_writer, _res)
         return True
 
     # ------------------------------------------------------------------
@@ -698,9 +713,9 @@ class ScrcpyServerBackend:
                     break
                 self._total_bytes_in += len(chunk)
 
-                # CPU bound 디코딩+인코딩을 executor로 위임.
+                # CPU bound 디코딩+인코딩을 executor로 위임. 각 entry는 (jpeg, w, h).
                 try:
-                    jpegs = await loop.run_in_executor(
+                    entries = await loop.run_in_executor(
                         executor, _decode_chunk_to_jpegs,
                         codec, chunk, self.jpeg_quality,
                     )
@@ -708,8 +723,24 @@ class ScrcpyServerBackend:
                     logger.debug("scrcpy decode error: %s", e)
                     continue
 
-                for jpeg in jpegs:
+                for jpeg, fw, fh in entries:
                     self._total_frames_decoded += 1
+                    # 첫 frame(또는 size 변경 시) video 해상도 캡처 — control_socket이
+                    # 이 값을 그대로 다시 server로 보내야 server의 videoSize와 일치하여
+                    # touch event가 무시되지 않는다.
+                    if fw > 0 and fh > 0 and (fw, fh) != self._video_size:
+                        if self._video_size == (0, 0):
+                            logger.info(
+                                "scrcpy video size detected: serial=%s %dx%d",
+                                self.serial, fw, fh,
+                            )
+                        else:
+                            logger.info(
+                                "scrcpy video size changed: serial=%s %dx%d → %dx%d",
+                                self.serial,
+                                self._video_size[0], self._video_size[1], fw, fh,
+                            )
+                        self._video_size = (fw, fh)
                     # backpressure: queue가 가득 차면 가장 오래된 프레임 드롭.
                     # 라이브 스트림에서 stale 프레임은 가치가 낮으므로 drop이 정답.
                     if self._jpeg_queue.full():
@@ -903,19 +934,24 @@ class ScrcpyServerBackend:
 _EOF_SENTINEL: object = object()
 
 
-def _decode_chunk_to_jpegs(codec, chunk: bytes, jpeg_quality: int) -> list[bytes]:
-    """단일 H.264 chunk → JPEG 프레임 리스트.
+def _decode_chunk_to_jpegs(
+    codec, chunk: bytes, jpeg_quality: int,
+) -> list[tuple[bytes, int, int]]:
+    """단일 H.264 chunk → (JPEG, width, height) 튜플 리스트.
 
     같은 codec context를 반복 호출해야 SPS/PPS 컨텍스트가 유지된다. ThreadPoolExecutor
     worker가 1개이므로 race 없음.
 
     raw H.264 NAL stream에서 chunk 경계는 NAL 경계와 일치하지 않을 수 있어,
     codec.parse(chunk)로 demuxer에 일임해 packet 단위로 정리한 뒤 decode.
+
+    width/height는 디코딩된 frame에서 직접 추출 — scrcpy server의 videoSize와
+    완벽히 일치하므로 control_socket touch 패킷 size mismatch가 발생하지 않는다.
     """
     import av
     import cv2
 
-    out: list[bytes] = []
+    out: list[tuple[bytes, int, int]] = []
     try:
         packets = codec.parse(chunk)
     except av.InvalidDataError:
@@ -942,7 +978,7 @@ def _decode_chunk_to_jpegs(codec, chunk: bytes, jpeg_quality: int) -> list[bytes
             except Exception:
                 continue
             if ok:
-                out.append(bytes(buf))
+                out.append((bytes(buf), int(frame.width), int(frame.height)))
     return out
 
 
@@ -1033,9 +1069,8 @@ class ControlSender:
     async def tap(self, x: int, y: int, hold_ms: int = 50) -> bool:
         """DOWN → hold_ms 대기 → UP. tap 시퀀스 송신.
 
-        hold_ms는 0 또는 너무 작으면 Android가 tap으로 인식하지 못하고 hover로
-        처리하거나 아예 무시하는 디바이스가 있다 (특히 ViewConfiguration의 tap
-        timeout 검사). 50ms 정도가 일반 사용자 입력과 가장 가까운 값.
+        scrcpy v1.x references 클라이언트는 마우스 press/release 자연 시간차로 동작.
+        프로그래매틱 호출 시 hold_ms로 사람 손가락 tap에 가까운 간격을 만든다.
         """
         if not await self.touch(x, y, SC_ACTION_DOWN):
             return False
