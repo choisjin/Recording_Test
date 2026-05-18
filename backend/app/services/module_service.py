@@ -555,9 +555,24 @@ def get_module_functions(module_name: str) -> list[dict]:
     }
     excluded = per_module_excluded.get(module_name, set())
 
+    # 모듈 스텝 UI에 노출할 메서드 화이트리스트.
+    # 지정된 모듈은 이 set에 포함된 이름만 드롭다운에 표시. 미지정 모듈은 전체 노출.
+    per_module_included: dict[str, set[str]] = {
+        "IVIQEBenchIOClient": {
+            "BatteryOnOff", "BatteryVoltage",
+            "ACCOnOff", "AccVoltage",
+            "IGNControl", "IGN3Control",
+            "ALTControl",
+            "USBFrontSwitchControl", "USBRearSwitchControl", "USBSelectorControl",
+        },
+    }
+    included = per_module_included.get(module_name)
+
     functions = []
     for name in sorted(dir(cls)):
         if name.startswith("_") or name in excluded:
+            continue
+        if included is not None and name not in included:
             continue
         attr = getattr(cls, name, None)
         if not callable(attr):
