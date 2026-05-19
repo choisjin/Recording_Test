@@ -1745,7 +1745,7 @@ export default function ScenarioPage() {
                         showIcon
                         defaultExpandAll
                         selectedKeys={groupShownInDetail ? [`group:${groupShownInDetail}`] : []}
-                        draggable={(node: any) => String(node.key).startsWith('group:')}
+                        draggable={{ icon: false, nodeDraggable: (node: any) => String(node.key).startsWith('group:') }}
                         allowDrop={() => true}
                         onDragStart={(info: any) => {
                           const k = String(info.node.key);
@@ -2024,7 +2024,7 @@ export default function ScenarioPage() {
                           : (selectedName ? [`scenario:${selectedName}`] : [])
                       }
                       onSelect={onSelect}
-                      draggable
+                      draggable={{ icon: false }}
                       onDrop={onDrop}
                       onRightClick={onRightClick}
                       showIcon
@@ -2507,7 +2507,7 @@ export default function ScenarioPage() {
                   groupTreeData.push({
                     key: `group:${gName}`,
                     isLeaf: true,
-                    icon: <FolderOutlined />,
+                    icon: <GroupIcon />,
                     title: renderGroupNodeTitle(gName, groups[gName] || []),
                   });
                 }
@@ -2604,7 +2604,7 @@ export default function ScenarioPage() {
                           const k = String(keys[0] || '');
                           setSelectedGroupForDetail(k.startsWith('group:') ? k.replace('group:', '') : null);
                         }}
-                        draggable={(node: any) => String(node.key).startsWith('group:')}
+                        draggable={{ icon: false, nodeDraggable: (node: any) => String(node.key).startsWith('group:') }}
                         allowDrop={() => true}
                         onDragStart={(info: any) => {
                           // 그룹 드래그 시 dataTransfer에 group 이름을 실어 폴더 title의 커스텀 drop이 받을 수 있게 함
