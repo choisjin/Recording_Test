@@ -173,6 +173,24 @@ const formatTime = (iso: string, _lang: string = 'ko', inline = false) => {
   } catch { return iso; }
 };
 
+// 그룹 아이콘 — "G" 모양 배지 (그룹을 시나리오와 시각적으로 구분)
+const GroupIcon = ({ color }: { color?: string }) => (
+  <span style={{
+    display: 'inline-flex',
+    width: 14,
+    height: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: color || '#1677ff',
+    color: '#fff',
+    borderRadius: 3,
+    fontSize: 9,
+    fontWeight: 700,
+    lineHeight: 1,
+    fontFamily: 'Arial, sans-serif',
+  }}>G</span>
+);
+
 export default function ScenarioPage() {
   const { t, lang } = useTranslation();
   const { settings, saveExportZipToDir } = useSettings();
@@ -1564,24 +1582,63 @@ export default function ScenarioPage() {
         />
 
         {selectedGroup === '__groups__' ? (
-          /* ===== 그룹 트리 (시나리오 트리와 동일 표기) ===== */
+          /* ===== 그룹 트리 (시나리오 트리와 동일 표기 + 드래그&드롭) ===== */
           (() => {
             const gFoldered = new Set<string>();
             for (const items of Object.values(groupFolders)) items.forEach(g => gFoldered.add(g));
+
+            // 폴더 노드 title — 그룹 드롭 가능한 div
+            const renderFolderTitle = (fname: string, childCount: number) => (
+              <div
+                onDragOver={(e) => {
+                  if (!e.dataTransfer.types.includes('application/x-group-name')) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                  if (groupDropHover !== `__main_folder__${fname}`) setGroupDropHover(`__main_folder__${fname}`);
+                }}
+                onDragLeave={(e) => {
+                  if ((e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) return;
+                  if (groupDropHover === `__main_folder__${fname}`) setGroupDropHover(null);
+                }}
+                onDrop={async (e) => {
+                  if (!e.dataTransfer.types.includes('application/x-group-name')) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setGroupDropHover(null);
+                  const groupName = e.dataTransfer.getData('application/x-group-name');
+                  if (groupName) {
+                    try {
+                      const res = await scenarioApi.moveGroupToFolder(groupName, fname);
+                      setGroupFolders(res.data.folders || {});
+                    } catch (err: any) {
+                      message.error(err?.response?.data?.detail || 'Failed to move');
+                    }
+                  }
+                }}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  padding: '2px 6px', borderRadius: 4,
+                  background: groupDropHover === `__main_folder__${fname}` ? 'rgba(22,119,255,0.18)' : undefined,
+                  border: groupDropHover === `__main_folder__${fname}` ? '1px dashed #1677ff' : '1px dashed transparent',
+                }}
+              >
+                <span>{fname} ({childCount})</span>
+              </div>
+            );
+
             const treeData: any[] = [];
             for (const [fname, items] of Object.entries(groupFolders)) {
               const children = items.filter(g => g in groups).map(gName => ({
                 key: `group:${gName}`,
                 title: gName,
-                icon: <FileOutlined />,
+                icon: <GroupIcon />,
                 isLeaf: true,
               }));
               treeData.push({
                 key: `gfolder:${fname}`,
-                title: `${fname} (${children.length})`,
+                title: renderFolderTitle(fname, children.length),
                 icon: <FolderOutlined />,
                 isLeaf: false,
-                selectable: false,
                 children,
               });
             }
@@ -1590,7 +1647,7 @@ export default function ScenarioPage() {
                 treeData.push({
                   key: `group:${gName}`,
                   title: gName,
-                  icon: <FileOutlined />,
+                  icon: <GroupIcon />,
                   isLeaf: true,
                 });
               }
@@ -1604,6 +1661,35 @@ export default function ScenarioPage() {
                   showIcon
                   defaultExpandAll
                   selectedKeys={groupShownInDetail ? [`group:${groupShownInDetail}`] : []}
+                  draggable={(node: any) => String(node.key).startsWith('group:')}
+                  allowDrop={() => true}
+                  onDragStart={(info: any) => {
+                    const k = String(info.node.key);
+                    if (!k.startsWith('group:')) return;
+                    const gName = k.replace('group:', '');
+                    try {
+                      info.event.dataTransfer.setData('application/x-group-name', gName);
+                      info.event.dataTransfer.effectAllowed = 'move';
+                    } catch { /* ignore */ }
+                  }}
+                  onDrop={(info: any) => {
+                    const dragKey = info.dragNode?.key ? String(info.dragNode.key) : '';
+                    if (!dragKey.startsWith('group:')) return;
+                    const groupName = dragKey.replace('group:', '');
+                    const dropKey = info.node?.key ? String(info.node.key) : '';
+                    let targetFolder: string | null = null;
+                    if (dropKey.startsWith('gfolder:')) {
+                      targetFolder = dropKey.replace('gfolder:', '');
+                    } else if (dropKey.startsWith('group:')) {
+                      const targetName = dropKey.replace('group:', '');
+                      for (const [fname, items] of Object.entries(groupFolders)) {
+                        if (items.includes(targetName)) { targetFolder = fname; break; }
+                      }
+                    }
+                    scenarioApi.moveGroupToFolder(groupName, targetFolder)
+                      .then(res => setGroupFolders(res.data.folders || {}))
+                      .catch((e: any) => message.error(e?.response?.data?.detail || 'Failed to move'));
+                  }}
                   onSelect={(keys) => {
                     const k = String(keys[0] || '');
                     if (k.startsWith('group:')) {
@@ -1611,6 +1697,9 @@ export default function ScenarioPage() {
                       setGroupShownInDetail(gName);
                       setSelectedName(null);
                       if (!playing) { setStepResults([]); setPlaybackScenario(null); }
+                      // 멤버 시나리오의 스텝 캐시 — P→/F→ 타겟 표시용
+                      const memberNames = (groups[gName] || []).map(m => m.name);
+                      if (memberNames.length > 0) fetchScenarioStepsCache(memberNames);
                     }
                   }}
                 />
@@ -1935,38 +2024,171 @@ export default function ScenarioPage() {
             />
             </div>
           ) : groupShownInDetail && groups[groupShownInDetail] ? (
-            /* 그룹 상세 — 멤버 시나리오 리스트 */
-            <div style={{ flex: 1, overflow: 'auto' }}>
-              <List
-                size="small"
-                dataSource={(groups[groupShownInDetail] || []).filter(m => scenarios.includes(m.name))}
-                locale={{ emptyText: t('scenario.noScenarios') }}
-                renderItem={(m, idx) => (
-                  <List.Item
-                    onClick={() => {
-                      setSelectedName(m.name);
-                      setGroupShownInDetail(null);
-                      if (!playing) { setStepResults([]); setPlaybackScenario(null); }
+            /* 그룹 상세 — 멤버 시나리오 리스트 + 펼침/조건부 이동 */
+            <div style={{ flex: 1, overflow: 'auto', padding: 4 }}>
+              {(() => {
+                const gName = groupShownInDetail;
+                const members = groups[gName] || [];
+                return (
+                  <List
+                    size="small"
+                    dataSource={members}
+                    locale={{ emptyText: t('scenario.noScenarios') }}
+                    renderItem={(entry, idx) => {
+                      const entryKey = `${gName}:${idx}`;
+                      const isExpanded = expandedEntries.has(entryKey);
+                      const steps = scenarioStepsCache[entry.name] || [];
+                      const stepJumps = entry.step_jumps || {};
+                      const hasAnyJump = Object.keys(stepJumps).length > 0;
+
+                      const renderJumpRow = (
+                        jumpLabel: string, jumpColor: string,
+                        passGoto: JumpTarget | null, failGoto: JumpTarget | null,
+                        onUpdate: (pg: JumpTarget | null, fg: JumpTarget | null) => void,
+                        field: 'pass' | 'fail',
+                      ) => {
+                        const jump = field === 'pass' ? passGoto : failGoto;
+                        const targetSteps = jump && jump.scenario >= 0 ? (scenarioStepsCache[members[jump.scenario]?.name] || []) : [];
+                        return (
+                          <span key={field} style={{ display: 'inline-flex', gap: 3, alignItems: 'center', fontSize: 11 }}>
+                            <span style={{ color: jumpColor, fontWeight: 700 }}>{jumpLabel}</span>
+                            <Select
+                              size="small"
+                              style={{ width: 120 }}
+                              value={jump ? jump.scenario : undefined}
+                              allowClear
+                              placeholder={t('scenario.nextTo')}
+                              onChange={(v) => {
+                                const newJump = v == null ? null : { scenario: v as number, step: 0 };
+                                if (field === 'pass') onUpdate(newJump, failGoto);
+                                else onUpdate(passGoto, newJump);
+                              }}
+                            >
+                              <Select.Option value={-1}>{t('scenario.end')} (END)</Select.Option>
+                              {members.map((m, mi) => (
+                                <Select.Option key={mi} value={mi}>#{mi + 1} {m.name}</Select.Option>
+                              ))}
+                            </Select>
+                            {jump && jump.scenario >= 0 && targetSteps.length > 0 && (
+                              <Select
+                                size="small"
+                                style={{ width: 160 }}
+                                value={jump.step}
+                                onChange={(stepVal) => {
+                                  const newJump = { scenario: jump.scenario, step: stepVal as number };
+                                  if (field === 'pass') onUpdate(newJump, failGoto);
+                                  else onUpdate(passGoto, newJump);
+                                }}
+                              >
+                                {targetSteps.map((s: any, si: number) => (
+                                  <Select.Option key={si} value={si}>{formatStepLabel(s, si)}</Select.Option>
+                                ))}
+                              </Select>
+                            )}
+                          </span>
+                        );
+                      };
+
+                      const isDragOver = groupDrag && groupDrag.gName === gName && groupDrag.over === idx && groupDrag.from !== idx;
+                      const dragOverFromAbove = isDragOver && (groupDrag!.from < idx);
+                      const isPlayingNow = playing && currentGroupScenario === entry.name;
+
+                      return (
+                        <List.Item
+                          style={{
+                            display: 'block',
+                            padding: '6px 0',
+                            borderTop: isDragOver && !dragOverFromAbove ? '2px solid #1677ff' : undefined,
+                            borderBottom: isDragOver && dragOverFromAbove ? '2px solid #1677ff' : undefined,
+                            opacity: groupDrag && groupDrag.gName === gName && groupDrag.from === idx ? 0.4 : 1,
+                            background: isPlayingNow ? 'rgba(22,119,255,0.15)' : undefined,
+                            borderLeft: isPlayingNow ? '3px solid #1677ff' : '3px solid transparent',
+                          }}
+                          draggable
+                          onDragStart={(e) => {
+                            setGroupDrag({ gName, from: idx, over: null });
+                            e.dataTransfer.effectAllowed = 'move';
+                          }}
+                          onDragOver={(e) => {
+                            if (!groupDrag || groupDrag.gName !== gName) return;
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = 'move';
+                            if (groupDrag.over !== idx) setGroupDrag({ ...groupDrag, over: idx });
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            if (groupDrag && groupDrag.gName === gName) dropInGroup(gName, members, groupDrag.from, idx);
+                            setGroupDrag(null);
+                          }}
+                          onDragEnd={() => setGroupDrag(null)}
+                        >
+                          {/* 헤더 — 클릭 시 시나리오로 이동하지 않고 펼침/접힘 */}
+                          <div
+                            style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer', color: '#000' }}
+                            onClick={() => {
+                              toggleExpandEntry(entryKey);
+                              if (!isExpanded && steps.length === 0) fetchScenarioStepsCache([entry.name]);
+                            }}
+                          >
+                            <Tag color={isPlayingNow ? 'processing' : 'blue'} style={{ margin: 0, minWidth: 24, textAlign: 'center' }}>{idx + 1}</Tag>
+                            <Button size="small" type="text" style={{ padding: '0 2px', fontSize: 10, color: '#000' }}
+                              icon={isExpanded ? <DownOutlined /> : <RightOutlined />}
+                            />
+                            <GroupIcon />
+                            <span style={{ flex: 1, fontWeight: 500, color: isPlayingNow ? '#1677ff' : '#000' }}>{entry.name}</span>
+                            {!scenarios.includes(entry.name) && <Tag color="red">{t('scenario.missing')}</Tag>}
+                            {hasAnyJump && <BranchesOutlined style={{ color: '#722ed1', fontSize: 11 }} />}
+                            {isPlayingNow && <Tag color="blue" style={{ margin: 0, fontSize: 10 }}>▶</Tag>}
+                            <span style={{ color: '#000', fontSize: 10 }}>{steps.length} {t('scenario.steps')}</span>
+                            <Button size="small" type="text" danger icon={<DeleteOutlined />}
+                              onClick={(e) => { e.stopPropagation(); removeFromGroup(gName, idx); }}
+                            />
+                          </div>
+
+                          {/* 펼친 스텝 목록 — 조건부 이동 */}
+                          {isExpanded && (
+                            <div style={{ paddingLeft: 29, marginTop: 5, borderLeft: '2px solid #d9d9d9', marginLeft: 14 }}>
+                              <div style={{ fontSize: 10, color: '#000', marginBottom: 3, fontWeight: 600 }}>{t('scenario.stepConditionalJump')}:</div>
+                              {steps.length === 0 && <div style={{ color: '#000', fontSize: 11, padding: 3 }}>{t('scenario.stepsLoading')}</div>}
+                              {steps.map((step: any, si: number) => {
+                                const sid = step.id;
+                                const sj = stepJumps[String(sid)] || { on_pass_goto: null, on_fail_goto: null };
+                                const hasSJ = sj.on_pass_goto != null || sj.on_fail_goto != null;
+                                return (
+                                  <div
+                                    key={si}
+                                    style={{ marginBottom: 3, padding: '4px 0', borderBottom: '1px solid #d9d9d9', fontSize: 11 }}
+                                  >
+                                    {/* 1행: 스텝 정보 */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                      <Tag style={{ fontSize: 10, margin: 0, minWidth: 20, textAlign: 'center' }}>{sid}</Tag>
+                                      <span style={{ flex: 1, color: hasSJ ? '#d89614' : '#000' }}>{step.description || `(${step.type || 'step'})`}</span>
+                                      {hasSJ && <BranchesOutlined style={{ color: '#d89614', fontSize: 10 }} />}
+                                    </div>
+                                    {/* 2행: P/F/Reset */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 26, marginTop: 3, flexWrap: 'wrap' }}>
+                                      {renderJumpRow('P→', '#52c41a', sj.on_pass_goto, sj.on_fail_goto,
+                                        (pg, fg) => updateGroupStepJumps(gName, idx, sid, pg, fg), 'pass')}
+                                      {renderJumpRow('F→', '#ff4d4f', sj.on_pass_goto, sj.on_fail_goto,
+                                        (pg, fg) => updateGroupStepJumps(gName, idx, sid, pg, fg), 'fail')}
+                                      {hasSJ && (
+                                        <Button size="small" type="link" danger style={{ fontSize: 10, padding: 0 }}
+                                          icon={<ClearOutlined />}
+                                          onClick={() => updateGroupStepJumps(gName, idx, sid, null, null)}
+                                        >{t('scenario.reset')}</Button>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </List.Item>
+                      );
                     }}
-                    style={{
-                      cursor: 'pointer',
-                      padding: '6px 12px',
-                      background: playing && currentGroupScenario === m.name
-                        ? 'rgba(22,119,255,0.25)'
-                        : selectedName === m.name ? 'rgba(22,119,255,0.12)' : undefined,
-                      borderRadius: 4,
-                      borderLeft: playing && currentGroupScenario === m.name ? '3px solid #1677ff' : '3px solid transparent',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
-                      <Tag color={playing && currentGroupScenario === m.name ? 'processing' : undefined} style={{ margin: 0 }}>{idx + 1}</Tag>
-                      <FileOutlined />
-                      <span style={{ flex: 1, fontWeight: (selectedName === m.name || (playing && currentGroupScenario === m.name)) ? 600 : 400, color: playing && currentGroupScenario === m.name ? '#1677ff' : undefined }}>{m.name}</span>
-                      {playing && currentGroupScenario === m.name && <Tag color="blue" style={{ margin: 0, fontSize: 10 }}>▶</Tag>}
-                    </div>
-                  </List.Item>
-                )}
-              />
+                  />
+                );
+              })()}
             </div>
           ) : (
             /* 미리보기: 스텝 편집 테이블 */
@@ -2172,7 +2394,7 @@ export default function ScenarioPage() {
                 const children = items.filter(g => g in groups).map(gName => ({
                   key: `group:${gName}`,
                   isLeaf: true,
-                  icon: <FolderOutlined />,
+                  icon: <GroupIcon />,
                   title: renderGroupNodeTitle(gName, groups[gName] || []),
                 }));
                 groupTreeData.push({
