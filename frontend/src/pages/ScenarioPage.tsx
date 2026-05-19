@@ -1661,14 +1661,22 @@ export default function ScenarioPage() {
             }
 
             const onSelect: TreeProps['onSelect'] = (keys, info) => {
-              // 시나리오 키만 추출하여 다중 선택 목록 갱신 (Ctrl/Shift 클릭 지원)
-              const scenarioNames = keys
-                .filter(k => String(k).startsWith('scenario:'))
-                .map(k => String(k).replace('scenario:', ''));
+              // Ctrl/Shift/Meta(맥) 수정 키가 눌렸는지 확인
+              const ne = (info as any).nativeEvent as MouseEvent | undefined;
+              const isModifier = !!(ne && (ne.ctrlKey || ne.metaKey || ne.shiftKey));
+
+              const clickedKey = String(info.node.key);
+
+              // 일반 클릭: 다중 선택을 해제하고 클릭한 항목만 선택
+              // Ctrl/Shift 클릭: AntD가 계산한 keys 그대로 사용 (다중 선택 누적)
+              const finalKeys = isModifier ? keys.map(k => String(k)) : [clickedKey];
+
+              const scenarioNames = finalKeys
+                .filter(k => k.startsWith('scenario:'))
+                .map(k => k.replace('scenario:', ''));
               setMultiSelectedNames(scenarioNames);
 
-              // 미리보기 대상은 가장 최근 클릭한 노드 (info.node)
-              const clickedKey = String(info.node.key);
+              // 미리보기 대상은 가장 최근 클릭한 노드
               if (clickedKey.startsWith('scenario:')) {
                 const name = clickedKey.replace('scenario:', '');
                 setSelectedName(name);
