@@ -1561,40 +1561,74 @@ export default function ScenarioPage() {
         />
 
         {selectedGroup === '__groups__' ? (
-          /* ===== 그룹 리스트 ===== */
-          <List
-            size="small"
-            dataSource={Object.entries(groups)}
-            style={{ overflow: 'auto' }}
-            locale={{ emptyText: t('scenario.noGroups') }}
-            renderItem={([gName, members]) => {
+          /* ===== 그룹 트리 (폴더 + 그룹) ===== */
+          (() => {
+            // 그룹 노드 title (재생 버튼 포함)
+            const renderGroupTitle = (gName: string) => {
+              const members = groups[gName] || [];
               const validCount = members.filter((m) => scenarios.includes(m.name)).length;
               return (
-                <List.Item
-                  onClick={() => { setSelectedGroup(gName); }}
-                  style={{
-                    cursor: 'pointer',
-                    padding: '6px 12px',
-                    borderRadius: 4,
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
-                    <FolderOutlined style={{ color: '#1677ff' }} />
-                    <span style={{ flex: 1, fontWeight: 500 }}>{gName}</span>
-                    <Tag color="blue">{validCount}</Tag>
-                    {validCount > 0 && !playing && (
-                      <Tooltip title={t('scenario.playGroupAll', { name: gName })}>
-                        <PlayCircleOutlined
-                          onClick={(e) => { e.stopPropagation(); playGroup(gName); }}
-                          style={{ color: '#1677ff' }}
-                        />
-                      </Tooltip>
-                    )}
-                  </div>
-                </List.Item>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
+                  <span style={{ flex: 1, fontWeight: 500 }}>{gName}</span>
+                  <Tag color="blue" style={{ margin: 0 }}>{validCount}</Tag>
+                  {validCount > 0 && !playing && (
+                    <Tooltip title={t('scenario.playGroupAll', { name: gName })}>
+                      <PlayCircleOutlined
+                        onClick={(e) => { e.stopPropagation(); playGroup(gName); }}
+                        style={{ color: '#1677ff' }}
+                      />
+                    </Tooltip>
+                  )}
+                </div>
               );
-            }}
-          />
+            };
+
+            // 트리 데이터 — 폴더 노드 (자식 그룹) + 루트 그룹
+            const gFoldered = new Set<string>();
+            for (const items of Object.values(groupFolders)) items.forEach(g => gFoldered.add(g));
+            const treeData: any[] = [];
+            for (const [fname, items] of Object.entries(groupFolders)) {
+              const children = items.filter(g => g in groups).map(gName => ({
+                key: `group:${gName}`,
+                title: renderGroupTitle(gName),
+                icon: <FolderOutlined style={{ color: '#1677ff' }} />,
+                isLeaf: true,
+              }));
+              treeData.push({
+                key: `gfolder:${fname}`,
+                title: <span style={{ fontWeight: 500 }}>{fname} <Tag style={{ margin: 0 }}>{children.length}</Tag></span>,
+                icon: <FolderOutlined />,
+                isLeaf: false,
+                selectable: false,
+                children,
+              });
+            }
+            for (const gName of Object.keys(groups)) {
+              if (!gFoldered.has(gName)) {
+                treeData.push({
+                  key: `group:${gName}`,
+                  title: renderGroupTitle(gName),
+                  icon: <FolderOutlined style={{ color: '#1677ff' }} />,
+                  isLeaf: true,
+                });
+              }
+            }
+            return treeData.length === 0
+              ? <div style={{ textAlign: 'center', color: '#888', padding: 16 }}>{t('scenario.noGroups')}</div>
+              : (
+                <Tree
+                  treeData={treeData}
+                  blockNode
+                  showIcon
+                  defaultExpandAll
+                  selectedKeys={[]}
+                  onSelect={(keys) => {
+                    const k = String(keys[0] || '');
+                    if (k.startsWith('group:')) setSelectedGroup(k.replace('group:', ''));
+                  }}
+                />
+              );
+          })()
         ) : selectedGroup && selectedGroup !== '__all__' ? (
           /* ===== 그룹 상세 (멤버 목록 + 재생) ===== */
           <>
