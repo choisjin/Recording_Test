@@ -138,6 +138,12 @@ export const scenarioApi = {
   renameFolder: (oldName: string, newName: string) => api.post('/scenario/folders/rename', { old_name: oldName, new_name: newName }),
   deleteFolder: (name: string) => api.post('/scenario/folders/delete', { name }),
   moveToFolder: (scenarioName: string, folderName: string | null) => api.post('/scenario/folders/move', { scenario_name: scenarioName, folder_name: folderName }),
+  // Group Folders (그룹을 폴더로 묶기)
+  getGroupFolders: () => api.get('/scenario/group-folders'),
+  createGroupFolder: (name: string) => api.post('/scenario/group-folders/create', { name }),
+  renameGroupFolder: (oldName: string, newName: string) => api.post('/scenario/group-folders/rename', { old_name: oldName, new_name: newName }),
+  deleteGroupFolder: (name: string) => api.post('/scenario/group-folders/delete', { name }),
+  moveGroupToFolder: (groupName: string, folderName: string | null) => api.post('/scenario/group-folders/move', { group_name: groupName, folder_name: folderName }),
   // Groups
   getGroups: () => api.get('/scenario/groups'),
   createGroup: (name: string) => api.post('/scenario/groups', { name }),

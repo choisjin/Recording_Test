@@ -987,6 +987,50 @@ async def move_to_folder(req: FolderMoveRequest):
 
 
 # ------------------------------------------------------------------
+# Group Folders (그룹을 폴더로 묶기)
+# ------------------------------------------------------------------
+
+class GroupFolderMoveRequest(BaseModel):
+    group_name: str
+    folder_name: Optional[str] = None  # None = 루트
+
+
+@router.get("/group-folders")
+async def get_group_folders():
+    return {"folders": recording_svc.get_group_folders()}
+
+
+@router.post("/group-folders/create")
+async def create_group_folder(req: FolderRequest):
+    try:
+        folders = recording_svc.create_group_folder(req.name)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"folders": folders}
+
+
+@router.post("/group-folders/rename")
+async def rename_group_folder(req: FolderRenameRequest):
+    try:
+        folders = recording_svc.rename_group_folder(req.old_name, req.new_name)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"folders": folders}
+
+
+@router.post("/group-folders/delete")
+async def delete_group_folder(req: FolderRequest):
+    folders = recording_svc.delete_group_folder(req.name)
+    return {"folders": folders}
+
+
+@router.post("/group-folders/move")
+async def move_group_to_folder(req: GroupFolderMoveRequest):
+    folders = recording_svc.move_group_to_folder(req.group_name, req.folder_name)
+    return {"folders": folders}
+
+
+# ------------------------------------------------------------------
 # Groups
 # ------------------------------------------------------------------
 

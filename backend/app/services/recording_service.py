@@ -91,6 +91,7 @@ def _build_ctor_kwargs(dev) -> dict | None:
     return None
 GROUPS_FILE = SCENARIOS_DIR / "groups.json"
 FOLDERS_FILE = SCENARIOS_DIR / "folders.json"
+GROUP_FOLDERS_FILE = SCENARIOS_DIR / "group_folders.json"
 
 
 class RecordingService:
@@ -288,7 +289,7 @@ class RecordingService:
     async def list_scenarios(self) -> list[str]:
         """List all saved scenario names."""
         SCENARIOS_DIR.mkdir(parents=True, exist_ok=True)
-        return [p.stem for p in SCENARIOS_DIR.glob("*.json") if p.name not in ("groups.json", "folders.json")]
+        return [p.stem for p in SCENARIOS_DIR.glob("*.json") if p.name not in ("groups.json", "folders.json", "group_folders.json")]
 
     async def delete_scenario(self, name: str) -> bool:
         """Delete a scenario file + screenshots folder."""
@@ -414,7 +415,7 @@ class RecordingService:
     def get_folders(self) -> dict[str, list[str]]:
         folders = self._load_folders()
         # 유령 항목(존재하지 않는 시나리오) 자동 정리
-        existing = {p.stem for p in SCENARIOS_DIR.glob("*.json") if p.name not in ("groups.json", "folders.json")}
+        existing = {p.stem for p in SCENARIOS_DIR.glob("*.json") if p.name not in ("groups.json", "folders.json", "group_folders.json")}
         changed = False
         for fname in list(folders.keys()):
             before = len(folders[fname])
@@ -460,6 +461,71 @@ class RecordingService:
             if scenario_name not in folders[folder_name]:
                 folders[folder_name].append(scenario_name)
         self._save_folders(folders)
+        return folders
+
+    # ------------------------------------------------------------------
+    # Group Folders (시나리오 폴더와 동일 구조 — 그룹을 폴더로 묶기)
+    # ------------------------------------------------------------------
+
+    def _load_group_folders(self) -> dict[str, list[str]]:
+        """Load group folder assignments. {folder_name: [group_name, ...]}"""
+        SCENARIOS_DIR.mkdir(parents=True, exist_ok=True)
+        if GROUP_FOLDERS_FILE.exists():
+            return json.loads(GROUP_FOLDERS_FILE.read_text(encoding="utf-8"))
+        return {}
+
+    def _save_group_folders(self, folders: dict[str, list[str]]) -> None:
+        SCENARIOS_DIR.mkdir(parents=True, exist_ok=True)
+        GROUP_FOLDERS_FILE.write_text(json.dumps(folders, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def get_group_folders(self) -> dict[str, list[str]]:
+        """그룹 폴더 조회. 존재하지 않는 그룹은 자동 제거."""
+        folders = self._load_group_folders()
+        existing = set(self.get_groups().keys())
+        changed = False
+        for fname in list(folders.keys()):
+            before = len(folders[fname])
+            folders[fname] = [g for g in folders[fname] if g in existing]
+            if len(folders[fname]) < before:
+                changed = True
+        if changed:
+            self._save_group_folders(folders)
+        return folders
+
+    def create_group_folder(self, name: str) -> dict[str, list[str]]:
+        folders = self._load_group_folders()
+        if name in folders:
+            raise ValueError(f"그룹 폴더 '{name}'이(가) 이미 존재합니다")
+        folders[name] = []
+        self._save_group_folders(folders)
+        return folders
+
+    def rename_group_folder(self, old_name: str, new_name: str) -> dict[str, list[str]]:
+        folders = self._load_group_folders()
+        if new_name in folders:
+            raise ValueError(f"그룹 폴더 '{new_name}'이(가) 이미 존재합니다")
+        if old_name in folders:
+            folders[new_name] = folders.pop(old_name)
+        self._save_group_folders(folders)
+        return folders
+
+    def delete_group_folder(self, name: str) -> dict[str, list[str]]:
+        """폴더만 제거 — 그룹 자체는 삭제하지 않음 (루트로 이동)."""
+        folders = self._load_group_folders()
+        folders.pop(name, None)
+        self._save_group_folders(folders)
+        return folders
+
+    def move_group_to_folder(self, group_name: str, folder_name: str | None) -> dict[str, list[str]]:
+        """그룹을 폴더로 이동. folder_name=None이면 루트로."""
+        folders = self._load_group_folders()
+        for items in folders.values():
+            if group_name in items:
+                items.remove(group_name)
+        if folder_name and folder_name in folders:
+            if group_name not in folders[folder_name]:
+                folders[folder_name].append(group_name)
+        self._save_group_folders(folders)
         return folders
 
     # ------------------------------------------------------------------

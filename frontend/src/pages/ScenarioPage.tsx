@@ -207,6 +207,8 @@ export default function ScenarioPage() {
   // selectedName(단일, 미리보기용)과 분리하여 관리: 다중 선택 시에도 마지막 클릭한 항목으로 미리보기 가능.
   const [multiSelectedNames, setMultiSelectedNames] = useState<string[]>([]);
   const [folders, setFolders] = useState<Record<string, string[]>>({});
+  // 그룹 폴더 — { folderName: [groupName, ...] }
+  const [groupFolders, setGroupFolders] = useState<Record<string, string[]>>({});
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; type: 'folder' | 'scenario'; name: string } | null>(null);
   const [colWidths, setColWidths] = useState<Record<string, number>>({});
   const getRepeatCount = (name: string) => repeatCounts[name] ?? 1;
@@ -355,6 +357,8 @@ export default function ScenarioPage() {
   const modalTreeAnchorRef = useRef<string | null>(null);
   // 그룹 트리에서 선택되어 우측 상세 패널에 표시 중인 그룹명
   const [selectedGroupForDetail, setSelectedGroupForDetail] = useState<string | null>(null);
+  // 그룹 트리 컨텍스트 메뉴 (gfolder = 그룹 폴더, group = 그룹 자체)
+  const [groupCtxMenu, setGroupCtxMenu] = useState<{ x: number; y: number; type: 'gfolder' | 'group'; name: string } | null>(null);
 
   // Copy
   const [copyName, setCopyName] = useState('');
@@ -426,6 +430,13 @@ export default function ScenarioPage() {
     } catch { /* ignore */ }
   };
 
+  const fetchGroupFolders = async () => {
+    try {
+      const res = await scenarioApi.getGroupFolders();
+      setGroupFolders(res.data.folders || {});
+    } catch { /* ignore */ }
+  };
+
   const fetchGroups = async () => {
     try {
       const res = await scenarioApi.getGroups();
@@ -466,12 +477,14 @@ export default function ScenarioPage() {
     fetchScenarios();
     fetchFolders();
     fetchGroups();
+    fetchGroupFolders();
 
     const onTabChange = (e: Event) => {
       if ((e as CustomEvent).detail === '/scenarios') {
         fetchScenarios();
         fetchFolders();
         fetchGroups();
+        fetchGroupFolders();
         if (selectedNameRef.current) {
           scenarioApi.get(selectedNameRef.current).then(res => {
             setPreviewSteps(res.data.steps || []);
@@ -666,6 +679,8 @@ export default function ScenarioPage() {
           const res = await scenarioApi.deleteGroup(gName);
           setGroups(res.data.groups);
           if (selectedGroup === gName) setSelectedGroup(null);
+          // 그룹 폴더에서 stale 항목 자동 정리 (백엔드 get_group_folders가 prune)
+          fetchGroupFolders();
           message.success(t('scenario.groupDeleteSuccess'));
         } catch { message.error(t('scenario.groupDeleteFailed')); }
       },
@@ -2060,63 +2075,208 @@ export default function ScenarioPage() {
         </Space>
         <Splitter style={{ flex: 1, minHeight: 0 }}>
           <Splitter.Panel defaultSize="22%" min="15%" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingRight: 6 }}>
-            {/* ───── 좌측: 그룹 트리 ───── */}
-            <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>{t('scenario.groupTree') || '그룹'}</div>
-            <div style={{ flex: 1, overflow: 'auto', border: '1px solid #303030', borderRadius: 4, padding: 4 }}>
-              <Tree
-                treeData={Object.entries(groups).map(([gName, members]) => ({
+            {/* ───── 좌측: 그룹 트리 (폴더 지원) ───── */}
+            {(() => {
+              // 폴더에 속한 그룹 Set
+              const gFoldered = new Set<string>();
+              for (const items of Object.values(groupFolders)) items.forEach(g => gFoldered.add(g));
+
+              // 그룹 노드 title 생성기 — 시나리오 드롭 가능 + 헤더 표시
+              const renderGroupNodeTitle = (gName: string, members: any[]) => (
+                <div
+                  onDragOver={(e) => {
+                    if (!e.dataTransfer.types.includes('application/x-scenario-names')) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'copy';
+                    if (groupDropHover !== gName) setGroupDropHover(gName);
+                  }}
+                  onDragLeave={(e) => {
+                    if ((e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) return;
+                    if (groupDropHover === gName) setGroupDropHover(null);
+                  }}
+                  onDrop={async (e) => {
+                    if (!e.dataTransfer.types.includes('application/x-scenario-names')) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setGroupDropHover(null);
+                    try {
+                      const raw = e.dataTransfer.getData('application/x-scenario-names');
+                      const names: string[] = JSON.parse(raw || '[]');
+                      for (const n of names) await addToGroup(gName, n);
+                      setSelectedGroupForDetail(gName);
+                    } catch { /* ignore */ }
+                  }}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    padding: '0 4px', borderRadius: 4,
+                    background: groupDropHover === gName ? 'rgba(22,119,255,0.18)' : undefined,
+                    border: groupDropHover === gName ? '1px dashed #1677ff' : '1px dashed transparent',
+                  }}
+                >
+                  <span style={{ fontWeight: selectedGroupForDetail === gName ? 600 : 400 }}>{gName}</span>
+                  <Tag style={{ margin: 0 }}>{members.length}</Tag>
+                </div>
+              );
+
+              // 트리 데이터: 폴더 노드 (자식으로 그룹) + 루트 그룹
+              const groupTreeData: any[] = [];
+              for (const [fname, items] of Object.entries(groupFolders)) {
+                const children = items.filter(g => g in groups).map(gName => ({
                   key: `group:${gName}`,
                   isLeaf: true,
                   icon: <FolderOutlined />,
-                  title: (
-                    <div
-                      onDragOver={(e) => {
-                        if (!e.dataTransfer.types.includes('application/x-scenario-names')) return;
-                        e.preventDefault();
-                        e.dataTransfer.dropEffect = 'copy';
-                        if (groupDropHover !== gName) setGroupDropHover(gName);
+                  title: renderGroupNodeTitle(gName, groups[gName] || []),
+                }));
+                groupTreeData.push({
+                  key: `gfolder:${fname}`,
+                  title: `${fname} (${children.length})`,
+                  icon: <FolderOutlined />,
+                  isLeaf: false,
+                  selectable: false,
+                  children,
+                });
+              }
+              for (const gName of Object.keys(groups)) {
+                if (!gFoldered.has(gName)) {
+                  groupTreeData.push({
+                    key: `group:${gName}`,
+                    isLeaf: true,
+                    icon: <FolderOutlined />,
+                    title: renderGroupNodeTitle(gName, groups[gName] || []),
+                  });
+                }
+              }
+
+              // 컨텍스트 메뉴 항목
+              const ctxItems = groupCtxMenu ? (
+                groupCtxMenu.type === 'gfolder' ? [
+                  { key: 'rename', label: t('common.rename'), onClick: () => {
+                    const newName = prompt(t('scenario.folderName') || '폴더 이름', groupCtxMenu.name);
+                    if (newName && newName !== groupCtxMenu.name) {
+                      scenarioApi.renameGroupFolder(groupCtxMenu.name, newName)
+                        .then(res => setGroupFolders(res.data.folders || {}))
+                        .catch((e: any) => message.error(e?.response?.data?.detail || 'Failed'));
+                    }
+                    setGroupCtxMenu(null);
+                  }},
+                  { key: 'delete', label: t('common.delete'), danger: true, onClick: () => {
+                    scenarioApi.deleteGroupFolder(groupCtxMenu.name)
+                      .then(res => setGroupFolders(res.data.folders || {}))
+                      .catch(() => {});
+                    setGroupCtxMenu(null);
+                  }},
+                ] : [
+                  { key: 'rename', label: t('common.rename'), onClick: () => {
+                    const newName = prompt(t('common.rename') || '이름 변경', groupCtxMenu.name);
+                    if (newName && newName !== groupCtxMenu.name) {
+                      scenarioApi.renameGroup(groupCtxMenu.name, newName).then(() => {
+                        fetchGroups();
+                        fetchGroupFolders();
+                        if (selectedGroupForDetail === groupCtxMenu.name) setSelectedGroupForDetail(newName);
+                      }).catch((e: any) => message.error(e?.response?.data?.detail || 'Failed'));
+                    }
+                    setGroupCtxMenu(null);
+                  }},
+                  { key: 'moveRoot', label: t('scenario.moveToRoot'), onClick: () => {
+                    scenarioApi.moveGroupToFolder(groupCtxMenu.name, null)
+                      .then(res => setGroupFolders(res.data.folders || {}));
+                    setGroupCtxMenu(null);
+                  }},
+                  ...Object.keys(groupFolders).map(fn => ({
+                    key: `move:${fn}`, label: `→ ${fn}`, onClick: () => {
+                      scenarioApi.moveGroupToFolder(groupCtxMenu.name, fn)
+                        .then(res => setGroupFolders(res.data.folders || {}));
+                      setGroupCtxMenu(null);
+                    },
+                  })),
+                  { type: 'divider' as const },
+                  { key: 'delete', label: t('common.delete'), danger: true, onClick: () => {
+                    const name = groupCtxMenu.name;
+                    Modal.confirm({
+                      title: t('scenario.deleteTitle'),
+                      okText: t('common.delete'),
+                      okType: 'danger',
+                      cancelText: t('common.cancel'),
+                      onOk: () => {
+                        deleteGroup(name);
+                        if (selectedGroupForDetail === name) setSelectedGroupForDetail(null);
+                      },
+                    });
+                    setGroupCtxMenu(null);
+                  }},
+                ]
+              ) : [];
+
+              return (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                    <span style={{ fontSize: 11, color: '#888', flex: 1 }}>{t('scenario.groupTree') || '그룹'}</span>
+                    <Button
+                      size="small"
+                      icon={<FolderAddOutlined />}
+                      onClick={() => {
+                        const name = prompt(t('scenario.folderName') || '폴더 이름');
+                        if (name) {
+                          scenarioApi.createGroupFolder(name)
+                            .then(res => setGroupFolders(res.data.folders || {}))
+                            .catch((e: any) => message.error(e?.response?.data?.detail || 'Failed'));
+                        }
                       }}
-                      onDragLeave={(e) => {
-                        if ((e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) return;
-                        if (groupDropHover === gName) setGroupDropHover(null);
-                      }}
-                      onDrop={async (e) => {
-                        if (!e.dataTransfer.types.includes('application/x-scenario-names')) return;
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setGroupDropHover(null);
-                        try {
-                          const raw = e.dataTransfer.getData('application/x-scenario-names');
-                          const names: string[] = JSON.parse(raw || '[]');
-                          for (const n of names) await addToGroup(gName, n);
-                          setSelectedGroupForDetail(gName);
-                        } catch { /* ignore */ }
-                      }}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 5,
-                        padding: '0 4px',
-                        borderRadius: 4,
-                        background: groupDropHover === gName ? 'rgba(22,119,255,0.18)' : undefined,
-                        border: groupDropHover === gName ? '1px dashed #1677ff' : '1px dashed transparent',
-                      }}
-                    >
-                      <span style={{ fontWeight: selectedGroupForDetail === gName ? 600 : 400 }}>{gName}</span>
-                      <Tag style={{ margin: 0 }}>{members.length}</Tag>
+                    >{t('scenario.newFolder') || '새 폴더'}</Button>
+                  </div>
+                  <Dropdown
+                    menu={{ items: ctxItems }}
+                    open={!!groupCtxMenu}
+                    onOpenChange={(v) => { if (!v) setGroupCtxMenu(null); }}
+                    trigger={['contextMenu']}
+                  >
+                    <div style={{ flex: 1, overflow: 'auto', border: '1px solid #303030', borderRadius: 4, padding: 4 }} onContextMenu={(e) => { if (!groupCtxMenu) e.preventDefault(); }}>
+                      <Tree
+                        treeData={groupTreeData}
+                        selectedKeys={selectedGroupForDetail ? [`group:${selectedGroupForDetail}`] : []}
+                        onSelect={(keys) => {
+                          const k = String(keys[0] || '');
+                          setSelectedGroupForDetail(k.startsWith('group:') ? k.replace('group:', '') : null);
+                        }}
+                        draggable={{ icon: false, nodeDraggable: (node: any) => String(node.key).startsWith('group:') }}
+                        onDrop={(info: any) => {
+                          const dragKey = String(info.dragNode.key);
+                          if (!dragKey.startsWith('group:')) return;
+                          const groupName = dragKey.replace('group:', '');
+                          const dropKey = String(info.node.key);
+                          let targetFolder: string | null = null;
+                          if (dropKey.startsWith('gfolder:')) {
+                            targetFolder = dropKey.replace('gfolder:', '');
+                          } else if (dropKey.startsWith('group:')) {
+                            // 다른 그룹 위에 떨어뜨림 — 해당 그룹이 속한 폴더와 동일 폴더로 이동
+                            const targetName = dropKey.replace('group:', '');
+                            for (const [fname, items] of Object.entries(groupFolders)) {
+                              if (items.includes(targetName)) { targetFolder = fname; break; }
+                            }
+                          }
+                          scenarioApi.moveGroupToFolder(groupName, targetFolder)
+                            .then(res => setGroupFolders(res.data.folders || {}))
+                            .catch(() => {});
+                        }}
+                        onRightClick={({ event, node }: any) => {
+                          event.preventDefault();
+                          const key = String(node.key);
+                          if (key.startsWith('gfolder:')) {
+                            setGroupCtxMenu({ x: event.clientX, y: event.clientY, type: 'gfolder', name: key.replace('gfolder:', '') });
+                          } else if (key.startsWith('group:')) {
+                            setGroupCtxMenu({ x: event.clientX, y: event.clientY, type: 'group', name: key.replace('group:', '') });
+                          }
+                        }}
+                        blockNode
+                        showIcon
+                        defaultExpandAll
+                      />
+                      {Object.keys(groups).length === 0 && <div style={{ textAlign: 'center', color: '#888', padding: 16 }}>{t('scenario.noGroups')}</div>}
                     </div>
-                  ),
-                }))}
-                selectedKeys={selectedGroupForDetail ? [`group:${selectedGroupForDetail}`] : []}
-                onSelect={(keys) => {
-                  const k = String(keys[0] || '');
-                  setSelectedGroupForDetail(k.startsWith('group:') ? k.replace('group:', '') : null);
-                }}
-                blockNode
-                showIcon
-              />
-              {Object.keys(groups).length === 0 && <div style={{ textAlign: 'center', color: '#888', padding: 16 }}>{t('scenario.noGroups')}</div>}
-            </div>
+                  </Dropdown>
+                </>
+              );
+            })()}
           </Splitter.Panel>
           <Splitter.Panel defaultSize="30%" min="18%" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingLeft: 6, paddingRight: 6 }}>
             {(() => {
