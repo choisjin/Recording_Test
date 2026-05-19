@@ -203,6 +203,9 @@ export default function ScenarioPage() {
   const [currentIteration, setCurrentIteration] = useState(1);
   const [totalIterations, setTotalIterations] = useState(1);
   const [selectedName, setSelectedName] = useState<string | null>(null);
+  // 트리에서 Ctrl/Shift 다중 선택된 시나리오 이름 목록 (드래그&드롭 다중 이동용).
+  // selectedName(단일, 미리보기용)과 분리하여 관리: 다중 선택 시에도 마지막 클릭한 항목으로 미리보기 가능.
+  const [multiSelectedNames, setMultiSelectedNames] = useState<string[]>([]);
   const [folders, setFolders] = useState<Record<string, string[]>>({});
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; type: 'folder' | 'scenario'; name: string } | null>(null);
   const [groupAddFolder, setGroupAddFolder] = useState<Record<string, string>>({});
@@ -488,6 +491,7 @@ export default function ScenarioPage() {
           await scenarioApi.delete(name);
           message.success(t('common.deleteComplete'));
           if (selectedName === name) setSelectedName(null);
+          setMultiSelectedNames(prev => prev.filter(n => n !== name));
           fetchScenarios();
           fetchGroups();
         } catch { message.error(t('common.deleteFailed')); }
@@ -508,10 +512,13 @@ export default function ScenarioPage() {
       return;
     }
     try {
-      await scenarioApi.rename(selectedName, renameNewName.trim());
+      const oldName = selectedName;
+      const newName = renameNewName.trim();
+      await scenarioApi.rename(oldName, newName);
       message.success(t('scenario.renameSuccess'));
       setRenameModalVisible(false);
-      setSelectedName(renameNewName.trim());
+      setSelectedName(newName);
+      setMultiSelectedNames(prev => prev.map(n => n === oldName ? newName : n));
       fetchScenarios();
     } catch (e: any) {
       message.error(e.response?.data?.detail || t('scenario.renameFailed'));
@@ -1653,23 +1660,57 @@ export default function ScenarioPage() {
               }
             }
 
-            const onSelect: TreeProps['onSelect'] = (keys) => {
-              if (keys.length === 0) { setSelectedName(null); return; }
-              const key = keys[0] as string;
-              if (key.startsWith('scenario:')) {
-                const name = key.replace('scenario:', '');
+            const onSelect: TreeProps['onSelect'] = (keys, info) => {
+              // 시나리오 키만 추출하여 다중 선택 목록 갱신 (Ctrl/Shift 클릭 지원)
+              const scenarioNames = keys
+                .filter(k => String(k).startsWith('scenario:'))
+                .map(k => String(k).replace('scenario:', ''));
+              setMultiSelectedNames(scenarioNames);
+
+              // 미리보기 대상은 가장 최근 클릭한 노드 (info.node)
+              const clickedKey = String(info.node.key);
+              if (clickedKey.startsWith('scenario:')) {
+                const name = clickedKey.replace('scenario:', '');
                 setSelectedName(name);
                 if (!playing) { setStepResults([]); setPlaybackScenario(null); }
+              } else if (scenarioNames.length === 0) {
+                setSelectedName(null);
               }
             };
 
-            const onDrop: TreeProps['onDrop'] = (info) => {
+            const onDrop: TreeProps['onDrop'] = async (info) => {
               const dragKey = info.dragNode.key as string;
               if (!dragKey.startsWith('scenario:')) return;
-              const scenarioName = dragKey.replace('scenario:', '');
+              const draggedName = dragKey.replace('scenario:', '');
               const dropKey = (info.node.key as string);
               const folderName = dropKey.startsWith('folder:') ? dropKey.replace('folder:', '') : null;
-              scenarioApi.moveToFolder(scenarioName, folderName).then(res => setFolders(res.data.folders)).catch(() => {});
+
+              // 드래그한 항목이 다중 선택에 포함되어 있고 2개 이상이면 전체 이동, 아니면 단일 이동.
+              // (선택되지 않은 항목을 드래그한 경우는 그 항목만 이동 — 일반적인 파일 탐색기 UX)
+              const targets = (multiSelectedNames.includes(draggedName) && multiSelectedNames.length > 1)
+                ? multiSelectedNames
+                : [draggedName];
+
+              try {
+                // 백엔드 move_to_folder는 단건 처리만 지원 → 병렬 호출 후 최종 상태 재조회
+                const results = await Promise.all(
+                  targets.map(n => scenarioApi.moveToFolder(n, folderName).catch(e => ({ error: e, name: n })))
+                );
+                const failed = results.filter((r: any) => r && r.error);
+                if (failed.length === 0) {
+                  // 마지막 응답의 folders로 갱신 (전체 일관성 보장 위해 한 번만 setFolders)
+                  const last = results[results.length - 1] as any;
+                  if (last?.data?.folders) setFolders(last.data.folders);
+                  if (targets.length > 1) {
+                    message.success(t('scenario.moveMultiSuccess', { count: targets.length }));
+                  }
+                } else {
+                  message.error(`${failed.length}/${targets.length} ${t('scenario.moveFailed') || 'move failed'}`);
+                  fetchFolders();
+                }
+              } catch {
+                fetchFolders();
+              }
             };
 
             const onRightClick = ({ event, node }: any) => {
@@ -1704,8 +1745,10 @@ export default function ScenarioPage() {
                 { key: 'rename', label: t('common.rename'), onClick: () => {
                   const newName = prompt(t('common.rename'), contextMenu.name);
                   if (newName && newName !== contextMenu.name) {
-                    scenarioApi.rename(contextMenu.name, newName).then(() => { fetchScenarios(); fetchFolders(); });
-                    if (selectedName === contextMenu.name) setSelectedName(newName);
+                    const oldName = contextMenu.name;
+                    scenarioApi.rename(oldName, newName).then(() => { fetchScenarios(); fetchFolders(); });
+                    if (selectedName === oldName) setSelectedName(newName);
+                    setMultiSelectedNames(prev => prev.map(n => n === oldName ? newName : n));
                   }
                   setContextMenu(null);
                 }},
@@ -1721,9 +1764,14 @@ export default function ScenarioPage() {
                 })),
                 { type: 'divider' as const },
                 { key: 'delete', label: t('common.delete'), danger: true, onClick: () => {
+                  const targetName = contextMenu.name;
                   Modal.confirm({
                     title: t('scenario.deleteTitle'), okText: t('common.delete'), okType: 'danger', cancelText: t('common.cancel'),
-                    onOk: () => { scenarioApi.delete(contextMenu.name).then(() => { fetchScenarios(); fetchFolders(); }); if (selectedName === contextMenu.name) setSelectedName(null); },
+                    onOk: () => {
+                      scenarioApi.delete(targetName).then(() => { fetchScenarios(); fetchFolders(); });
+                      if (selectedName === targetName) setSelectedName(null);
+                      setMultiSelectedNames(prev => prev.filter(n => n !== targetName));
+                    },
                   });
                   setContextMenu(null);
                 }},
@@ -1747,7 +1795,12 @@ export default function ScenarioPage() {
                   <div style={{ flex: 1, overflow: 'auto' }} onContextMenu={(e) => { if (!contextMenu) e.preventDefault(); }}>
                     <Tree
                       treeData={treeData}
-                      selectedKeys={selectedName ? [`scenario:${selectedName}`] : []}
+                      multiple
+                      selectedKeys={
+                        multiSelectedNames.length > 0
+                          ? multiSelectedNames.map(n => `scenario:${n}`)
+                          : (selectedName ? [`scenario:${selectedName}`] : [])
+                      }
                       onSelect={onSelect}
                       draggable
                       onDrop={onDrop}
