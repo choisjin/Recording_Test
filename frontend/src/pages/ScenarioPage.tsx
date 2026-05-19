@@ -1778,14 +1778,16 @@ export default function ScenarioPage() {
       `}</style>
 
       {/* ===== 스텝 패널 (미리보기 + 재생 통합) ===== */}
-      {(selectedName && previewSteps.length > 0) || ((playing || stepResults.length > 0) && playbackScenario) ? (
+      {(selectedName && previewSteps.length > 0) || playing || ((stepResults.length > 0) && playbackScenario) ? (
         <Card
           size="small"
           style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
           title={
-            (playing || stepResults.length > 0) && playbackScenario ? (
+            // 재생 중에는 트리 선택 변경의 영향을 받지 않도록 항상 재생 분기로 진입하고
+            // 타이틀 텍스트도 안정된 playingName(재생 시작 시 캡처, group은 WS로 갱신)을 우선 사용
+            playing || (stepResults.length > 0 && playbackScenario) ? (
               <Space size={4} wrap>
-                <span>{t('scenario.play')}: {playingGroupName ? `[${playingGroupName}]` : ''} {currentGroupScenario || playbackScenario.name}</span>
+                <span>{t('scenario.play')}: {playingGroupName ? `[${playingGroupName}]` : ''} {currentGroupScenario || playingName || playbackScenario?.name || ''}</span>
                 {playingGroupName && groupScenarioTotal > 0 && <Tag color="cyan">{groupScenarioIndex}/{groupScenarioTotal} {t('scenario.title')}</Tag>}
                 {totalIterations > 1 && <Tag color="purple">{currentIteration} / {totalIterations}{t('scenario.times')}</Tag>}
                 {playing && !paused && <Tag color="processing">{t('scenario.inProgress')}</Tag>}
