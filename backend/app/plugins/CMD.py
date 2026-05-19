@@ -45,13 +45,13 @@ class CMD:
         except Exception as e:
             return f"ERROR: {e}"
 
-    def Check(self, command: str, expected: str, match_mode: str = "contains", timeout: int = 30) -> str:
+    def Check(self, command: str, expected: str = "", match_mode: str = "contains", timeout: int = 30) -> str:
         """명령어를 실행하고 출력 결과를 기대값과 비교 (블로킹).
 
         Args:
             command: 실행할 명령어
             expected: 기대값 (출력에 포함되거나 완전히 일치해야 하는 문자열).
-                      비어있으면 "리턴값이 없을 때만 pass"로 동작 (no-output 검증).
+                      비어있으면 "리턴값이 없을 때만 pass"로 동작 (no-output 검증). 기본값: ""
             match_mode: "contains" (부분 일치) 또는 "exact" (완전 일치). 기본값: contains
             timeout: 최대 대기 시간 (초). 기본값: 30
 
