@@ -355,8 +355,10 @@ export default function ScenarioPage() {
   // 그룹 모달 트리의 폴더 필터 ('__all__' or 폴더명)
   const [modalTreeFolder, setModalTreeFolder] = useState<string>('__all__');
   const modalTreeAnchorRef = useRef<string | null>(null);
-  // 그룹 트리에서 선택되어 우측 상세 패널에 표시 중인 그룹명
+  // 그룹 트리에서 선택되어 우측 상세 패널에 표시 중인 그룹명 (모달용)
   const [selectedGroupForDetail, setSelectedGroupForDetail] = useState<string | null>(null);
+  // 메인 페이지의 우측 시나리오상세 위젯에 표시할 그룹명 (그룹 트리 선택 시)
+  const [groupShownInDetail, setGroupShownInDetail] = useState<string | null>(null);
   // 그룹 트리 컨텍스트 메뉴 (gfolder = 그룹 폴더, group = 그룹 자체)
   const [groupCtxMenu, setGroupCtxMenu] = useState<{ x: number; y: number; type: 'gfolder' | 'group'; name: string } | null>(null);
 
@@ -679,6 +681,7 @@ export default function ScenarioPage() {
           const res = await scenarioApi.deleteGroup(gName);
           setGroups(res.data.groups);
           if (selectedGroup === gName) setSelectedGroup(null);
+          if (groupShownInDetail === gName) setGroupShownInDetail(null);
           // 그룹 폴더에서 stale 항목 자동 정리 (백엔드 get_group_folders가 prune)
           fetchGroupFolders();
           message.success(t('scenario.groupDeleteSuccess'));
@@ -1561,42 +1564,21 @@ export default function ScenarioPage() {
         />
 
         {selectedGroup === '__groups__' ? (
-          /* ===== 그룹 트리 (폴더 + 그룹) ===== */
+          /* ===== 그룹 트리 (시나리오 트리와 동일 표기) ===== */
           (() => {
-            // 그룹 노드 title (재생 버튼 포함)
-            const renderGroupTitle = (gName: string) => {
-              const members = groups[gName] || [];
-              const validCount = members.filter((m) => scenarios.includes(m.name)).length;
-              return (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
-                  <span style={{ flex: 1, fontWeight: 500 }}>{gName}</span>
-                  <Tag color="blue" style={{ margin: 0 }}>{validCount}</Tag>
-                  {validCount > 0 && !playing && (
-                    <Tooltip title={t('scenario.playGroupAll', { name: gName })}>
-                      <PlayCircleOutlined
-                        onClick={(e) => { e.stopPropagation(); playGroup(gName); }}
-                        style={{ color: '#1677ff' }}
-                      />
-                    </Tooltip>
-                  )}
-                </div>
-              );
-            };
-
-            // 트리 데이터 — 폴더 노드 (자식 그룹) + 루트 그룹
             const gFoldered = new Set<string>();
             for (const items of Object.values(groupFolders)) items.forEach(g => gFoldered.add(g));
             const treeData: any[] = [];
             for (const [fname, items] of Object.entries(groupFolders)) {
               const children = items.filter(g => g in groups).map(gName => ({
                 key: `group:${gName}`,
-                title: renderGroupTitle(gName),
-                icon: <FolderOutlined style={{ color: '#1677ff' }} />,
+                title: gName,
+                icon: <FileOutlined />,
                 isLeaf: true,
               }));
               treeData.push({
                 key: `gfolder:${fname}`,
-                title: <span style={{ fontWeight: 500 }}>{fname} <Tag style={{ margin: 0 }}>{children.length}</Tag></span>,
+                title: `${fname} (${children.length})`,
                 icon: <FolderOutlined />,
                 isLeaf: false,
                 selectable: false,
@@ -1607,8 +1589,8 @@ export default function ScenarioPage() {
               if (!gFoldered.has(gName)) {
                 treeData.push({
                   key: `group:${gName}`,
-                  title: renderGroupTitle(gName),
-                  icon: <FolderOutlined style={{ color: '#1677ff' }} />,
+                  title: gName,
+                  icon: <FileOutlined />,
                   isLeaf: true,
                 });
               }
@@ -1621,71 +1603,19 @@ export default function ScenarioPage() {
                   blockNode
                   showIcon
                   defaultExpandAll
-                  selectedKeys={[]}
+                  selectedKeys={groupShownInDetail ? [`group:${groupShownInDetail}`] : []}
                   onSelect={(keys) => {
                     const k = String(keys[0] || '');
-                    if (k.startsWith('group:')) setSelectedGroup(k.replace('group:', ''));
+                    if (k.startsWith('group:')) {
+                      const gName = k.replace('group:', '');
+                      setGroupShownInDetail(gName);
+                      setSelectedName(null);
+                      if (!playing) { setStepResults([]); setPlaybackScenario(null); }
+                    }
                   }}
                 />
               );
           })()
-        ) : selectedGroup && selectedGroup !== '__all__' ? (
-          /* ===== 그룹 상세 (멤버 목록 + 재생) ===== */
-          <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-              <Button size="small" onClick={() => setSelectedGroup('__groups__')}>{t('common.back')}</Button>
-              <FolderOutlined style={{ color: '#1677ff' }} />
-              <span style={{ fontWeight: 600 }}>{selectedGroup}</span>
-              <span style={{ color: '#888', fontSize: 11 }}>({(groups[selectedGroup] || []).length})</span>
-              <span style={{ flex: 1 }} />
-              <InputNumber
-                min={1} max={999} size="small"
-                value={getRepeatCount(selectedGroup)}
-                onChange={(v) => setRepeatCount(selectedGroup, v || 1)}
-                style={{ width: 60 }}
-                disabled={playing}
-              />
-              <span style={{ fontSize: 11, color: '#888' }}>{t('scenario.times')}</span>
-              {playing && playingGroupName === selectedGroup ? (
-                <Button danger size="small" icon={<StopOutlined />} onClick={stopPlayback}>{t('scenario.stop')}</Button>
-              ) : (
-                <Button type="primary" size="small" icon={<PlayCircleOutlined />}
-                  disabled={playing}
-                  onClick={() => playGroup(selectedGroup)}
-                >
-                  {t('scenario.play')}
-                </Button>
-              )}
-            </div>
-            <List
-              size="small"
-              dataSource={(groups[selectedGroup] || []).filter((m) => scenarios.includes(m.name))}
-              style={{ overflow: 'auto' }}
-              renderItem={(m, idx) => (
-                <List.Item
-                  onClick={() => {
-                    setSelectedName(prev => prev === m.name ? null : m.name);
-                    if (!playing) { setStepResults([]); setPlaybackScenario(null); }
-                  }}
-                  style={{
-                    cursor: 'pointer',
-                    padding: '6px 12px',
-                    background: playing && currentGroupScenario === m.name
-                      ? 'rgba(22,119,255,0.25)'
-                      : selectedName === m.name ? 'rgba(22,119,255,0.12)' : undefined,
-                    borderRadius: 4,
-                    borderLeft: playing && currentGroupScenario === m.name ? '3px solid #1677ff' : '3px solid transparent',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
-                    <Tag color={playing && currentGroupScenario === m.name ? 'processing' : undefined} style={{ margin: 0 }}>{idx + 1}</Tag>
-                    <span style={{ flex: 1, fontWeight: (selectedName === m.name || (playing && currentGroupScenario === m.name)) ? 600 : 400, color: playing && currentGroupScenario === m.name ? '#1677ff' : undefined }}>{m.name}</span>
-                    {playing && currentGroupScenario === m.name && <Tag color="blue" style={{ margin: 0, fontSize: 10 }}>▶</Tag>}
-                  </div>
-                </List.Item>
-              )}
-            />
-          </>
         ) : (
           <>
           {/* ===== 트리 형식 시나리오 리스트 ===== */}
@@ -1777,6 +1707,7 @@ export default function ScenarioPage() {
               // 미리보기는 가장 최근 클릭한 시나리오 기준
               if (clickedName) {
                 setSelectedName(clickedName);
+                setGroupShownInDetail(null); // 시나리오 선택 시 우측 그룹 상세 닫기
                 if (!playing) { setStepResults([]); setPlaybackScenario(null); }
               } else if (finalScenarioNames.length === 0) {
                 setSelectedName(null);
@@ -1935,8 +1866,8 @@ export default function ScenarioPage() {
         .row-running td { background: rgba(22, 119, 255, 0.08) !important; }
       `}</style>
 
-      {/* ===== 스텝 패널 (미리보기 + 재생 통합) ===== */}
-      {(selectedName && previewSteps.length > 0) || playing || ((stepResults.length > 0) && playbackScenario) ? (
+      {/* ===== 스텝 패널 (미리보기 + 재생 + 그룹 상세 통합) ===== */}
+      {(selectedName && previewSteps.length > 0) || playing || ((stepResults.length > 0) && playbackScenario) || (groupShownInDetail && groups[groupShownInDetail]) ? (
         <Card
           size="small"
           style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
@@ -1951,6 +1882,15 @@ export default function ScenarioPage() {
                 {playing && !paused && <Tag color="processing">{t('scenario.inProgress')}</Tag>}
                 {paused && <Tag color="warning">PAUSED</Tag>}
                 {!playing && stepResults.length > 0 && <Tag color={failCount + errorCount > 0 ? 'red' : 'green'}>{t('scenario.complete')}</Tag>}
+              </Space>
+            ) : groupShownInDetail && groups[groupShownInDetail] ? (
+              <Space size={4} wrap>
+                <FolderOutlined style={{ color: '#1677ff' }} />
+                <strong>{groupShownInDetail}</strong>
+                <span style={{ fontWeight: 400 }}>— {(groups[groupShownInDetail] || []).filter(m => scenarios.includes(m.name)).length} {t('scenario.title')}</span>
+                <InputNumber min={1} max={999} size="small" value={getRepeatCount(groupShownInDetail)} onChange={(v) => setRepeatCount(groupShownInDetail!, v || 1)} style={{ width: 60 }} disabled={playing} />
+                <span style={{ fontSize: 11, fontWeight: 400 }}>{t('scenario.times')}</span>
+                <Button type="primary" size="small" icon={<PlayCircleOutlined />} disabled={playing} onClick={() => playGroup(groupShownInDetail!)}>{t('scenario.play')}</Button>
               </Space>
             ) : (
               <Space size={4} wrap>
@@ -1993,6 +1933,40 @@ export default function ScenarioPage() {
               pagination={false}
               rowClassName={(r: StepResultData) => r.status === 'running' ? 'row-running' : r.status === 'fail' ? 'row-fail' : r.status === 'error' ? 'row-error' : r.status === 'pass' ? 'row-pass' : ''}
             />
+            </div>
+          ) : groupShownInDetail && groups[groupShownInDetail] ? (
+            /* 그룹 상세 — 멤버 시나리오 리스트 */
+            <div style={{ flex: 1, overflow: 'auto' }}>
+              <List
+                size="small"
+                dataSource={(groups[groupShownInDetail] || []).filter(m => scenarios.includes(m.name))}
+                locale={{ emptyText: t('scenario.noScenarios') }}
+                renderItem={(m, idx) => (
+                  <List.Item
+                    onClick={() => {
+                      setSelectedName(m.name);
+                      setGroupShownInDetail(null);
+                      if (!playing) { setStepResults([]); setPlaybackScenario(null); }
+                    }}
+                    style={{
+                      cursor: 'pointer',
+                      padding: '6px 12px',
+                      background: playing && currentGroupScenario === m.name
+                        ? 'rgba(22,119,255,0.25)'
+                        : selectedName === m.name ? 'rgba(22,119,255,0.12)' : undefined,
+                      borderRadius: 4,
+                      borderLeft: playing && currentGroupScenario === m.name ? '3px solid #1677ff' : '3px solid transparent',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
+                      <Tag color={playing && currentGroupScenario === m.name ? 'processing' : undefined} style={{ margin: 0 }}>{idx + 1}</Tag>
+                      <FileOutlined />
+                      <span style={{ flex: 1, fontWeight: (selectedName === m.name || (playing && currentGroupScenario === m.name)) ? 600 : 400, color: playing && currentGroupScenario === m.name ? '#1677ff' : undefined }}>{m.name}</span>
+                      {playing && currentGroupScenario === m.name && <Tag color="blue" style={{ margin: 0, fontSize: 10 }}>▶</Tag>}
+                    </div>
+                  </List.Item>
+                )}
+              />
             </div>
           ) : (
             /* 미리보기: 스텝 편집 테이블 */
