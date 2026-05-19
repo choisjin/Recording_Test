@@ -2081,7 +2081,7 @@ export default function ScenarioPage() {
               const gFoldered = new Set<string>();
               for (const items of Object.values(groupFolders)) items.forEach(g => gFoldered.add(g));
 
-              // 그룹 노드 title 생성기 — 시나리오 드롭 가능 + 헤더 표시
+              // 그룹 노드 title 생성기 — 시나리오 드롭 가능 (그룹 자체 드래그는 AntD Tree가 처리)
               const renderGroupNodeTitle = (gName: string, members: any[]) => (
                 <div
                   onDragOver={(e) => {
@@ -2118,6 +2118,46 @@ export default function ScenarioPage() {
                 </div>
               );
 
+              // 폴더 노드 title 생성기 — 그룹 드롭(HTML5 dataTransfer)을 받아 그 폴더로 이동
+              const renderFolderNodeTitle = (fname: string, childCount: number) => (
+                <div
+                  onDragOver={(e) => {
+                    if (!e.dataTransfer.types.includes('application/x-group-name')) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    if (groupDropHover !== `__folder__${fname}`) setGroupDropHover(`__folder__${fname}`);
+                  }}
+                  onDragLeave={(e) => {
+                    if ((e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) return;
+                    if (groupDropHover === `__folder__${fname}`) setGroupDropHover(null);
+                  }}
+                  onDrop={async (e) => {
+                    if (!e.dataTransfer.types.includes('application/x-group-name')) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setGroupDropHover(null);
+                    const groupName = e.dataTransfer.getData('application/x-group-name');
+                    if (groupName) {
+                      try {
+                        const res = await scenarioApi.moveGroupToFolder(groupName, fname);
+                        setGroupFolders(res.data.folders || {});
+                      } catch (err: any) {
+                        message.error(err?.response?.data?.detail || 'Failed to move');
+                      }
+                    }
+                  }}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    padding: '2px 6px', borderRadius: 4,
+                    background: groupDropHover === `__folder__${fname}` ? 'rgba(22,119,255,0.18)' : undefined,
+                    border: groupDropHover === `__folder__${fname}` ? '1px dashed #1677ff' : '1px dashed transparent',
+                  }}
+                >
+                  <span>{fname}</span>
+                  <Tag style={{ margin: 0 }}>{childCount}</Tag>
+                </div>
+              );
+
               // 트리 데이터: 폴더 노드 (자식으로 그룹) + 루트 그룹
               const groupTreeData: any[] = [];
               for (const [fname, items] of Object.entries(groupFolders)) {
@@ -2129,10 +2169,9 @@ export default function ScenarioPage() {
                 }));
                 groupTreeData.push({
                   key: `gfolder:${fname}`,
-                  title: `${fname} (${children.length})`,
+                  title: renderFolderNodeTitle(fname, children.length),
                   icon: <FolderOutlined />,
                   isLeaf: false,
-                  selectable: false,
                   children,
                 });
               }
@@ -2238,17 +2277,29 @@ export default function ScenarioPage() {
                           const k = String(keys[0] || '');
                           setSelectedGroupForDetail(k.startsWith('group:') ? k.replace('group:', '') : null);
                         }}
-                        draggable={{ icon: false, nodeDraggable: (node: any) => String(node.key).startsWith('group:') }}
+                        draggable={(node: any) => String(node.key).startsWith('group:')}
+                        allowDrop={() => true}
+                        onDragStart={(info: any) => {
+                          // 그룹 드래그 시 dataTransfer에 group 이름을 실어 폴더 title의 커스텀 drop이 받을 수 있게 함
+                          const k = String(info.node.key);
+                          if (!k.startsWith('group:')) return;
+                          const gName = k.replace('group:', '');
+                          try {
+                            info.event.dataTransfer.setData('application/x-group-name', gName);
+                            info.event.dataTransfer.effectAllowed = 'move';
+                          } catch { /* ignore */ }
+                        }}
                         onDrop={(info: any) => {
-                          const dragKey = String(info.dragNode.key);
+                          // 백업: AntD 내부 drop으로 그룹 → 폴더/그룹 이동 처리
+                          // (폴더 title 커스텀 drop이 우선이지만 빈 폴더 영역 등은 여기로 옴)
+                          const dragKey = info.dragNode?.key ? String(info.dragNode.key) : '';
                           if (!dragKey.startsWith('group:')) return;
                           const groupName = dragKey.replace('group:', '');
-                          const dropKey = String(info.node.key);
+                          const dropKey = info.node?.key ? String(info.node.key) : '';
                           let targetFolder: string | null = null;
                           if (dropKey.startsWith('gfolder:')) {
                             targetFolder = dropKey.replace('gfolder:', '');
                           } else if (dropKey.startsWith('group:')) {
-                            // 다른 그룹 위에 떨어뜨림 — 해당 그룹이 속한 폴더와 동일 폴더로 이동
                             const targetName = dropKey.replace('group:', '');
                             for (const [fname, items] of Object.entries(groupFolders)) {
                               if (items.includes(targetName)) { targetFolder = fname; break; }
@@ -2256,7 +2307,7 @@ export default function ScenarioPage() {
                           }
                           scenarioApi.moveGroupToFolder(groupName, targetFolder)
                             .then(res => setGroupFolders(res.data.folders || {}))
-                            .catch(() => {});
+                            .catch((e: any) => message.error(e?.response?.data?.detail || 'Failed to move'));
                         }}
                         onRightClick={({ event, node }: any) => {
                           event.preventDefault();
