@@ -354,6 +354,8 @@ export default function ScenarioPage() {
   // 그룹 모달 트리의 폴더 필터 ('__all__' or 폴더명)
   const [modalTreeFolder, setModalTreeFolder] = useState<string>('__all__');
   const modalTreeAnchorRef = useRef<string | null>(null);
+  // 그룹 트리에서 선택되어 우측 상세 패널에 표시 중인 그룹명
+  const [selectedGroupForDetail, setSelectedGroupForDetail] = useState<string | null>(null);
 
   // Copy
   const [copyName, setCopyName] = useState('');
@@ -2043,7 +2045,7 @@ export default function ScenarioPage() {
       </Splitter>
 
       {/* ===== 그룹 관리 모달 ===== */}
-      <Modal title={t('scenario.groupManage')} open={groupModalVisible} onCancel={() => setGroupModalVisible(false)} footer={null} width={1280}
+      <Modal title={t('scenario.groupManage')} open={groupModalVisible} onCancel={() => setGroupModalVisible(false)} footer={null} width={1400}
         styles={{ body: { height: '78vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' } }}
       >
         <Space style={{ marginBottom: 6 }}>
@@ -2058,7 +2060,7 @@ export default function ScenarioPage() {
           <span style={{ color: '#888', fontSize: 11 }}>{t('scenario.dragHint')}</span>
         </Space>
         <Splitter style={{ flex: 1, minHeight: 0 }}>
-          <Splitter.Panel defaultSize="34%" min="20%" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingRight: 6 }}>
+          <Splitter.Panel defaultSize="30%" min="18%" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingRight: 6 }}>
             {(() => {
               // ───── 좌측 시나리오 트리 (모달 전용) ─────
               const foldered = new Set<string>();
@@ -2174,82 +2176,136 @@ export default function ScenarioPage() {
               );
             })()}
           </Splitter.Panel>
+          <Splitter.Panel defaultSize="22%" min="15%" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingLeft: 6, paddingRight: 6 }}>
+            {/* ───── 중앙: 그룹 트리 ───── */}
+            <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>{t('scenario.groupTree') || '그룹'}</div>
+            <div style={{ flex: 1, overflow: 'auto', border: '1px solid #303030', borderRadius: 4, padding: 4 }}>
+              <Tree
+                treeData={Object.entries(groups).map(([gName, members]) => ({
+                  key: `group:${gName}`,
+                  isLeaf: true,
+                  icon: <FolderOutlined />,
+                  title: (
+                    <div
+                      onDragOver={(e) => {
+                        if (!e.dataTransfer.types.includes('application/x-scenario-names')) return;
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'copy';
+                        if (groupDropHover !== gName) setGroupDropHover(gName);
+                      }}
+                      onDragLeave={(e) => {
+                        if ((e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) return;
+                        if (groupDropHover === gName) setGroupDropHover(null);
+                      }}
+                      onDrop={async (e) => {
+                        if (!e.dataTransfer.types.includes('application/x-scenario-names')) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setGroupDropHover(null);
+                        try {
+                          const raw = e.dataTransfer.getData('application/x-scenario-names');
+                          const names: string[] = JSON.parse(raw || '[]');
+                          for (const n of names) await addToGroup(gName, n);
+                          setSelectedGroupForDetail(gName);
+                        } catch { /* ignore */ }
+                      }}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 5,
+                        padding: '0 4px',
+                        borderRadius: 4,
+                        background: groupDropHover === gName ? 'rgba(22,119,255,0.18)' : undefined,
+                        border: groupDropHover === gName ? '1px dashed #1677ff' : '1px dashed transparent',
+                      }}
+                    >
+                      <span style={{ fontWeight: selectedGroupForDetail === gName ? 600 : 400 }}>{gName}</span>
+                      <Tag style={{ margin: 0 }}>{members.length}</Tag>
+                    </div>
+                  ),
+                }))}
+                selectedKeys={selectedGroupForDetail ? [`group:${selectedGroupForDetail}`] : []}
+                onSelect={(keys) => {
+                  const k = String(keys[0] || '');
+                  setSelectedGroupForDetail(k.startsWith('group:') ? k.replace('group:', '') : null);
+                }}
+                blockNode
+                showIcon
+              />
+              {Object.keys(groups).length === 0 && <div style={{ textAlign: 'center', color: '#888', padding: 16 }}>{t('scenario.noGroups')}</div>}
+            </div>
+          </Splitter.Panel>
           <Splitter.Panel style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingLeft: 6 }}>
-            <div style={{ flex: 1, overflow: 'auto' }}>
-        <Collapse
-          accordion
-          items={Object.entries(groups).map(([gName, members]) => ({
-            key: gName,
-            label: (
-              <div
-                onDragOver={(e) => {
-                  if (!e.dataTransfer.types.includes('application/x-scenario-names')) return;
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = 'copy';
-                  if (groupDropHover !== gName) setGroupDropHover(gName);
-                }}
-                onDragLeave={() => { if (groupDropHover === gName) setGroupDropHover(null); }}
-                onDrop={async (e) => {
-                  if (!e.dataTransfer.types.includes('application/x-scenario-names')) return;
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setGroupDropHover(null);
-                  try {
-                    const raw = e.dataTransfer.getData('application/x-scenario-names');
-                    const names: string[] = JSON.parse(raw || '[]');
-                    for (const n of names) await addToGroup(gName, n);
-                  } catch { /* ignore */ }
-                }}
-                style={{
-                  background: groupDropHover === gName ? 'rgba(22,119,255,0.15)' : undefined,
-                  border: groupDropHover === gName ? '1px dashed #1677ff' : '1px dashed transparent',
-                  borderRadius: 4,
-                  padding: '2px 6px',
-                  margin: '-2px -6px',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                }}
-              >
-                <FolderOutlined />
-                <span>{gName}</span>
-                <Tag>{members.length}</Tag>
-                {groupDropHover === gName && <span style={{ fontSize: 10, color: '#1677ff' }}>{t('scenario.dropHere')}</span>}
-              </div>
-            ),
-            extra: (
-              <Button size="small" danger icon={<DeleteOutlined />} onClick={(e) => { e.stopPropagation(); deleteGroup(gName); }}>{t('common.delete')}</Button>
-            ),
-            children: (
-              <div
-                onDragOver={(e) => {
-                  if (!e.dataTransfer.types.includes('application/x-scenario-names')) return;
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = 'copy';
-                  if (groupDropHover !== gName) setGroupDropHover(gName);
-                }}
-                onDragLeave={(e) => {
-                  // 컨테이너 내부 자식으로 옮길 때 leave가 발생하는 것 방지
-                  if ((e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) return;
-                  if (groupDropHover === gName) setGroupDropHover(null);
-                }}
-                onDrop={async (e) => {
-                  if (!e.dataTransfer.types.includes('application/x-scenario-names')) return;
-                  e.preventDefault();
-                  setGroupDropHover(null);
-                  try {
-                    const raw = e.dataTransfer.getData('application/x-scenario-names');
-                    const names: string[] = JSON.parse(raw || '[]');
-                    for (const n of names) await addToGroup(gName, n);
-                  } catch { /* ignore */ }
-                }}
-                style={{
-                  outline: groupDropHover === gName ? '2px dashed #1677ff' : 'none',
-                  outlineOffset: -2,
-                  borderRadius: 4,
-                  padding: 2,
-                }}
-              >
+            {/* ───── 우측: 선택된 그룹 상세 ───── */}
+            {selectedGroupForDetail && groups[selectedGroupForDetail] ? (() => {
+              const gName = selectedGroupForDetail;
+              const members = groups[gName];
+              return (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                  {/* 헤더: 그룹명 + 멤버 수 + 삭제 버튼 (헤더 자체가 드롭존) */}
+                  <div
+                    onDragOver={(e) => {
+                      if (!e.dataTransfer.types.includes('application/x-scenario-names')) return;
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'copy';
+                      if (groupDropHover !== gName) setGroupDropHover(gName);
+                    }}
+                    onDragLeave={(e) => {
+                      if ((e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) return;
+                      if (groupDropHover === gName) setGroupDropHover(null);
+                    }}
+                    onDrop={async (e) => {
+                      if (!e.dataTransfer.types.includes('application/x-scenario-names')) return;
+                      e.preventDefault();
+                      setGroupDropHover(null);
+                      try {
+                        const raw = e.dataTransfer.getData('application/x-scenario-names');
+                        const names: string[] = JSON.parse(raw || '[]');
+                        for (const n of names) await addToGroup(gName, n);
+                      } catch { /* ignore */ }
+                    }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', marginBottom: 4,
+                      borderRadius: 4,
+                      background: groupDropHover === gName ? 'rgba(22,119,255,0.15)' : 'rgba(255,255,255,0.04)',
+                      border: groupDropHover === gName ? '1px dashed #1677ff' : '1px solid transparent',
+                    }}
+                  >
+                    <FolderOutlined />
+                    <span style={{ fontWeight: 600 }}>{gName}</span>
+                    <Tag>{members.length}</Tag>
+                    {groupDropHover === gName && <span style={{ fontSize: 10, color: '#1677ff' }}>{t('scenario.dropHere')}</span>}
+                    <Button size="small" danger icon={<DeleteOutlined />} style={{ marginLeft: 'auto' }} onClick={() => { deleteGroup(gName); setSelectedGroupForDetail(null); }}>{t('common.delete')}</Button>
+                  </div>
+                  {/* 본문 — 멤버 리스트 + 추가 UI (전체가 드롭존) */}
+                  <div
+                    onDragOver={(e) => {
+                      if (!e.dataTransfer.types.includes('application/x-scenario-names')) return;
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'copy';
+                      if (groupDropHover !== gName) setGroupDropHover(gName);
+                    }}
+                    onDragLeave={(e) => {
+                      if ((e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) return;
+                      if (groupDropHover === gName) setGroupDropHover(null);
+                    }}
+                    onDrop={async (e) => {
+                      if (!e.dataTransfer.types.includes('application/x-scenario-names')) return;
+                      e.preventDefault();
+                      setGroupDropHover(null);
+                      try {
+                        const raw = e.dataTransfer.getData('application/x-scenario-names');
+                        const names: string[] = JSON.parse(raw || '[]');
+                        for (const n of names) await addToGroup(gName, n);
+                      } catch { /* ignore */ }
+                    }}
+                    style={{
+                      flex: 1, overflow: 'auto', padding: 4,
+                      outline: groupDropHover === gName ? '2px dashed #1677ff' : 'none',
+                      outlineOffset: -2,
+                      borderRadius: 4,
+                    }}
+                  >
                 <List
                   size="small"
                   dataSource={members}
@@ -2418,12 +2474,14 @@ export default function ScenarioPage() {
                     </div>
                   );
                 })()}
+                  </div>
+                </div>
+              );
+            })() : (
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888', fontSize: 12 }}>
+                {Object.keys(groups).length === 0 ? t('scenario.noGroups') : (t('scenario.selectGroup') || '좌측 트리에서 그룹을 선택하세요')}
               </div>
-            ),
-          }))}
-        />
-        {Object.keys(groups).length === 0 && <div style={{ textAlign: 'center', color: '#888', padding: 16 }}>{t('scenario.noGroups')}</div>}
-            </div>
+            )}
           </Splitter.Panel>
         </Splitter>
       </Modal>
