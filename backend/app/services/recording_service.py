@@ -595,6 +595,16 @@ class RecordingService:
         if old_name in groups:
             groups[new_name] = groups.pop(old_name)
             self._save_groups(groups)
+            # 그룹 폴더 멤버 목록도 동기화 — 이름이 바뀌어도 같은 폴더에 남도록
+            gfolders = self._load_group_folders()
+            changed = False
+            for items in gfolders.values():
+                for i, n in enumerate(items):
+                    if n == old_name:
+                        items[i] = new_name
+                        changed = True
+            if changed:
+                self._save_group_folders(gfolders)
         return groups
 
     def add_to_group(self, group_name: str, scenario_name: str) -> dict[str, list[dict]]:
