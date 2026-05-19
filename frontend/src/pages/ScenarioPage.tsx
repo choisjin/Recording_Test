@@ -2426,26 +2426,28 @@ export default function ScenarioPage() {
                                     marginBottom: 3,
                                     padding: '4px 0',
                                     borderBottom: '1px solid #d9d9d9',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    flexWrap: 'wrap',
-                                    gap: 6,
                                     fontSize: 11,
                                   }}
                                 >
-                                  <Tag style={{ fontSize: 10, margin: 0, minWidth: 20, textAlign: 'center' }}>{sid}</Tag>
-                                  <span style={{ flex: '1 1 220px', minWidth: 200, color: hasSJ ? '#d89614' : '#000' }}>{step.description || `(${step.type || 'step'})`}</span>
-                                  {hasSJ && <BranchesOutlined style={{ color: '#d89614', fontSize: 10 }} />}
-                                  {renderJumpRow('P→', '#52c41a', sj.on_pass_goto, sj.on_fail_goto,
-                                    (pg, fg) => updateGroupStepJumps(gName, idx, sid, pg, fg), 'pass')}
-                                  {renderJumpRow('F→', '#ff4d4f', sj.on_pass_goto, sj.on_fail_goto,
-                                    (pg, fg) => updateGroupStepJumps(gName, idx, sid, pg, fg), 'fail')}
-                                  {hasSJ && (
-                                    <Button size="small" type="link" danger style={{ fontSize: 10, padding: 0 }}
-                                      icon={<ClearOutlined />}
-                                      onClick={() => updateGroupStepJumps(gName, idx, sid, null, null)}
-                                    >{t('scenario.reset')}</Button>
-                                  )}
+                                  {/* 1행: 스텝 정보 */}
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <Tag style={{ fontSize: 10, margin: 0, minWidth: 20, textAlign: 'center' }}>{sid}</Tag>
+                                    <span style={{ flex: 1, color: hasSJ ? '#d89614' : '#000' }}>{step.description || `(${step.type || 'step'})`}</span>
+                                    {hasSJ && <BranchesOutlined style={{ color: '#d89614', fontSize: 10 }} />}
+                                  </div>
+                                  {/* 2행: P / F / Reset */}
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 26, marginTop: 3, flexWrap: 'wrap' }}>
+                                    {renderJumpRow('P→', '#52c41a', sj.on_pass_goto, sj.on_fail_goto,
+                                      (pg, fg) => updateGroupStepJumps(gName, idx, sid, pg, fg), 'pass')}
+                                    {renderJumpRow('F→', '#ff4d4f', sj.on_pass_goto, sj.on_fail_goto,
+                                      (pg, fg) => updateGroupStepJumps(gName, idx, sid, pg, fg), 'fail')}
+                                    {hasSJ && (
+                                      <Button size="small" type="link" danger style={{ fontSize: 10, padding: 0 }}
+                                        icon={<ClearOutlined />}
+                                        onClick={() => updateGroupStepJumps(gName, idx, sid, null, null)}
+                                      >{t('scenario.reset')}</Button>
+                                    )}
+                                  </div>
                                 </div>
                               );
                             })}
