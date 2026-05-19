@@ -208,7 +208,6 @@ export default function ScenarioPage() {
   const [multiSelectedNames, setMultiSelectedNames] = useState<string[]>([]);
   const [folders, setFolders] = useState<Record<string, string[]>>({});
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; type: 'folder' | 'scenario'; name: string } | null>(null);
-  const [groupAddFolder, setGroupAddFolder] = useState<Record<string, string>>({});
   const [colWidths, setColWidths] = useState<Record<string, number>>({});
   const getRepeatCount = (name: string) => repeatCounts[name] ?? 1;
   const setRepeatCount = (name: string, val: number) =>
@@ -2060,9 +2059,68 @@ export default function ScenarioPage() {
           <span style={{ color: '#888', fontSize: 11 }}>{t('scenario.dragHint')}</span>
         </Space>
         <Splitter style={{ flex: 1, minHeight: 0 }}>
-          <Splitter.Panel defaultSize="30%" min="18%" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingRight: 6 }}>
+          <Splitter.Panel defaultSize="22%" min="15%" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingRight: 6 }}>
+            {/* ───── 좌측: 그룹 트리 ───── */}
+            <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>{t('scenario.groupTree') || '그룹'}</div>
+            <div style={{ flex: 1, overflow: 'auto', border: '1px solid #303030', borderRadius: 4, padding: 4 }}>
+              <Tree
+                treeData={Object.entries(groups).map(([gName, members]) => ({
+                  key: `group:${gName}`,
+                  isLeaf: true,
+                  icon: <FolderOutlined />,
+                  title: (
+                    <div
+                      onDragOver={(e) => {
+                        if (!e.dataTransfer.types.includes('application/x-scenario-names')) return;
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'copy';
+                        if (groupDropHover !== gName) setGroupDropHover(gName);
+                      }}
+                      onDragLeave={(e) => {
+                        if ((e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) return;
+                        if (groupDropHover === gName) setGroupDropHover(null);
+                      }}
+                      onDrop={async (e) => {
+                        if (!e.dataTransfer.types.includes('application/x-scenario-names')) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setGroupDropHover(null);
+                        try {
+                          const raw = e.dataTransfer.getData('application/x-scenario-names');
+                          const names: string[] = JSON.parse(raw || '[]');
+                          for (const n of names) await addToGroup(gName, n);
+                          setSelectedGroupForDetail(gName);
+                        } catch { /* ignore */ }
+                      }}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 5,
+                        padding: '0 4px',
+                        borderRadius: 4,
+                        background: groupDropHover === gName ? 'rgba(22,119,255,0.18)' : undefined,
+                        border: groupDropHover === gName ? '1px dashed #1677ff' : '1px dashed transparent',
+                      }}
+                    >
+                      <span style={{ fontWeight: selectedGroupForDetail === gName ? 600 : 400 }}>{gName}</span>
+                      <Tag style={{ margin: 0 }}>{members.length}</Tag>
+                    </div>
+                  ),
+                }))}
+                selectedKeys={selectedGroupForDetail ? [`group:${selectedGroupForDetail}`] : []}
+                onSelect={(keys) => {
+                  const k = String(keys[0] || '');
+                  setSelectedGroupForDetail(k.startsWith('group:') ? k.replace('group:', '') : null);
+                }}
+                blockNode
+                showIcon
+              />
+              {Object.keys(groups).length === 0 && <div style={{ textAlign: 'center', color: '#888', padding: 16 }}>{t('scenario.noGroups')}</div>}
+            </div>
+          </Splitter.Panel>
+          <Splitter.Panel defaultSize="30%" min="18%" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingLeft: 6, paddingRight: 6 }}>
             {(() => {
-              // ───── 좌측 시나리오 트리 (모달 전용) ─────
+              // ───── 중앙: 시나리오 트리 (모달 전용) ─────
               const foldered = new Set<string>();
               for (const items of Object.values(folders)) items.forEach(n => foldered.add(n));
               // 폴더 필터링
@@ -2176,65 +2234,6 @@ export default function ScenarioPage() {
               );
             })()}
           </Splitter.Panel>
-          <Splitter.Panel defaultSize="22%" min="15%" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingLeft: 6, paddingRight: 6 }}>
-            {/* ───── 중앙: 그룹 트리 ───── */}
-            <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>{t('scenario.groupTree') || '그룹'}</div>
-            <div style={{ flex: 1, overflow: 'auto', border: '1px solid #303030', borderRadius: 4, padding: 4 }}>
-              <Tree
-                treeData={Object.entries(groups).map(([gName, members]) => ({
-                  key: `group:${gName}`,
-                  isLeaf: true,
-                  icon: <FolderOutlined />,
-                  title: (
-                    <div
-                      onDragOver={(e) => {
-                        if (!e.dataTransfer.types.includes('application/x-scenario-names')) return;
-                        e.preventDefault();
-                        e.dataTransfer.dropEffect = 'copy';
-                        if (groupDropHover !== gName) setGroupDropHover(gName);
-                      }}
-                      onDragLeave={(e) => {
-                        if ((e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) return;
-                        if (groupDropHover === gName) setGroupDropHover(null);
-                      }}
-                      onDrop={async (e) => {
-                        if (!e.dataTransfer.types.includes('application/x-scenario-names')) return;
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setGroupDropHover(null);
-                        try {
-                          const raw = e.dataTransfer.getData('application/x-scenario-names');
-                          const names: string[] = JSON.parse(raw || '[]');
-                          for (const n of names) await addToGroup(gName, n);
-                          setSelectedGroupForDetail(gName);
-                        } catch { /* ignore */ }
-                      }}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 5,
-                        padding: '0 4px',
-                        borderRadius: 4,
-                        background: groupDropHover === gName ? 'rgba(22,119,255,0.18)' : undefined,
-                        border: groupDropHover === gName ? '1px dashed #1677ff' : '1px dashed transparent',
-                      }}
-                    >
-                      <span style={{ fontWeight: selectedGroupForDetail === gName ? 600 : 400 }}>{gName}</span>
-                      <Tag style={{ margin: 0 }}>{members.length}</Tag>
-                    </div>
-                  ),
-                }))}
-                selectedKeys={selectedGroupForDetail ? [`group:${selectedGroupForDetail}`] : []}
-                onSelect={(keys) => {
-                  const k = String(keys[0] || '');
-                  setSelectedGroupForDetail(k.startsWith('group:') ? k.replace('group:', '') : null);
-                }}
-                blockNode
-                showIcon
-              />
-              {Object.keys(groups).length === 0 && <div style={{ textAlign: 'center', color: '#888', padding: 16 }}>{t('scenario.noGroups')}</div>}
-            </div>
-          </Splitter.Panel>
           <Splitter.Panel style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingLeft: 6 }}>
             {/* ───── 우측: 선택된 그룹 상세 ───── */}
             {selectedGroupForDetail && groups[selectedGroupForDetail] ? (() => {
@@ -2317,7 +2316,7 @@ export default function ScenarioPage() {
                     const stepJumps = entry.step_jumps || {};
                     const hasAnyJump = Object.keys(stepJumps).length > 0;
 
-                    // Shared jump selector renderer
+                    // Shared jump selector renderer — 인라인 형태 (스텝과 같은 줄)
                     const renderJumpRow = (
                       jumpLabel: string, jumpColor: string,
                       passGoto: JumpTarget | null, failGoto: JumpTarget | null,
@@ -2327,11 +2326,11 @@ export default function ScenarioPage() {
                       const jump = field === 'pass' ? passGoto : failGoto;
                       const targetSteps = jump && jump.scenario >= 0 ? (scenarioStepsCache[members[jump.scenario]?.name] || []) : [];
                       return (
-                        <div key={field} style={{ display: 'flex', gap: 3, alignItems: 'center', fontSize: 11, flexWrap: 'wrap' }}>
-                          <span style={{ color: jumpColor, minWidth: 32 }}>{jumpLabel}</span>
+                        <span key={field} style={{ display: 'inline-flex', gap: 3, alignItems: 'center', fontSize: 11 }}>
+                          <span style={{ color: jumpColor, fontWeight: 700 }}>{jumpLabel}</span>
                           <Select
                             size="small"
-                            style={{ width: 140 }}
+                            style={{ width: 120 }}
                             value={jump ? jump.scenario : undefined}
                             allowClear
                             placeholder={t('scenario.nextTo')}
@@ -2349,7 +2348,7 @@ export default function ScenarioPage() {
                           {jump && jump.scenario >= 0 && targetSteps.length > 0 && (
                             <Select
                               size="small"
-                              style={{ minWidth: 180, flex: 1 }}
+                              style={{ width: 160 }}
                               value={jump.step}
                               onChange={(stepVal) => {
                                 const newJump = { scenario: jump.scenario, step: stepVal as number };
@@ -2362,7 +2361,7 @@ export default function ScenarioPage() {
                               ))}
                             </Select>
                           )}
-                        </div>
+                        </span>
                       );
                     };
 
@@ -2396,16 +2395,16 @@ export default function ScenarioPage() {
                         onDragEnd={() => setGroupDrag(null)}
                       >
                         {/* 시나리오 헤더 */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'grab' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'grab', color: '#000' }}>
                           <Tag color="blue" style={{ minWidth: 24, textAlign: 'center' }}>{idx + 1}</Tag>
-                          <Button size="small" type="text" style={{ padding: '0 2px', fontSize: 10, color: '#888' }}
+                          <Button size="small" type="text" style={{ padding: '0 2px', fontSize: 10, color: '#000' }}
                             icon={isExpanded ? <DownOutlined /> : <RightOutlined />}
                             onClick={() => { toggleExpandEntry(entryKey); if (!isExpanded && steps.length === 0) fetchScenarioStepsCache([entry.name]); }}
                           />
-                          <span style={{ flex: 1, fontWeight: 500 }}>{entry.name}</span>
+                          <span style={{ flex: 1, fontWeight: 500, color: '#000' }}>{entry.name}</span>
                           {!scenarios.includes(entry.name) && <Tag color="red">{t('scenario.missing')}</Tag>}
                           {hasAnyJump && <BranchesOutlined style={{ color: '#722ed1', fontSize: 11 }} />}
-                          <span style={{ color: '#888', fontSize: 10 }}>{steps.length} {t('scenario.steps')}</span>
+                          <span style={{ color: '#000', fontSize: 10 }}>{steps.length} {t('scenario.steps')}</span>
                           <Button size="small" type="text" danger icon={<DeleteOutlined />}
                             onClick={() => removeFromGroup(gName, idx)}
                           />
@@ -2413,32 +2412,40 @@ export default function ScenarioPage() {
 
                         {/* 펼쳐진 스텝 목록 */}
                         {isExpanded && (
-                          <div style={{ paddingLeft: 29, marginTop: 5, borderLeft: '2px solid #303030', marginLeft: 14 }}>
-                            <div style={{ fontSize: 10, color: '#888', marginBottom: 3 }}>{t('scenario.stepConditionalJump')}:</div>
-                            {steps.length === 0 && <div style={{ color: '#666', fontSize: 11, padding: 3 }}>{t('scenario.stepsLoading')}</div>}
+                          <div style={{ paddingLeft: 29, marginTop: 5, borderLeft: '2px solid #d9d9d9', marginLeft: 14 }}>
+                            <div style={{ fontSize: 10, color: '#000', marginBottom: 3, fontWeight: 600 }}>{t('scenario.stepConditionalJump')}:</div>
+                            {steps.length === 0 && <div style={{ color: '#000', fontSize: 11, padding: 3 }}>{t('scenario.stepsLoading')}</div>}
                             {steps.map((step: any, si: number) => {
                               const sid = step.id;
                               const sj = stepJumps[String(sid)] || { on_pass_goto: null, on_fail_goto: null };
                               const hasSJ = sj.on_pass_goto != null || sj.on_fail_goto != null;
                               return (
-                                <div key={si} style={{ marginBottom: 3, padding: '3px 0', borderBottom: '1px solid #222' }}>
-                                  <div style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 3 }}>
-                                    <Tag style={{ fontSize: 10, margin: 0, minWidth: 20, textAlign: 'center' }}>{sid}</Tag>
-                                    <span style={{ flex: 1, color: hasSJ ? '#d89614' : '#ccc' }}>{formatStepLabel(step, si)}</span>
-                                    {hasSJ && <BranchesOutlined style={{ color: '#d89614', fontSize: 10 }} />}
-                                  </div>
-                                  <div style={{ paddingLeft: 22, display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2 }}>
-                                    {renderJumpRow('P→', '#52c41a', sj.on_pass_goto, sj.on_fail_goto,
-                                      (pg, fg) => updateGroupStepJumps(gName, idx, sid, pg, fg), 'pass')}
-                                    {renderJumpRow('F→', '#ff4d4f', sj.on_pass_goto, sj.on_fail_goto,
-                                      (pg, fg) => updateGroupStepJumps(gName, idx, sid, pg, fg), 'fail')}
-                                    {hasSJ && (
-                                      <Button size="small" type="link" danger style={{ fontSize: 10, padding: 0, alignSelf: 'flex-start' }}
-                                        icon={<ClearOutlined />}
-                                        onClick={() => updateGroupStepJumps(gName, idx, sid, null, null)}
-                                      >{t('scenario.reset')}</Button>
-                                    )}
-                                  </div>
+                                <div
+                                  key={si}
+                                  style={{
+                                    marginBottom: 3,
+                                    padding: '4px 0',
+                                    borderBottom: '1px solid #d9d9d9',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    flexWrap: 'wrap',
+                                    gap: 6,
+                                    fontSize: 11,
+                                  }}
+                                >
+                                  <Tag style={{ fontSize: 10, margin: 0, minWidth: 20, textAlign: 'center' }}>{sid}</Tag>
+                                  <span style={{ flex: '1 1 220px', minWidth: 200, color: hasSJ ? '#d89614' : '#000' }}>{step.description || `(${step.type || 'step'})`}</span>
+                                  {hasSJ && <BranchesOutlined style={{ color: '#d89614', fontSize: 10 }} />}
+                                  {renderJumpRow('P→', '#52c41a', sj.on_pass_goto, sj.on_fail_goto,
+                                    (pg, fg) => updateGroupStepJumps(gName, idx, sid, pg, fg), 'pass')}
+                                  {renderJumpRow('F→', '#ff4d4f', sj.on_pass_goto, sj.on_fail_goto,
+                                    (pg, fg) => updateGroupStepJumps(gName, idx, sid, pg, fg), 'fail')}
+                                  {hasSJ && (
+                                    <Button size="small" type="link" danger style={{ fontSize: 10, padding: 0 }}
+                                      icon={<ClearOutlined />}
+                                      onClick={() => updateGroupStepJumps(gName, idx, sid, null, null)}
+                                    >{t('scenario.reset')}</Button>
+                                  )}
                                 </div>
                               );
                             })}
@@ -2448,32 +2455,6 @@ export default function ScenarioPage() {
                     );
                   }}
                 />
-                {(() => {
-                  // 중복 추가 허용 — 이미 그룹에 있는 시나리오도 다시 선택 가능
-                  const foldered = new Set<string>();
-                  for (const items of Object.values(folders)) items.forEach(n => foldered.add(n));
-                  const folderKeys = Object.keys(folders);
-                  const curFolder = groupAddFolder[gName] || '__all__';
-                  const filtered = curFolder === '__all__' ? scenarios
-                    : scenarios.filter(n => (folders[curFolder] || []).includes(n));
-                  return (
-                    <div style={{ display: 'flex', gap: 3, marginTop: 6 }}>
-                      <Select size="small" value={curFolder} onChange={(v) => setGroupAddFolder(prev => ({ ...prev, [gName]: v }))} style={{ width: 100 }}>
-                        <Select.Option value="__all__">{t('scenario.allScenarios')}</Select.Option>
-                        {folderKeys.map(fn => <Select.Option key={fn} value={fn}>{fn}</Select.Option>)}
-                      </Select>
-                      <Select
-                        placeholder={t('scenario.addScenario')}
-                        size="small"
-                        showSearch
-                        style={{ flex: 1 }}
-                        value={undefined}
-                        onChange={(sName: string) => { if (sName) addToGroup(gName, sName); }}
-                        options={filtered.map(n => ({ label: n, value: n }))}
-                      />
-                    </div>
-                  );
-                })()}
                   </div>
                 </div>
               );
