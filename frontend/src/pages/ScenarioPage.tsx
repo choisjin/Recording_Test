@@ -382,6 +382,9 @@ export default function ScenarioPage() {
   const [multiSelectedGroupsModal, setMultiSelectedGroupsModal] = useState<string[]>([]);
   const groupSelectAnchorMainRef = useRef<string | null>(null);
   const groupSelectAnchorModalRef = useRef<string | null>(null);
+  // 메인 페이지 폴더 필터 콤보 — 시나리오 / 그룹 별
+  const [mainScenarioFolder, setMainScenarioFolder] = useState<string>('__all__');
+  const [mainGroupFolder, setMainGroupFolder] = useState<string>('__all__');
   // 그룹 트리 컨텍스트 메뉴 (gfolder = 그룹 폴더, group = 그룹 자체)
   const [groupCtxMenu, setGroupCtxMenu] = useState<{ x: number; y: number; type: 'gfolder' | 'group'; name: string } | null>(null);
 
@@ -1737,9 +1740,19 @@ export default function ScenarioPage() {
                 });
               }
             }
+            // 폴더 필터 적용된 treeData
+            const filteredTreeData = mainGroupFolder === '__all__'
+              ? treeData
+              : treeData.filter(node => node.key === `gfolder:${mainGroupFolder}`);
             return (
               <>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4, flexWrap: 'wrap' }}>
+                  <Select size="small" value={mainGroupFolder} onChange={setMainGroupFolder} style={{ width: 120 }}>
+                    <Select.Option value="__all__">{t('scenario.allScenarios')}</Select.Option>
+                    {Object.keys(groupFolders).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })).map(fn => (
+                      <Select.Option key={fn} value={fn}>{fn}</Select.Option>
+                    ))}
+                  </Select>
                   <Button
                     size="small"
                     icon={<FolderAddOutlined />}
@@ -1754,7 +1767,7 @@ export default function ScenarioPage() {
                   >{t('scenario.newFolder') || '새 폴더'}</Button>
                   <span style={{ fontSize: 11, color: '#888' }}>{Object.keys(groups).length} {t('scenario.groupTree') || '그룹'}</span>
                 </div>
-                {treeData.length === 0 ? (
+                {filteredTreeData.length === 0 ? (
                   <div style={{ textAlign: 'center', color: '#888', padding: 16 }}>{t('scenario.noGroups')}</div>
                 ) : (
                   <Dropdown
@@ -1765,7 +1778,7 @@ export default function ScenarioPage() {
                   >
                     <div onContextMenu={(e) => { if (!groupCtxMenu) e.preventDefault(); }}>
                       <Tree
-                        treeData={treeData}
+                        treeData={filteredTreeData}
                         blockNode
                         showIcon
                         defaultExpandAll
@@ -2079,9 +2092,19 @@ export default function ScenarioPage() {
               ]
             ) : [];
 
+            // 폴더 필터: 특정 폴더 선택 시 그 폴더만 표시
+            const filteredTreeData = mainScenarioFolder === '__all__'
+              ? treeData
+              : treeData.filter(node => node.key === `folder:${mainScenarioFolder}`);
             return (
               <>
-                <div style={{ display: 'flex', gap: 3, marginBottom: 3 }}>
+                <div style={{ display: 'flex', gap: 3, marginBottom: 3, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <Select size="small" value={mainScenarioFolder} onChange={setMainScenarioFolder} style={{ width: 120 }}>
+                    <Select.Option value="__all__">{t('scenario.allScenarios')}</Select.Option>
+                    {Object.keys(folders).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })).map(fn => (
+                      <Select.Option key={fn} value={fn}>{fn}</Select.Option>
+                    ))}
+                  </Select>
                   <Button size="small" icon={<FolderAddOutlined />} onClick={() => {
                     const name = prompt(t('scenario.folderName'));
                     if (name) scenarioApi.createFolder(name).then(res => setFolders(res.data.folders));
@@ -2095,7 +2118,7 @@ export default function ScenarioPage() {
                 >
                   <div style={{ flex: 1, overflow: 'auto' }} onContextMenu={(e) => { if (!contextMenu) e.preventDefault(); }}>
                     <Tree
-                      treeData={treeData}
+                      treeData={filteredTreeData}
                       multiple
                       selectedKeys={
                         multiSelectedNames.length > 0
