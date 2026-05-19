@@ -708,6 +708,49 @@ export default function DevicePage() {
     return true;
   };
 
+  // 스캔 결과에서 이미 등록된 디바이스 검출
+  const findExisting = (predicate: (d: ManagedDevice) => boolean): ManagedDevice | undefined =>
+    allDevices.find(predicate);
+
+  // 제거 후 다시 추가: 기존 등록을 완전히 제거하고 새 add 액션을 실행.
+  // disconnectDevice는 백엔드 /device/disconnect를 호출해 등록 자체를 제거함.
+  const handleRemoveAndAdd = async (existingId: string, addAction: () => Promise<void> | void) => {
+    try {
+      await disconnectDevice(existingId);
+    } catch (e: any) {
+      message.error(e.response?.data?.detail || t('device.disconnectFailed'));
+      return;
+    }
+    await addAction();
+  };
+
+  // 스캔 결과의 액션 셀 — 등록 여부에 따라 [추가] 또는 [추가됨 + 제거 후 연결] 렌더링.
+  const renderScanAction = (
+    existing: ManagedDevice | undefined,
+    addLabel: string,
+    doAdd: () => Promise<void> | void,
+    opts?: { disabled?: boolean; title?: string },
+  ) => {
+    if (existing) {
+      return (
+        <Space size={4}>
+          <Tag color="success">{t('device.alreadyAdded')}</Tag>
+          <Button size="small" danger loading={connecting}
+            onClick={() => handleRemoveAndAdd(existing.id, doAdd)}>
+            {t('device.removeAndConnect')}
+          </Button>
+        </Space>
+      );
+    }
+    return (
+      <Button size="small" type="primary" loading={connecting}
+        disabled={opts?.disabled} title={opts?.title}
+        onClick={doAdd}>
+        {addLabel}
+      </Button>
+    );
+  };
+
   const handleAddSerial = async (port: string, description: string) => {
     if (!ensurePrimaryProjectModel()) return;
     setConnecting(true);
@@ -1232,12 +1275,16 @@ export default function DevicePage() {
     {
       title: '',
       key: 'action',
-      width: 100,
-      render: (_: any, r: SerialPort) => (
-        <Button size="small" type="primary" loading={connecting} disabled={primaryProjectModelMissing} title={primaryProjectModelMissing ? '프로젝트·모델을 먼저 선택하세요' : undefined} onClick={() => handleAddSerial(r.port, r.description)}>
-          {t('common.add')}
-        </Button>
-      ),
+      width: 160,
+      render: (_: any, r: SerialPort) => {
+        const existing = findExisting(d => d.type === 'serial' && d.address === r.port);
+        return renderScanAction(
+          existing,
+          t('common.add'),
+          () => handleAddSerial(r.port, r.description),
+          { disabled: primaryProjectModelMissing, title: primaryProjectModelMissing ? '프로젝트·모델을 먼저 선택하세요' : undefined },
+        );
+      },
     },
   ];
 
@@ -1484,13 +1531,19 @@ export default function DevicePage() {
                             size="small"
                             dataSource={scannedAdb}
                             pagination={scannedAdb.length > PAGE_SIZE ? { pageSize: PAGE_SIZE, size: 'small' } : false}
-                            renderItem={(d) => (
-                              <List.Item actions={[
-                                <Button size="small" type="primary" loading={connecting} disabled={primaryProjectModelMissing} title={primaryProjectModelMissing ? '프로젝트·모델을 먼저 선택하세요' : undefined} onClick={() => handleAddAdb(d.serial)}>{t('common.add')}</Button>
-                              ]}>
-                                <Tag color="green">{d.serial}</Tag> {d.model} <Tag>{d.status}</Tag>
-                              </List.Item>
-                            )}
+                            renderItem={(d) => {
+                              const existing = findExisting(x => x.type === 'adb' && x.address === d.serial);
+                              return (
+                                <List.Item actions={[
+                                  renderScanAction(existing, t('common.add'), () => handleAddAdb(d.serial), {
+                                    disabled: primaryProjectModelMissing,
+                                    title: primaryProjectModelMissing ? '프로젝트·모델을 먼저 선택하세요' : undefined,
+                                  })
+                                ]}>
+                                  <Tag color="green">{d.serial}</Tag> {d.model} <Tag>{d.status}</Tag>
+                                </List.Item>
+                              );
+                            }}
                           />
                         ),
                       });
@@ -1549,13 +1602,19 @@ export default function DevicePage() {
                             size="small"
                             dataSource={scannedHkmc}
                             pagination={scannedHkmc.length > PAGE_SIZE ? { pageSize: PAGE_SIZE, size: 'small' } : false}
-                            renderItem={(d) => (
-                              <List.Item actions={[
-                                <Button size="small" type="primary" loading={connecting} disabled={primaryProjectModelMissing} title={primaryProjectModelMissing ? '프로젝트·모델을 먼저 선택하세요' : undefined} onClick={() => handleAddHkmc(d.ip, d.port)}>{t('common.add')}</Button>
-                              ]}>
-                                <Tag color="volcano">HKMC</Tag> <Tag color="blue">{d.ip}</Tag> <span style={{ color: '#888' }}>TCP: {d.port}</span>
-                              </List.Item>
-                            )}
+                            renderItem={(d) => {
+                              const existing = findExisting(x => x.type === 'hkmc_agent' && x.address === d.ip);
+                              return (
+                                <List.Item actions={[
+                                  renderScanAction(existing, t('common.add'), () => handleAddHkmc(d.ip, d.port), {
+                                    disabled: primaryProjectModelMissing,
+                                    title: primaryProjectModelMissing ? '프로젝트·모델을 먼저 선택하세요' : undefined,
+                                  })
+                                ]}>
+                                  <Tag color="volcano">HKMC</Tag> <Tag color="blue">{d.ip}</Tag> <span style={{ color: '#888' }}>TCP: {d.port}</span>
+                                </List.Item>
+                              );
+                            }}
                           />
                         ),
                       });
@@ -1570,13 +1629,19 @@ export default function DevicePage() {
                             size="small"
                             dataSource={scannedIsap}
                             pagination={scannedIsap.length > PAGE_SIZE ? { pageSize: PAGE_SIZE, size: 'small' } : false}
-                            renderItem={(d) => (
-                              <List.Item actions={[
-                                <Button size="small" type="primary" loading={connecting} disabled={primaryProjectModelMissing} title={primaryProjectModelMissing ? '프로젝트·모델을 먼저 선택하세요' : undefined} onClick={() => handleAddIsap(d.ip, d.port)}>{t('common.add')}</Button>
-                              ]}>
-                                <Tag color="geekblue">iSAP</Tag> <Tag color="blue">{d.ip}</Tag> <span style={{ color: '#888' }}>TCP: {d.port}</span>
-                              </List.Item>
-                            )}
+                            renderItem={(d) => {
+                              const existing = findExisting(x => x.type === 'isap_agent' && x.address === d.ip);
+                              return (
+                                <List.Item actions={[
+                                  renderScanAction(existing, t('common.add'), () => handleAddIsap(d.ip, d.port), {
+                                    disabled: primaryProjectModelMissing,
+                                    title: primaryProjectModelMissing ? '프로젝트·모델을 먼저 선택하세요' : undefined,
+                                  })
+                                ]}>
+                                  <Tag color="geekblue">iSAP</Tag> <Tag color="blue">{d.ip}</Tag> <span style={{ color: '#888' }}>TCP: {d.port}</span>
+                                </List.Item>
+                              );
+                            }}
                           />
                         ),
                       });
@@ -1591,17 +1656,16 @@ export default function DevicePage() {
                             size="small"
                             dataSource={scannedIcas}
                             pagination={scannedIcas.length > PAGE_SIZE ? { pageSize: PAGE_SIZE, size: 'small' } : false}
-                            renderItem={(h) => (
-                              <List.Item actions={[
-                                <Button size="small" type="primary"
-                                  loading={connecting}
-                                  onClick={() => handleAddSshAgent('icas_agent', h.ip, h.port)}>
-                                  {t('common.connect')}
-                                </Button>
-                              ]}>
-                                <Tag color="purple">ICAS</Tag> <Tag color="blue">{h.ip}</Tag> <span style={{ color: '#888' }}>SSH: {h.port}</span>
-                              </List.Item>
-                            )}
+                            renderItem={(h) => {
+                              const existing = findExisting(x => x.type === 'icas_agent' && x.address === h.ip);
+                              return (
+                                <List.Item actions={[
+                                  renderScanAction(existing, t('common.connect'), () => handleAddSshAgent('icas_agent', h.ip, h.port))
+                                ]}>
+                                  <Tag color="purple">ICAS</Tag> <Tag color="blue">{h.ip}</Tag> <span style={{ color: '#888' }}>SSH: {h.port}</span>
+                                </List.Item>
+                              );
+                            }}
                           />
                         ),
                       });
@@ -1616,17 +1680,16 @@ export default function DevicePage() {
                             size="small"
                             dataSource={scannedMib}
                             pagination={scannedMib.length > PAGE_SIZE ? { pageSize: PAGE_SIZE, size: 'small' } : false}
-                            renderItem={(h) => (
-                              <List.Item actions={[
-                                <Button size="small" type="primary"
-                                  loading={connecting}
-                                  onClick={() => handleAddSshAgent('mib_agent', h.ip, h.port)}>
-                                  {t('common.connect')}
-                                </Button>
-                              ]}>
-                                <Tag color="geekblue">MIB</Tag> <Tag color="blue">{h.ip}</Tag> <span style={{ color: '#888' }}>SSH: {h.port}</span>
-                              </List.Item>
-                            )}
+                            renderItem={(h) => {
+                              const existing = findExisting(x => x.type === 'mib_agent' && x.address === h.ip);
+                              return (
+                                <List.Item actions={[
+                                  renderScanAction(existing, t('common.connect'), () => handleAddSshAgent('mib_agent', h.ip, h.port))
+                                ]}>
+                                  <Tag color="geekblue">MIB</Tag> <Tag color="blue">{h.ip}</Tag> <span style={{ color: '#888' }}>SSH: {h.port}</span>
+                                </List.Item>
+                              );
+                            }}
                           />
                         ),
                       });
@@ -1655,16 +1718,20 @@ export default function DevicePage() {
                               size="small"
                               dataSource={scannedBench}
                               pagination={scannedBench.length > PAGE_SIZE ? { pageSize: PAGE_SIZE, size: 'small' } : false}
-                              renderItem={(d) => (
-                                <List.Item actions={[
-                                  <Button size="small" type="primary" loading={connecting} onClick={() => handleAddBench(d.ip, d.port)}>{t('common.add')}</Button>
-                                ]}>
-                                  {d.verified ? <Tag color="green">Bench</Tag> : <Tag color="default">Host</Tag>}
-                                  <Tag color="blue">{d.ip}</Tag>
-                                  <span style={{ color: '#888' }}>UDP: {d.port}</span>
-                                  {d.verified && <Tag color="green" style={{ marginLeft: 3 }}>응답확인</Tag>}
-                                </List.Item>
-                              )}
+                              renderItem={(d) => {
+                                const benchModule = scanSelectedModule || 'WoohyunBench';
+                                const existing = findExisting(x => x.type === 'module' && x.info?.module === benchModule && x.address === d.ip);
+                                return (
+                                  <List.Item actions={[
+                                    renderScanAction(existing, t('common.add'), () => handleAddBench(d.ip, d.port))
+                                  ]}>
+                                    {d.verified ? <Tag color="green">Bench</Tag> : <Tag color="default">Host</Tag>}
+                                    <Tag color="blue">{d.ip}</Tag>
+                                    <span style={{ color: '#888' }}>UDP: {d.port}</span>
+                                    {d.verified && <Tag color="green" style={{ marginLeft: 3 }}>응답확인</Tag>}
+                                  </List.Item>
+                                );
+                              }}
                             />
                           </>
                         ),
@@ -1804,25 +1871,27 @@ export default function DevicePage() {
                             bordered
                             dataSource={scannedDlt}
                             pagination={scannedDlt.length > PAGE_SIZE ? { pageSize: PAGE_SIZE, size: 'small' } : false}
-                            renderItem={(d) => (
-                              <List.Item actions={[
-                                <Button size="small" type="primary" onClick={async () => {
-                                  try {
-                                    await connectDevice('module', d.ip, undefined, `${dltModule}_${d.ip}`, 'auxiliary', dltModule, 'socket', { port: d.port });
-                                    message.success(`DLT ${d.ip}:${d.port} ${t('common.connect')}`);
-                                    closeAddModal();
-                                  } catch (e: any) {
-                                    message.error(e.response?.data?.detail || 'Connect failed');
-                                  }
-                                }}>{t('common.connect')}</Button>,
-                              ]}>
-                                <div>
-                                  <Tag color="geekblue">DLT</Tag>
-                                  <strong>{d.ip}</strong>:{d.port}
-                                  <Tag style={{ marginLeft: 6 }}>{dltModule}</Tag>
-                                </div>
-                              </List.Item>
-                            )}
+                            renderItem={(d) => {
+                              const existing = findExisting(x => x.type === 'module' && x.info?.module === dltModule && x.address === d.ip);
+                              const doAdd = async () => {
+                                try {
+                                  await connectDevice('module', d.ip, undefined, `${dltModule}_${d.ip}`, 'auxiliary', dltModule, 'socket', { port: d.port });
+                                  message.success(`DLT ${d.ip}:${d.port} ${t('common.connect')}`);
+                                  closeAddModal();
+                                } catch (e: any) {
+                                  message.error(e.response?.data?.detail || 'Connect failed');
+                                }
+                              };
+                              return (
+                                <List.Item actions={[renderScanAction(existing, t('common.connect'), doAdd)]}>
+                                  <div>
+                                    <Tag color="geekblue">DLT</Tag>
+                                    <strong>{d.ip}</strong>:{d.port}
+                                    <Tag style={{ marginLeft: 6 }}>{dltModule}</Tag>
+                                  </div>
+                                </List.Item>
+                              );
+                            }}
                           />
                         ),
                       });
@@ -1838,25 +1907,27 @@ export default function DevicePage() {
                             bordered
                             dataSource={scannedSmartbench}
                             pagination={scannedSmartbench.length > PAGE_SIZE ? { pageSize: PAGE_SIZE, size: 'small' } : false}
-                            renderItem={(h) => (
-                              <List.Item actions={[
-                                <Button size="small" type="primary" onClick={async () => {
-                                  try {
-                                    const devId = `SmartBench_${h.ip}`;
-                                    await connectDevice('module', h.ip, undefined, devId, 'auxiliary', 'SmartBench', 'socket', { port: h.port });
-                                    message.success(`SmartBench ${h.ip}:${h.port} ${t('common.connect')}`);
-                                    closeAddModal();
-                                  } catch (e: any) {
-                                    message.error(e.response?.data?.detail || 'Connect failed');
-                                  }
-                                }}>{t('common.connect')}</Button>,
-                              ]}>
-                                <div>
-                                  <Tag color="orange">SmartBench</Tag>
-                                  <strong>{h.ip}</strong>:{h.port}
-                                </div>
-                              </List.Item>
-                            )}
+                            renderItem={(h) => {
+                              const existing = findExisting(x => x.type === 'module' && x.info?.module === 'SmartBench' && x.address === h.ip);
+                              const doAdd = async () => {
+                                try {
+                                  const devId = `SmartBench_${h.ip}`;
+                                  await connectDevice('module', h.ip, undefined, devId, 'auxiliary', 'SmartBench', 'socket', { port: h.port });
+                                  message.success(`SmartBench ${h.ip}:${h.port} ${t('common.connect')}`);
+                                  closeAddModal();
+                                } catch (e: any) {
+                                  message.error(e.response?.data?.detail || 'Connect failed');
+                                }
+                              };
+                              return (
+                                <List.Item actions={[renderScanAction(existing, t('common.connect'), doAdd)]}>
+                                  <div>
+                                    <Tag color="orange">SmartBench</Tag>
+                                    <strong>{h.ip}</strong>:{h.port}
+                                  </div>
+                                </List.Item>
+                              );
+                            }}
                           />
                         ),
                       });
@@ -1872,25 +1943,27 @@ export default function DevicePage() {
                             bordered
                             dataSource={scannedSsh}
                             pagination={scannedSsh.length > PAGE_SIZE ? { pageSize: PAGE_SIZE, size: 'small' } : false}
-                            renderItem={(h) => (
-                              <List.Item actions={[
-                                <Button size="small" type="primary" onClick={() => {
-                                  setConnectType('ssh');
-                                  setConnectAddress(h.ip);
-                                  setSshPort(h.port);
-                                  if (modalCategory === 'primary') {
-                                    setDeviceProject('General');
-                                    setDeviceModel('SSH');
-                                  }
-                                  setModalTabKey('manual');
-                                }}>{t('common.connect')}</Button>,
-                              ]}>
-                                <div>
-                                  <Tag color="magenta">SSH</Tag>
-                                  <strong>{h.ip}</strong>:{h.port}
-                                </div>
-                              </List.Item>
-                            )}
+                            renderItem={(h) => {
+                              const existing = findExisting(x => x.type === 'ssh' && x.address === h.ip);
+                              const doAdd = () => {
+                                setConnectType('ssh');
+                                setConnectAddress(h.ip);
+                                setSshPort(h.port);
+                                if (modalCategory === 'primary') {
+                                  setDeviceProject('General');
+                                  setDeviceModel('SSH');
+                                }
+                                setModalTabKey('manual');
+                              };
+                              return (
+                                <List.Item actions={[renderScanAction(existing, t('common.connect'), doAdd)]}>
+                                  <div>
+                                    <Tag color="magenta">SSH</Tag>
+                                    <strong>{h.ip}</strong>:{h.port}
+                                  </div>
+                                </List.Item>
+                              );
+                            }}
                           />
                         ),
                       });
@@ -1912,26 +1985,29 @@ export default function DevicePage() {
                             bordered
                             dataSource={group.hosts}
                             pagination={group.hosts.length > PAGE_SIZE ? { pageSize: PAGE_SIZE, size: 'small' } : false}
-                            renderItem={(h) => (
-                              <List.Item actions={[
-                                <Button size="small" type="primary" onClick={async () => {
-                                  try {
-                                    const devId = moduleName ? `${moduleName}_${h.ip}` : `tcp_${h.ip}_${h.port}`;
-                                    await connectDevice('module', h.ip, undefined, devId, 'auxiliary', moduleName || undefined, 'socket', { port: h.port });
-                                    message.success(`${group.label} ${h.ip}:${h.port} ${t('common.connect')}`);
-                                    closeAddModal();
-                                  } catch (e: any) {
-                                    message.error(e.response?.data?.detail || 'Connect failed');
-                                  }
-                                }}>{t('common.connect')}</Button>,
-                              ]}>
-                                <div>
-                                  <Tag color="cyan">{group.label}</Tag>
-                                  <strong>{h.ip}</strong>:{h.port}
-                                  {moduleName && <Tag style={{ marginLeft: 6 }}>{moduleName}</Tag>}
-                                </div>
-                              </List.Item>
-                            )}
+                            renderItem={(h) => {
+                              const existing = findExisting(x => x.type === 'module' && x.address === h.ip
+                                && (moduleName ? x.info?.module === moduleName : (x.info?.port === h.port)));
+                              const doAdd = async () => {
+                                try {
+                                  const devId = moduleName ? `${moduleName}_${h.ip}` : `tcp_${h.ip}_${h.port}`;
+                                  await connectDevice('module', h.ip, undefined, devId, 'auxiliary', moduleName || undefined, 'socket', { port: h.port });
+                                  message.success(`${group.label} ${h.ip}:${h.port} ${t('common.connect')}`);
+                                  closeAddModal();
+                                } catch (e: any) {
+                                  message.error(e.response?.data?.detail || 'Connect failed');
+                                }
+                              };
+                              return (
+                                <List.Item actions={[renderScanAction(existing, t('common.connect'), doAdd)]}>
+                                  <div>
+                                    <Tag color="cyan">{group.label}</Tag>
+                                    <strong>{h.ip}</strong>:{h.port}
+                                    {moduleName && <Tag style={{ marginLeft: 6 }}>{moduleName}</Tag>}
+                                  </div>
+                                </List.Item>
+                              );
+                            }}
                           />
                         ),
                       });
