@@ -2249,11 +2249,11 @@ export default function ScenarioPage() {
                         const jump = field === 'pass' ? passGoto : failGoto;
                         const targetSteps = jump && jump.scenario >= 0 ? (scenarioStepsCache[members[jump.scenario]?.name] || []) : [];
                         return (
-                          <span key={field} style={{ display: 'inline-flex', gap: 3, alignItems: 'center', fontSize: 11 }}>
-                            <span style={{ color: jumpColor, fontWeight: 700 }}>{jumpLabel}</span>
+                          <span key={field} style={{ display: 'inline-flex', flex: '1 1 240px', minWidth: 200, gap: 3, alignItems: 'center', fontSize: 11 }}>
+                            <span style={{ color: jumpColor, fontWeight: 700, flexShrink: 0 }}>{jumpLabel}</span>
                             <Select
                               size="small"
-                              style={{ width: 120 }}
+                              style={{ flex: '1 1 0', minWidth: 0 }}
                               value={jump ? jump.scenario : undefined}
                               allowClear
                               placeholder={t('scenario.nextTo')}
@@ -2271,7 +2271,7 @@ export default function ScenarioPage() {
                             {jump && jump.scenario >= 0 && targetSteps.length > 0 && (
                               <Select
                                 size="small"
-                                style={{ width: 160 }}
+                                style={{ flex: '1 1 0', minWidth: 0 }}
                                 value={jump.step}
                                 onChange={(stepVal) => {
                                   const newJump = { scenario: jump.scenario, step: stepVal as number };
