@@ -1587,9 +1587,16 @@ class DeviceManager:
         except Exception as e:
             return f"ForceIP error: {e}"
 
-    async def add_serial_device(self, port: str, baudrate: int = 115200, name: str = "", category: str = "auxiliary", device_id: str = "") -> ManagedDevice:
-        """시리얼 디바이스 등록만 (연결은 connect_device_by_id로 별도 수행)."""
-        final_id = device_id or self._generate_device_id("serial")
+    async def add_serial_device(self, port: str, baudrate: int = 115200, name: str = "", category: str = "auxiliary", device_id: str = "", module: str = "", connect_type: str = "") -> ManagedDevice:
+        """시리얼 디바이스 등록만 (연결은 connect_device_by_id로 별도 수행).
+
+        module이 지정되면 device_id prefix로 사용 (예: CANAT_1). 아니면 "Serial_N".
+        """
+        final_id = device_id or self._generate_device_id("serial", module_name=module)
+        info: dict = {"baudrate": baudrate}
+        if module:
+            info["module"] = module
+            info["connect_type"] = connect_type or "serial"
         dev = ManagedDevice(
             id=final_id,
             type="serial",
@@ -1597,7 +1604,7 @@ class DeviceManager:
             address=port,
             status="disconnected",
             name=name or final_id,
-            info={"baudrate": baudrate},
+            info=info,
         )
         self._devices[final_id] = dev
         self._save_auxiliary_devices()

@@ -2386,56 +2386,7 @@ export default function DevicePage() {
             <div style={{ background: '#fafafa', borderRadius: 6, padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 3 }}>
               <div style={{ display: 'flex', gap: 6, fontSize: 11, alignItems: 'center' }}>
                 <span style={{ color: '#888', minWidth: 80 }}>Device ID:</span>
-                <Select
-                  size="small"
-                  value={getDevicePrefix(editDeviceId)}
-                  onChange={(prefix) => {
-                    // 새 prefix 그룹의 다음 번호로 임시 ID 생성
-                    const samePrefix = allDevices.filter(d => getDevicePrefix(d.id) === prefix && d.id !== editDevice.id);
-                    const maxNum = samePrefix.reduce((max, d) => {
-                      const n = parseInt(d.id.match(/_(\d+)$/)?.[1] || '0');
-                      return Math.max(max, n);
-                    }, 0);
-                    setEditDeviceId(`${prefix}_${maxNum + 1}`);
-                  }}
-                  style={{ flex: 1 }}
-                  showSearch
-                  options={(() => {
-                    if (editDevice.category === 'primary') {
-                      // 주 디바이스: 프로젝트별 모델 목록 + 기존 primary prefix
-                      const opts = new Map<string, string>(); // value → label
-                      catalogProjects.filter(p => p.enabled !== false).forEach(proj => {
-                        proj.models.filter(m => m.enabled !== false).forEach(m => {
-                          if (m.value) opts.set(m.value, `${m.value} [${proj.name}]`);
-                        });
-                      });
-                      // 기존 primary prefix 추가 (모델 목록에 없고, 모듈명이 아닌 것만)
-                      const moduleNames = new Set(modules.map(m => m.name));
-                      primaryDevices.forEach(d => {
-                        const p = getDevicePrefix(d.id);
-                        if (!opts.has(p) && !moduleNames.has(p)) opts.set(p, p);
-                      });
-                      return Array.from(opts.entries())
-                        .sort((a, b) => a[1].localeCompare(b[1]))
-                        .map(([value, label]) => ({ label, value }));
-                    } else {
-                      // 보조 디바이스: 표시 가능한 모듈 목록 + 기존 auxiliary prefix
-                      // module_visibility=false(AdminPage에서 체크 해제)된 모듈은 제외 — 구현되지 않거나 사용하지 않는 모듈 숨김.
-                      const opts = new Map<string, string>();
-                      visibleModules.forEach(m => opts.set(m.name, m.label));
-                      auxiliaryDevices.forEach(d => {
-                        const p = getDevicePrefix(d.id);
-                        if (!opts.has(p)) opts.set(p, p);
-                      });
-                      return Array.from(opts.entries())
-                        .sort((a, b) => a[1].localeCompare(b[1]))
-                        .map(([value, label]) => ({ label, value }));
-                    }
-                  })()}
-                />
-                <span style={{ color: '#aaa', fontSize: 10, flexShrink: 0 }}>
-                  {editDeviceId !== editDevice.id ? `${editDevice.id} → ${editDeviceId}` : editDeviceId}
-                </span>
+                <span>{editDevice.id}</span>
               </div>
               <div style={{ display: 'flex', gap: 6, fontSize: 11 }}>
                 <span style={{ color: '#888', minWidth: 80 }}>Type:</span>

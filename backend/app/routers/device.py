@@ -486,11 +486,12 @@ async def connect_device(req: ConnectRequest):
     elif req.type == "serial":
         category = req.category or "auxiliary"
         try:
-            dev = await dm.add_serial_device(req.address, req.baudrate or 115200, req.name or "", category, device_id=custom_id)
-            if req.module:
-                dev.info["module"] = req.module
-                dev.info["connect_type"] = req.connect_type or "serial"
-                dm._save_auxiliary_devices()
+            dev = await dm.add_serial_device(
+                req.address, req.baudrate or 115200, req.name or "", category,
+                device_id=custom_id,
+                module=req.module or "",
+                connect_type=req.connect_type or "",
+            )
             return {
                 "result": f"Serial {req.address} added (ID: {dev.id})",
                 "primary": _with_protected_flag(dm.list_primary()),
