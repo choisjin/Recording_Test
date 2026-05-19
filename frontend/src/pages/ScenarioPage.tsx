@@ -2441,7 +2441,6 @@ export default function ScenarioPage() {
                   }}
                 >
                   <span style={{ fontWeight: selectedGroupForDetail === gName ? 600 : 400 }}>{gName}</span>
-                  <Tag style={{ margin: 0 }}>{members.length}</Tag>
                 </div>
               );
 
@@ -2942,6 +2941,7 @@ export default function ScenarioPage() {
                           <span style={{ flex: 1, fontWeight: 500, color: '#000' }}>{entry.name}</span>
                           {!scenarios.includes(entry.name) && <Tag color="red">{t('scenario.missing')}</Tag>}
                           {hasAnyJump && <BranchesOutlined style={{ color: '#722ed1', fontSize: 11 }} />}
+                          <span style={{ color: '#000', fontSize: 10 }}>{steps.length} {t('scenario.steps')}</span>
                           <Button size="small" type="text" danger icon={<DeleteOutlined />}
                             onClick={() => removeFromGroup(gName, idx)}
                           />
