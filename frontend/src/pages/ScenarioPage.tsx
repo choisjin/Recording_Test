@@ -377,6 +377,11 @@ export default function ScenarioPage() {
   const [selectedGroupForDetail, setSelectedGroupForDetail] = useState<string | null>(null);
   // 메인 페이지의 우측 시나리오상세 위젯에 표시할 그룹명 (그룹 트리 선택 시)
   const [groupShownInDetail, setGroupShownInDetail] = useState<string | null>(null);
+  // 그룹 트리 다중 선택 (Ctrl/Shift) — 메인 페이지 / 모달 분리
+  const [multiSelectedGroupsMain, setMultiSelectedGroupsMain] = useState<string[]>([]);
+  const [multiSelectedGroupsModal, setMultiSelectedGroupsModal] = useState<string[]>([]);
+  const groupSelectAnchorMainRef = useRef<string | null>(null);
+  const groupSelectAnchorModalRef = useRef<string | null>(null);
   // 그룹 트리 컨텍스트 메뉴 (gfolder = 그룹 폴더, group = 그룹 자체)
   const [groupCtxMenu, setGroupCtxMenu] = useState<{ x: number; y: number; type: 'gfolder' | 'group'; name: string } | null>(null);
 
@@ -1647,11 +1652,11 @@ export default function ScenarioPage() {
               ]
             ) : [];
 
-            // 폴더 노드 title — 그룹 드롭 가능한 div
+            // 폴더 노드 title — 그룹 드롭 가능한 div (다중 지원)
             const renderFolderTitle = (fname: string, childCount: number) => (
               <div
                 onDragOver={(e) => {
-                  if (!e.dataTransfer.types.includes('application/x-group-name')) return;
+                  if (!e.dataTransfer.types.includes('application/x-group-name') && !e.dataTransfer.types.includes('application/x-group-names')) return;
                   e.preventDefault();
                   e.dataTransfer.dropEffect = 'move';
                   if (groupDropHover !== `__main_folder__${fname}`) setGroupDropHover(`__main_folder__${fname}`);
@@ -1661,18 +1666,29 @@ export default function ScenarioPage() {
                   if (groupDropHover === `__main_folder__${fname}`) setGroupDropHover(null);
                 }}
                 onDrop={async (e) => {
-                  if (!e.dataTransfer.types.includes('application/x-group-name')) return;
+                  const hasMulti = e.dataTransfer.types.includes('application/x-group-names');
+                  const hasSingle = e.dataTransfer.types.includes('application/x-group-name');
+                  if (!hasMulti && !hasSingle) return;
                   e.preventDefault();
                   e.stopPropagation();
                   setGroupDropHover(null);
-                  const groupName = e.dataTransfer.getData('application/x-group-name');
-                  if (groupName) {
-                    try {
-                      const res = await scenarioApi.moveGroupToFolder(groupName, fname);
-                      setGroupFolders(res.data.folders || {});
-                    } catch (err: any) {
-                      message.error(err?.response?.data?.detail || 'Failed to move');
+                  let names: string[] = [];
+                  if (hasMulti) {
+                    try { names = JSON.parse(e.dataTransfer.getData('application/x-group-names') || '[]'); } catch { /* ignore */ }
+                  }
+                  if (names.length === 0 && hasSingle) {
+                    const single = e.dataTransfer.getData('application/x-group-name');
+                    if (single) names = [single];
+                  }
+                  try {
+                    let lastFolders: any = null;
+                    for (const gn of names) {
+                      const res = await scenarioApi.moveGroupToFolder(gn, fname);
+                      lastFolders = res.data.folders;
                     }
+                    if (lastFolders) setGroupFolders(lastFolders);
+                  } catch (err: any) {
+                    message.error(err?.response?.data?.detail || 'Failed to move');
                   }
                 }}
                 style={{
@@ -1686,14 +1702,22 @@ export default function ScenarioPage() {
               </div>
             );
 
+            // 트리 데이터 — 폴더/그룹 모두 알파벳 오름차순
+            const sortAsc = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: 'base' });
             const treeData: any[] = [];
-            for (const [fname, items] of Object.entries(groupFolders)) {
-              const children = items.filter(g => g in groups).map(gName => ({
-                key: `group:${gName}`,
-                title: gName,
-                icon: <GroupIcon />,
-                isLeaf: true,
-              }));
+            const mainFlatOrder: string[] = []; // Shift 범위 선택용
+            for (const fname of Object.keys(groupFolders).sort(sortAsc)) {
+              const items = groupFolders[fname] || [];
+              const sortedChildren = items.filter(g => g in groups).sort(sortAsc);
+              const children = sortedChildren.map(gName => {
+                mainFlatOrder.push(gName);
+                return {
+                  key: `group:${gName}`,
+                  title: gName,
+                  icon: <GroupIcon />,
+                  isLeaf: true,
+                };
+              });
               treeData.push({
                 key: `gfolder:${fname}`,
                 title: renderFolderTitle(fname, children.length),
@@ -1702,8 +1726,9 @@ export default function ScenarioPage() {
                 children,
               });
             }
-            for (const gName of Object.keys(groups)) {
+            for (const gName of Object.keys(groups).sort(sortAsc)) {
               if (!gFoldered.has(gName)) {
+                mainFlatOrder.push(gName);
                 treeData.push({
                   key: `group:${gName}`,
                   title: gName,
@@ -1744,22 +1769,34 @@ export default function ScenarioPage() {
                         blockNode
                         showIcon
                         defaultExpandAll
-                        selectedKeys={groupShownInDetail ? [`group:${groupShownInDetail}`] : []}
+                        selectedKeys={
+                          multiSelectedGroupsMain.length > 0
+                            ? multiSelectedGroupsMain.map(g => `group:${g}`)
+                            : (groupShownInDetail ? [`group:${groupShownInDetail}`] : [])
+                        }
+                        multiple
                         draggable={{ icon: false, nodeDraggable: (node: any) => String(node.key).startsWith('group:') }}
                         allowDrop={() => true}
                         onDragStart={(info: any) => {
                           const k = String(info.node.key);
                           if (!k.startsWith('group:')) return;
-                          const gName = k.replace('group:', '');
+                          const draggedName = k.replace('group:', '');
+                          const names = (multiSelectedGroupsMain.includes(draggedName) && multiSelectedGroupsMain.length > 1)
+                            ? multiSelectedGroupsMain
+                            : [draggedName];
                           try {
-                            info.event.dataTransfer.setData('application/x-group-name', gName);
+                            info.event.dataTransfer.setData('application/x-group-names', JSON.stringify(names));
+                            info.event.dataTransfer.setData('application/x-group-name', draggedName);
                             info.event.dataTransfer.effectAllowed = 'move';
                           } catch { /* ignore */ }
                         }}
-                        onDrop={(info: any) => {
+                        onDrop={async (info: any) => {
                           const dragKey = info.dragNode?.key ? String(info.dragNode.key) : '';
                           if (!dragKey.startsWith('group:')) return;
-                          const groupName = dragKey.replace('group:', '');
+                          const draggedName = dragKey.replace('group:', '');
+                          const groupNames = (multiSelectedGroupsMain.includes(draggedName) && multiSelectedGroupsMain.length > 1)
+                            ? multiSelectedGroupsMain
+                            : [draggedName];
                           const dropKey = info.node?.key ? String(info.node.key) : '';
                           let targetFolder: string | null = null;
                           if (dropKey.startsWith('gfolder:')) {
@@ -1770,9 +1807,16 @@ export default function ScenarioPage() {
                               if (items.includes(targetName)) { targetFolder = fname; break; }
                             }
                           }
-                          scenarioApi.moveGroupToFolder(groupName, targetFolder)
-                            .then(res => setGroupFolders(res.data.folders || {}))
-                            .catch((e: any) => message.error(e?.response?.data?.detail || 'Failed to move'));
+                          try {
+                            let lastFolders: any = null;
+                            for (const gn of groupNames) {
+                              const res = await scenarioApi.moveGroupToFolder(gn, targetFolder);
+                              lastFolders = res.data.folders;
+                            }
+                            if (lastFolders) setGroupFolders(lastFolders);
+                          } catch (e: any) {
+                            message.error(e?.response?.data?.detail || 'Failed to move');
+                          }
                         }}
                         onRightClick={({ event, node }: any) => {
                           event.preventDefault();
@@ -1783,17 +1827,41 @@ export default function ScenarioPage() {
                             setGroupCtxMenu({ x: event.clientX, y: event.clientY, type: 'group', name: key.replace('group:', '') });
                           }
                         }}
-                        onSelect={(keys) => {
-                          const k = String(keys[0] || '');
-                          if (k.startsWith('group:')) {
-                            const gName = k.replace('group:', '');
-                            setGroupShownInDetail(gName);
-                            setSelectedName(null);
-                            if (!playing) { setStepResults([]); setPlaybackScenario(null); }
-                            // 멤버 시나리오의 스텝 캐시 — P→/F→ 타겟 표시용
-                            const memberNames = (groups[gName] || []).map(m => m.name);
-                            if (memberNames.length > 0) fetchScenarioStepsCache(memberNames);
+                        onSelect={(_keys, info) => {
+                          const ne = (info as any).nativeEvent as MouseEvent | undefined;
+                          const isCtrl = !!(ne && (ne.ctrlKey || ne.metaKey));
+                          const isShift = !!(ne && ne.shiftKey);
+                          const clickedKey = String(info.node.key);
+                          if (!clickedKey.startsWith('group:')) return;
+                          const clickedName = clickedKey.replace('group:', '');
+                          let next: string[];
+                          if (isShift) {
+                            const anchor = groupSelectAnchorMainRef.current;
+                            const ai = anchor ? mainFlatOrder.indexOf(anchor) : -1;
+                            const ci = mainFlatOrder.indexOf(clickedName);
+                            if (ai >= 0 && ci >= 0) {
+                              const [a, b] = ai <= ci ? [ai, ci] : [ci, ai];
+                              next = mainFlatOrder.slice(a, b + 1);
+                            } else {
+                              next = [clickedName];
+                              groupSelectAnchorMainRef.current = clickedName;
+                            }
+                          } else if (isCtrl) {
+                            next = multiSelectedGroupsMain.includes(clickedName)
+                              ? multiSelectedGroupsMain.filter(n => n !== clickedName)
+                              : [...multiSelectedGroupsMain, clickedName];
+                            groupSelectAnchorMainRef.current = clickedName;
+                          } else {
+                            next = [clickedName];
+                            groupSelectAnchorMainRef.current = clickedName;
                           }
+                          setMultiSelectedGroupsMain(next);
+                          // 우측 상세는 마지막 클릭 그룹으로
+                          setGroupShownInDetail(clickedName);
+                          setSelectedName(null);
+                          if (!playing) { setStepResults([]); setPlaybackScenario(null); }
+                          const memberNames = (groups[clickedName] || []).map(m => m.name);
+                          if (memberNames.length > 0) fetchScenarioStepsCache(memberNames);
                         }}
                       />
                     </div>
@@ -2444,11 +2512,11 @@ export default function ScenarioPage() {
                 </div>
               );
 
-              // 폴더 노드 title 생성기 — 그룹 드롭(HTML5 dataTransfer)을 받아 그 폴더로 이동
+              // 폴더 노드 title 생성기 — 그룹 드롭(HTML5 dataTransfer)을 받아 그 폴더로 이동 (다중 지원)
               const renderFolderNodeTitle = (fname: string, childCount: number) => (
                 <div
                   onDragOver={(e) => {
-                    if (!e.dataTransfer.types.includes('application/x-group-name')) return;
+                    if (!e.dataTransfer.types.includes('application/x-group-name') && !e.dataTransfer.types.includes('application/x-group-names')) return;
                     e.preventDefault();
                     e.dataTransfer.dropEffect = 'move';
                     if (groupDropHover !== `__folder__${fname}`) setGroupDropHover(`__folder__${fname}`);
@@ -2458,18 +2526,29 @@ export default function ScenarioPage() {
                     if (groupDropHover === `__folder__${fname}`) setGroupDropHover(null);
                   }}
                   onDrop={async (e) => {
-                    if (!e.dataTransfer.types.includes('application/x-group-name')) return;
+                    const hasMulti = e.dataTransfer.types.includes('application/x-group-names');
+                    const hasSingle = e.dataTransfer.types.includes('application/x-group-name');
+                    if (!hasMulti && !hasSingle) return;
                     e.preventDefault();
                     e.stopPropagation();
                     setGroupDropHover(null);
-                    const groupName = e.dataTransfer.getData('application/x-group-name');
-                    if (groupName) {
-                      try {
-                        const res = await scenarioApi.moveGroupToFolder(groupName, fname);
-                        setGroupFolders(res.data.folders || {});
-                      } catch (err: any) {
-                        message.error(err?.response?.data?.detail || 'Failed to move');
+                    let names: string[] = [];
+                    if (hasMulti) {
+                      try { names = JSON.parse(e.dataTransfer.getData('application/x-group-names') || '[]'); } catch { /* ignore */ }
+                    }
+                    if (names.length === 0 && hasSingle) {
+                      const single = e.dataTransfer.getData('application/x-group-name');
+                      if (single) names = [single];
+                    }
+                    try {
+                      let lastFolders: any = null;
+                      for (const gn of names) {
+                        const res = await scenarioApi.moveGroupToFolder(gn, fname);
+                        lastFolders = res.data.folders;
                       }
+                      if (lastFolders) setGroupFolders(lastFolders);
+                    } catch (err: any) {
+                      message.error(err?.response?.data?.detail || 'Failed to move');
                     }
                   }}
                   style={{
@@ -2484,15 +2563,23 @@ export default function ScenarioPage() {
                 </div>
               );
 
-              // 트리 데이터: 폴더 노드 (자식으로 그룹) + 루트 그룹
+              // 트리 데이터: 폴더 노드 (자식으로 그룹) + 루트 그룹 — 모두 이름 알파벳 오름차순
               const groupTreeData: any[] = [];
-              for (const [fname, items] of Object.entries(groupFolders)) {
-                const children = items.filter(g => g in groups).map(gName => ({
-                  key: `group:${gName}`,
-                  isLeaf: true,
-                  icon: <GroupIcon />,
-                  title: renderGroupNodeTitle(gName, groups[gName] || []),
-                }));
+              const sortAsc = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: 'base' });
+              const sortedFolderNames = Object.keys(groupFolders).sort(sortAsc);
+              const modalFlatOrder: string[] = []; // Shift 범위 선택용 평탄화 순서
+              for (const fname of sortedFolderNames) {
+                const items = groupFolders[fname] || [];
+                const sortedChildren = items.filter(g => g in groups).sort(sortAsc);
+                const children = sortedChildren.map(gName => {
+                  modalFlatOrder.push(gName);
+                  return {
+                    key: `group:${gName}`,
+                    isLeaf: true,
+                    icon: <GroupIcon />,
+                    title: renderGroupNodeTitle(gName, groups[gName] || []),
+                  };
+                });
                 groupTreeData.push({
                   key: `gfolder:${fname}`,
                   title: renderFolderNodeTitle(fname, children.length),
@@ -2501,8 +2588,9 @@ export default function ScenarioPage() {
                   children,
                 });
               }
-              for (const gName of Object.keys(groups)) {
+              for (const gName of Object.keys(groups).sort(sortAsc)) {
                 if (!gFoldered.has(gName)) {
+                  modalFlatOrder.push(gName);
                   groupTreeData.push({
                     key: `group:${gName}`,
                     isLeaf: true,
@@ -2598,29 +2686,68 @@ export default function ScenarioPage() {
                     <div style={{ flex: 1, overflow: 'auto', border: '1px solid #303030', borderRadius: 4, padding: 4 }} onContextMenu={(e) => { if (!groupCtxMenu) e.preventDefault(); }}>
                       <Tree
                         treeData={groupTreeData}
-                        selectedKeys={selectedGroupForDetail ? [`group:${selectedGroupForDetail}`] : []}
-                        onSelect={(keys) => {
-                          const k = String(keys[0] || '');
-                          setSelectedGroupForDetail(k.startsWith('group:') ? k.replace('group:', '') : null);
+                        multiple
+                        selectedKeys={
+                          multiSelectedGroupsModal.length > 0
+                            ? multiSelectedGroupsModal.map(g => `group:${g}`)
+                            : (selectedGroupForDetail ? [`group:${selectedGroupForDetail}`] : [])
+                        }
+                        onSelect={(_keys, info) => {
+                          const ne = (info as any).nativeEvent as MouseEvent | undefined;
+                          const isCtrl = !!(ne && (ne.ctrlKey || ne.metaKey));
+                          const isShift = !!(ne && ne.shiftKey);
+                          const clickedKey = String(info.node.key);
+                          if (!clickedKey.startsWith('group:')) return;
+                          const clickedName = clickedKey.replace('group:', '');
+                          let next: string[];
+                          if (isShift) {
+                            const anchor = groupSelectAnchorModalRef.current;
+                            const ai = anchor ? modalFlatOrder.indexOf(anchor) : -1;
+                            const ci = modalFlatOrder.indexOf(clickedName);
+                            if (ai >= 0 && ci >= 0) {
+                              const [a, b] = ai <= ci ? [ai, ci] : [ci, ai];
+                              next = modalFlatOrder.slice(a, b + 1);
+                            } else {
+                              next = [clickedName];
+                              groupSelectAnchorModalRef.current = clickedName;
+                            }
+                          } else if (isCtrl) {
+                            next = multiSelectedGroupsModal.includes(clickedName)
+                              ? multiSelectedGroupsModal.filter(n => n !== clickedName)
+                              : [...multiSelectedGroupsModal, clickedName];
+                            groupSelectAnchorModalRef.current = clickedName;
+                          } else {
+                            // 일반 클릭 — 다중 선택 해제 (릴리즈)
+                            next = [clickedName];
+                            groupSelectAnchorModalRef.current = clickedName;
+                          }
+                          setMultiSelectedGroupsModal(next);
+                          setSelectedGroupForDetail(clickedName);
                         }}
                         draggable={{ icon: false, nodeDraggable: (node: any) => String(node.key).startsWith('group:') }}
                         allowDrop={() => true}
                         onDragStart={(info: any) => {
-                          // 그룹 드래그 시 dataTransfer에 group 이름을 실어 폴더 title의 커스텀 drop이 받을 수 있게 함
+                          // 다중 선택에 포함된 그룹을 드래그하면 전체 셋업, 아니면 단일
                           const k = String(info.node.key);
                           if (!k.startsWith('group:')) return;
-                          const gName = k.replace('group:', '');
+                          const draggedName = k.replace('group:', '');
+                          const names = (multiSelectedGroupsModal.includes(draggedName) && multiSelectedGroupsModal.length > 1)
+                            ? multiSelectedGroupsModal
+                            : [draggedName];
                           try {
-                            info.event.dataTransfer.setData('application/x-group-name', gName);
+                            info.event.dataTransfer.setData('application/x-group-names', JSON.stringify(names));
+                            info.event.dataTransfer.setData('application/x-group-name', draggedName); // 단일 폴백
                             info.event.dataTransfer.effectAllowed = 'move';
                           } catch { /* ignore */ }
                         }}
-                        onDrop={(info: any) => {
+                        onDrop={async (info: any) => {
                           // 백업: AntD 내부 drop으로 그룹 → 폴더/그룹 이동 처리
-                          // (폴더 title 커스텀 drop이 우선이지만 빈 폴더 영역 등은 여기로 옴)
                           const dragKey = info.dragNode?.key ? String(info.dragNode.key) : '';
                           if (!dragKey.startsWith('group:')) return;
-                          const groupName = dragKey.replace('group:', '');
+                          const draggedName = dragKey.replace('group:', '');
+                          const groupNames = (multiSelectedGroupsModal.includes(draggedName) && multiSelectedGroupsModal.length > 1)
+                            ? multiSelectedGroupsModal
+                            : [draggedName];
                           const dropKey = info.node?.key ? String(info.node.key) : '';
                           let targetFolder: string | null = null;
                           if (dropKey.startsWith('gfolder:')) {
@@ -2631,9 +2758,16 @@ export default function ScenarioPage() {
                               if (items.includes(targetName)) { targetFolder = fname; break; }
                             }
                           }
-                          scenarioApi.moveGroupToFolder(groupName, targetFolder)
-                            .then(res => setGroupFolders(res.data.folders || {}))
-                            .catch((e: any) => message.error(e?.response?.data?.detail || 'Failed to move'));
+                          try {
+                            let lastFolders: any = null;
+                            for (const gn of groupNames) {
+                              const res = await scenarioApi.moveGroupToFolder(gn, targetFolder);
+                              lastFolders = res.data.folders;
+                            }
+                            if (lastFolders) setGroupFolders(lastFolders);
+                          } catch (e: any) {
+                            message.error(e?.response?.data?.detail || 'Failed to move');
+                          }
                         }}
                         onRightClick={({ event, node }: any) => {
                           event.preventDefault();
