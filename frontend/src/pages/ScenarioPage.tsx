@@ -1973,7 +1973,18 @@ export default function ScenarioPage() {
               if (!dragKey.startsWith('scenario:')) return;
               const draggedName = dragKey.replace('scenario:', '');
               const dropKey = (info.node.key as string);
-              const folderName = dropKey.startsWith('folder:') ? dropKey.replace('folder:', '') : null;
+              // 폴더 노드 위/안에 떨어뜨림: 그 폴더로 이동
+              // 다른 시나리오 위/사이에 떨어뜨림: 대상 시나리오가 속한 폴더로 (없으면 루트)
+              let folderName: string | null = null;
+              if (dropKey.startsWith('folder:')) {
+                folderName = dropKey.replace('folder:', '');
+              } else if (dropKey.startsWith('scenario:')) {
+                const targetName = dropKey.replace('scenario:', '');
+                for (const [fname, items] of Object.entries(folders)) {
+                  if (items.includes(targetName)) { folderName = fname; break; }
+                }
+                // 폴더에 없으면 folderName=null (루트로)
+              }
 
               // 드래그한 항목이 다중 선택에 포함되어 있고 2개 이상이면 전체 이동, 아니면 단일 이동.
               // (선택되지 않은 항목을 드래그한 경우는 그 항목만 이동 — 일반적인 파일 탐색기 UX)
