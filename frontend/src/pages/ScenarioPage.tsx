@@ -318,6 +318,8 @@ export default function ScenarioPage() {
   const [skipStepIds, setSkipStepIds] = useState<Set<number>>(new Set());
   const selectedNameRef = useRef(selectedName);
   selectedNameRef.current = selectedName;
+  // 트리 다중 선택 anchor — Shift 범위 선택의 시작점. 일반 클릭/Ctrl 클릭 시 갱신.
+  const selectionAnchorRef = useRef<string | null>(null);
 
   // 시나리오 선택 시 스텝 로드
   useEffect(() => {
@@ -1660,28 +1662,66 @@ export default function ScenarioPage() {
               }
             }
 
-            const onSelect: TreeProps['onSelect'] = (keys, info) => {
-              // Ctrl/Shift/Meta(맥) 수정 키가 눌렸는지 확인
+            // 트리에 보이는 시나리오의 평탄화 순서 — Shift 범위 선택 계산용.
+            // 순서: 각 폴더의 시나리오 → 폴더에 속하지 않은 루트 시나리오.
+            const flatScenarioOrder: string[] = [];
+            for (const items of Object.values(folders)) {
+              for (const n of items) {
+                if (filteredScenarios.includes(n)) flatScenarioOrder.push(n);
+              }
+            }
+            for (const name of filteredScenarios) {
+              if (!foldered.has(name)) flatScenarioOrder.push(name);
+            }
+
+            const onSelect: TreeProps['onSelect'] = (_keys, info) => {
               const ne = (info as any).nativeEvent as MouseEvent | undefined;
-              const isModifier = !!(ne && (ne.ctrlKey || ne.metaKey || ne.shiftKey));
+              const isCtrl = !!(ne && (ne.ctrlKey || ne.metaKey));
+              const isShift = !!(ne && ne.shiftKey);
 
               const clickedKey = String(info.node.key);
+              const isClickedScenario = clickedKey.startsWith('scenario:');
+              const clickedName = isClickedScenario ? clickedKey.replace('scenario:', '') : null;
 
-              // 일반 클릭: 다중 선택을 해제하고 클릭한 항목만 선택
-              // Ctrl/Shift 클릭: AntD가 계산한 keys 그대로 사용 (다중 선택 누적)
-              const finalKeys = isModifier ? keys.map(k => String(k)) : [clickedKey];
+              let finalScenarioNames: string[];
 
-              const scenarioNames = finalKeys
-                .filter(k => k.startsWith('scenario:'))
-                .map(k => k.replace('scenario:', ''));
-              setMultiSelectedNames(scenarioNames);
+              if (isShift && clickedName) {
+                // Shift: anchor → 클릭 항목 사이 전체 범위 선택 (트리 표시 순서 기준).
+                // anchor가 없거나 보이지 않으면 fallback으로 클릭 항목만 선택.
+                const anchor = selectionAnchorRef.current;
+                const anchorIdx = anchor ? flatScenarioOrder.indexOf(anchor) : -1;
+                const clickIdx = flatScenarioOrder.indexOf(clickedName);
+                if (anchorIdx >= 0 && clickIdx >= 0) {
+                  const [a, b] = anchorIdx <= clickIdx ? [anchorIdx, clickIdx] : [clickIdx, anchorIdx];
+                  finalScenarioNames = flatScenarioOrder.slice(a, b + 1);
+                } else {
+                  finalScenarioNames = [clickedName];
+                  selectionAnchorRef.current = clickedName;
+                }
+                // 주의: Shift는 anchor를 갱신하지 않음 (연속 Shift 클릭으로 범위 재조정 가능)
+              } else if (isCtrl) {
+                // Ctrl: 토글 — 기존 선택을 유지하면서 클릭 항목만 추가/제거
+                if (clickedName) {
+                  finalScenarioNames = multiSelectedNames.includes(clickedName)
+                    ? multiSelectedNames.filter(n => n !== clickedName)
+                    : [...multiSelectedNames, clickedName];
+                  selectionAnchorRef.current = clickedName;
+                } else {
+                  finalScenarioNames = multiSelectedNames;
+                }
+              } else {
+                // 일반 클릭: 다중 선택 해제, 클릭한 항목만 선택. anchor도 갱신.
+                finalScenarioNames = clickedName ? [clickedName] : [];
+                selectionAnchorRef.current = clickedName;
+              }
 
-              // 미리보기 대상은 가장 최근 클릭한 노드
-              if (clickedKey.startsWith('scenario:')) {
-                const name = clickedKey.replace('scenario:', '');
-                setSelectedName(name);
+              setMultiSelectedNames(finalScenarioNames);
+
+              // 미리보기는 가장 최근 클릭한 시나리오 기준
+              if (clickedName) {
+                setSelectedName(clickedName);
                 if (!playing) { setStepResults([]); setPlaybackScenario(null); }
-              } else if (scenarioNames.length === 0) {
+              } else if (finalScenarioNames.length === 0) {
                 setSelectedName(null);
               }
             };
