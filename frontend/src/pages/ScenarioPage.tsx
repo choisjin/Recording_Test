@@ -347,6 +347,13 @@ export default function ScenarioPage() {
   const [scenarioStepsCache, setScenarioStepsCache] = useState<Record<string, any[]>>({});
   const [expandedEntries, setExpandedEntries] = useState<Set<string>>(new Set());
   const [groupDrag, setGroupDrag] = useState<{ gName: string; from: number; over: number | null } | null>(null);
+  // 그룹 모달 좌측 트리에서 다중 선택된 시나리오들 (드래그 시 일괄 추가)
+  const [modalTreeSelected, setModalTreeSelected] = useState<string[]>([]);
+  // 우측 그룹 페이지 드롭 호버 중인 그룹 이름 (시각 피드백)
+  const [groupDropHover, setGroupDropHover] = useState<string | null>(null);
+  // 그룹 모달 트리의 폴더 필터 ('__all__' or 폴더명)
+  const [modalTreeFolder, setModalTreeFolder] = useState<string>('__all__');
+  const modalTreeAnchorRef = useRef<string | null>(null);
 
   // Copy
   const [copyName, setCopyName] = useState('');
@@ -2036,8 +2043,8 @@ export default function ScenarioPage() {
       </Splitter>
 
       {/* ===== 그룹 관리 모달 ===== */}
-      <Modal title={t('scenario.groupManage')} open={groupModalVisible} onCancel={() => setGroupModalVisible(false)} footer={null} width={960}
-        styles={{ body: { maxHeight: '75vh', overflowY: 'auto' } }}
+      <Modal title={t('scenario.groupManage')} open={groupModalVisible} onCancel={() => setGroupModalVisible(false)} footer={null} width={1280}
+        styles={{ body: { height: '78vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' } }}
       >
         <Space style={{ marginBottom: 6 }}>
           <Input
@@ -2048,23 +2055,201 @@ export default function ScenarioPage() {
             style={{ width: 200 }}
           />
           <Button icon={<FolderAddOutlined />} type="primary" onClick={createGroup}>{t('scenario.create')}</Button>
+          <span style={{ color: '#888', fontSize: 11 }}>{t('scenario.dragHint')}</span>
         </Space>
+        <Splitter style={{ flex: 1, minHeight: 0 }}>
+          <Splitter.Panel defaultSize="34%" min="20%" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingRight: 6 }}>
+            {(() => {
+              // ───── 좌측 시나리오 트리 (모달 전용) ─────
+              const foldered = new Set<string>();
+              for (const items of Object.values(folders)) items.forEach(n => foldered.add(n));
+              // 폴더 필터링
+              const visible = modalTreeFolder === '__all__'
+                ? scenarios
+                : scenarios.filter(n => (folders[modalTreeFolder] || []).includes(n));
+              const treeData: any[] = [];
+              if (modalTreeFolder === '__all__') {
+                for (const [fname, items] of Object.entries(folders)) {
+                  const children = items.filter(n => scenarios.includes(n)).map(n => ({
+                    key: `scenario:${n}`,
+                    title: n,
+                    icon: <FileOutlined />,
+                    isLeaf: true,
+                  }));
+                  treeData.push({
+                    key: `folder:${fname}`,
+                    title: `${fname} (${children.length})`,
+                    icon: <FolderOutlined />,
+                    isLeaf: false,
+                    selectable: false,
+                    children,
+                  });
+                }
+                for (const name of scenarios) {
+                  if (!foldered.has(name)) {
+                    treeData.push({ key: `scenario:${name}`, title: name, icon: <FileOutlined />, isLeaf: true });
+                  }
+                }
+              } else {
+                for (const name of visible) {
+                  treeData.push({ key: `scenario:${name}`, title: name, icon: <FileOutlined />, isLeaf: true });
+                }
+              }
+              // 평탄화된 시나리오 순서 (Shift 범위 선택)
+              const flatOrder: string[] = [];
+              if (modalTreeFolder === '__all__') {
+                for (const items of Object.values(folders)) {
+                  for (const n of items) if (scenarios.includes(n)) flatOrder.push(n);
+                }
+                for (const name of scenarios) if (!foldered.has(name)) flatOrder.push(name);
+              } else {
+                for (const name of visible) flatOrder.push(name);
+              }
+              return (
+                <>
+                  <div style={{ display: 'flex', gap: 4, marginBottom: 4, alignItems: 'center' }}>
+                    <Select size="small" value={modalTreeFolder} onChange={setModalTreeFolder} style={{ width: 130 }}>
+                      <Select.Option value="__all__">{t('scenario.allScenarios')}</Select.Option>
+                      {Object.keys(folders).map(fn => <Select.Option key={fn} value={fn}>{fn}</Select.Option>)}
+                    </Select>
+                    <span style={{ fontSize: 11, color: '#888' }}>{visible.length} {t('scenario.title')}</span>
+                  </div>
+                  <div style={{ flex: 1, overflow: 'auto', border: '1px solid #303030', borderRadius: 4, padding: 4 }}>
+                    <Tree
+                      treeData={treeData}
+                      multiple
+                      blockNode
+                      showIcon
+                      defaultExpandAll
+                      draggable={{ icon: false, nodeDraggable: (node: any) => String(node.key).startsWith('scenario:') }}
+                      selectedKeys={modalTreeSelected.map(n => `scenario:${n}`)}
+                      onSelect={(_keys, info) => {
+                        const ne = (info as any).nativeEvent as MouseEvent | undefined;
+                        const isCtrl = !!(ne && (ne.ctrlKey || ne.metaKey));
+                        const isShift = !!(ne && ne.shiftKey);
+                        const clickedKey = String(info.node.key);
+                        if (!clickedKey.startsWith('scenario:')) return;
+                        const clickedName = clickedKey.replace('scenario:', '');
+                        let next: string[];
+                        if (isShift) {
+                          const anchor = modalTreeAnchorRef.current;
+                          const ai = anchor ? flatOrder.indexOf(anchor) : -1;
+                          const ci = flatOrder.indexOf(clickedName);
+                          if (ai >= 0 && ci >= 0) {
+                            const [a, b] = ai <= ci ? [ai, ci] : [ci, ai];
+                            next = flatOrder.slice(a, b + 1);
+                          } else {
+                            next = [clickedName];
+                            modalTreeAnchorRef.current = clickedName;
+                          }
+                        } else if (isCtrl) {
+                          next = modalTreeSelected.includes(clickedName)
+                            ? modalTreeSelected.filter(n => n !== clickedName)
+                            : [...modalTreeSelected, clickedName];
+                          modalTreeAnchorRef.current = clickedName;
+                        } else {
+                          next = [clickedName];
+                          modalTreeAnchorRef.current = clickedName;
+                        }
+                        setModalTreeSelected(next);
+                      }}
+                      onDragStart={(info: any) => {
+                        const key = String(info.node.key);
+                        if (!key.startsWith('scenario:')) return;
+                        const draggedName = key.replace('scenario:', '');
+                        // 드래그한 항목이 다중 선택에 포함되어 있으면 전체, 아니면 단일
+                        const names = (modalTreeSelected.includes(draggedName) && modalTreeSelected.length > 1)
+                          ? modalTreeSelected
+                          : [draggedName];
+                        try {
+                          info.event.dataTransfer.setData('application/x-scenario-names', JSON.stringify(names));
+                          info.event.dataTransfer.setData('text/plain', names.join('\n'));
+                          info.event.dataTransfer.effectAllowed = 'copy';
+                        } catch { /* ignore */ }
+                      }}
+                    />
+                    {treeData.length === 0 && <div style={{ textAlign: 'center', color: '#888', padding: 16 }}>{t('scenario.noScenarios')}</div>}
+                  </div>
+                </>
+              );
+            })()}
+          </Splitter.Panel>
+          <Splitter.Panel style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingLeft: 6 }}>
+            <div style={{ flex: 1, overflow: 'auto' }}>
         <Collapse
           accordion
           items={Object.entries(groups).map(([gName, members]) => ({
             key: gName,
             label: (
-              <Space>
+              <div
+                onDragOver={(e) => {
+                  if (!e.dataTransfer.types.includes('application/x-scenario-names')) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'copy';
+                  if (groupDropHover !== gName) setGroupDropHover(gName);
+                }}
+                onDragLeave={() => { if (groupDropHover === gName) setGroupDropHover(null); }}
+                onDrop={async (e) => {
+                  if (!e.dataTransfer.types.includes('application/x-scenario-names')) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setGroupDropHover(null);
+                  try {
+                    const raw = e.dataTransfer.getData('application/x-scenario-names');
+                    const names: string[] = JSON.parse(raw || '[]');
+                    for (const n of names) await addToGroup(gName, n);
+                  } catch { /* ignore */ }
+                }}
+                style={{
+                  background: groupDropHover === gName ? 'rgba(22,119,255,0.15)' : undefined,
+                  border: groupDropHover === gName ? '1px dashed #1677ff' : '1px dashed transparent',
+                  borderRadius: 4,
+                  padding: '2px 6px',
+                  margin: '-2px -6px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
                 <FolderOutlined />
                 <span>{gName}</span>
                 <Tag>{members.length}</Tag>
-              </Space>
+                {groupDropHover === gName && <span style={{ fontSize: 10, color: '#1677ff' }}>{t('scenario.dropHere')}</span>}
+              </div>
             ),
             extra: (
               <Button size="small" danger icon={<DeleteOutlined />} onClick={(e) => { e.stopPropagation(); deleteGroup(gName); }}>{t('common.delete')}</Button>
             ),
             children: (
-              <>
+              <div
+                onDragOver={(e) => {
+                  if (!e.dataTransfer.types.includes('application/x-scenario-names')) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'copy';
+                  if (groupDropHover !== gName) setGroupDropHover(gName);
+                }}
+                onDragLeave={(e) => {
+                  // 컨테이너 내부 자식으로 옮길 때 leave가 발생하는 것 방지
+                  if ((e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) return;
+                  if (groupDropHover === gName) setGroupDropHover(null);
+                }}
+                onDrop={async (e) => {
+                  if (!e.dataTransfer.types.includes('application/x-scenario-names')) return;
+                  e.preventDefault();
+                  setGroupDropHover(null);
+                  try {
+                    const raw = e.dataTransfer.getData('application/x-scenario-names');
+                    const names: string[] = JSON.parse(raw || '[]');
+                    for (const n of names) await addToGroup(gName, n);
+                  } catch { /* ignore */ }
+                }}
+                style={{
+                  outline: groupDropHover === gName ? '2px dashed #1677ff' : 'none',
+                  outlineOffset: -2,
+                  borderRadius: 4,
+                  padding: 2,
+                }}
+              >
                 <List
                   size="small"
                   dataSource={members}
@@ -2233,11 +2418,14 @@ export default function ScenarioPage() {
                     </div>
                   );
                 })()}
-              </>
+              </div>
             ),
           }))}
         />
         {Object.keys(groups).length === 0 && <div style={{ textAlign: 'center', color: '#888', padding: 16 }}>{t('scenario.noGroups')}</div>}
+            </div>
+          </Splitter.Panel>
+        </Splitter>
       </Modal>
 
       {/* ===== 복사 모달 ===== */}
