@@ -2633,12 +2633,13 @@ export default function DevicePage() {
                 <td style={{ padding: '4px' }}><Tag>{item.proto}</Tag></td>
                 <td style={{ padding: '4px' }}>
                   <Select size="small"
+                    disabled
                     value={(v.category as ScanCategory) || _defaultCategoryForKey(item.key)}
                     onChange={(cat) => setScanBuiltin({ ...scanBuiltin, [item.key]: { ...v, category: cat } })}
                     style={{ width: '100%' }}
                     options={[
-                      { label: '주', value: 'primary' },
-                      { label: '보조', value: 'auxiliary' },
+                      { label: t('device.primary'), value: 'primary' },
+                      { label: t('device.auxiliary'), value: 'auxiliary' },
                     ]}
                   />
                 </td>
@@ -2646,6 +2647,7 @@ export default function DevicePage() {
                   {item.editablePorts ? (
                     <Input
                       size="small"
+                      disabled
                       value={portsStr}
                       placeholder={t('device.portsPlaceholder')}
                       onChange={e => {
@@ -2660,6 +2662,7 @@ export default function DevicePage() {
                     <Space.Compact size="small" style={{ width: '100%' }}>
                       <Input
                         size="small"
+                        disabled
                         value={v.host ?? '192.167.0.5'}
                         placeholder="host"
                         style={{ flex: 1 }}
@@ -2667,6 +2670,7 @@ export default function DevicePage() {
                       />
                       <InputNumber
                         size="small"
+                        disabled
                         min={1} max={65535}
                         value={v.port ?? 8000}
                         placeholder="port"
@@ -2677,6 +2681,7 @@ export default function DevicePage() {
                   ) : (item.key === 'ssh' || item.key === 'icas' || item.key === 'mib') ? (
                     <InputNumber
                       size="small"
+                      disabled
                       min={1} max={65535}
                       value={v.port ?? 22}
                       style={{ width: '100%' }}
@@ -2685,7 +2690,7 @@ export default function DevicePage() {
                   ) : portLabel}
                 </td>
                 <td style={{ padding: '4px' }}>
-                  <Select size="small" allowClear placeholder="-" value={v.module || undefined}
+                  <Select size="small" allowClear disabled placeholder="-" value={v.module || undefined}
                     onChange={val => setScanBuiltin({ ...scanBuiltin, [item.key]: { ...v, module: val || '' } })}
                     style={{ width: '100%' }} options={visibleModules.map(m => ({ label: m.label, value: m.name }))} />
                 </td>
@@ -2710,8 +2715,8 @@ export default function DevicePage() {
                     onChange={(cat) => { const n = [...scanCustom]; n[idx] = { ...scanCustom[idx], category: cat }; setScanCustom(n); }}
                     style={{ width: '100%' }}
                     options={[
-                      { label: '주', value: 'primary' },
-                      { label: '보조', value: 'auxiliary' },
+                      { label: t('device.primary'), value: 'primary' },
+                      { label: t('device.auxiliary'), value: 'auxiliary' },
                     ]}
                   />
                 </td>
@@ -2754,15 +2759,15 @@ export default function DevicePage() {
                 <tr style={{ borderBottom: '2px solid #d9d9d9', textAlign: 'left' }}>
                   <th style={{ padding: '6px 4px', width: 40 }}></th>
                   <th style={{ padding: '6px 4px' }}>{t('common.name')}</th>
-                  <th style={{ padding: '6px 4px', width: 80 }}>Protocol</th>
-                  <th style={{ padding: '6px 4px', width: 100 }}>Category</th>
-                  <th style={{ padding: '6px 4px', width: 110 }}>Port</th>
-                  <th style={{ padding: '6px 4px', width: 140 }}>Module</th>
+                  <th style={{ padding: '6px 4px', width: 80 }}>{t('device.protocol')}</th>
+                  <th style={{ padding: '6px 4px', width: 100 }}>{t('device.category')}</th>
+                  <th style={{ padding: '6px 4px', width: 110 }}>{t('device.port')}</th>
+                  <th style={{ padding: '6px 4px', width: 140 }}>{t('device.module')}</th>
                   <th style={{ padding: '6px 4px', width: 40 }}></th>
                 </tr>
               </thead>
-              {renderSection('주 디바이스', primaryRows, '#1677ff')}
-              {renderSection('보조 디바이스', auxiliaryRows, '#666')}
+              {renderSection(t('device.primaryDevice'), primaryRows, '#1677ff')}
+              {renderSection(t('device.auxiliaryDevice'), auxiliaryRows, '#666')}
               <tbody>
                 {/* 추가 행 */}
                 <tr style={{ borderTop: '2px solid #d9d9d9' }}>
@@ -2777,7 +2782,7 @@ export default function DevicePage() {
                   </td>
                   <td style={{ padding: '4px' }}>
                     <Select size="small" value={newCustomCategory} onChange={setNewCustomCategory} style={{ width: '100%' }}
-                      options={[{ label: '주', value: 'primary' }, { label: '보조', value: 'auxiliary' }]} />
+                      options={[{ label: t('device.primary'), value: 'primary' }, { label: t('device.auxiliary'), value: 'auxiliary' }]} />
                   </td>
                   <td style={{ padding: '4px' }}>
                     <InputNumber size="small" placeholder="Port" value={newCustomPort}
