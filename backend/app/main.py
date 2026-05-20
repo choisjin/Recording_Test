@@ -1129,6 +1129,29 @@ async def _webcam_session_finalize(session: Optional[_WebcamPlaybackSession], re
     await asyncio.to_thread(_webcam_session_finalize_sync, session, result_path)
 
 
+def _parse_until_time(raw: Any) -> Optional[datetime]:
+    """프론트가 보낸 'until_time' 문자열을 timezone-aware datetime으로 변환.
+
+    허용 포맷:
+    - ISO 8601 (예: "2026-05-20T18:30:00+09:00", "2026-05-20T09:30:00Z")
+    - tz 없는 ISO 문자열은 로컬 타임존으로 해석한다 (UI DatePicker가 통상 로컬 시각을 ISO로 보냄).
+
+    파싱 실패 시 None — 호출부는 무한정 회차 실행 모드로 폴백한다.
+    """
+    if not raw or not isinstance(raw, str):
+        return None
+    try:
+        s = raw.strip()
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.astimezone()  # 시스템 로컬 타임존 부여
+        return dt
+    except (TypeError, ValueError):
+        return None
+
+
 async def _run_play_job(data: dict):
     """백그라운드 태스크로 실행되는 play 로직. WebSocket과 무관하게 끝까지 실행된다.
 
@@ -1142,6 +1165,7 @@ async def _run_play_job(data: dict):
     scenario_name = data.get("scenario")
     verify = data.get("verify", True)
     repeat = data.get("repeat", 1)
+    until_time = _parse_until_time(data.get("until_time"))
     device_map_override = data.get("device_map")
     skip_steps: set[int] = set(data.get("skip_steps", []))
     _is_multi_cycle = False
@@ -1269,6 +1293,16 @@ async def _run_play_job(data: dict):
                 break
             last_completed_iteration = iteration
 
+            # "지정 시각을 포함하는 회차까지" — 회차 완료 후 검사. now >= until_time 이면 다음 회차 시작 안 함.
+            # 현재 회차는 항상 끝까지 진행되므로 종료 시각이 회차 진행 중에 도래해도 해당 회차는 완주됨.
+            if until_time is not None and datetime.now(until_time.tzinfo) >= until_time:
+                publish_event({
+                    "type": "until_time_reached",
+                    "iteration": iteration,
+                    "until_time": until_time.isoformat(),
+                })
+                break
+
             if _is_multi_cycle:
                 _interim = ScenarioResult(
                     scenario_name=scenario_name,
@@ -1360,6 +1394,7 @@ async def _run_play_group_job(data: dict):
     group_members = data.get("scenarios", [])
     verify = data.get("verify", True)
     repeat = data.get("repeat", 1)
+    until_time = _parse_until_time(data.get("until_time"))
     device_map_override = data.get("device_map")
 
     entries: list[dict] = []
@@ -1548,6 +1583,18 @@ async def _run_play_group_job(data: dict):
 
             if not playback_service._should_stop:
                 last_completed_iteration = iteration
+            # 회차 완료 후 종료시각 검사 (그룹). 현재 회차는 완주, 다음 회차만 차단.
+            _until_reached = (
+                not playback_service._should_stop
+                and until_time is not None
+                and datetime.now(until_time.tzinfo) >= until_time
+            )
+            if _until_reached:
+                publish_event({
+                    "type": "until_time_reached",
+                    "iteration": iteration,
+                    "until_time": until_time.isoformat(),
+                })
             if repeat > 1 and not playback_service._should_stop:
                 _interim = ScenarioResult(
                     scenario_name=group_name,
@@ -1563,6 +1610,9 @@ async def _run_play_group_job(data: dict):
                     error_steps=unified_result.error_steps,
                 )
                 await playback_service._save_result(_interim, interim=True)
+
+            if _until_reached:
+                break
 
         # runtime fail (assert_keyword) 흡수
         runtime_fails = consume_runtime_fails()

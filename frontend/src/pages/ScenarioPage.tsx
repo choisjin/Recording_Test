@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Button, Card, Checkbox, Col, Collapse, Descriptions, Divider, Dropdown, Image, Input, InputNumber, List, Modal, Radio, Row, Select, Space, Splitter, Table, Tabs, Tag, Tree, Upload, message } from 'antd';
+import { Button, Card, Checkbox, Col, Collapse, DatePicker, Descriptions, Divider, Dropdown, Image, Input, InputNumber, List, Modal, Radio, Row, Select, Space, Splitter, Table, Tabs, Tag, Tooltip, Tree, Upload, message } from 'antd';
+import dayjs from 'dayjs';
 import type { TreeProps } from 'antd';
 import {
   PlayCircleOutlined, PauseOutlined, DeleteOutlined, EyeOutlined,
@@ -230,6 +231,13 @@ export default function ScenarioPage() {
   const getRepeatCount = (name: string) => repeatCounts[name] ?? 1;
   const setRepeatCount = (name: string, val: number) =>
     setRepeatCounts((prev) => ({ ...prev, [name]: val }));
+
+  // 반복 재생 종료 시각 (시나리오/그룹별, ISO string). null이면 횟수만으로 종료.
+  // 회차가 시간을 포함하면 그 회차는 완주하고 다음 회차부터 차단됨 (백엔드에서 검사).
+  const [untilTimes, setUntilTimes] = useState<Record<string, string | null>>({});
+  const getUntilTime = (name: string) => untilTimes[name] ?? null;
+  const setUntilTime = (name: string, val: string | null) =>
+    setUntilTimes((prev) => ({ ...prev, [name]: val }));
 
   // 백그라운드 CMD/SSH 폴링 — 활성 task_id를 함께 추적해서 취소 가능
   const bgPollTimers = useRef<ReturnType<typeof setInterval>[]>([]);
@@ -871,6 +879,7 @@ export default function ScenarioPage() {
 
     pauseScreenStream();
     const repeat = getRepeatCount(name);
+    const untilTime = getUntilTime(name);
     // 웹캠 자동녹화: 복수 웹캠이 있으면 사용자에게 index 선택 받기 + 웹캠 열기 + 연결 확인
     let doAutoRecord = false;
     if (webcamAutoRecord) {
@@ -911,7 +920,7 @@ export default function ScenarioPage() {
           ws.send(JSON.stringify({ action: 'subscribe' }));
         } else {
           setCurrentStepId(1);
-          ws.send(JSON.stringify({ action: 'play', scenario: name, verify: true, repeat, ...(hasMap ? { device_map: deviceMap } : {}), ...(skipIds.length > 0 ? { skip_steps: skipIds } : {}) }));
+          ws.send(JSON.stringify({ action: 'play', scenario: name, verify: true, repeat, ...(hasMap ? { device_map: deviceMap } : {}), ...(skipIds.length > 0 ? { skip_steps: skipIds } : {}), ...(untilTime ? { until_time: untilTime } : {}) }));
         }
       };
       ws.onmessage = (event) => {
@@ -1011,6 +1020,9 @@ export default function ScenarioPage() {
         // 새 재생 시작 시 상태 초기화 (재연결 시에는 수신 안 함)
         setStepResults([]);
         setCurrentStepId(null);
+      } else if (msg.type === 'until_time_reached') {
+        // 지정 시각 도달 — 현재 회차까지 완주 후 종료. playback_complete가 곧 따라온다.
+        message.info(t('scenario.untilTimeReached', { iteration: String(msg.iteration ?? '') }));
       } else if (msg.type === 'playback_complete') {
         if (liveDurationRef.current) { clearInterval(liveDurationRef.current); liveDurationRef.current = null; }
         endPlaying(); setPaused(false); setCurrentStepId(null); resumeScreenStream();
@@ -1179,6 +1191,7 @@ export default function ScenarioPage() {
     pauseScreenStream();
     const members = groups[gName] || [];
     const repeat = getRepeatCount(gName);
+    const untilTime = getUntilTime(gName);
     // 웹캠 자동녹화: 복수 웹캠이 있으면 사용자에게 index 선택 받기 + 웹캠 열기 + 연결 확인
     let doAutoRecord = false;
     if (webcamAutoRecord) {
@@ -1221,7 +1234,7 @@ export default function ScenarioPage() {
         if (isReconnect) {
           ws.send(JSON.stringify({ action: 'subscribe' }));
         } else {
-          ws.send(JSON.stringify({ action: 'play_group', group_name: gName, scenarios: members, verify: true, repeat, ...(hasMap ? { device_map: deviceMap } : {}) }));
+          ws.send(JSON.stringify({ action: 'play_group', group_name: gName, scenarios: members, verify: true, repeat, ...(hasMap ? { device_map: deviceMap } : {}), ...(untilTime ? { until_time: untilTime } : {}) }));
         }
       };
       ws.onmessage = (event) => {
@@ -1319,6 +1332,9 @@ export default function ScenarioPage() {
       } else if (msg.type === 'playback_reset') {
         setStepResults([]);
         setCurrentStepId(null);
+      } else if (msg.type === 'until_time_reached') {
+        // 지정 시각 도달 — 현재 회차까지 완주 후 종료
+        message.info(t('scenario.untilTimeReached', { iteration: String(msg.iteration ?? '') }));
       } else if (msg.type === 'playback_complete') {
         if (liveDurationRef.current) { clearInterval(liveDurationRef.current); liveDurationRef.current = null; }
         endPlaying(); setPaused(false); setPlayingGroupName(null); setCurrentStepId(null); resumeScreenStream();
@@ -2168,6 +2184,18 @@ export default function ScenarioPage() {
                 <span style={{ fontWeight: 400 }}>— {(groups[groupShownInDetail] || []).filter(m => scenarios.includes(m.name)).length} {t('scenario.title')}</span>
                 <InputNumber min={1} max={999} size="small" value={getRepeatCount(groupShownInDetail)} onChange={(v) => setRepeatCount(groupShownInDetail!, v || 1)} style={{ width: 60 }} disabled={playing} />
                 <span style={{ fontSize: 11, fontWeight: 400 }}>{t('scenario.times')}</span>
+                <Tooltip title={t('scenario.untilTimeTooltip')}>
+                  <DatePicker
+                    size="small"
+                    showTime={{ format: 'HH:mm' }}
+                    format="MM-DD HH:mm"
+                    placeholder={t('scenario.untilTimePlaceholder')}
+                    value={getUntilTime(groupShownInDetail) ? dayjs(getUntilTime(groupShownInDetail)!) : null}
+                    onChange={(d) => setUntilTime(groupShownInDetail!, d ? d.toISOString() : null)}
+                    disabled={playing}
+                    style={{ width: 150 }}
+                  />
+                </Tooltip>
                 <Button type="primary" size="small" icon={<PlayCircleOutlined />} disabled={playing} onClick={() => playGroup(groupShownInDetail!)}>{t('scenario.play')}</Button>
               </Space>
             ) : (
@@ -2181,6 +2209,18 @@ export default function ScenarioPage() {
                   <>
                     <InputNumber min={1} max={999} size="small" value={getRepeatCount(selectedName!)} onChange={(v) => setRepeatCount(selectedName!, v || 1)} style={{ width: 60 }} disabled={playing} />
                     <span style={{ fontSize: 11, fontWeight: 400 }}>{t('scenario.times')}</span>
+                    <Tooltip title={t('scenario.untilTimeTooltip')}>
+                      <DatePicker
+                        size="small"
+                        showTime={{ format: 'HH:mm' }}
+                        format="MM-DD HH:mm"
+                        placeholder={t('scenario.untilTimePlaceholder')}
+                        value={getUntilTime(selectedName!) ? dayjs(getUntilTime(selectedName!)!) : null}
+                        onChange={(d) => setUntilTime(selectedName!, d ? d.toISOString() : null)}
+                        disabled={playing}
+                        style={{ width: 150 }}
+                      />
+                    </Tooltip>
                     <Button type="primary" size="small" icon={<PlayCircleOutlined />} loading={playing && playingName === selectedName} disabled={playing} onClick={() => playScenario(selectedName!)}>{t('scenario.play')}</Button>
                   </>
                 )}
