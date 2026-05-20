@@ -96,16 +96,34 @@ async def list_results():
 
 
 def _resolve_image_path(rel_path: str | None) -> Path | None:
-    """Resolve a relative screenshot path to an absolute filesystem path."""
+    """Resolve a relative screenshot path to an absolute filesystem path.
+
+    actual 이미지는 run 폴더(RESULTS_DIR/{run}/screenshots/...) 기준으로 저장되고,
+    expected 이미지는 SCREENSHOTS_DIR/{scenario}/... 기준으로 저장된다.
+    둘 다 시도한다.
+    """
     if not rel_path:
         return None
-    # Handle absolute paths from older results
     p = rel_path.replace("\\", "/")
+    # 절대 경로면 그대로 시도
+    try:
+        ap = Path(p)
+        if ap.is_absolute() and ap.exists():
+            return ap
+    except Exception:
+        pass
+    # 옛 결과의 .../screenshots/ 접두사 제거 (SCREENSHOTS_DIR 기준 잔존 케이스용)
     idx = p.find("/screenshots/")
-    if idx >= 0:
-        p = p[idx + len("/screenshots/"):]
-    full = SCREENSHOTS_DIR / p
-    return full if full.exists() else None
+    p_ss = p[idx + len("/screenshots/"):] if idx >= 0 else p
+    # 1) results 런 폴더 기준
+    cand = RESULTS_DIR / p
+    if cand.exists():
+        return cand
+    # 2) screenshots 폴더 기준 (옛 형식 / expected 이미지)
+    cand = SCREENSHOTS_DIR / p_ss
+    if cand.exists():
+        return cand
+    return None
 
 
 def _html_image_src(rel_path: str | None, html_dir: Path) -> str:
