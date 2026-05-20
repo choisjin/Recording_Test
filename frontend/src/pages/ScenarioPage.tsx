@@ -2190,12 +2190,14 @@ export default function ScenarioPage() {
                   <DatePicker
                     size="small"
                     showTime={{ format: 'HH:mm' }}
-                    format="MM-DD HH:mm"
+                    format="YYYY-MM-DD HH:mm"
                     placeholder={t('scenario.untilTimePlaceholder')}
                     value={getUntilTime(groupShownInDetail) ? dayjs(getUntilTime(groupShownInDetail)!) : null}
                     onChange={(d) => setUntilTime(groupShownInDetail!, d ? d.toISOString() : null)}
+                    onOk={(d) => setUntilTime(groupShownInDetail!, d ? d.toISOString() : null)}
                     disabled={playing}
-                    style={{ width: 150 }}
+                    allowClear
+                    style={{ width: 200 }}
                   />
                 </Tooltip>
                 <Button type="primary" size="small" icon={<PlayCircleOutlined />} disabled={playing} onClick={() => playGroup(groupShownInDetail!)}>{t('scenario.play')}</Button>
@@ -2215,12 +2217,14 @@ export default function ScenarioPage() {
                       <DatePicker
                         size="small"
                         showTime={{ format: 'HH:mm' }}
-                        format="MM-DD HH:mm"
+                        format="YYYY-MM-DD HH:mm"
                         placeholder={t('scenario.untilTimePlaceholder')}
                         value={getUntilTime(selectedName!) ? dayjs(getUntilTime(selectedName!)!) : null}
                         onChange={(d) => setUntilTime(selectedName!, d ? d.toISOString() : null)}
+                        onOk={(d) => setUntilTime(selectedName!, d ? d.toISOString() : null)}
                         disabled={playing}
-                        style={{ width: 150 }}
+                        allowClear
+                        style={{ width: 200 }}
                       />
                     </Tooltip>
                     <Button type="primary" size="small" icon={<PlayCircleOutlined />} loading={playing && playingName === selectedName} disabled={playing} onClick={() => playScenario(selectedName!)}>{t('scenario.play')}</Button>
