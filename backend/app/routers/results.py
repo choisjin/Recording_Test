@@ -297,6 +297,14 @@ _HTML_SCRIPT = r"""
         headerFilter:listEditor('device','전체'), headerFilterParams:{values:devVals}, headerFilterFunc:"=" },
       { title:"Command", field:"command", widthGrow:2, vertAlign:va,
         headerFilter:listEditor('command','전체'), headerFilterParams:{values:uniqueVals(data,'command')}, headerFilterFunc:"=" },
+      { title:"Output", field:"output", widthGrow:3, vertAlign:va,
+        formatter:function(cell){
+          var v = cell.getValue();
+          if (!v) return '<span style="color:#888">-</span>';
+          var safe = String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+          return '<pre style="margin:0;font-size:10px;font-family:monospace;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow:auto">' + safe + '</pre>';
+        },
+        headerFilter:"input" },
       { title:"Remark", field:"description", widthGrow:2, vertAlign:va,
         headerFilter:listEditor('description','전체'), headerFilterParams:{values:uniqueVals(data,'description')}, headerFilterFunc:"=" },
       { title:"Status", field:"status", width:90, hozAlign:"center", vertAlign:va, formatter:statusFmt,
@@ -313,7 +321,7 @@ _HTML_SCRIPT = r"""
   }
 
   /* ---------- 전역 검색 필터 ---------- */
-  var TEXT_FIELDS = ["timestamp","cycle","step_id","device","command","description","status","delay","duration"];
+  var TEXT_FIELDS = ["timestamp","cycle","step_id","device","command","output","description","status","delay","duration"];
   function globalFilter(row, params){
     var q = params.q;
     if (!q) return true;
@@ -424,7 +432,9 @@ def _build_html_report(data: dict, output_path: Path) -> str:
             "cycle": sr.get("repeat_index", 1),
             "step_id": sr.get("step_id", ""),
             "device": sr.get("device_id", ""),
-            "command": sr.get("command", sr.get("message", "")),
+            "command": sr.get("command", ""),
+            # 모듈 명령(cmd, adb_send 등)의 실행 출력값. 빈 값은 명령 표시와 별개 컬럼에서 - 처리.
+            "output": sr.get("message", ""),
             "description": sr.get("description", ""),
             "status": sr.get("status", ""),
             "delay": delay_str,
@@ -517,15 +527,15 @@ def _build_excel_workbook(data: dict, filepath: Path = None):
 
     col_headers = [
         "Time Stamp", "TOTAL TC REPEAT", "CURRENT TC REPEAT",
-        "STEP INDEX", "Device", "Command", "Remark", "Status", "DELAY", "DURATION",
+        "STEP INDEX", "Device", "Command", "Output", "Remark", "Status", "DELAY", "DURATION",
         "Expected Image", "Actual Image",
     ]
     col_descs = [
         "실행된 날짜/시간", "총 repeat", "현재 cycle",
-        "스탭 순서", "장치", "action", "설명", "pass, fail, error, jump", "설정한 딜레이", "실제 걸린 시간",
+        "스탭 순서", "장치", "action", "명령 실행 출력값", "설명", "pass, fail, error, jump", "설정한 딜레이", "실제 걸린 시간",
         "기대 이미지", "비교 이미지 (annotated)",
     ]
-    col_widths = [22, 16, 18, 12, 16, 30, 30, 12, 12, 14, 30, 30]
+    col_widths = [22, 16, 18, 12, 16, 30, 40, 30, 12, 12, 14, 30, 30]
 
     for ci, w in enumerate(col_widths, start=1):
         ws.column_dimensions[get_column_letter(ci)].width = w
@@ -550,7 +560,8 @@ def _build_excel_workbook(data: dict, filepath: Path = None):
     for ri, sr in enumerate(data.get("step_results", []), start=3):
         status = sr.get("status", "")
         timestamp = sr.get("timestamp", data.get("started_at", ""))
-        command = sr.get("command", sr.get("message", ""))
+        command = sr.get("command", "")
+        output = sr.get("message", "")
         delay_ms = sr.get("delay_ms", 0)
         duration_ms = sr.get("execution_time_ms", 0)
 
@@ -577,9 +588,12 @@ def _build_excel_workbook(data: dict, filepath: Path = None):
         ws.cell(row=ri, column=5).alignment = center
         ws.cell(row=ri, column=6, value=command).border = thin_border
         ws.cell(row=ri, column=6).alignment = vcenter_wrap
-        ws.cell(row=ri, column=7, value=sr.get("description", "")).border = thin_border
+        # Output (모듈 명령 실행 출력값) — 모듈 명령이 아닌 일반 스텝은 빈 값.
+        ws.cell(row=ri, column=7, value=output).border = thin_border
         ws.cell(row=ri, column=7).alignment = vcenter_wrap
-        status_cell = ws.cell(row=ri, column=8, value=status.upper())
+        ws.cell(row=ri, column=8, value=sr.get("description", "")).border = thin_border
+        ws.cell(row=ri, column=8).alignment = vcenter_wrap
+        status_cell = ws.cell(row=ri, column=9, value=status.upper())
         status_cell.border = thin_border
         status_cell.alignment = center
         if status == "pass":
@@ -590,38 +604,38 @@ def _build_excel_workbook(data: dict, filepath: Path = None):
             status_cell.fill = warn_fill
         elif status == "error":
             status_cell.fill = error_fill
-        ws.cell(row=ri, column=9, value=delay_str).border = thin_border
-        ws.cell(row=ri, column=9).alignment = center
-        ws.cell(row=ri, column=10, value=dur_str).border = thin_border
+        ws.cell(row=ri, column=10, value=delay_str).border = thin_border
         ws.cell(row=ri, column=10).alignment = center
+        ws.cell(row=ri, column=11, value=dur_str).border = thin_border
+        ws.cell(row=ri, column=11).alignment = center
 
         exp_path = _resolve_image_path(sr.get("expected_image"))
-        ws.cell(row=ri, column=11).border = thin_border
-        ws.cell(row=ri, column=11).alignment = center
+        ws.cell(row=ri, column=12).border = thin_border
+        ws.cell(row=ri, column=12).alignment = center
         if exp_path:
             try:
                 img = XlImage(str(exp_path))
                 img.width = 180
                 img.height = 140
-                ws.add_image(img, f"K{ri}")
+                ws.add_image(img, f"L{ri}")
                 ws.row_dimensions[ri].height = img_row_height
             except Exception:
-                ws.cell(row=ri, column=11, value=str(sr.get("expected_image", "")))
+                ws.cell(row=ri, column=12, value=str(sr.get("expected_image", "")))
 
         act_img_path = sr.get("actual_annotated_image") or sr.get("actual_image")
         act_path = _resolve_image_path(act_img_path)
-        ws.cell(row=ri, column=12).border = thin_border
-        ws.cell(row=ri, column=12).alignment = center
+        ws.cell(row=ri, column=13).border = thin_border
+        ws.cell(row=ri, column=13).alignment = center
         if act_path:
             try:
                 img = XlImage(str(act_path))
                 img.width = 180
                 img.height = 140
-                ws.add_image(img, f"L{ri}")
+                ws.add_image(img, f"M{ri}")
                 if ws.row_dimensions[ri].height is None or ws.row_dimensions[ri].height < img_row_height:
                     ws.row_dimensions[ri].height = img_row_height
             except Exception:
-                ws.cell(row=ri, column=12, value=str(act_img_path or ""))
+                ws.cell(row=ri, column=13, value=str(act_img_path or ""))
 
     return wb
 

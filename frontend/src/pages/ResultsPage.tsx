@@ -1049,10 +1049,18 @@ export default function ResultsPage() {
       key: 'compare',
       align: 'center' as const,
       render: (_: any, r: StepResultDetail) => {
-        if (r.expected_image || r.actual_image) {
-          return <Button size="small" onClick={() => setCompareStep(r)}>{t('scenario.compare')}</Button>;
-        }
-        return '-';
+        // 모듈 명령(cmd, adb_send 등)의 출력값을 LOG 버튼으로 노출
+        const isModuleMsg = !!r.command?.includes('::');
+        const isRandMsg = !!r.message && r.message.startsWith('[RAND]');
+        const hasMsg = (isModuleMsg && !!r.message) || isRandMsg;
+        const hasImage = !!(r.expected_image || r.actual_image);
+        if (!hasMsg && !hasImage) return '-';
+        return (
+          <Space size={4}>
+            {hasImage && <Button size="small" onClick={() => setCompareStep(r)}>{t('scenario.compare')}</Button>}
+            {hasMsg && <Button size="small" onClick={() => setCompareStep(r)}>LOG</Button>}
+          </Space>
+        );
       },
       _hide: false,
     },
@@ -1487,7 +1495,30 @@ export default function ResultsPage() {
         width={1100}
         footer={null}
       >
-        {compareStep && (
+        {compareStep && (() => {
+          // 모듈 명령(cmd, adb_send 등)의 출력값 표시 — 이미지 비교와 동일 모달에서 함께 보여준다.
+          const _msg = compareStep.message || '';
+          const _hasImage = !!(compareStep.expected_image || compareStep.actual_image);
+          const _isModuleCmd = !!compareStep.command?.includes('::');
+          const _showLog = !!_msg && (_isModuleCmd || _msg.startsWith('[RAND]') || !_hasImage);
+          const _isFail = compareStep.status === 'fail';
+          const renderLogBlock = () => (
+            <div style={{ marginBottom: 10 }}>
+              {compareStep.command && (
+                <div style={{ marginBottom: 4, padding: '6px 10px', background: '#1a1a2e', borderRadius: 4, fontFamily: 'monospace', fontSize: 11 }}>
+                  <span style={{ color: '#888' }}>$ </span><span style={{ color: '#e0e0e0' }}>{compareStep.command}</span>
+                </div>
+              )}
+              <div style={{
+                padding: '8px 10px', borderRadius: 4, fontSize: 11, fontFamily: 'monospace',
+                background: _isFail ? '#2a1215' : '#122010',
+                border: `1px solid ${_isFail ? '#5c2024' : '#274916'}`,
+                color: _isFail ? '#ff7875' : '#95de64',
+                whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 400, overflow: 'auto',
+              }}>{_msg}</div>
+            </div>
+          );
+          return (
           <>
             <Space style={{ marginBottom: 13 }} wrap>
               <Tag color={statusColor(compareStep.status)}>{compareStep.status.toUpperCase()}</Tag>
@@ -1512,6 +1543,8 @@ export default function ResultsPage() {
               )}
               <span style={{ color: '#888' }}>Duration: {formatDuration(compareStep.execution_time_ms)}</span>
             </Space>
+            {_showLog && renderLogBlock()}
+            {_hasImage && (
             <Row gutter={16}>
               <Col span={12}>
                 <Card size="small" title={
@@ -1556,6 +1589,7 @@ export default function ResultsPage() {
                 </Card>
               </Col>
             </Row>
+            )}
             {compareStep.compare_mode === 'full_exclude' && (
               <div style={{ marginTop: 10 }}>
                 <Card size="small" title={t('results.excludeAreaCompare')}>
@@ -1606,7 +1640,8 @@ export default function ResultsPage() {
               </div>
             )}
           </>
-        )}
+          );
+        })()}
       </Modal>
 
       <style>{`
