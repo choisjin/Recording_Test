@@ -101,13 +101,14 @@ RRC_HKNOB_JOGDIAL      = 0x00
 RRC_HKNOB_VOLUME_LEFT  = 0x02
 RRC_HKNOB_VOLUME_RIGHT = 0x03
 
-# Ethernet 전송 커맨드
+# Ethernet 전송 커맨드 (legacy IVIHKMC6thProtocol.py / ISAP_Protocol.py 기준)
+# 주의: 0x95/0x96은 SWRC_NEXT_KEY_REQ/SWRC_PREV_KEY_REQ로 다른 명령이라 사용 금지.
 CMD_ETHERNET         = 0x94
-CMD_ETHERNETSIGNAL   = 0x95  # EthernetSignal (신호 ID + Payload 전송)
-CMD_EXECUTESHELLCMD  = 0x96  # ExecuteShell (쉘 커맨드 문자열 전송)
+CMD_ETHERNETSIGNAL   = 0xD0  # EthernetSignal (신호 ID + Payload 전송)
+CMD_EXECUTESHELLCMD  = 0xE4  # ExecuteShell (쉘 커맨드 문자열 전송)
 
-# Response codes
-RESPONSE_FAIL = 0x00   # 응답 불필요 / 실패 응답 코드
+# Response codes (legacy 기준)
+RESPONSE_FAIL = 0x20   # 응답 실패 / 응답 불필요
 
 # Screen type mapping for touch — CCRC_MONITOR_LEFT/RIGHT 값과 정렬.
 # (레거시 에이전트 호환을 위해 rear_right=1, rear_left=2 였으나, 최신 HKMC Agent
