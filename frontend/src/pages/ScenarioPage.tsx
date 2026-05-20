@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Button, Card, Checkbox, Col, Collapse, DatePicker, Descriptions, Divider, Dropdown, Image, Input, InputNumber, List, Modal, Radio, Row, Select, Space, Splitter, Table, Tabs, Tag, Tooltip, Tree, Upload, message } from 'antd';
 import dayjs from 'dayjs';
 import type { TreeProps } from 'antd';
@@ -32,6 +32,35 @@ const ResizableTitle = (props: any) => {
     </Resizable>
   );
 };
+
+// 반복 재생 종료 시각 DatePicker — controlled value를 useMemo로 안정화해서
+// 부모(ScenarioPage)의 빈번한 폴링 리렌더에 패널 내부 임시 선택이 옛 값으로 되돌아가지 않게 한다.
+const UntilTimePicker = React.memo(({ value, onChange, placeholder, tooltip, disabled }: {
+  value: string | null;
+  onChange: (iso: string | null) => void;
+  placeholder: string;
+  tooltip: string;
+  disabled: boolean;
+}) => {
+  // 같은 ISO 문자열이면 같은 dayjs 인스턴스를 유지 → AntD DatePicker가 외부 변경으로 오인하지 않음
+  const dayValue = useMemo(() => (value ? dayjs(value) : null), [value]);
+  return (
+    <Tooltip title={tooltip}>
+      <DatePicker
+        size="small"
+        showTime={{ format: 'HH:mm' }}
+        format="YYYY-MM-DD HH:mm"
+        placeholder={placeholder}
+        value={dayValue}
+        onChange={(d) => onChange(d ? d.toISOString() : null)}
+        onOk={(d) => onChange(d ? d.toISOString() : null)}
+        disabled={disabled}
+        allowClear
+        style={{ width: 200 }}
+      />
+    </Tooltip>
+  );
+});
 
 // 기대 이미지 썸네일 (ROI/크롭/영역제외 오버레이)
 const ExpectedThumbnail = React.memo(({ src, regions, color, height = 32 }: {
@@ -2186,20 +2215,13 @@ export default function ScenarioPage() {
                 <span style={{ fontWeight: 400 }}>— {(groups[groupShownInDetail] || []).filter(m => scenarios.includes(m.name)).length} {t('scenario.title')}</span>
                 <InputNumber min={1} max={999} size="small" value={getRepeatCount(groupShownInDetail)} onChange={(v) => setRepeatCount(groupShownInDetail!, v || 1)} style={{ width: 60 }} disabled={playing} />
                 <span style={{ fontSize: 11, fontWeight: 400 }}>{t('scenario.times')}</span>
-                <Tooltip title={t('scenario.untilTimeTooltip')}>
-                  <DatePicker
-                    size="small"
-                    showTime={{ format: 'HH:mm' }}
-                    format="YYYY-MM-DD HH:mm"
-                    placeholder={t('scenario.untilTimePlaceholder')}
-                    value={getUntilTime(groupShownInDetail) ? dayjs(getUntilTime(groupShownInDetail)!) : null}
-                    onChange={(d) => setUntilTime(groupShownInDetail!, d ? d.toISOString() : null)}
-                    onOk={(d) => setUntilTime(groupShownInDetail!, d ? d.toISOString() : null)}
-                    disabled={playing}
-                    allowClear
-                    style={{ width: 200 }}
-                  />
-                </Tooltip>
+                <UntilTimePicker
+                  value={getUntilTime(groupShownInDetail)}
+                  onChange={(iso) => setUntilTime(groupShownInDetail!, iso)}
+                  placeholder={t('scenario.untilTimePlaceholder')}
+                  tooltip={t('scenario.untilTimeTooltip')}
+                  disabled={playing}
+                />
                 <Button type="primary" size="small" icon={<PlayCircleOutlined />} disabled={playing} onClick={() => playGroup(groupShownInDetail!)}>{t('scenario.play')}</Button>
               </Space>
             ) : (
@@ -2213,20 +2235,13 @@ export default function ScenarioPage() {
                   <>
                     <InputNumber min={1} max={999} size="small" value={getRepeatCount(selectedName!)} onChange={(v) => setRepeatCount(selectedName!, v || 1)} style={{ width: 60 }} disabled={playing} />
                     <span style={{ fontSize: 11, fontWeight: 400 }}>{t('scenario.times')}</span>
-                    <Tooltip title={t('scenario.untilTimeTooltip')}>
-                      <DatePicker
-                        size="small"
-                        showTime={{ format: 'HH:mm' }}
-                        format="YYYY-MM-DD HH:mm"
-                        placeholder={t('scenario.untilTimePlaceholder')}
-                        value={getUntilTime(selectedName!) ? dayjs(getUntilTime(selectedName!)!) : null}
-                        onChange={(d) => setUntilTime(selectedName!, d ? d.toISOString() : null)}
-                        onOk={(d) => setUntilTime(selectedName!, d ? d.toISOString() : null)}
-                        disabled={playing}
-                        allowClear
-                        style={{ width: 200 }}
-                      />
-                    </Tooltip>
+                    <UntilTimePicker
+                      value={getUntilTime(selectedName!)}
+                      onChange={(iso) => setUntilTime(selectedName!, iso)}
+                      placeholder={t('scenario.untilTimePlaceholder')}
+                      tooltip={t('scenario.untilTimeTooltip')}
+                      disabled={playing}
+                    />
                     <Button type="primary" size="small" icon={<PlayCircleOutlined />} loading={playing && playingName === selectedName} disabled={playing} onClick={() => playScenario(selectedName!)}>{t('scenario.play')}</Button>
                   </>
                 )}
