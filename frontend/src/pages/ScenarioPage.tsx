@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Button, Card, Checkbox, Col, Collapse, Descriptions, Divider, Dropdown, Image, Input, InputNumber, List, Modal, Radio, Row, Select, Space, Splitter, Table, Tabs, Tag, Tooltip, Tree, Upload, message } from 'antd';
+import { Button, Card, Checkbox, Col, Collapse, Descriptions, Divider, Dropdown, Image, Input, InputNumber, List, Modal, Radio, Row, Select, Space, Splitter, Table, Tabs, Tag, Tree, Upload, message } from 'antd';
 import type { TreeProps } from 'antd';
 import {
   PlayCircleOutlined, PauseOutlined, DeleteOutlined, EyeOutlined,
@@ -19,8 +19,6 @@ import { Resizable } from 'react-resizable';
 import 'react-resizable/css/styles.css';
 import DLTViewer from '../components/DLTViewer';
 import SerialViewer from '../components/SerialViewer';
-import CompositorEditor from '../components/CompositorEditor';
-import { AppstoreOutlined } from '@ant-design/icons';
 import { useDLTSessions } from '../hooks/useDLTSessions';
 import { useSerialSessions } from '../hooks/useSerialSessions';
 
@@ -348,9 +346,6 @@ export default function ScenarioPage() {
       setSkipStepIds(new Set());
     }).catch(() => setPreviewSteps([]));
   }, [selectedName]);
-
-  // Compositor (다중 캡처 합성 녹화) 에디터 모달
-  const [compositorOpen, setCompositorOpen] = useState(false);
 
   // Group play
   const [playingGroupName, setPlayingGroupName] = useState<string | null>(null);
@@ -1527,11 +1522,6 @@ export default function ScenarioPage() {
     <div style={{ height: 'calc(100vh - 80px)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       {/* 최상단: 도구 버튼 우측 정렬 */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 3, padding: '4px 0', flexShrink: 0 }}>
-        <Tooltip title={t('compositor.tooltip')}>
-          <Button icon={<AppstoreOutlined />} size="small" onClick={() => setCompositorOpen(true)}>
-            {t('compositor.button')}
-          </Button>
-        </Tooltip>
         <Button icon={<FolderOutlined />} size="small" onClick={() => {
           setGroupModalVisible(true);
           const allNames = Object.values(groups).flatMap((ms) => ms.map((m) => m.name));
@@ -3596,8 +3586,6 @@ export default function ScenarioPage() {
           ))}
         </Radio.Group>
       </Modal>
-
-      <CompositorEditor open={compositorOpen} onClose={() => setCompositorOpen(false)} isDark={settings.theme === 'dark'} />
 
       <style>{`
         .row-pass td { background: rgba(82, 196, 26, 0.08) !important; }

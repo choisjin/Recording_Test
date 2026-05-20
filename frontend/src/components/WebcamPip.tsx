@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { Button, ConfigProvider, Select, Slider, theme } from 'antd';
 import {
   PlayCircleOutlined, PauseOutlined, VideoCameraOutlined,
-  SettingOutlined, CloseOutlined, MinusOutlined,
+  SettingOutlined, CloseOutlined, MinusOutlined, AppstoreOutlined,
 } from '@ant-design/icons';
 import { useWebcam } from '../hooks/useWebcam';
 import { useTranslation } from '../i18n';
@@ -17,6 +17,7 @@ interface WebcamPipProps {
   webcam: ReturnType<typeof useWebcam>;
   onClose: () => void;
   isDark: boolean;
+  onOpenCompositor?: () => void;
 }
 
 const RESOLUTION_LABELS: Record<string, string> = {
@@ -24,7 +25,7 @@ const RESOLUTION_LABELS: Record<string, string> = {
   '1280x720': 'HD', '960x540': 'qHD', '640x480': 'VGA', '320x240': 'QVGA',
 };
 
-export default function WebcamPip({ webcam, onClose, isDark }: WebcamPipProps) {
+export default function WebcamPip({ webcam, onClose, isDark, onOpenCompositor }: WebcamPipProps) {
   const { t } = useTranslation();
   const {
     webcamIndex, webcamDevices, webcamOpen, webcamRecording,
@@ -297,6 +298,19 @@ export default function WebcamPip({ webcam, onClose, isDark }: WebcamPipProps) {
               ) : webcamResolutions.length === 0 ? (
                 <div style={{ color: subColor, fontSize: 10, textAlign: 'center', padding: 3 }}>{t('webcam.noSettings')}</div>
               ) : null}
+              {/* 합성녹화 진입 버튼 */}
+              {onOpenCompositor && (
+                <div style={{ marginTop: 6, paddingTop: 6, borderTop: `1px solid ${border}` }}>
+                  <Button
+                    size="small"
+                    icon={<AppstoreOutlined />}
+                    onClick={onOpenCompositor}
+                    style={{ width: '100%' }}
+                  >
+                    {t('compositor.button')}
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </div>

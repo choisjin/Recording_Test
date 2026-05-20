@@ -563,8 +563,7 @@ def get_module_functions(module_name: str) -> list[dict]:
             "BatteryOnOff", "BatteryVoltage",
             "ACCOnOff", "AccVoltage",
             "IGNControl", "IGN3Control",
-            "ALTControl",
-            "USBFrontSwitchControl", "USBRearSwitchControl", "USBSelectorControl",
+            "USBFrontSwitchControl", "USBRearSwitchControl",
         },
     }
     included = per_module_included.get(module_name)

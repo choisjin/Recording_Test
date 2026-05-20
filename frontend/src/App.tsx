@@ -30,6 +30,7 @@ import SettingsPage from './pages/SettingsPage';
 import ChangelogPage from './pages/ChangelogPage';
 import AdminPage from './pages/AdminPage';
 import WebcamPip from './components/WebcamPip';
+import CompositorEditor from './components/CompositorEditor';
 import AnnouncementBanner from './components/AnnouncementBanner';
 import PlaybackStatusBanner from './components/PlaybackStatusBanner';
 import ChatWidget from './components/ChatWidget';
@@ -158,6 +159,8 @@ function AppContent() {
   // Global webcam
   const webcam = useWebcam();
   const [webcamVisible, setWebcamVisible] = useState(false);
+  // Compositor(다중 캡처 합성 녹화) 모달 — 웹캠 PiP 설정창에서 진입.
+  const [compositorOpen, setCompositorOpen] = useState(false);
 
   // Wire up webcam upload when save dir is configured
   useEffect(() => {
@@ -451,8 +454,15 @@ function AppContent() {
       </Layout>
 
       {webcamVisible && (
-        <WebcamPip webcam={webcam} onClose={toggleWebcam} isDark={isDark} />
+        <WebcamPip
+          webcam={webcam}
+          onClose={toggleWebcam}
+          isDark={isDark}
+          onOpenCompositor={() => setCompositorOpen(true)}
+        />
       )}
+
+      <CompositorEditor open={compositorOpen} onClose={() => setCompositorOpen(false)} isDark={isDark} />
 
       <ChatWidget open={chatOpen} onClose={() => setChatOpen(false)} />
 
