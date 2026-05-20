@@ -1340,7 +1340,25 @@ class PlaybackService:
         elif step.type == StepType.SERIAL_COMMAND:
             return f"serial \"{p.get('data', '')}\""
         elif step.type == StepType.MODULE_COMMAND:
-            return f"{p.get('module', '')}::{p.get('function', '')}()"
+            # 인자값을 함께 표시 — 어떤 명령을 실행했는지 한눈에 보이도록.
+            # 예: CMD::Check(ipconfig), SSH::Send(reboot now), Plugin::Foo(a=1, b=2)
+            mod = p.get('module', '')
+            fn = p.get('function', '')
+            args = p.get('args', {})
+            if isinstance(args, dict) and args:
+                # 단일 인자: 값만, 다인자: key=value (가독성)
+                if len(args) == 1:
+                    args_str = str(next(iter(args.values())))
+                else:
+                    args_str = ", ".join(f"{k}={v}" for k, v in args.items())
+            elif isinstance(args, (list, tuple)) and args:
+                args_str = ", ".join(str(v) for v in args)
+            else:
+                args_str = ""
+            # 너무 긴 인자는 잘라서 표시 (출력값은 message에 따로 보존됨)
+            if len(args_str) > 120:
+                args_str = args_str[:117] + "..."
+            return f"{mod}::{fn}({args_str})"
         elif step.type == StepType.HKMC_TOUCH:
             st = step.screen_type or p.get("screen_type", "")
             return f"hkmc_touch ({p.get('x', 0)}, {p.get('y', 0)}) [{st}]"
