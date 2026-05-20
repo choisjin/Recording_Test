@@ -1211,7 +1211,15 @@ async def _run_play_job(data: dict):
             started_at=datetime.now(timezone.utc).isoformat(),
         )
 
-        _is_multi_cycle = repeat > 1
+        # until_time이 지정되면 시각 한도가 우선 — repeat 한도는 안전 cap으로 매우 크게 잡는다.
+        # multi_cycle UI/로그 처리(회차별 분할 등)도 활성화.
+        _MAX_REPEAT_CAP = 99999
+        if until_time is not None:
+            effective_repeat = _MAX_REPEAT_CAP
+            _is_multi_cycle = True
+        else:
+            effective_repeat = repeat
+            _is_multi_cycle = repeat > 1
         if _is_multi_cycle:
             playback_service._result_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             playback_service._setup_run_output_dir(scenario_name)
@@ -1220,13 +1228,14 @@ async def _run_play_job(data: dict):
         last_completed_iteration = 0
         iteration = 0  # 외부 스코프 보존 — 중단 시 finally/이후 처리에서 참조
         _step_idx = 0  # 외부 스코프 보존 — 중단 시점의 step 번호
-        for iteration in range(1, repeat + 1):
+        for iteration in range(1, effective_repeat + 1):
             playback_service._monitor_state["current_cycle"] = iteration
             if _is_multi_cycle:
                 publish_event({
                     "type": "iteration_start",
                     "iteration": iteration,
-                    "total": repeat,
+                    "total": repeat if until_time is None else 0,
+                    "until_time_mode": until_time is not None,
                 })
                 # 두 번째 이상 cycle 시작 시 웹캠 녹화 분할 (rotate)
                 if iteration > 1 and webcam_session is not None:
@@ -1458,14 +1467,20 @@ async def _run_play_group_job(data: dict):
         iteration = 0  # 외부 보존 — 중단 시 stopped_at_iteration 표기에 사용
         last_completed_iteration = 0
 
-        for iteration in range(1, repeat + 1):
+        # until_time이 지정되면 시각 한도가 우선 — repeat 한도는 안전 cap으로 매우 크게.
+        _MAX_REPEAT_CAP = 99999
+        effective_repeat = _MAX_REPEAT_CAP if until_time is not None else repeat
+        _multi = (repeat > 1) or (until_time is not None)
+
+        for iteration in range(1, effective_repeat + 1):
             if playback_service._should_stop:
                 break
-            if repeat > 1:
+            if _multi:
                 publish_event({
                     "type": "iteration_start",
                     "iteration": iteration,
-                    "total": repeat,
+                    "total": repeat if until_time is None else 0,
+                    "until_time_mode": until_time is not None,
                 })
                 # 두 번째 이상 cycle 시작 시 웹캠 녹화 분할
                 if iteration > 1 and webcam_session is not None:
@@ -1595,7 +1610,7 @@ async def _run_play_group_job(data: dict):
                     "iteration": iteration,
                     "until_time": until_time.isoformat(),
                 })
-            if repeat > 1 and not playback_service._should_stop:
+            if _multi and not playback_service._should_stop:
                 _interim = ScenarioResult(
                     scenario_name=group_name,
                     device_serial="multi-device",

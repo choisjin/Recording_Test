@@ -901,7 +901,8 @@ export default function ScenarioPage() {
     setStepResults([]);
     setCurrentStepId(null);
     setCurrentIteration(1);
-    setTotalIterations(repeat);
+    // until_time 모드는 총 회차 미정 → 0(=무한 표시). 일반 모드는 repeat 그대로.
+    setTotalIterations(untilTime ? 0 : repeat);
     maxIterationRef.current = 0;
     webcamBlobsRef.current = [];
     webcamRecordingActiveRef.current = false;
@@ -1216,7 +1217,7 @@ export default function ScenarioPage() {
     setStepResults([]);
     setCurrentStepId(null);
     setCurrentIteration(1);
-    setTotalIterations(repeat);
+    setTotalIterations(untilTime ? 0 : repeat);
     maxIterationRef.current = 0;
     setGroupScenarioIndex(0);
     setGroupScenarioTotal(members.length);
@@ -1491,7 +1492,7 @@ export default function ScenarioPage() {
   const _colTitle = (en: string, ko: string) => <div style={{ textAlign: 'center' }}>{en}<br /><span style={{ fontSize: 10, color: '#888' }}>{ko}</span></div>;
   const makeStepResultColumns = (totalRepeat: number) => [
     { title: _colTitle('Time Stamp', t('scenario.colTimestamp')), dataIndex: 'timestamp', key: 'timestamp', align: 'center' as const, render: (v: string | null) => <span style={{ fontSize: 11, lineHeight: 1.4 }}>{v ? formatTime(v, lang) : '-'}</span> },
-    { title: _colTitle('Repeat', t('scenario.colCurrentTotal')), dataIndex: 'repeat_index', key: 'repeat', align: 'center' as const, render: (v: number) => `${v}/${totalRepeat}` },
+    { title: _colTitle('Repeat', t('scenario.colCurrentTotal')), dataIndex: 'repeat_index', key: 'repeat', align: 'center' as const, render: (v: number) => totalRepeat === 0 ? `${v}/∞` : `${v}/${totalRepeat}` },
     { title: _colTitle('Step', t('scenario.colOrder')), dataIndex: 'step_id', key: 'step_id', align: 'center' as const },
     { title: _colTitle('Device', t('scenario.colDevice')), dataIndex: 'device_id', key: 'device_id', align: 'center' as const, render: (v: string) => v ? <Tag color={v.startsWith('Android') ? 'green' : v.startsWith('Serial') ? 'purple' : 'geekblue'} style={{ margin: 0 }}>{v}</Tag> : '-' },
     { title: _colTitle('Command', 'action'), dataIndex: 'command', key: 'command', width: colWidths['command'] || 200, ellipsis: true, align: 'center' as const, onHeaderCell: () => ({ width: colWidths['command'] || 200, onResize: (_e: any, { size }: any) => setColWidths(prev => ({ ...prev, command: size.width })) }), render: (v: string, r: StepResultData) => <span style={{ textAlign: 'left', display: 'block' }}>{v || r.message || '-'}</span> },
@@ -2173,6 +2174,7 @@ export default function ScenarioPage() {
                 <span>{t('scenario.play')}: {playingGroupName ? `[${playingGroupName}]` : ''} {currentGroupScenario || playingName || playbackScenario?.name || ''}</span>
                 {playingGroupName && groupScenarioTotal > 0 && <Tag color="cyan">{groupScenarioIndex}/{groupScenarioTotal} {t('scenario.title')}</Tag>}
                 {totalIterations > 1 && <Tag color="purple">{currentIteration} / {totalIterations}{t('scenario.times')}</Tag>}
+                {totalIterations === 0 && <Tag color="purple">{currentIteration} / ∞ {t('scenario.times')}</Tag>}
                 {playing && !paused && <Tag color="processing">{t('scenario.inProgress')}</Tag>}
                 {paused && <Tag color="warning">PAUSED</Tag>}
                 {!playing && stepResults.length > 0 && <Tag color={failCount + errorCount > 0 ? 'red' : 'green'}>{t('scenario.complete')}</Tag>}
