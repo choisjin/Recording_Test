@@ -182,12 +182,32 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
     }
   }, [screenshotDeviceId, primaryDevices]);
 
+  // --- video 엘리먼트의 MediaSource/blob URL 강제 릴리즈 ---
+  // jmuxer.destroy()는 SourceBuffer 정리만 수행하고 <video>.src 는 그대로 두어
+  // MediaSource(+ 누적된 H.264 SourceBuffer 바이트)가 GC되지 않고 남는 문제 방지.
+  const releaseVideoBuffer = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    try { v.pause(); } catch { /* ignore */ }
+    const oldSrc = v.src;
+    try {
+      v.removeAttribute('src');
+      v.srcObject = null;
+      v.load(); // 내부 디코더/버퍼까지 리셋
+    } catch { /* ignore */ }
+    if (oldSrc && oldSrc.startsWith('blob:')) {
+      try { URL.revokeObjectURL(oldSrc); } catch { /* ignore */ }
+    }
+  }, []);
+
   // --- WebSocket cleanup helper ---
   const closeWs = useCallback(() => {
     if (jmuxerRef.current) {
       try { jmuxerRef.current.destroy(); } catch { /* ignore */ }
       jmuxerRef.current = null;
     }
+    // ★ JMuxer destroy 직후 video 엘리먼트의 MediaSource 참조까지 끊어준다
+    releaseVideoBuffer();
     h264ModeRef.current = false;
     setH264Mode(false);
     stopFpsCounter();
@@ -203,7 +223,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
       URL.revokeObjectURL(prevBlobUrlRef.current);
       prevBlobUrlRef.current = '';
     }
-  }, [stopFpsCounter]);
+  }, [stopFpsCounter, releaseVideoBuffer]);
 
   // --- Check if device is HKMC or iSAP Agent (both use TCP agent protocol) ---
   const isHkmcDevice = useCallback((deviceId: string) => {
@@ -374,6 +394,63 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
       return () => clearInterval(timer);
     }
   }, [h264Mode]);
+
+  // ──────────────────────────────────────────────────────────────
+  // H.264 라이브 SourceBuffer evict guard (메모리 누적 방지 안전장치)
+  // ──────────────────────────────────────────────────────────────
+  // JMuxer는 받은 NAL을 SourceBuffer에 append만 하고 잘라내지 않는다.
+  // 화면을 오래 켜두면 SourceBuffer 바이트가 무한정 쌓여 1GB+까지도 갈 수 있음.
+  // → 10초마다 video.buffered 를 검사해서 BUFFER_TRIGGER_SEC 초과 시
+  //   오래된 구간을 BUFFER_KEEP_SEC 만큼만 남기고 제거한다.
+  //   SourceBuffer 직접 접근 실패 시 안전하게 1회 reinit으로 폴백.
+  useEffect(() => {
+    if (!h264Mode) return;
+    const BUFFER_TRIGGER_SEC = 30; // 30초 이상 쌓이면 정리 시작
+    const BUFFER_KEEP_SEC = 10;    // 최근 10초만 유지
+    const CHECK_INTERVAL_MS = 10000;
+
+    const findSourceBuffer = (): SourceBuffer | undefined => {
+      const jm: any = jmuxerRef.current;
+      if (!jm) return undefined;
+      // jmuxer 버전별로 SourceBuffer 위치가 다양 — 알려진 경로를 차례로 탐색
+      return (
+        jm?.remuxController?.mseHandler?.sourceBuffer ??
+        jm?.remuxController?.mseHandler?.sourceBuffers?.video ??
+        jm?.mseHandler?.sourceBuffer ??
+        jm?.mseHandler?.sourceBuffers?.video ??
+        jm?.sourceBuffer
+      );
+    };
+
+    const evict = () => {
+      const v = videoRef.current;
+      if (!v || !v.buffered || v.buffered.length === 0) return;
+      const start = v.buffered.start(0);
+      const end = v.buffered.end(v.buffered.length - 1);
+      if (end - start < BUFFER_TRIGGER_SEC) return;
+
+      const cutoff = Math.max(start + 0.001, end - BUFFER_KEEP_SEC);
+      const sb = findSourceBuffer();
+      if (sb && !sb.updating) {
+        try {
+          sb.remove(start, cutoff);
+          // 재생 헤드가 잘려나간 구간 안에 있으면 라이브 끝으로 점프
+          if (v.currentTime < cutoff) {
+            try { v.currentTime = Math.max(cutoff, end - 0.1); } catch { /* ignore */ }
+          }
+          return;
+        } catch { /* fallthrough → reinit */ }
+      }
+      // SourceBuffer 접근/제거 실패 → 안전하게 스트림 재초기화
+      // (closeWs가 video.src까지 정리하므로 메모리는 해제됨)
+      closeWs();
+      const dev = screenshotDeviceIdRef.current;
+      if (dev) startWsStreamRef.current?.(dev, screenTypeRef.current);
+    };
+
+    const timer = setInterval(evict, CHECK_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [h264Mode, closeWs]);
 
   // Screenshot source management: WebSocket for HKMC, polling for ADB
   // 디바운스로 screenType 자동 설정 완료 후 WS를 1회만 연결
