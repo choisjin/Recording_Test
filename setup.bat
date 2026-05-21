@@ -13,6 +13,13 @@ if exist "frontend\dist\index.html" (
     if not exist "frontend\package.json" set "PRODUCTION=1"
 )
 
+:: Offline mode detection - .offline_mode 파일이 있으면 PyPI / npm 등 외부 액세스 차단
+set "OFFLINE_MODE=0"
+if exist ".offline_mode" (
+    set "OFFLINE_MODE=1"
+    echo       [OFFLINE] .offline_mode detected - skipping network operations.
+)
+
 :: -------------------------------------------------------
 :: [1/5] Python setup
 :: -------------------------------------------------------
@@ -139,17 +146,21 @@ echo [3/5] Installing Python packages...
 if exist "python\python.exe" (
     echo       Embedded Python — pip install 건너뜀 (패키지 내장)
 ) else (
-    %PY% -m pip install --upgrade pip -q --no-warn-script-location 2>nul
-    %PIP% install -r requirements.txt -q --no-warn-script-location
+    if "%OFFLINE_MODE%"=="1" (
+        echo       [OFFLINE] PyPI install skipped - system Python must have packages pre-installed.
+    ) else (
+        %PY% -m pip install --upgrade pip -q --no-warn-script-location 2>nul
+        %PIP% install -r requirements.txt -q --no-warn-script-location
+    )
 )
-:: lge.auto는 로컬 .whl — 오프라인 설치 가능
+:: lge.auto는 로컬 .whl — 오프라인 설치 가능 (PyPI 접근 불필요)
 if exist "lge.auto-*.whl" (
     for %%f in (lge.auto-*.whl) do %PIP% install "%%f"
     echo       lge.auto installed
 ) else (
     echo       [Note] lge.auto .whl not found
 )
-:: vmbpy (Vimba X Python API) - install from SDK if available
+:: vmbpy (Vimba X Python API) - install from SDK if available (로컬 .whl이라 오프라인 OK)
 set "VMBPY_WHL="
 for %%f in ("C:\Program Files\Allied Vision\Vimba X\api\python\vmbpy-*.whl") do set "VMBPY_WHL=%%f"
 if defined VMBPY_WHL (
@@ -181,6 +192,10 @@ if exist "tools\ffmpeg.exe" (
 :: -------------------------------------------------------
 if "%PRODUCTION%"=="1" (
     echo [4/4] Production mode - skipping Node.js
+    goto :skip_npm
+)
+if "%OFFLINE_MODE%"=="1" (
+    echo [4/4] Offline mode - skipping npm install
     goto :skip_npm
 )
 
