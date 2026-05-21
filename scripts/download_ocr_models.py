@@ -7,8 +7,10 @@
   4) backend/app/services/ocr_models/{lang}/ 아래 배치
 
 요구사항:
-    pip install paddle2onnx paddlepaddle
-    (paddle2onnx 1.x+는 import 시 paddle을 필요로 함 — paddlepaddle CPU 빌드 ~150MB.
+    pip install "paddle2onnx<2.0" paddlepaddle
+    (paddle2onnx 1.x — `python -m paddle2onnx.command` CLI 사용.
+     paddle2onnx 2.x는 CLI 진입점이 제거됐고 인자도 바뀌어 이 스크립트와 호환되지 않음.
+     paddle2onnx는 import 시 paddle을 필요로 함 — paddlepaddle CPU 빌드 ~150MB.
      변환만 끝나면 더 이상 paddle은 필요 없으므로 dist에는 포함하지 않는다.)
 
 실행:
@@ -88,20 +90,58 @@ LANG_MODELS = {
 DEFAULT_LANGS = ["korean", "english", "japan", "chinese"]
 
 
-def _check_paddle2onnx() -> bool:
-    """paddle2onnx + paddle 둘 다 import 가능한지 확인.
+def _check_paddle2onnx() -> tuple[bool, str]:
+    """paddle2onnx + paddle 둘 다 import 가능 + CLI 호출 가능한지 확인.
 
-    paddle2onnx 1.x/2.x는 __init__에서 paddle을 import하므로 paddlepaddle 없이는 동작 불가.
-    CLI 진입점은 `python -m paddle2onnx.command`.
+    paddle2onnx 1.x: `python -m paddle2onnx.command --version` 동작.
+    paddle2onnx 2.x: CLI 진입점이 제거되어 호환 안 됨 — 이 스크립트와 사용 불가.
+
+    Returns:
+        (ok, diagnostic): ok가 False면 diagnostic에 사용자에게 보여줄 진단 메시지.
     """
+    # 1) import 가능 + 버전 확인
+    p2o_version = None
     try:
-        subprocess.run(
-            [sys.executable, "-m", "paddle2onnx.command", "--version"],
-            check=True, capture_output=True, text=True,
+        r = subprocess.run(
+            [sys.executable, "-c", "import paddle2onnx; print(paddle2onnx.__version__)"],
+            capture_output=True, text=True, timeout=15,
         )
-        return True
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return False
+        if r.returncode == 0:
+            p2o_version = r.stdout.strip()
+        else:
+            return False, (
+                "paddle2onnx import 실패:\n"
+                f"  {r.stderr.strip() or '(no stderr)'}"
+            )
+    except Exception as e:
+        return False, f"paddle2onnx import 시도 중 예외: {e}"
+
+    # 2) 2.x는 CLI 구조가 바뀌어 미지원
+    if p2o_version and p2o_version.startswith("2."):
+        return False, (
+            f"paddle2onnx {p2o_version} 감지 — 이 스크립트는 1.x만 지원합니다.\n"
+            f"  다운그레이드:\n"
+            f"    {sys.executable} -m pip uninstall -y paddle2onnx\n"
+            f'    {sys.executable} -m pip install "paddle2onnx<2.0"'
+        )
+
+    # 3) CLI 호출 확인
+    try:
+        r = subprocess.run(
+            [sys.executable, "-m", "paddle2onnx.command", "--version"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if r.returncode == 0:
+            return True, f"paddle2onnx {p2o_version or '?'} 확인됨"
+        return False, (
+            f"paddle2onnx.command CLI 호출 실패 (rc={r.returncode}):\n"
+            f"  stdout: {r.stdout.strip()}\n"
+            f"  stderr: {r.stderr.strip()}"
+        )
+    except FileNotFoundError:
+        return False, "Python interpreter를 찾을 수 없습니다."
+    except Exception as e:
+        return False, f"paddle2onnx CLI 실행 중 예외: {e}"
 
 
 def _download(url: str, dest: Path) -> None:
@@ -211,11 +251,17 @@ def main():
         print(f"지원 목록: {list(LANG_MODELS.keys())}", file=sys.stderr)
         return 2
 
-    if not _check_paddle2onnx():
+    ok, diag = _check_paddle2onnx()
+    if not ok:
         print("paddle2onnx + paddlepaddle이 동작 가능한 상태가 아닙니다.", file=sys.stderr)
-        print(f"  설치: {sys.executable} -m pip install paddle2onnx paddlepaddle", file=sys.stderr)
+        print(f"  진단: {diag}", file=sys.stderr)
+        print(file=sys.stderr)
+        print("  최초 설치:", file=sys.stderr)
+        print(f'    {sys.executable} -m pip install "paddle2onnx<2.0" paddlepaddle', file=sys.stderr)
+        print("  (paddle2onnx 1.x 필수 — 2.x는 CLI 구조 변경으로 호환 안 됨)", file=sys.stderr)
         print("  (paddle2onnx는 paddle을 import하므로 paddlepaddle CPU 빌드 ~150MB 필요)", file=sys.stderr)
         return 1
+    print(f"[check] {diag}")
 
     if args.force:
         for lang in langs:
