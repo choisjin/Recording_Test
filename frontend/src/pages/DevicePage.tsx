@@ -823,7 +823,9 @@ export default function DevicePage() {
       if (devType === 'mib_agent') {
         extra.resolution = (mibResolution || MIB_DEFAULT_RESOLUTION).trim();
       } else {
-        extra.resolution = '1560x700';
+        // ICAS Agent — 모델별 기본 해상도 (ICAS3 CN: 2240x1260, 기존 ICAS EU: 1560x700)
+        const _model = (deviceModel || '').toUpperCase();
+        extra.resolution = _model.includes('ICAS3') ? '2240x1260' : '1560x700';
       }
       const result = await connectDevice(
         devType, ip, undefined, '', 'primary',

@@ -60,6 +60,24 @@ def _encode_touch_xy(x: int, y: int, x_mult: int, y_mult: int) -> tuple[int, int
     return param1, param2, param3
 
 
+def _encode_touch_xy_icas3(px: int, py: int) -> tuple[int, int, int]:
+    """ICAS3 CN 변종 touch 좌표 인코딩 (touch_event.sh 참조).
+
+    EU 변종(_encode_touch_xy)과 인코딩 공식이 다름:
+      byte3 = ((px >> 6) & 0xff) + 0x10            ← EU와 동일
+      byte4 = ((px & 0x3F) << 2) + ((py >> 8) & 0x3)   ← 다름
+      byte5 = py & 0xff                             ← 다름
+
+    호출자는 이미 X_MULT/Y_MULT로 분주된 px/py를 넘긴다.
+    """
+    px = int(px)
+    py = int(py)
+    byte3 = 0xFF & ((px >> 6) + 0x10)
+    byte4 = 0xFF & (((px & 0x3F) << 2) + ((py >> 8) & 0x3))
+    byte5 = py & 0xFF
+    return byte3, byte4, byte5
+
+
 def _encode_image(pil_image, fmt: str) -> bytes:
     """PIL Image → PNG/JPEG 바이트."""
     buf = io.BytesIO()
@@ -119,17 +137,24 @@ class ICASAgentService:
                  iid_display: str = "10",
                  hud_display: str = "11",
                  market: str = "EU",
+                 variant: str = "icas",
                  key_overrides: Optional[dict[str, dict]] = None):
         self.host = host
         self.port = int(port)
         self.device_id = device_id or f"ICAS_{host}"
         self.username = username
         self.password = password or ""
+        # variant — ksend frame/encoding 변종 식별자
+        #   "icas"  : 기존 EU 등 13B touch frame
+        #   "icas3" : 16B touch frame + 다른 좌표 인코딩 (touch_event.sh 패턴)
+        # resolution 파싱·market 분기 모두 variant 영향 받으므로 가장 먼저 셋업.
+        self.variant = (variant or "icas").lower()
         self._resolution = resolution.upper()
         self._parse_resolution()
         # market 분기 (RemoteController.py 라인 63-75 참조)
         # EU/NAR/CN: legacy 주소 + IPv6 private server
         # GP(KR): 숫자 주소 + IPv4 private server
+        # ICAS3 variant: market 무관하게 src=57/dst=43 (정수 kipc id) 강제
         self.market = (market or "EU").upper()
         self._apply_market_defaults(self.market, private_server_ip)
         self.private_server_password = private_server_password
@@ -165,9 +190,22 @@ class ICASAgentService:
             self._res_x = int(rx)
             self._res_y = int(ry)
         except Exception:
-            self._res_x, self._res_y = 1560, 700
-        self._x_mult = int(self._res_x / 1023) + 1
-        self._y_mult = int(self._res_y / 1023) + 1
+            # ICAS3 CN 기본 해상도(2240x1260) — EU 기본은 1560x700
+            if getattr(self, "variant", "icas") == "icas3":
+                self._res_x, self._res_y = 2240, 1260
+            else:
+                self._res_x, self._res_y = 1560, 700
+        # ICAS3 CN(touch_event.sh)은 해상도 크기에 따라 X/3 Y/2 (15") 또는 X/2 Y/1 (10") 분주.
+        # 2240x1260 같은 ≥15" 등급은 X/3 Y/2 — 우연히 EU 공식 (int(res/1023)+1) 과 같은 값.
+        # 그래도 식을 명시적으로 분기해두면 향후 다른 inch 변종 추가 시 명확.
+        if getattr(self, "variant", "icas") == "icas3":
+            if self._res_x >= 1800:  # 15-inch 등급 (2240x1260 등)
+                self._x_mult, self._y_mult = 3, 2
+            else:                    # 10-inch 등급 추정
+                self._x_mult, self._y_mult = 2, 1
+        else:
+            self._x_mult = int(self._res_x / 1023) + 1
+            self._y_mult = int(self._res_y / 1023) + 1
 
     @property
     def resolution(self) -> str:
@@ -196,7 +234,13 @@ class ICASAgentService:
         private_server_ip_override가 비어있지 않으면 그 값을 그대로 사용.
         """
         m = (market or "EU").upper()
-        if m in ("EU", "NAR", "CN"):
+        # ICAS3 variant: ksend kipc id가 정수형(-s 57 -d 43)만 허용 — market 무관하게 강제.
+        # private_server_ip 기본값은 GP(IPv4) 사용.
+        if getattr(self, "variant", "icas") == "icas3":
+            self.src_addr = "57"
+            self.dst_addr = "43"
+            default_private = "192.168.0.2"
+        elif m in ("EU", "NAR", "CN"):
             self.src_addr = "0x200000000000000"
             self.dst_addr = "0x80000000000"
             default_private = "fd53:7cb8:383:3::73"
@@ -522,10 +566,28 @@ class ICASAgentService:
     # Touch (press/drag/release) — ref RemoteController.excutecmdTouch*
     # ------------------------------------------------------------------
     def _touch_frame(self, x: int, y: int, end_byte: int) -> str:
+        # ICAS3 variant: 16B frame + 다른 좌표 인코딩 (touch_event.sh 패턴).
+        if self.variant == "icas3":
+            return self._touch_frame_icas3(int(x), int(y), int(end_byte))
         p1, p2, p3 = _encode_touch_xy(int(x), int(y), self._x_mult, self._y_mult)
         return (
             f"0x83 0x50 0x20 0x0b 0x00 0x00 0x00 0x00 0x00 0xa0 0x01 0x11 "
             f"0x{p1:02x} 0x{p2:02x} 0x{p3:02x} 0x{end_byte:02x}"
+        )
+
+    def _touch_frame_icas3(self, x: int, y: int, end_byte: int) -> str:
+        """ICAS3 CN 16B touch frame (touch_event.sh 패턴).
+
+        헤더 12B: 0x83 0x50 0x20 0x0B 0x17 0xF8 0xF1 0x73 0x00 0xA0 0x02 0x11
+        좌표  3B: byte3/byte4/byte5 (_encode_touch_xy_icas3)
+        종료  1B: 0xFD(press) / 0xFE(drag) / 0xFF(release)
+        """
+        px = int(round(float(x) / max(1, self._x_mult)))
+        py = int(round(float(y) / max(1, self._y_mult)))
+        b3, b4, b5 = _encode_touch_xy_icas3(px, py)
+        return (
+            f"0x83 0x50 0x20 0x0b 0x17 0xf8 0xf1 0x73 0x00 0xa0 0x02 0x11 "
+            f"0x{b3:02x} 0x{b4:02x} 0x{b5:02x} 0x{end_byte:02x}"
         )
 
     def _touch_press(self, x: int, y: int) -> None:

@@ -1592,6 +1592,8 @@ class PlaybackService:
                         return
                     logger.info("Playback: ICAS reconnect %s attempt %d/%d", device_id, attempt, max_retries)
                     try:
+                        _dm_upper = (dev.info.get("device_model") or "").upper()
+                        _variant = "icas3" if "ICAS3" in _dm_upper else "icas"
                         svc = ICASAgentService(
                             dev.address,
                             port=int(dev.info.get("port", 22) or 22),
@@ -1603,6 +1605,7 @@ class PlaybackService:
                             private_server_password=dev.info.get("private_server_password", "") or "",
                             iid_display=dev.info.get("iid_display", "10") or "10",
                             hud_display=dev.info.get("hud_display", "11") or "11",
+                            variant=_variant,
                             key_overrides=dev.info.get("icas_keys"),
                         )
                         ok = await svc.async_connect()

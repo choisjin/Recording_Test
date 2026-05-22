@@ -2220,7 +2220,10 @@ class DeviceManager:
             port = int(dev.info.get("port", 22) or 22)
             username = dev.info.get("username", "root") or "root"
             password = dev.info.get("password", "") or ""
-            # resolution_str(원본 "WxH") 우선, 없으면 resolution(dict) → "WxH" 복원, 모두 없으면 기본값
+            # ICAS3 변종 식별 — device_model에 "ICAS3" 포함이면 ksend frame/encoding 변경 + 해상도 기본 2240x1260
+            _dm_upper = (dev.info.get("device_model") or "").upper()
+            icas_variant = "icas3" if "ICAS3" in _dm_upper else "icas"
+            # resolution_str(원본 "WxH") 우선, 없으면 resolution(dict) → "WxH" 복원, 모두 없으면 variant별 기본값
             res_str = dev.info.get("resolution_str")
             if not res_str:
                 res_val = dev.info.get("resolution")
@@ -2229,7 +2232,7 @@ class DeviceManager:
                 elif isinstance(res_val, str):
                     res_str = res_val
                 else:
-                    res_str = "1560x700"
+                    res_str = "2240x1260" if icas_variant == "icas3" else "1560x700"
             # market 추론: info.market > device_model 키워드 > EU 기본
             market = (dev.info.get("market") or "").strip().upper()
             if not market:
@@ -2258,6 +2261,7 @@ class DeviceManager:
                     iid_display=dev.info.get("iid_display", "10") or "10",
                     hud_display=dev.info.get("hud_display", "11") or "11",
                     market=market,
+                    variant=icas_variant,
                     key_overrides=dev.info.get("icas_keys"),
                 )
                 ok = await svc.async_connect()
