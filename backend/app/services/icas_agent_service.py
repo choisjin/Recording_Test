@@ -168,7 +168,9 @@ class ICASAgentService:
         self._ssh_client = None
         self._ssh_shell = None  # 장수명 invoke_shell 채널 — ksend 등 fire-and-forget 명령용
         self._ssh_lock = threading.RLock()
-        self._ssh_keepalive_interval = 30  # seconds; transport.set_keepalive로 TCP idle 방지
+        # keepalive 간격 — sshd ClientAliveInterval(보통 15s)보다 짧게 설정해야 양방향 idle timeout 방지.
+        # IVI 환경은 load가 항시 1.0+ 수준이라 응답이 늦어 disconnect로 오판될 수 있어 10s로.
+        self._ssh_keepalive_interval = 10
         # IID/HUD 캡처 — private_server로의 direct-tcpip 터널 + SSH 클라이언트도 장수명 캐시.
         # 매 프레임마다 paramiko.connect() 인증(~300-500ms)을 반복하지 않도록.
         self._ps_ssh = None
@@ -177,6 +179,10 @@ class ICASAgentService:
         self._key_overrides: dict[str, dict] = dict(key_overrides or {})
         # HU 캡처: ICAS EU / ICAS3 CN 공통으로 screen 0(디바이스 화면) + screen 2(navigation map)를
         # alpha 합성해 최종 화면을 만든다. 분기 없이 두 screen 항상 dump.
+        # 연속 실패 backoff — ClientDisconnected가 폭주할 때 sshd 회복 시간을 주기 위함.
+        # _consecutive_failures가 임계치 넘으면 _get_shared_ssh에서 짧은 sleep 후 재연결 시도.
+        self._consecutive_capture_failures = 0
+        self._consecutive_capture_failures_threshold = 3
 
     # ------------------------------------------------------------------
     # Basic accessors
@@ -263,8 +269,11 @@ class ICASAgentService:
         import paramiko
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        # IVI 환경(load 1.0+ 상시)에서 connect/banner/auth 응답이 늦어지는 경우가 잦아 timeout 넉넉히.
         ssh.connect(self.host, username=self.username, port=self.port,
-                    password=self.password, timeout=10)
+                    password=self.password, timeout=20,
+                    banner_timeout=20, auth_timeout=20,
+                    look_for_keys=False, allow_agent=False)
         return ssh
 
     def _is_ssh_alive(self, ssh) -> bool:
@@ -552,7 +561,8 @@ class ICASAgentService:
         def _run(ssh) -> None:
             for c in cmds:
                 try:
-                    stdin, stdout, stderr = ssh.exec_command(c, timeout=4)
+                    # IVI load 환경에서 4s는 너무 짧아 ksend 명령조차 timeout 가능 → 8s.
+                    stdin, stdout, stderr = ssh.exec_command(c, timeout=8)
                     try:
                         stdin.close()
                     except Exception:
@@ -872,11 +882,12 @@ class ICASAgentService:
         except ImportError as e:
             raise RuntimeError("scp module required: pip install scp") from e
 
-        # ICAS_DUMP_TIMEOUT_S — exec_command stdout 폴링 타임아웃(초). 기본 8.
+        # ICAS_DUMP_TIMEOUT_S — exec_command stdout 폴링 타임아웃(초). 기본 15.
+        # IVI 환경은 load가 상시 1.0+ 라 dump가 4~10초 걸리는 경우 흔함.
         try:
-            dump_timeout = float(os.environ.get("ICAS_DUMP_TIMEOUT_S", "8") or 8)
+            dump_timeout = float(os.environ.get("ICAS_DUMP_TIMEOUT_S", "15") or 15)
         except Exception:
-            dump_timeout = 8.0
+            dump_timeout = 15.0
 
         tmp_dir = tempfile.mkdtemp(prefix="icas_cap_")
         try:
@@ -953,7 +964,9 @@ class ICASAgentService:
 
                 files: list[str] = []
                 try:
-                    with SCPClient(ssh.get_transport()) as scp:
+                    # socket_timeout — SCP 전송 도중 IVI 부하로 응답이 늦어져 ClientDisconnected가
+                    # 발생하는 케이스 방어. 기본 paramiko 값보다 넉넉히.
+                    with SCPClient(ssh.get_transport(), socket_timeout=15.0) as scp:
                         for remote, fname in remotes:
                             local = os.path.join(tmp_dir, fname)
                             try:
@@ -979,6 +992,22 @@ class ICASAgentService:
 
             local_files: list[str] = []
             with self._ssh_lock:
+                # 연속 실패 누적 시 sshd에 회복 시간 제공 — backoff 후 SSH 재연결.
+                # 폭주 재연결이 sshd MaxStartups를 초과해 더 깊이 죽는 악순환 방지.
+                if self._consecutive_capture_failures >= self._consecutive_capture_failures_threshold:
+                    backoff = min(2.0, 0.3 * self._consecutive_capture_failures)
+                    logger.info(
+                        "ICAS HU capture backoff %.1fs after %d consecutive failures",
+                        backoff, self._consecutive_capture_failures,
+                    )
+                    time.sleep(backoff)
+                    # 강제 SSH 폐기 — 다음 _get_shared_ssh가 새 연결
+                    if self._ssh_client is not None:
+                        try:
+                            self._ssh_client.close()
+                        except Exception:
+                            pass
+                        self._ssh_client = None
                 try:
                     ssh = self._get_shared_ssh()
                     local_files = _do_capture(ssh)
@@ -990,11 +1019,18 @@ class ICASAgentService:
                         except Exception:
                             pass
                         self._ssh_client = None
-                    ssh = self._get_shared_ssh()
-                    local_files = _do_capture(ssh)
+                    try:
+                        ssh = self._get_shared_ssh()
+                        local_files = _do_capture(ssh)
+                    except Exception as e2:
+                        self._consecutive_capture_failures += 1
+                        raise
 
             if not local_files:
+                self._consecutive_capture_failures += 1
                 raise RuntimeError("No HU screenshot captured")
+            # 성공 시 카운터 리셋
+            self._consecutive_capture_failures = 0
 
             # PNG 시그니처 검증을 통과해도 PIL이 디코딩 실패할 수 있으므로
             # 개별 파일 단위로 try/except 처리하여 일부만 깨져도 가능한 레이어로 합성.
