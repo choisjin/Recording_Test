@@ -41,12 +41,21 @@ RELEASE_KEY = 0x42
 # ── MIB 하드키 테이블 ──
 # class: "short" (13B 프레임) / "long" (15B 프레임)
 # key: KEY_CODE 바이트 (ksend 프레임의 키 위치)
+# category: long frame 전용 — byte 9 카테고리 (0x30=power/home, 0x48=volume)
+#           CAN 신호 매핑: frame bytes 9-10 ↔ CAN data bytes 1-2
+#
+# CAN 분석 (arbitration_id=0x17f8f173):
+#   POWER:     04 30 38 01 04         → category=0x30, key=0x38 ✓ HOME과 동일 패턴
+#   HOME:      (동일 카테고리 0x30)
+#   VOLUME_UP: 06 48 01 01 00 82      → category=0x48, key=0x01 (UP)
+#   MUTE:      short frame으로 동작 확인됨 (key=0x20)
 MIB_KEYS: dict[str, dict] = {
-    "VOLUME_UP":   {"class": "short", "key": 0x10},
-    "VOLUME_DOWN": {"class": "short", "key": 0x11},
+    # VOLUME은 short frame이 아닌 long frame + category 0x48 (CAN 매핑 기반)
+    "VOLUME_UP":   {"class": "long",  "key": 0x01, "category": 0x48},
+    "VOLUME_DOWN": {"class": "long",  "key": 0x02, "category": 0x48},
     "MUTE":        {"class": "short", "key": 0x20},
-    "HOME":        {"class": "long",  "key": 0x66},
-    "POWER":       {"class": "long",  "key": 0x38},
+    "HOME":        {"class": "long",  "key": 0x66, "category": 0x30},
+    "POWER":       {"class": "long",  "key": 0x38, "category": 0x30},
 }
 
 
@@ -1098,23 +1107,31 @@ class MIBAgentService:
             f"0x{key_code:02X} 0x{state:02X} 0x00 0x00"
         )
 
-    def _hkey_long_frame(self, key_code: int, state: int) -> str:
-        """Long 클래스(Home/Power) — 15 bytes.
-        state=0x01 / 0x00 에 따라 tail(0x10 / 0xD9) 변경 (ref 코드 관찰값)."""
+    def _hkey_long_frame(self, key_code: int, state: int, category: int = 0x30) -> str:
+        """Long 클래스(Home/Power/Volume) — 15 bytes.
+
+        byte 9: category — 0x30=power/home, 0x48=volume (CAN 매핑)
+        byte 10: key_code
+        byte 11: state (press=0x01, release=0x00)
+        byte 12: tail — 0x10(press) / 0xD9(release)
+        """
         tail = 0x10 if state else 0xD9
         return (
-            f"0x83 0x50 0x20 0x0B 0x17 0xF8 0xF1 0x73 0x00 0x30 "
+            f"0x83 0x50 0x20 0x0B 0x17 0xF8 0xF1 0x73 0x00 0x{category:02X} "
             f"0x{key_code:02X} 0x{state:02X} 0x{tail:02X} 0x00 0x00"
         )
 
     def resolve_key(self, key_name: str) -> Optional[dict]:
-        """키 스펙 반환 (override 병합)."""
+        """키 스펙 반환 (override 병합).
+
+        반환 dict 필드: class("short"|"long"), key(int), category(int, long 전용)
+        """
         base = MIB_KEYS.get(key_name)
         if not base:
             return None
         merged = dict(base)
         ov = self._key_overrides.get(key_name) or {}
-        for k in ("class", "key"):
+        for k in ("class", "key", "category"):
             if k in ov:
                 merged[k] = ov[k]
         return merged
@@ -1138,13 +1155,15 @@ class MIBAgentService:
             raise ValueError(f"Unknown MIB key: {key_name}")
         key_code = int(info["key"])
         klass = info.get("class", "short")
+        # long frame의 category(byte 9): VOLUME=0x48, HOME/POWER=0x30 (CAN 매핑)
+        category = int(info.get("category", 0x30))
 
         # press / release — Short class는 release 시 key=0x00, state=0x00 (ref RemoteController:525)
         # Long class는 key_code 유지, state만 0x00 + tail 변경 (ref line 562)
         press = (self._hkey_short_frame(key_code, 0x01) if klass == "short"
-                 else self._hkey_long_frame(key_code, 0x01))
+                 else self._hkey_long_frame(key_code, 0x01, category))
         release = (self._hkey_short_frame(0x00, 0x00) if klass == "short"
-                   else self._hkey_long_frame(key_code, 0x00))
+                   else self._hkey_long_frame(key_code, 0x00, category))
 
         hold_s = 1.0 if sub_cmd == LONG_KEY else 0.1
         self._ksend_many([press], interval_s=0)
