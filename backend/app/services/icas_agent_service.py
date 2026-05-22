@@ -721,7 +721,9 @@ class ICASAgentService:
         import tempfile
         import os
         from PIL import Image, ImageFile
-        ImageFile.LOAD_TRUNCATED_IMAGES = True
+        # truncated PNG를 부분 디코드 허용하면 위쪽만 보이는 검은 프레임이 화면에 표출되어
+        # 블링킹 발생. 잘린 파일은 거부하고 다음 프레임을 기다리는 편이 시각적으로 안정.
+        ImageFile.LOAD_TRUNCATED_IMAGES = False
 
         # HU sshd는 SFTP 서브시스템 미지원 → SCP(paramiko-scp)로 pull.
         try:
@@ -739,10 +741,12 @@ class ICASAgentService:
                     logger.info("ICAS HU capture strategy=%s", self._capture_strategy)
 
                 if self._capture_strategy == "screen0_only":
-                    # CN 패턴: screen 0 한 장으로 완성된 화면
+                    # CN 패턴: screen 0 한 장으로 완성된 화면.
+                    # 끝에 sync — LayerManagerControl이 비동기로 파일을 닫는 경우가 있어
+                    # SCP가 부분 파일을 받아 truncated PNG가 되는 것을 막는다.
                     dump_cmd = (
                         "export XDG_RUNTIME_DIR=/run/platform/weston && "
-                        "LayerManagerControl dump screen 0 to /tmp/screen1.png"
+                        "LayerManagerControl dump screen 0 to /tmp/screen1.png && sync"
                     )
                     remotes: tuple[tuple[str, str], ...] = (
                         ("/tmp/screen1.png", "screen1.png"),
@@ -752,7 +756,7 @@ class ICASAgentService:
                     dump_cmd = (
                         "export XDG_RUNTIME_DIR=/run/platform/weston && "
                         "LayerManagerControl dump screen 0 to /tmp/screen1.png && "
-                        "LayerManagerControl dump screen 2 to /tmp/screen2.png"
+                        "LayerManagerControl dump screen 2 to /tmp/screen2.png && sync"
                     )
                     remotes = (
                         ("/tmp/screen1.png", "screen1.png"),
@@ -796,19 +800,29 @@ class ICASAgentService:
 
                 files: list[str] = []
                 # PNG 시그니처 — LayerManagerControl이 비활성 레이어에 대해 placeholder/truncated
-                # 파일을 남기는 경우가 있어 size>0 만으로는 유효성 판단 불충분.
+                # 파일을 남기거나 SCP가 dump 완료 전 빈 상태를 읽어가 truncated 되는 경우가 있어
+                # size>0 만으로는 유효성 판단 불충분.
+                # - 시작 8B: \x89PNG\r\n\x1a\n
+                # - 끝 12B: IEND chunk (00000000 49454E44 AE426082)
                 PNG_SIG = b"\x89PNG\r\n\x1a\n"
+                PNG_END = b"\x00\x00\x00\x00IEND\xaeB`\x82"  # IEND chunk + CRC
                 try:
                     with SCPClient(ssh.get_transport()) as scp:
                         for remote, fname in remotes:
                             local = os.path.join(tmp_dir, fname)
                             try:
                                 scp.get(remote, local)
-                                if not (os.path.exists(local) and os.path.getsize(local) >= 8):
+                                size = os.path.getsize(local) if os.path.exists(local) else 0
+                                if size < (8 + len(PNG_END)):
                                     continue
                                 with open(local, "rb") as fp:
                                     if fp.read(8) != PNG_SIG:
                                         logger.debug("ICAS HU %s invalid PNG signature, skipping", fname)
+                                        continue
+                                    fp.seek(-len(PNG_END), os.SEEK_END)
+                                    if fp.read(len(PNG_END)) != PNG_END:
+                                        # truncated — dump가 끝나기 전에 SCP가 읽어간 경우
+                                        logger.debug("ICAS HU %s truncated (no IEND), skipping size=%d", fname, size)
                                         continue
                                 files.append(local)
                             except Exception as ee:
