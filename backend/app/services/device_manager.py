@@ -2115,6 +2115,23 @@ class DeviceManager:
             return f"Device {device_id} not found"
         loop = asyncio.get_event_loop()
 
+        # 자동 마이그레이션 — 옛 카탈로그에서 hkmc_agent로 등록된 Gen5 디바이스를 5th_wide로 보정.
+        # HKMC6th와 5th_wide는 통신 프로토콜이 달라 잘못된 service로 연결하면 무응답.
+        if dev.type == "hkmc_agent" and "gen5" in (dev.info.get("device_model") or "").lower():
+            logger.info(
+                "Auto-migrating %s: hkmc_agent → hkmc5th_wide_agent (Gen5 detected: %s)",
+                dev.id, dev.info.get("device_model"),
+            )
+            dev.type = "hkmc5th_wide_agent"
+            # 옛 hkmc_agent 연결이 남아있을 수 있어 정리
+            old = self._hkmc_conns.pop(dev.id, None)
+            if old:
+                try:
+                    old.disconnect()
+                except Exception:
+                    pass
+            self._save_auxiliary_devices()
+
         def _mark_connected():
             self._ever_connected.add(device_id)
 
