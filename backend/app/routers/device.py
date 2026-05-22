@@ -984,6 +984,11 @@ async def device_input(req: InputRequest):
             _model_str = (dev.info.get("device_model") or "").lower()
             _id_str = (dev.id or "").lower()
             _is_gen5 = ("gen5" in _model_str) or ("gen5" in _id_str)
+            # 진단 로그 — 어느 분기로 라우팅되는지 명확히 식별 (반영 여부 검증용)
+            logger.info(
+                "[INPUT ROUTING] dev.id=%s dev.type=%s device_model=%r id_str=%r is_gen5=%s",
+                req.device_id, dev.type, dev.info.get("device_model"), _id_str, _is_gen5,
+            )
             if dev.type == "hkmc5th_wide_agent" or _is_gen5:
                 hkmc = dm.get_hkmc5th_wide_service(req.device_id)
                 _label = "HKMC5thWide"

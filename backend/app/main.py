@@ -481,7 +481,9 @@ async def websocket_screen_mirror(websocket: WebSocket):
 
     # 디바이스 타입 판별
     dev = device_manager.get_device(target_device_id) if target_device_id else None
-    is_hkmc = dev and dev.type == "hkmc_agent"
+    # HKMC5thWide는 HKMC6th와 동일한 async API라 같은 분기로 처리 — service 인스턴스만 다름.
+    is_hkmc = dev and dev.type in ("hkmc_agent", "hkmc5th_wide_agent")
+    is_hkmc5th_wide = dev and dev.type == "hkmc5th_wide_agent"
     is_isap = dev and dev.type == "isap_agent"
     is_icas = dev and dev.type == "icas_agent"
     is_mib = dev and dev.type == "mib_agent"
@@ -522,7 +524,13 @@ async def websocket_screen_mirror(websocket: WebSocket):
         while True:
             try:
                 # 매 프레임마다 최신 서비스 인스턴스 조회 (재연결 대응)
-                hkmc = device_manager.get_hkmc_service(target_device_id) if is_hkmc else None
+                # HKMC5thWide 디바이스는 별도 service에서 조회 — 같은 _label/분기로 처리.
+                if is_hkmc5th_wide:
+                    hkmc = device_manager.get_hkmc5th_wide_service(target_device_id)
+                elif is_hkmc:
+                    hkmc = device_manager.get_hkmc_service(target_device_id)
+                else:
+                    hkmc = None
                 isap = device_manager.get_isap_service(target_device_id) if is_isap else None
                 if hkmc and hkmc.is_connected:
                     jpeg_bytes = await hkmc.async_screencap_bytes(
