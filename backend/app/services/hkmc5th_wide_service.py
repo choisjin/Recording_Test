@@ -324,6 +324,15 @@ HKMC5TH_WIDE_KEYS: dict[str, dict] = {
     "CCP_VOLUME_DOWN":        {"cmd": CMD_CCP, "key": 0x01, "dial": True, "direction": ANTI_CLOCK},
     "CCP_TUNE_UP":            {"cmd": CMD_CCP, "key": 0x04, "dial": True, "direction": CLOCK},
     "CCP_TUNE_DOWN":          {"cmd": CMD_CCP, "key": 0x04, "dial": True, "direction": ANTI_CLOCK},
+    # ── CCP — 일반 버튼 (BACK / HOME / MENU / JOG PRESS) ─────────────────
+    "CCP_BACK":               {"cmd": CMD_CCP, "key": CCP_BACK},
+    "CCP_HOME":               {"cmd": CMD_CCP, "key": CCP_HOME},
+    "CCP_MENU":               {"cmd": CMD_CCP, "key": CCP_MENU},
+    "CCP_JOG_PRESS":          {"cmd": CMD_CCP, "key": CCP_JOG_PRESS},
+    # ── 별칭 — 사용자 친화 (HOME/BACK 만으로도 호출 가능하게 함) ─────────
+    "HOME":                   {"cmd": CMD_CCP, "key": CCP_HOME},
+    "BACK":                   {"cmd": CMD_CCP, "key": CCP_BACK},
+    "MENU":                   {"cmd": CMD_CCP, "key": CCP_MENU},
 
     # ── RRC (CMD_RRC=0x90) — keyExt int 방식 ─────────────────────────────
     "RRC_ENTER":              {"cmd": CMD_RRC, "key": 0x08},
