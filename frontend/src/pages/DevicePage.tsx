@@ -370,8 +370,10 @@ export default function DevicePage() {
     hkmc: [6655, 5000],
     isap: [20000],
     dlt: [3490],
-    bench: [25000],
   };
+  // bench는 host+port 고정값. 백엔드 설정과 동기화 시 항상 강제 적용.
+  const BENCH_DEFAULT_HOST = '192.168.1.101';
+  const BENCH_DEFAULT_PORT = 25000;
   // 백엔드에서 받아온 builtin 설정에 고정 포트를 강제 적용
   const applyFixedPorts = (
     b: Record<string, { enabled: boolean; module: string; port?: number; ports?: number[]; host?: string; category?: ScanCategory }>,
@@ -380,6 +382,14 @@ export default function DevicePage() {
     for (const [key, ports] of Object.entries(FIXED_PORTS)) {
       result[key] = { ...(result[key] || { enabled: true, module: '' }), ports };
     }
+    // bench: host 미지정이면 기본 채움 + ports는 더 이상 사용 안 함
+    const benchCur = result['bench'] || { enabled: true, module: 'WoohyunBench', category: 'auxiliary' };
+    result['bench'] = {
+      ...benchCur,
+      host: benchCur.host || BENCH_DEFAULT_HOST,
+      port: benchCur.port ?? BENCH_DEFAULT_PORT,
+      ports: undefined,
+    };
     return result;
   };
   const [scanBuiltin, setScanBuiltin] = useState<Record<string, { enabled: boolean; module: string; port?: number; ports?: number[]; host?: string; category?: ScanCategory }>>({
@@ -388,7 +398,7 @@ export default function DevicePage() {
     hkmc: { enabled: true, module: '', ports: [6655, 5000], category: 'primary' },
     isap: { enabled: false, module: '', ports: [20000], category: 'primary' },
     dlt: { enabled: true, module: 'DLTLogging', ports: [3490], category: 'auxiliary' },
-    bench: { enabled: true, module: 'WoohyunBench', ports: [25000], category: 'auxiliary' },
+    bench: { enabled: true, module: 'WoohyunBench', host: BENCH_DEFAULT_HOST, port: BENCH_DEFAULT_PORT, category: 'auxiliary' },
     vision_camera: { enabled: false, module: 'VisionCamera', category: 'primary' },
     webcam: { enabled: true, module: 'WebcamDevice', category: 'primary' },
     ssh: { enabled: true, module: 'SSHManager', port: 22, category: 'auxiliary' },
@@ -2695,12 +2705,12 @@ export default function DevicePage() {
                         setScanBuiltin({ ...scanBuiltin, [item.key]: { ...v, ports } });
                       }}
                     />
-                  ) : item.key === 'smartbench' ? (
+                  ) : (item.key === 'smartbench' || item.key === 'bench') ? (
                     <Space.Compact size="small" style={{ width: '100%' }}>
                       <Input
                         size="small"
                         disabled
-                        value={v.host ?? '192.167.0.5'}
+                        value={v.host ?? (item.key === 'bench' ? '192.168.1.101' : '192.167.0.5')}
                         placeholder="host"
                         style={{ flex: 1 }}
                         onChange={e => setScanBuiltin({ ...scanBuiltin, [item.key]: { ...v, host: e.target.value } })}
@@ -2709,10 +2719,10 @@ export default function DevicePage() {
                         size="small"
                         disabled
                         min={1} max={65535}
-                        value={v.port ?? 8000}
+                        value={v.port ?? (item.key === 'bench' ? 25000 : 8000)}
                         placeholder="port"
                         style={{ width: 80 }}
-                        onChange={p => setScanBuiltin({ ...scanBuiltin, [item.key]: { ...v, port: p ?? 8000 } })}
+                        onChange={p => setScanBuiltin({ ...scanBuiltin, [item.key]: { ...v, port: p ?? (item.key === 'bench' ? 25000 : 8000) } })}
                       />
                     </Space.Compact>
                   ) : (item.key === 'ssh' || item.key === 'icas' || item.key === 'mib') ? (

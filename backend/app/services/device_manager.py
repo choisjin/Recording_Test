@@ -388,7 +388,11 @@ def _probe_smartbench_sync(ip: str, port: int, timeout: float) -> dict | None:
                 pass
 
 
-BENCH_UDP_SCAN_PORTS = [25000]
+# ── WoohyunBench 자동 탐지 ──
+# SmartBench와 동일한 단일-프로브 방식: 설정에 명시된 host:port로 한 번만 UDP 프로브.
+# LAN 전체(ARP + ping + UDP 스윕)는 시간이 길고 다른 장비를 깨우는 부작용이 있어 제거.
+BENCH_DEFAULT_HOST = "192.168.1.101"
+BENCH_DEFAULT_PORT = 25000
 BENCH_UDP_PROBE = bytes([0x55, 0xAA, 100, 0, 0x20, 0x02, 0x00, 0x00])
 
 
@@ -416,121 +420,24 @@ def _probe_udp_bench_sync(ip: str, port: int, timeout: float) -> dict | None:
     return None
 
 
-def _get_arp_hosts() -> set[str]:
-    """시스템 ARP 테이블에서 알려진 호스트 IP 수집."""
-    import subprocess
-    hosts: set[str] = set()
-    try:
-        _nw = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-        result = subprocess.run("arp -a", capture_output=True, text=True,
-                                shell=True, timeout=5, creationflags=_nw)
-        for line in result.stdout.splitlines():
-            m = re.search(r"(\d+\.\d+\.\d+\.\d+)", line)
-            if m:
-                ip = m.group(1)
-                if not ip.endswith(".255") and not ip.startswith("224.") and not ip.startswith("239."):
-                    hosts.add(ip)
-    except Exception:
-        pass
-    return hosts
+async def _scan_woohyun_bench(host: str | None = None, port: int | None = None) -> list[dict]:
+    """WoohyunBench 단일 호스트 UDP 프로브.
 
+    설정의 host/port (기본 192.168.1.101:25000)에 대해 한 번만 UDP 프로브를 수행한다.
+    응답 받으면 verified=True로 반환, 응답이 없으면 빈 리스트(미발견).
+    """
+    target_host = (host or BENCH_DEFAULT_HOST).strip()
+    target_port = int(port) if port else BENCH_DEFAULT_PORT
 
-async def _ping_host(ip: str) -> str | None:
-    """단일 호스트 ping (Windows)."""
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "ping", "-n", "1", "-w", "500", ip,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-        rc = await asyncio.wait_for(proc.wait(), timeout=2.0)
-        return ip if rc == 0 else None
-    except Exception:
-        return None
-
-
-async def _scan_network_hosts(
-    ports: list[int] | None = None,
-    max_concurrent: int = 50,
-) -> list[dict]:
-    """LAN 서브넷(192.168.*)의 활성 호스트 탐지 (ARP + ping + UDP 프로브)."""
-    if not ports:
-        logger.info("Bench scan skipped: no ports configured")
-        return []
-
-    local_ips, subnets = _collect_local_subnets_192()
-    logger.info("Network scan: %d subnets: %s", len(subnets), [str(s) for s in subnets])
-
-    candidate_ips: set[str] = set()
-    for subnet in subnets:
-        for host in subnet.hosts():
-            ip_str = str(host)
-            if ip_str not in local_ips:
-                candidate_ips.add(ip_str)
-
-    if not candidate_ips:
-        return []
-
-    # 1단계: ARP 테이블에서 이미 알려진 호스트
     loop = asyncio.get_event_loop()
-    arp_hosts = await loop.run_in_executor(None, _get_arp_hosts)
-    subnet_arp = candidate_ips & arp_hosts
-    logger.info("Network scan: ARP table has %d hosts on target subnets", len(subnet_arp))
-
-    # 2단계: ARP에 없는 IP는 ping 스윕 (병렬)
-    ping_targets = candidate_ips - arp_hosts
-    semaphore = asyncio.Semaphore(max_concurrent)
-
-    async def _ping_with_sem(ip: str):
-        async with semaphore:
-            return await _ping_host(ip)
-
-    if ping_targets:
-        logger.info("Network scan: pinging %d additional IPs...", len(ping_targets))
-        ping_results = await asyncio.gather(*[_ping_with_sem(ip) for ip in ping_targets])
-        ping_alive = {ip for ip in ping_results if ip is not None}
-    else:
-        ping_alive = set()
-
-    # 3단계: 활성 호스트에 UDP 프로브
-    all_alive = subnet_arp | ping_alive
-    logger.info("Network scan: %d alive hosts, running UDP probe...", len(all_alive))
-
-    udp_sem = asyncio.Semaphore(max_concurrent)
-
-    async def _udp_with_sem(ip: str, port: int):
-        async with udp_sem:
-            return await loop.run_in_executor(
-                None, _probe_udp_bench_sync, ip, port, 2.0
-            )
-
-    udp_results = await asyncio.gather(*[
-        _udp_with_sem(ip, port)
-        for ip in all_alive
-        for port in ports
-    ])
-    udp_verified: dict[str, dict] = {}
-    for r in udp_results:
-        if r is not None:
-            udp_verified[r["ip"]] = r
-
-    # 결과 조합: verified + unverified 호스트
-    results: list[dict] = []
-    seen: set[str] = set()
-    for ip in sorted(all_alive):
-        if ip in seen:
-            continue
-        seen.add(ip)
-        if ip in udp_verified:
-            results.append(udp_verified[ip])
-            logger.info("Network scan: %s:%d (UDP verified)", ip, udp_verified[ip]["port"])
-        else:
-            results.append({"ip": ip, "port": ports[0], "verified": False})
-            logger.info("Network scan: %s (reachable, unverified)", ip)
-
-    logger.info("Network scan: completed, %d hosts (%d verified)",
-                len(results), len(udp_verified))
-    return results
+    result = await loop.run_in_executor(
+        None, _probe_udp_bench_sync, target_host, target_port, 2.0,
+    )
+    if result is not None:
+        logger.info("Bench scan: found %s:%d (UDP verified)", target_host, target_port)
+        return [result]
+    logger.debug("Bench scan: %s:%d not reachable", target_host, target_port)
+    return []
 
 
 def _validate_serial(port: str, baudrate: int) -> str:
@@ -1516,9 +1423,9 @@ class DeviceManager:
         """
         return await _scan_hkmc_tcp(ports=ports)
 
-    async def scan_bench(self, ports: list[int] | None = None) -> list[dict]:
-        """LAN(192.168.*)에서 네트워크 호스트 탐색 (ARP + ping + UDP 프로브)."""
-        return await _scan_network_hosts(ports=ports)
+    async def scan_bench(self, host: str | None = None, port: int | None = None) -> list[dict]:
+        """WoohyunBench 단일 호스트 UDP 프로브. host/port 미지정 시 기본값(192.168.1.101:25000)."""
+        return await _scan_woohyun_bench(host=host, port=port)
 
     async def scan_smartbench(self, host: str | None = None, port: int | None = None) -> list[dict]:
         """SmartBench 장비 탐지. host/port 미지정 시 기본값(192.167.0.5:8000) 사용."""

@@ -37,7 +37,7 @@ _DEFAULT_SCAN_SETTINGS = {
         "icas":           {"enabled": True,  "module": "",             "category": "primary",   "port": 22},
         "mib":            {"enabled": True,  "module": "",             "category": "primary",   "port": 22},
         "dlt":            {"enabled": True,  "module": "DLTLogging",   "category": "auxiliary", "ports": [3490]},
-        "bench":          {"enabled": True,  "module": "WoohyunBench", "category": "auxiliary", "ports": [25000]},
+        "bench":          {"enabled": True,  "module": "WoohyunBench", "category": "auxiliary", "host": "192.168.1.101", "port": 25000},
         "vision_camera":  {"enabled": False, "module": "VisionCamera", "category": "primary"},
         "webcam":         {"enabled": True,  "module": "WebcamDevice", "category": "primary"},
         "ssh":            {"enabled": True,  "module": "SSHManager",   "category": "auxiliary", "port": 22},
@@ -65,6 +65,18 @@ def _load_scan_settings() -> dict:
             for key, default_entry in _DEFAULT_SCAN_SETTINGS["builtin"].items():
                 if key not in builtin:
                     builtin[key] = dict(default_entry)
+            # bench 마이그레이션: 옛 {ports: [25000]} → 새 {host, port} 형태
+            bench = builtin.get("bench")
+            if isinstance(bench, dict):
+                if "host" not in bench:
+                    bench["host"] = "192.168.1.101"
+                if "port" not in bench:
+                    legacy_ports = bench.get("ports") or [25000]
+                    try:
+                        bench["port"] = int(legacy_ports[0]) if legacy_ports else 25000
+                    except (TypeError, ValueError):
+                        bench["port"] = 25000
+                bench.pop("ports", None)
             return data
         except Exception:
             pass
@@ -316,7 +328,16 @@ async def scan_ports():
     if _enabled("isap"):
         tasks["isap_hosts"] = asyncio.ensure_future(dm.scan_isap(ports=_ports_of("isap")))
     if _enabled("bench"):
-        tasks["bench_devices"] = asyncio.ensure_future(dm.scan_bench(ports=_ports_of("bench")))
+        # WoohyunBench: 단일 호스트 + 포트로 UDP 프로브 (SmartBench와 동일한 단일-프로브 패턴).
+        # LAN 전체 스캔(ARP+ping+UDP)은 제거됨 — 항상 host/port가 설정에 명시되어 있어야 한다.
+        bench_entry = builtin.get("bench", {}) if isinstance(builtin.get("bench"), dict) else {}
+        bench_host = str(bench_entry.get("host") or "").strip() or None
+        bench_port = bench_entry.get("port")
+        try:
+            bench_port = int(bench_port) if bench_port is not None else None
+        except (TypeError, ValueError):
+            bench_port = None
+        tasks["bench_devices"] = asyncio.ensure_future(dm.scan_bench(host=bench_host, port=bench_port))
     if _enabled("vision_camera"):
         tasks["vision_cameras"] = asyncio.ensure_future(dm.scan_vision_cameras())
     if _enabled("webcam"):
