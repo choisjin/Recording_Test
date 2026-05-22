@@ -126,7 +126,7 @@ class ICASAgentService:
         self._ps_lock = threading.RLock()
         self._key_overrides: dict[str, dict] = dict(key_overrides or {})
         # HU 캡처 전략 — 첫 캡처 때 LayerManagerControl get screens 결과로 자동 감지.
-        # - "screen0_only": screen 0 한 장만 dump (ICAS CN 패턴: screen 0가 이미 2개 레이어 합성)
+        # - "screen0_only": screen 0 한 장만 dump (ICAS3 CN 패턴: screen 0가 이미 2개 레이어 합성)
         # - "screen0_plus_screen2": screen 0 + screen 2 alpha 합성 (ICAS EU 패턴, 기존 로직)
         # 재연결 시 _capture_strategy도 None으로 리셋되어 재감지됨.
         self._capture_strategy: Optional[str] = None
@@ -683,7 +683,7 @@ class ICASAgentService:
     def _detect_capture_strategy(self, ssh) -> str:
         """LayerManagerControl get screens / get screen 0 결과로 캡처 전략 결정.
 
-        - ICAS CN: screen이 3개, screen 0가 이미 2개 레이어를 합성 → "screen0_only"
+        - ICAS3 CN: screen이 3개, screen 0가 이미 2개 레이어를 합성 → "screen0_only"
         - ICAS EU: 기존 코드처럼 screen 0(메인) + screen 2(오버레이)를 합성 → "screen0_plus_screen2"
 
         감지 실패 시 안전하게 기존 동작(screen0_plus_screen2) 폴백.
@@ -732,7 +732,7 @@ class ICASAgentService:
         tmp_dir = tempfile.mkdtemp(prefix="icas_cap_")
         try:
             # 공유 SSH 세션에서 dump + SCP pull 을 일괄 수행 (매 프레임마다 재인증 방지).
-            # 첫 호출 시 자동 감지로 ICAS CN/EU 캡처 전략 결정 (이후 캐싱).
+            # 첫 호출 시 자동 감지로 ICAS3 CN / ICAS EU 캡처 전략 결정 (이후 캐싱).
             def _do_capture(ssh) -> list[str]:
                 if self._capture_strategy is None:
                     self._capture_strategy = self._detect_capture_strategy(ssh)

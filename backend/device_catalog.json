@@ -152,9 +152,15 @@
           "value": "ICAS EU",
           "enabled": true,
           "agent": "ICAS Agent"
-        },
+        }
+      ]
+    },
+    {
+      "name": "ICAS3",
+      "enabled": true,
+      "models": [
         {
-          "value": "ICAS CN",
+          "value": "ICAS3 CN",
           "enabled": true,
           "agent": "ICAS Agent"
         }
