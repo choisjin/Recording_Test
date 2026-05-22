@@ -1196,8 +1196,6 @@ class HKMC5thWideService:
         is_dial = bool(key_info.get("dial"))
 
         with self._capture_lock:
-            time.sleep(0.3)
-
             if is_msg:
                 # 메시지 키: 데이터 없이 cmd+subCmd만 전송
                 self.send_key_message(cmd, sub_cmd)
@@ -1208,22 +1206,20 @@ class HKMC5thWideService:
                 self.send_key(cmd, DIAL_ACTION, key_data, monitor, dir_val)
 
             elif sub_cmd == SHORT_KEY:
+                # SHORT_KEY 자체가 디바이스 측에서 press+500ms+release를 자동 처리하는 통합 명령
+                # (ref IVIHKMC6thProtocol: "SHORT_KEY = 0x43 # press + 500msec + release").
+                # PRESS+SHORT+RELEASE 3중 시퀀스를 보내면 5th_wide 디바이스가 protocol error로 판단해
+                # socket을 끊는 회귀 발견 → 단일 SHORT 패킷만 송신.
                 key_data = key_info["key"]
-                self.send_key(cmd, PRESS_KEY, key_data, monitor, direction)
-                time.sleep(0.1)
                 self.send_key(cmd, SHORT_KEY, key_data, monitor, direction)
-                time.sleep(0.1)
-                self.send_key(cmd, RELEASE_KEY, key_data, monitor, direction)
 
             elif sub_cmd == LONG_KEY:
+                # LONG_KEY도 동일하게 통합 명령으로 처리.
                 key_data = key_info["key"]
-                self.send_key(cmd, PRESS_KEY, key_data, monitor, direction)
-                time.sleep(0.1)
                 self.send_key(cmd, LONG_KEY, key_data, monitor, direction)
-                time.sleep(0.1)
-                self.send_key(cmd, RELEASE_KEY, key_data, monitor, direction)
 
             else:
+                # PRESS_KEY/RELEASE_KEY 등 호출자가 명시한 sub_cmd 그대로 송신.
                 key_data = key_info["key"]
                 self.send_key(cmd, sub_cmd, key_data, monitor, direction)
 
