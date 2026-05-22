@@ -39,23 +39,24 @@ RELEASE_KEY = 0x42
 
 
 # ── MIB 하드키 테이블 ──
-# class: "short" (13B 프레임) / "long" (15B 프레임)
-# key: KEY_CODE 바이트 (ksend 프레임의 키 위치)
+# class: "short" (13B) / "long" (15B) / "volume" (15B, signed delta)
+# key: KEY_CODE 바이트 (short/long) 또는 signed delta (volume: +1=UP, -1=DOWN)
 # category: long frame 전용 — byte 9 카테고리 (0x30=power/home, 0x48=volume)
-#           CAN 신호 매핑: frame bytes 9-10 ↔ CAN data bytes 1-2
 #
 # CAN 분석 (arbitration_id=0x17f8f173):
-#   POWER:     04 30 38 01 04         → category=0x30, key=0x38 ✓ HOME과 동일 패턴
-#   HOME:      (동일 카테고리 0x30)
-#   VOLUME_UP: 06 48 01 01 00 82      → category=0x48, key=0x01 (UP)
-#   MUTE:      short frame으로 동작 확인됨 (key=0x20)
+#   POWER press:     04 30 38 01 04           → long frame, category=0x30, key=0x38
+#   HOME press:      04 30 66 01 04           → long frame, category=0x30, key=0x66
+#   MUTE:            short frame (key=0x20, 동작 확인됨)
+#   VOLUME_UP press: 06 48 01 01 00 82        → volume frame, delta=+1 (0x01)
+#   VOLUME_DOWN press: 06 48 01 ff 00 82      → volume frame, delta=-1 (0xFF signed)
+#   VOLUME release:  06 48 01 00 [delta] 82   → delta가 byte 4로 이동 (swap)
 MIB_KEYS: dict[str, dict] = {
-    # VOLUME은 short frame이 아닌 long frame + category 0x48 (CAN 매핑 기반)
-    "VOLUME_UP":   {"class": "long",  "key": 0x01, "category": 0x48},
-    "VOLUME_DOWN": {"class": "long",  "key": 0x02, "category": 0x48},
-    "MUTE":        {"class": "short", "key": 0x20},
-    "HOME":        {"class": "long",  "key": 0x66, "category": 0x30},
-    "POWER":       {"class": "long",  "key": 0x38, "category": 0x30},
+    # VOLUME 전용 frame: byte 11=delta(press)/0(release), byte 12=0(press)/delta(release)
+    "VOLUME_UP":   {"class": "volume", "key": 0x01},   # +1
+    "VOLUME_DOWN": {"class": "volume", "key": 0xFF},   # -1 (signed)
+    "MUTE":        {"class": "short",  "key": 0x20},
+    "HOME":        {"class": "long",   "key": 0x66, "category": 0x30},
+    "POWER":       {"class": "long",   "key": 0x38, "category": 0x30},
 }
 
 
@@ -1108,9 +1109,9 @@ class MIBAgentService:
         )
 
     def _hkey_long_frame(self, key_code: int, state: int, category: int = 0x30) -> str:
-        """Long 클래스(Home/Power/Volume) — 15 bytes.
+        """Long 클래스(Home/Power) — 15 bytes.
 
-        byte 9: category — 0x30=power/home, 0x48=volume (CAN 매핑)
+        byte 9: category (0x30 = power/home)
         byte 10: key_code
         byte 11: state (press=0x01, release=0x00)
         byte 12: tail — 0x10(press) / 0xD9(release)
@@ -1119,6 +1120,27 @@ class MIBAgentService:
         return (
             f"0x83 0x50 0x20 0x0B 0x17 0xF8 0xF1 0x73 0x00 0x{category:02X} "
             f"0x{key_code:02X} 0x{state:02X} 0x{tail:02X} 0x00 0x00"
+        )
+
+    def _hkey_volume_frame(self, delta: int, press: bool) -> str:
+        """Volume 전용 frame — 15 bytes (CAN: arb_id=0x17F8F173, data=06 48 01 ...).
+
+        byte 9: 0x48 (volume category)
+        byte 10: 0x01 (sub-id, 고정)
+        byte 11: press 시 delta(+1/-1), release 시 0x00
+        byte 12: press 시 0x00, release 시 delta(+1/-1) ← byte 11과 swap
+        byte 13: 0x82 (volume tail)
+
+        delta: +1 (UP, 0x01) / -1 (DOWN, 0xFF signed)
+        """
+        d = delta & 0xFF  # signed → unsigned byte
+        if press:
+            b11, b12 = d, 0x00
+        else:
+            b11, b12 = 0x00, d
+        return (
+            f"0x83 0x50 0x20 0x0B 0x17 0xF8 0xF1 0x73 0x00 0x48 0x01 "
+            f"0x{b11:02X} 0x{b12:02X} 0x82 0x00"
         )
 
     def resolve_key(self, key_name: str) -> Optional[dict]:
@@ -1155,15 +1177,22 @@ class MIBAgentService:
             raise ValueError(f"Unknown MIB key: {key_name}")
         key_code = int(info["key"])
         klass = info.get("class", "short")
-        # long frame의 category(byte 9): VOLUME=0x48, HOME/POWER=0x30 (CAN 매핑)
+        # long frame의 category(byte 9): HOME/POWER=0x30
         category = int(info.get("category", 0x30))
 
-        # press / release — Short class는 release 시 key=0x00, state=0x00 (ref RemoteController:525)
-        # Long class는 key_code 유지, state만 0x00 + tail 변경 (ref line 562)
-        press = (self._hkey_short_frame(key_code, 0x01) if klass == "short"
-                 else self._hkey_long_frame(key_code, 0x01, category))
-        release = (self._hkey_short_frame(0x00, 0x00) if klass == "short"
-                   else self._hkey_long_frame(key_code, 0x00, category))
+        # frame 빌드: class별 분기
+        #   short: 13B (MUTE) — release 시 key=0x00, state=0x00
+        #   long:  15B (HOME/POWER) — key_code 유지, state 0x00 + tail 변경
+        #   volume: 15B (VOLUME_UP/DOWN) — signed delta가 byte11/byte12 swap
+        if klass == "short":
+            press = self._hkey_short_frame(key_code, 0x01)
+            release = self._hkey_short_frame(0x00, 0x00)
+        elif klass == "volume":
+            press = self._hkey_volume_frame(key_code, press=True)
+            release = self._hkey_volume_frame(key_code, press=False)
+        else:  # long
+            press = self._hkey_long_frame(key_code, 0x01, category)
+            release = self._hkey_long_frame(key_code, 0x00, category)
 
         hold_s = 1.0 if sub_cmd == LONG_KEY else 0.1
         self._ksend_many([press], interval_s=0)
