@@ -14,6 +14,7 @@ from typing import Optional
 
 from .adb_service import ADBService
 from .hkmc6th_service import HKMC6thService
+from .hkmc5th_wide_service import HKMC5thWideService
 from .isap_agent_service import ISAPAgentService
 from .icas_agent_service import ICASAgentService
 from .mib_agent_service import MIBAgentService
@@ -508,6 +509,8 @@ class DeviceManager:
         self._serial_conns: dict[str, "serial.Serial"] = {}  # device_id -> open serial connection
         self._hkmc_conns: dict[str, HKMC6thService] = {}  # device_id -> HKMC6thService
         self._hkmc_reconnect_attempts: dict[str, int] = {}  # device_id -> 연속 재연결 실패 횟수
+        self._hkmc5th_wide_conns: dict[str, HKMC5thWideService] = {}  # device_id -> HKMC5thWideService
+        self._hkmc5th_wide_reconnect_attempts: dict[str, int] = {}
         self._isap_conns: dict[str, ISAPAgentService] = {}  # device_id -> ISAPAgentService
         self._isap_reconnect_attempts: dict[str, int] = {}
         self._icas_conns: dict[str, ICASAgentService] = {}  # device_id -> ICASAgentService
@@ -669,6 +672,8 @@ class DeviceManager:
             prefix = "Serial"
         elif dev_type == "hkmc_agent":
             prefix = "HKMC"
+        elif dev_type == "hkmc5th_wide_agent":
+            prefix = "HKMC5thWide"
         elif dev_type == "isap_agent":
             prefix = "iSAP"
         elif dev_type == "icas_agent":
@@ -697,7 +702,7 @@ class DeviceManager:
         aux = [
             d.to_dict()
             for d in self._devices.values()
-            if d.category == "auxiliary" or d.type in ("adb", "hkmc_agent", "isap_agent", "icas_agent", "mib_agent", "vision_camera", "webcam", "ssh")
+            if d.category == "auxiliary" or d.type in ("adb", "hkmc_agent", "hkmc5th_wide_agent", "isap_agent", "icas_agent", "mib_agent", "vision_camera", "webcam", "ssh")
         ]
         try:
             _AUX_DEVICES_FILE.write_text(json.dumps(aux, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -813,6 +818,38 @@ class DeviceManager:
         dev = self.get_device(device_id)
         if dev and dev.type == "hkmc_agent":
             return self._hkmc_conns.get(dev.id)
+        return None
+
+    async def add_hkmc5th_wide_device(self, host: str, port: int, device_id: str = "", name: str = "",
+                                      device_model: str = "") -> ManagedDevice:
+        """HKMC 5th gen (Wide) 디바이스 등록 (연결은 connect_device_by_id로 별도 수행)."""
+        final_id = device_id or self._generate_device_id("hkmc5th_wide_agent", device_model=device_model)
+        display_name = name or f"HKMC5thWide ({host}:{port})"
+        info: dict = {"port": port}
+        if device_model:
+            info["device_model"] = device_model
+
+        dev = ManagedDevice(
+            id=final_id,
+            type="hkmc5th_wide_agent",
+            category="primary",
+            address=host,
+            status="disconnected",
+            name=display_name,
+            info=info,
+        )
+        self._devices[final_id] = dev
+        self._save_auxiliary_devices()
+        return dev
+
+    def get_hkmc5th_wide_service(self, device_id: str) -> Optional[HKMC5thWideService]:
+        """Get HKMC5thWideService instance for a device. Returns None if not found."""
+        svc = self._hkmc5th_wide_conns.get(device_id)
+        if svc:
+            return svc
+        dev = self.get_device(device_id)
+        if dev and dev.type == "hkmc5th_wide_agent":
+            return self._hkmc5th_wide_conns.get(dev.id)
         return None
 
     async def add_isap_agent_device(self, host: str, port: int, device_id: str = "",
@@ -1324,6 +1361,57 @@ class DeviceManager:
                         logger.debug("HKMC auto-reconnect failed (%d/%d): %s: %s",
                                      attempts + 1, self.HKMC_MAX_RECONNECT_ATTEMPTS, dev.id, e)
 
+            if dev.type == "hkmc5th_wide_agent":
+                hkmc5 = self._hkmc5th_wide_conns.get(dev.id)
+                if hkmc5 and hkmc5.is_connected:
+                    self._hkmc5th_wide_reconnect_attempts.pop(dev.id, None)
+                    if dev.status != "connected":
+                        dev.status = "connected"
+                    continue
+                port = dev.info.get("port", 0)
+                if not port:
+                    continue
+                if dev.status == "error":
+                    continue
+                attempts = self._hkmc5th_wide_reconnect_attempts.get(dev.id, 0)
+                if attempts >= self.HKMC_MAX_RECONNECT_ATTEMPTS:
+                    dev.status = "error"
+                    logger.warning("HKMC5thWide reconnect give up after %d attempts: %s", attempts, dev.id)
+                    continue
+                lock = self.get_reconnect_lock(dev.id)
+                if lock.locked():
+                    continue
+                async with lock:
+                    hkmc5 = self._hkmc5th_wide_conns.get(dev.id)
+                    if hkmc5 and hkmc5.is_connected:
+                        self._hkmc5th_wide_reconnect_attempts.pop(dev.id, None)
+                        if dev.status != "connected":
+                            dev.status = "connected"
+                        continue
+                    try:
+                        if hkmc5:
+                            hkmc5.disconnect()
+                        svc = HKMC5thWideService(dev.address, port, device_id=dev.id,
+                                                 key_overrides=dev.info.get("HKMC5TH_WIDE_KEYS"),
+                                                 device_model=dev.info.get("device_model", ""))
+                        ok = await svc.async_connect()
+                        if ok:
+                            self._hkmc5th_wide_conns[dev.id] = svc
+                            self._hkmc5th_wide_reconnect_attempts.pop(dev.id, None)
+                            dev.status = "connected"
+                            dev.info["agent_version"] = svc.agent_version
+                            dev.info["screens"] = svc.get_info()["screens"]
+                            dev.info["resolution"] = dev.info["screens"].get("front_center", {"width": 1920, "height": 720})
+                            logger.info("HKMC5thWide auto-reconnect success: %s (after %d attempts)", dev.id, attempts)
+                        else:
+                            self._hkmc5th_wide_reconnect_attempts[dev.id] = attempts + 1
+                            dev.status = "disconnected"
+                    except Exception as e:
+                        self._hkmc5th_wide_reconnect_attempts[dev.id] = attempts + 1
+                        dev.status = "disconnected"
+                        logger.debug("HKMC5thWide auto-reconnect failed (%d/%d): %s: %s",
+                                     attempts + 1, self.HKMC_MAX_RECONNECT_ATTEMPTS, dev.id, e)
+
             if dev.type == "isap_agent":
                 isap = self._isap_conns.get(dev.id)
                 if isap and isap.is_connected:
@@ -1758,6 +1846,10 @@ class DeviceManager:
         hkmc = self._hkmc_conns.pop(dev.id, None)
         if hkmc:
             hkmc.disconnect()
+        # Close HKMC5thWide connection if applicable
+        hkmc5 = self._hkmc5th_wide_conns.pop(dev.id, None)
+        if hkmc5:
+            hkmc5.disconnect()
         # Close iSAP Agent connection if applicable
         isap = self._isap_conns.pop(dev.id, None)
         if isap:
@@ -1895,6 +1987,27 @@ class DeviceManager:
                 except Exception as e:
                     dev.status = "disconnected"
                     logger.warning("Failed to open HKMC %s (%s:%d): %s", dev.id, dev.address, port, e)
+            elif dev.type == "hkmc5th_wide_agent":
+                port = dev.info.get("port", 0)
+                if not port:
+                    continue
+                try:
+                    svc = HKMC5thWideService(dev.address, port, device_id=dev.id,
+                                             key_overrides=dev.info.get("HKMC5TH_WIDE_KEYS"),
+                                             device_model=dev.info.get("device_model", ""))
+                    ok = await svc.async_connect()
+                    if ok:
+                        self._hkmc5th_wide_conns[dev.id] = svc
+                        dev.status = "connected"
+                        dev.info["agent_version"] = svc.agent_version
+                        dev.info["screens"] = svc.get_info()["screens"]
+                        dev.info["resolution"] = dev.info["screens"].get("front_center", {"width": 1920, "height": 720})
+                        logger.info("HKMC5thWide connection opened: %s (%s:%d)", dev.id, dev.address, port)
+                    else:
+                        dev.status = "disconnected"
+                except Exception as e:
+                    dev.status = "disconnected"
+                    logger.warning("Failed to open HKMC5thWide %s (%s:%d): %s", dev.id, dev.address, port, e)
             elif dev.type == "isap_agent":
                 port = dev.info.get("port", 0)
                 if not port:
@@ -2097,6 +2210,30 @@ class DeviceManager:
             except Exception as e:
                 dev.status = "disconnected"
                 return f"HKMC connect failed: {dev.id} — {e}"
+
+        elif dev.type == "hkmc5th_wide_agent":
+            port = dev.info.get("port", 0)
+            if not port:
+                return f"HKMC5thWide {dev.id}: no port configured"
+            try:
+                svc = HKMC5thWideService(dev.address, port, device_id=dev.id,
+                                         key_overrides=dev.info.get("HKMC5TH_WIDE_KEYS"),
+                                         device_model=dev.info.get("device_model", ""))
+                ok = await svc.async_connect()
+                if ok:
+                    self._hkmc5th_wide_conns[dev.id] = svc
+                    dev.status = "connected"
+                    _mark_connected()
+                    dev.info["agent_version"] = svc.agent_version
+                    dev.info["screens"] = svc.get_info()["screens"]
+                    dev.info["resolution"] = dev.info["screens"].get("front_center", {"width": 1920, "height": 720})
+                    return f"HKMC5thWide connected: {dev.id} ({dev.address}:{port})"
+                else:
+                    dev.status = "disconnected"
+                    return f"HKMC5thWide connect failed: {dev.id}"
+            except Exception as e:
+                dev.status = "disconnected"
+                return f"HKMC5thWide connect failed: {dev.id} — {e}"
 
         elif dev.type == "isap_agent":
             port = dev.info.get("port", 0)
@@ -2492,6 +2629,16 @@ class DeviceManager:
 
         elif dev.type == "hkmc_agent":
             svc = self._hkmc_conns.pop(device_id, None)
+            if svc:
+                try:
+                    svc.disconnect()
+                except Exception:
+                    pass
+            dev.status = "disconnected"
+            return f"Disconnected: {dev.id}"
+
+        elif dev.type == "hkmc5th_wide_agent":
+            svc = self._hkmc5th_wide_conns.pop(device_id, None)
             if svc:
                 try:
                     svc.disconnect()

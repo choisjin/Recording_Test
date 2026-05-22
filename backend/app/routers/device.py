@@ -138,6 +138,7 @@ _DEFAULT_DEVICE_CATALOG: dict = {
     "agents": [
         {"name": "ADB",          "type": "adb",           "enabled": True},
         {"name": "HKMC Agent",   "type": "hkmc_agent",    "enabled": True},
+        {"name": "HKMC5thWide Agent", "type": "hkmc5th_wide_agent", "enabled": True},
         {"name": "iSAP Agent",   "type": "isap_agent",    "enabled": True},
         {"name": "ICAS Agent",   "type": "icas_agent",    "enabled": True},
         {"name": "MIB Agent",    "type": "mib_agent",     "enabled": True},
@@ -538,6 +539,22 @@ async def connect_device(req: ConnectRequest):
             )
             return {
                 "result": f"HKMC connected: {dev.name} (ID: {dev.id})",
+                "primary": _with_protected_flag(dm.list_primary()),
+                "auxiliary": _with_protected_flag(dm.list_auxiliary()),
+            }
+        except RuntimeError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    elif req.type == "hkmc5th_wide_agent":
+        if not req.address or not req.port:
+            raise HTTPException(status_code=400, detail="HKMC5thWide requires address (IP) and port (TCP port)")
+        try:
+            dev = await dm.add_hkmc5th_wide_device(
+                req.address, req.port, device_id=custom_id,
+                name=req.name or "",
+                device_model=req.device_model or "",
+            )
+            return {
+                "result": f"HKMC5thWide registered: {dev.name} (ID: {dev.id})",
                 "primary": _with_protected_flag(dm.list_primary()),
                 "auxiliary": _with_protected_flag(dm.list_auxiliary()),
             }
@@ -1522,6 +1539,95 @@ async def list_hkmc_keys(device_id: Optional[str] = None):
             "DIAL_ACTION": DIAL_ACTION,
         },
     }
+
+
+@router.get("/hkmc5th-wide-keys")
+async def list_hkmc5th_wide_keys(device_id: Optional[str] = None):
+    """List HKMC 5th gen (Wide) hardware keys (merged with per-device override)."""
+    from ..services.hkmc5th_wide_service import (
+        HKMC5TH_WIDE_KEYS, SHORT_KEY, LONG_KEY, PRESS_KEY, RELEASE_KEY, DIAL_ACTION,
+    )
+    overrides: dict[str, dict] = {}
+    if device_id:
+        dev = dm.get_device(device_id)
+        if dev:
+            overrides = dev.info.get("HKMC5TH_WIDE_KEYS") or {}
+    keys = []
+    for name, info in HKMC5TH_WIDE_KEYS.items():
+        ov = overrides.get(name, {})
+        if info.get("msg"):
+            group = "MSG"
+        else:
+            group = name.split("_")[0]
+        cmd = ov.get("cmd", info["cmd"])
+        key = ov.get("key", info.get("key", 0))
+        is_dial = ov.get("dial", info.get("dial", False))
+        visible = ov.get("visible", True)
+        keys.append({
+            "name": name,
+            "group": group,
+            "cmd": cmd,
+            "key": key,
+            "is_dial": is_dial,
+            "is_msg": bool(info.get("msg")),
+            "visible": visible,
+        })
+    return {
+        "keys": keys,
+        "sub_commands": {
+            "SHORT_KEY": SHORT_KEY,
+            "LONG_KEY": LONG_KEY,
+            "PRESS_KEY": PRESS_KEY,
+            "RELEASE_KEY": RELEASE_KEY,
+            "DIAL_ACTION": DIAL_ACTION,
+        },
+    }
+
+
+class UpdateHkmc5thWideKeysRequest(BaseModel):
+    device_id: str
+    keys: dict[str, dict]  # name → {cmd?, key?, dial?, visible?}
+
+
+@router.post("/hkmc5th-wide-keys")
+async def update_hkmc5th_wide_keys(req: UpdateHkmc5thWideKeysRequest):
+    """Save per-device HKMC 5th gen (Wide) key overrides."""
+    from ..services.hkmc5th_wide_service import HKMC5TH_WIDE_KEYS
+    dev = dm.get_device(req.device_id)
+    if not dev:
+        raise HTTPException(status_code=404, detail=f"Device {req.device_id} not found")
+    if dev.type != "hkmc5th_wide_agent":
+        raise HTTPException(status_code=400, detail=f"Device {req.device_id} is not a HKMC5thWide agent")
+    clean: dict[str, dict] = {}
+    for name, ov in (req.keys or {}).items():
+        if name not in HKMC5TH_WIDE_KEYS:
+            continue
+        entry: dict = {}
+        if "cmd" in ov and ov["cmd"] is not None:
+            try:
+                entry["cmd"] = int(ov["cmd"])
+            except (TypeError, ValueError):
+                pass
+        if "key" in ov and ov["key"] is not None:
+            try:
+                entry["key"] = int(ov["key"])
+            except (TypeError, ValueError):
+                pass
+        if "dial" in ov and ov["dial"] is not None:
+            entry["dial"] = bool(ov["dial"])
+        if "visible" in ov and ov["visible"] is not None:
+            entry["visible"] = bool(ov["visible"])
+        if entry:
+            clean[name] = entry
+    if clean:
+        dev.info["HKMC5TH_WIDE_KEYS"] = clean
+    else:
+        dev.info.pop("HKMC5TH_WIDE_KEYS", None)
+    svc = dm.get_hkmc5th_wide_service(req.device_id)
+    if svc:
+        svc.set_key_overrides(dev.info.get("HKMC5TH_WIDE_KEYS"))
+    dm._save_auxiliary_devices()
+    return {"status": "ok", "device_id": req.device_id, "count": len(clean)}
 
 
 @router.get("/icas-keys")

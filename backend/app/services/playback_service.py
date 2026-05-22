@@ -783,6 +783,15 @@ class PlaybackService:
                         Path(actual_path).write_bytes(img_bytes)
                     else:
                         raise RuntimeError(f"HKMC device {ss_device['id']} not connected")
+                elif ss_device["type"] == "hkmc5th_wide_agent":
+                    hkmc5_svc = self.dm.get_hkmc5th_wide_service(ss_device["id"])
+                    if hkmc5_svc:
+                        img_bytes = await hkmc5_svc.async_screencap_bytes(
+                            screen_type=ss_device.get("screen_type", "front_center"), fmt="png"
+                        )
+                        Path(actual_path).write_bytes(img_bytes)
+                    else:
+                        raise RuntimeError(f"HKMC5thWide device {ss_device['id']} not connected")
                 elif ss_device["type"] == "icas_agent":
                     icas_svc = self.dm.get_icas_service(ss_device["id"])
                     if icas_svc:
@@ -1538,6 +1547,46 @@ class PlaybackService:
                             return
                 dev.status = "disconnected"
 
+        elif dev.type == "hkmc5th_wide_agent":
+            hkmc5 = self.dm.get_hkmc5th_wide_service(device_id)
+            if hkmc5 and hkmc5.is_connected:
+                return
+            port = dev.info.get("port", 0)
+            if not port:
+                return
+            from .hkmc5th_wide_service import HKMC5thWideService
+            lock = self.dm.get_reconnect_lock(device_id)
+            async with lock:
+                hkmc5 = self.dm.get_hkmc5th_wide_service(device_id)
+                if hkmc5 and hkmc5.is_connected:
+                    return
+                for attempt in range(1, max_retries + 1):
+                    if self._should_stop:
+                        return
+                    logger.info("Playback: HKMC5thWide reconnect %s attempt %d/%d", device_id, attempt, max_retries)
+                    try:
+                        hkmc5 = self.dm.get_hkmc5th_wide_service(device_id)
+                        if hkmc5:
+                            await hkmc5.async_disconnect()
+                        svc = HKMC5thWideService(dev.address, port, device_id=dev.id,
+                                                 key_overrides=dev.info.get("HKMC5TH_WIDE_KEYS"),
+                                                 device_model=dev.info.get("device_model", ""))
+                        ok = await svc.async_connect()
+                        if ok:
+                            self.dm._hkmc5th_wide_conns[dev.id] = svc
+                            self.dm._hkmc5th_wide_reconnect_attempts.pop(dev.id, None)
+                            dev.status = "connected"
+                            dev.info["agent_version"] = svc.agent_version
+                            dev.info["screens"] = svc.get_info()["screens"]
+                            logger.info("Playback: HKMC5thWide reconnected %s", device_id)
+                            return
+                    except Exception as e:
+                        logger.debug("Playback: HKMC5thWide reconnect %s failed: %s", device_id, e)
+                    if attempt < max_retries:
+                        if await self._interruptible_sleep(retry_interval):
+                            return
+                dev.status = "disconnected"
+
         elif dev.type == "isap_agent":
             isap = self.dm.get_isap_service(device_id)
             if isap and isap.is_connected:
@@ -1713,7 +1762,7 @@ class PlaybackService:
         if not device_id:
             return False
         dev = self.dm.get_device(device_id)
-        return dev is not None and dev.type in ("hkmc_agent", "isap_agent")
+        return dev is not None and dev.type in ("hkmc_agent", "isap_agent", "hkmc5th_wide_agent")
 
     def _is_icas_device(self, device_id: Optional[str]) -> bool:
         """디바이스가 ICAS 또는 MIB 에이전트 타입인지 확인 (icas_* 스텝 라우팅용).
@@ -1741,6 +1790,8 @@ class PlaybackService:
             return self.dm.get_isap_service(device_id), "isap"
         if dev.type == "hkmc_agent":
             return self.dm.get_hkmc_service(device_id), "hkmc"
+        if dev.type == "hkmc5th_wide_agent":
+            return self.dm.get_hkmc5th_wide_service(device_id), "hkmc"
         if dev.type == "icas_agent":
             return self.dm.get_icas_service(device_id), "icas"
         if dev.type == "mib_agent":
@@ -1761,7 +1812,7 @@ class PlaybackService:
                 return {"type": dev.type, "id": dev.id, "address": dev.address, "screen_type": screen_type}
         # fallback: 주 디바이스 중 첫 번째
         for d in self.dm.list_primary():
-            if d.type in ("adb", "hkmc_agent", "isap_agent", "icas_agent", "mib_agent", "vision_camera", "webcam"):
+            if d.type in ("adb", "hkmc_agent", "hkmc5th_wide_agent", "isap_agent", "icas_agent", "mib_agent", "vision_camera", "webcam"):
                 return {"type": d.type, "id": d.id, "address": d.address, "screen_type": "front_center"}
         return None
 
@@ -1775,6 +1826,10 @@ class PlaybackService:
                 return await self.adb.screencap_bytes(serial=dev_info.get("address") or dev_id, fmt="png")
             elif dev_type == "hkmc_agent":
                 svc = self.dm.get_hkmc_service(dev_id)
+                if svc:
+                    return await svc.async_screencap_bytes(screen_type=screen_type, fmt="png")
+            elif dev_type == "hkmc5th_wide_agent":
+                svc = self.dm.get_hkmc5th_wide_service(dev_id)
                 if svc:
                     return await svc.async_screencap_bytes(screen_type=screen_type, fmt="png")
             elif dev_type == "isap_agent":
@@ -1808,6 +1863,10 @@ class PlaybackService:
             await self.adb.tap(x, y, serial=dev_info.get("address") or dev_id)
         elif dev_type == "hkmc_agent":
             svc = self.dm.get_hkmc_service(dev_id)
+            if svc:
+                await svc.async_tap(x, y, screen_type)
+        elif dev_type == "hkmc5th_wide_agent":
+            svc = self.dm.get_hkmc5th_wide_service(dev_id)
             if svc:
                 await svc.async_tap(x, y, screen_type)
         elif dev_type == "isap_agent":
@@ -2024,6 +2083,9 @@ class PlaybackService:
                 if ss_dev.type == "hkmc_agent":
                     screen_type = step.screen_type or step.params.get("screen_type", "front_center")
                     return {"type": "hkmc_agent", "id": ss_dev.id, "screen_type": screen_type}
+                if ss_dev.type == "hkmc5th_wide_agent":
+                    screen_type = step.screen_type or step.params.get("screen_type", "front_center")
+                    return {"type": "hkmc5th_wide_agent", "id": ss_dev.id, "screen_type": screen_type}
                 if ss_dev.type == "isap_agent":
                     screen_type = step.screen_type or step.params.get("screen_type", "front_center")
                     return {"type": "isap_agent", "id": ss_dev.id, "screen_type": screen_type}
@@ -2066,6 +2128,9 @@ class PlaybackService:
             elif dev and dev.type == "hkmc_agent":
                 screen_type = step.screen_type or step.params.get("screen_type", "front_center")
                 return {"type": "hkmc_agent", "id": dev.id, "screen_type": screen_type}
+            elif dev and dev.type == "hkmc5th_wide_agent":
+                screen_type = step.screen_type or step.params.get("screen_type", "front_center")
+                return {"type": "hkmc5th_wide_agent", "id": dev.id, "screen_type": screen_type}
             elif dev and dev.type == "isap_agent":
                 screen_type = step.screen_type or step.params.get("screen_type", "front_center")
                 return {"type": "isap_agent", "id": dev.id, "screen_type": screen_type}
@@ -2104,6 +2169,9 @@ class PlaybackService:
             if dev.type == "hkmc_agent":
                 screen_type = step.screen_type or step.params.get("screen_type", "front_center")
                 return {"type": "hkmc_agent", "id": dev.id, "screen_type": screen_type}
+            if dev.type == "hkmc5th_wide_agent":
+                screen_type = step.screen_type or step.params.get("screen_type", "front_center")
+                return {"type": "hkmc5th_wide_agent", "id": dev.id, "screen_type": screen_type}
             if dev.type == "isap_agent":
                 screen_type = step.screen_type or step.params.get("screen_type", "front_center")
                 return {"type": "isap_agent", "id": dev.id, "screen_type": screen_type}
@@ -2227,6 +2295,13 @@ class PlaybackService:
                         raise RuntimeError(
                             f"HKMC6th step requires connected hkmc_agent device, but {real_id} has no service"
                         )
+                # HKMC5thWide 모듈: device_manager가 보유한 디바이스별 HKMC5thWideService 인스턴스 주입
+                if module_name == "HKMC5thWide" and dev.type == "hkmc5th_wide_agent":
+                    hkmc_svc = self.dm.get_hkmc5th_wide_service(real_id)
+                    if hkmc_svc is None:
+                        raise RuntimeError(
+                            f"HKMC5thWide step requires connected hkmc5th_wide_agent device, but {real_id} has no service"
+                        )
             logger.info("Module exec: %s.%s device=%s ctor=%s shared_conn=%s ssh=%s adb=%s hkmc=%s",
                         module_name, func_name, real_id, ctor_kwargs,
                         shared_conn is not None, ssh_credentials is not None, adb_serial,
@@ -2255,6 +2330,31 @@ class PlaybackService:
                             await self._force_reconnect_hkmc(real_id)
                             # force-reconnect 후 새 서비스 인스턴스를 받아 다음 시도에 주입
                             hkmc_svc = self.dm.get_hkmc_service(real_id)
+                            if hkmc_svc is None:
+                                raise
+                            continue
+                        raise
+                if last_exc is not None:
+                    raise last_exc
+            elif module_name == "HKMC5thWide" and dev and dev.type == "hkmc5th_wide_agent":
+                last_exc = None
+                for _hkmc_mod_attempt in range(2):
+                    try:
+                        result = await execute_module_function(
+                            module_name, func_name, func_args, ctor_kwargs, shared_conn,
+                            ssh_credentials, adb_serial,
+                            hkmc_service=hkmc_svc,
+                        )
+                        last_exc = None
+                        break
+                    except (ConnectionError, OSError) as ce:
+                        last_exc = ce
+                        if _hkmc_mod_attempt == 0:
+                            logger.warning(
+                                "HKMC5thWide module action failed (connection lost), reconnecting: %s", ce,
+                            )
+                            await self._ensure_device_connected(real_id, max_retries=1)
+                            hkmc_svc = self.dm.get_hkmc5th_wide_service(real_id)
                             if hkmc_svc is None:
                                 raise
                             continue

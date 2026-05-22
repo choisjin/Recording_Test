@@ -33,6 +33,21 @@
           "value": "Gen6 Premium",
           "enabled": true,
           "agent": "HKMC Agent"
+        },
+        {
+          "value": "Gen5 Standard (Wide)",
+          "enabled": true,
+          "agent": "HKMC5thWide Agent"
+        },
+        {
+          "value": "Gen5 Standard",
+          "enabled": true,
+          "agent": "HKMC5thWide Agent"
+        },
+        {
+          "value": "Gen5 Premium",
+          "enabled": true,
+          "agent": "HKMC5thWide Agent"
         }
       ]
     },
@@ -202,6 +217,11 @@
     {
       "name": "HKMC Agent",
       "type": "hkmc_agent",
+      "enabled": true
+    },
+    {
+      "name": "HKMC5thWide Agent",
+      "type": "hkmc5th_wide_agent",
       "enabled": true
     },
     {

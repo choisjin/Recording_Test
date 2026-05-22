@@ -302,6 +302,8 @@ def list_available_modules() -> list[dict]:
          "connect_fields": []},
         {"name": "HKMC6th", "label": "HKMC6th", "connect_type": "none",
          "connect_fields": []},
+        {"name": "HKMC5thWide", "label": "HKMC5thWide (Wide)", "connect_type": "none",
+         "connect_fields": []},
         {"name": "VisionCamera", "label": "VisionCamera", "connect_type": "vision_camera",
          "connect_fields": [
              {"name": "mac", "label": "MAC Address", "type": "text", "default": ""},
@@ -315,6 +317,11 @@ def list_available_modules() -> list[dict]:
     for m in modules:
         # HKMC6th는 ReplayKit 내장 서비스(HKMC6thService) 기반 가상 모듈
         if m["name"] == "HKMC6th":
+            m["_source"] = "internal"
+            available.append(m)
+            continue
+        # HKMC5thWide는 ReplayKit 내장 서비스(HKMC5thWideService) 기반 가상 모듈
+        if m["name"] == "HKMC5thWide":
             m["_source"] = "internal"
             available.append(m)
             continue
@@ -451,6 +458,50 @@ def get_module_functions(module_name: str) -> list[dict]:
                 params.append(param_info)
             functions.append({"name": name, "params": params})
         # 가이드 병합
+        guides = _load_guides()
+        mod_guide = guides.get(module_name, {})
+        func_guides = mod_guide.get("functions", {})
+        for fn in functions:
+            fg = func_guides.get(fn["name"], {})
+            fn["description"] = fg.get("description", "")
+            param_guides = fg.get("params", {})
+            for p in fn["params"]:
+                p["description"] = param_guides.get(p["name"], "")
+        _module_functions_cache[module_name] = (plugin_mtime, guides_mtime, functions)
+        return functions
+
+    # HKMC5thWide: HKMC5thWideService 기반 가상 모듈 (hkmc5th_wide_agent 디바이스 전용)
+    if module_name == "HKMC5thWide":
+        from .hkmc5th_wide_service import HKMC5thWideService
+        excluded = {
+            "connect", "disconnect", "is_connected",
+            "set_key_overrides", "get_key_overrides", "resolve_key", "get_info",
+            "tap", "swipe", "long_press", "repeat_tap",
+            "send_key", "send_key_by_name", "send_key_message",
+            "screencap_bytes", "get_screen_size",
+            "req_resource_info",
+        }
+        functions = []
+        for name in sorted(dir(HKMC5thWideService)):
+            if name.startswith("_") or name.startswith("async_") or name in excluded:
+                continue
+            attr = getattr(HKMC5thWideService, name, None)
+            if not callable(attr):
+                continue
+            try:
+                sig = inspect.signature(attr)
+            except (ValueError, TypeError):
+                continue
+            params = []
+            for pname, p in sig.parameters.items():
+                if pname == "self":
+                    continue
+                param_info: dict[str, Any] = {"name": pname, "required": True}
+                if p.default is not inspect.Parameter.empty:
+                    param_info["required"] = False
+                    param_info["default"] = repr(p.default)
+                params.append(param_info)
+            functions.append({"name": name, "params": params})
         guides = _load_guides()
         mod_guide = guides.get(module_name, {})
         func_guides = mod_guide.get("functions", {})
@@ -858,6 +909,43 @@ def _execute_sync(module_name: str, function_name: str, args: dict,
         func = getattr(hkmc_service, function_name, None)
         if func is None or not callable(func):
             raise ValueError(f"Function '{function_name}' not found in HKMC6thService")
+        sig = inspect.signature(func)
+        call_args = {}
+        type_map = {"int": int, "float": float, "bool": bool, "str": str}
+        for pname, p in sig.parameters.items():
+            if pname == "self":
+                continue
+            if pname in args:
+                val = args[pname]
+                ann = p.annotation
+                if ann is not inspect.Parameter.empty:
+                    if isinstance(ann, str):
+                        ann = type_map.get(ann, ann)
+                    if ann in (int, float, bool, str):
+                        try:
+                            val = _cast_arg(val, ann)
+                        except (ValueError, TypeError) as e:
+                            raise ValueError(
+                                f"{module_name}.{function_name}: parameter '{pname}' "
+                                f"could not be cast to {ann.__name__}: {val!r} ({e})"
+                            )
+                call_args[pname] = val
+            elif p.default is inspect.Parameter.empty:
+                raise ValueError(f"Missing required parameter: {pname}")
+        result = func(**call_args)
+        return result
+
+    # HKMC5thWide: device_manager가 디바이스별로 관리하는 HKMC5thWideService 인스턴스에 직접 호출.
+    # hkmc_service 파라미터는 HKMC6th/HKMC5thWide 양쪽 호환 (호출자가 적절한 인스턴스 주입).
+    if module_name == "HKMC5thWide":
+        if hkmc_service is None:
+            raise RuntimeError(
+                "HKMC5thWide module step requires an hkmc5th_wide_agent device "
+                "(no HKMC5thWideService instance bound to this step)"
+            )
+        func = getattr(hkmc_service, function_name, None)
+        if func is None or not callable(func):
+            raise ValueError(f"Function '{function_name}' not found in HKMC5thWideService")
         sig = inspect.signature(func)
         call_args = {}
         type_map = {"int": int, "float": float, "bool": bool, "str": str}
