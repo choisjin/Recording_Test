@@ -1187,10 +1187,25 @@
         "params": {}
       },
       "SendCanFd": {
-        "description": "Raw CAN FD 프레임을 직접 송신합니다 (신호 정의 불필요, 저수준 디버깅용).",
+        "description": "Raw CAN FD 프레임을 직접 송신합니다 (신호 정의 불필요, 저수준 디버깅용). 200ms × 5회 반복.",
         "params": {
-          "can_id": "CAN ID (정수, 예: 0x411 → 1041)",
-          "payload_hex": "페이로드 (공백/쉼표 허용 hex 문자열, 예: '01 02 03')"
+          "can_id": "CAN ID (정수 또는 hex 문자열, 예: '0x448')",
+          "payload_hex": "페이로드 (공백/쉼표/대괄호 허용, 예: '01,02,03' 또는 '01 02 03')",
+          "can_type": "프레임 타입: 'STA'(표준, 기본값) / 'EXT'(확장 프레임, AVN) / 'FD'(CAN FD, Cluster)"
+        }
+      },
+      "SendAvnCan": {
+        "description": "AVN 채널 Raw CAN 프레임 송신. send_can.py TARGET=AVN 과 동일 동작 (CANTYPE.EXT, frame_byte=0x20|DLC). 200ms × 5회 반복.",
+        "params": {
+          "msg_id": "CAN ID (정수 또는 hex 문자열, 예: '0x414', '0x11C47601')",
+          "payload_hex": "페이로드 hex 바이트 (공백/쉼표/대괄호 허용, 예: '00,00,00,00,00,00,00,00')"
+        }
+      },
+      "SendClusterCan": {
+        "description": "Cluster 채널 Raw CAN FD 프레임 송신. send_can.py TARGET=CLUSTER 과 동일 동작 (CANTYPE.FD, frame_byte=0x80|DLC). 200ms × 5회 반복.",
+        "params": {
+          "msg_id": "CAN ID (정수 또는 hex 문자열, 예: '0x65')",
+          "payload_hex": "페이로드 hex 바이트 (공백/쉼표/대괄호 허용, 예: '00,00,00,00,00,00,00,00')"
         }
       },
       "ReinitCanFd": {

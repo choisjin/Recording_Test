@@ -206,51 +206,116 @@ class WoohyunBench:
         self._canfd.CHECK_CAN_SIGNAL()
         return f"OK: {len(self._canfd.signal_defs)} signals"
 
-    def SendCanFd(self, can_id, payload_hex: str = "", fd_mode: bool = False) -> str:
+    def SendCanFd(self, can_id, payload_hex: str = "", fd_mode: bool = False,
+                  can_type: str = "STA") -> str:
         """Raw CAN FD 프레임 직접 송신 (신호 정의 불필요).
-
-        legacy CCIC_BENCH._canfd_send와 동일한 패킷 구조로 직접 송신:
-          [0x55,0xAA,0x64,0x00,0x04,0x30, len_hi,len_lo,
-           CAN_ID(4B), can_frame(1B), reserved(0x00, 1B), payload...]
 
         Args:
             can_id: int 또는 문자열("0x448"/"1096" 모두 허용).
             payload_hex: 다음 형식 모두 허용:
-              - "0 0 0 0 0 0 1 0"  (공백 구분 → 각 토큰을 1byte decimal로 해석)
-              - "0,0,0,0,0,0,1,0"  (콤마 구분 — 동일)
+              - "0 0 0 0 0 0 1 0"  (공백 구분)
+              - "0,0,0,0,0,0,1,0"  (콤마 구분)
               - "[0, 0, 0, 0, 0, 0, 1, 0]" (대괄호 리스트)
               - "0000000100"       (붙여쓴 hex 문자열)
-            fd_mode: True면 frame byte에 FD 플래그(0x80) + DLC 매핑 적용.
-                     False(기본)는 legacy 출력과 동일하게 frame byte = payload 길이.
+            fd_mode: 레거시 호환. True면 can_type="FD"와 동일.
+            can_type: "STA"(기본) / "EXT"(확장 프레임, AVN) / "FD"(CAN FD, Cluster).
+                      fd_mode=True이면 자동으로 "FD"로 처리됨.
         """
         if not self._sock:
             return "FAIL: 연결 안 됨 — Connect() 먼저 호출"
         try:
             cid = self._parse_can_id(can_id)
             payload = self._parse_payload(payload_hex)
-            # fd_mode UI 입력은 문자열일 수 있음
             if isinstance(fd_mode, str):
                 fd_mode = fd_mode.strip().lower() in ("1", "true", "yes", "on")
-            self._send_canfd_raw(cid, payload, bool(fd_mode))
-            return (f"OK: SendCanFd ID=0x{cid:X} ({len(payload)}B, "
-                    f"fd={'on' if fd_mode else 'off'}, x5@200ms)")
+            ct = str(can_type).upper() if can_type else "STA"
+            if fd_mode and ct == "STA":
+                ct = "FD"
+            self._send_canfd_raw(cid, payload, can_type=ct)
+            return (f"OK: SendCanFd ID=0x{cid:X} ({len(payload)}B, type={ct}, x5@200ms)")
         except Exception as e:
             logger.error("WoohyunBench SendCanFd failed: %s", e)
             return f"FAIL: SendCanFd: {e}"
 
-    def _send_canfd_raw(self, can_id: int, payload: bytearray, fd_mode: bool,
-                        repeat: int = 5, interval_sec: float = 0.2) -> None:
+    def SendAvnCan(self, msg_id, payload_hex: str = "") -> str:
+        """AVN 채널 Raw CAN 프레임 송신 (CANTYPE.EXT, send_can.py 동일 동작).
+
+        send_can.py의 TARGET="AVN" 과 완전히 동일한 패킷 포맷.
+        frame_byte = 0x20 | DLC  (Extended Frame Flag)
+        msg_id는 '0x' 접두 유무와 무관하게 항상 hex로 파싱.
+
+        Args:
+            msg_id: CAN ID. 정수 또는 문자열("0x414", "414", "1004001" 모두 hex로 해석).
+            payload_hex: 페이로드. 다음 형식 모두 허용:
+              - 쉼표 구분 hex: "00,00,00,00,00,00,00,00"
+              - 공백 구분:     "00 00 00 00 00 00 00 00"
+              - 대괄호 리스트: "[0, 0, 0, 0, 0, 0, 0, 0]"
+        """
+        if not self._sock:
+            return "FAIL: 연결 안 됨 — Connect() 먼저 호출"
+        try:
+            cid = self._parse_can_id_hex(msg_id)
+            payload = self._parse_payload(payload_hex)
+            self._send_canfd_raw(cid, payload, can_type="EXT")
+            return f"OK: SendAvnCan ID=0x{cid:X} ({len(payload)}B, EXT, x5@200ms)"
+        except Exception as e:
+            logger.error("WoohyunBench SendAvnCan failed: %s", e)
+            return f"FAIL: SendAvnCan: {e}"
+
+    def SendClusterCan(self, msg_id, payload_hex: str = "") -> str:
+        """Cluster 채널 Raw CAN FD 프레임 송신 (CANTYPE.FD, send_can.py 동일 동작).
+
+        send_can.py의 TARGET="CLUSTER" 과 완전히 동일한 패킷 포맷.
+        frame_byte = 0x80 | DLC  (FD Frame Flag)
+        msg_id는 '0x' 접두 유무와 무관하게 항상 hex로 파싱.
+
+        Args:
+            msg_id: CAN ID. 정수 또는 문자열("0x65", "65" 모두 0x65로 해석).
+            payload_hex: 페이로드. 다음 형식 모두 허용:
+              - 쉼표 구분 hex: "00,00,00,00,00,00,00,00"
+              - 공백 구분:     "00 00 00 00 00 00 00 00"
+              - 대괄호 리스트: "[0, 0, 0, 0, 0, 0, 0, 0]"
+        """
+        if not self._sock:
+            return "FAIL: 연결 안 됨 — Connect() 먼저 호출"
+        try:
+            cid = self._parse_can_id_hex(msg_id)
+            payload = self._parse_payload(payload_hex)
+            self._send_canfd_raw(cid, payload, can_type="FD")
+            return f"OK: SendClusterCan ID=0x{cid:X} ({len(payload)}B, FD, x5@200ms)"
+        except Exception as e:
+            logger.error("WoohyunBench SendClusterCan failed: %s", e)
+            return f"FAIL: SendClusterCan: {e}"
+
+    def _send_canfd_raw(self, can_id: int, payload: bytearray, fd_mode: bool = False,
+                        repeat: int = 5, interval_sec: float = 0.2,
+                        can_type: str = "STA") -> None:
         """벤치 UDP_CANFD_SEND과 동일한 포맷으로 raw CAN FD 프레임 송신.
 
-        포맷: HEADER(6) + LEN(2) + CAN_ID(4) + frame_byte(1) + payload
-              ※ frame_byte 뒤에 reserved 바이트는 **없다** (벤치 UDP_CANFD 라이브러리 기준).
+        포맷: HEADER(6) + LEN(2) + CAN_ID(4) + frame_byte(1) + reserved(0x00,1) + payload
         주기 송신: 벤치/ECU가 CAN 신호를 안정적으로 잡도록 5회 × 200ms 반복.
+
+        can_type 우선순위 (fd_mode는 레거시 호환용으로 유지):
+          "FD"  → frame_byte 0x80 | DLC  (CAN FD, Cluster 계열)
+          "EXT" → frame_byte 0x20 | DLC  (확장 프레임, AVN 계열)
+          "STA" → frame_byte 0x00 | len  (표준 프레임, 기본값)
         """
         if not self._sock:
             raise RuntimeError("Not connected")
 
-        dlc = _payload_size_to_dlc(len(payload)) if fd_mode else len(payload)
-        can_frame = (0x80 if fd_mode else 0x00) | (dlc & 0x7F)
+        ct = can_type.upper() if isinstance(can_type, str) else "STA"
+        # fd_mode=True 레거시 호환: can_type이 기본값 STA인 경우에만 FD로 승격
+        if fd_mode and ct == "STA":
+            ct = "FD"
+
+        if ct == "FD":
+            dlc = _payload_size_to_dlc(len(payload))
+            can_frame = 0x80 | (dlc & 0x7F)
+        elif ct == "EXT":
+            dlc = _payload_size_to_dlc(len(payload))
+            can_frame = 0x20 | (dlc & 0x7F)
+        else:  # STA
+            can_frame = len(payload) & 0x7F
 
         can_id_bytes = [
             (can_id >> 24) & 0xFF,
@@ -258,7 +323,7 @@ class WoohyunBench:
             (can_id >> 8)  & 0xFF,
              can_id        & 0xFF,
         ]
-        data = can_id_bytes + [can_frame] + list(payload)
+        data = can_id_bytes + [can_frame, 0x00] + list(payload)
         length_bytes = [(len(data) >> 8) & 0xFF, len(data) & 0xFF]
         packet = bytearray(CANFD_SEND_PACKET_HEADER + length_bytes + data)
         hex_str = ", ".join(hex(b) for b in packet)
@@ -287,6 +352,23 @@ class WoohyunBench:
             except ValueError:
                 # 마지막 폴백: hex 시도
                 return int(s, 16)
+        return int(can_id)
+
+    @staticmethod
+    def _parse_can_id_hex(can_id) -> int:
+        """can_id를 항상 hex로 파싱. '0x' 접두 유무 무관.
+
+        SendAvnCan / SendClusterCan 전용. send_can.py와 동일한 동작 보장.
+        예) '1004001' → 0x1004001,  '0x414' → 0x414,  1044 → 1044
+        """
+        if isinstance(can_id, int):
+            return can_id
+        if isinstance(can_id, str):
+            s = can_id.strip()
+            if not s:
+                raise ValueError("can_id is empty")
+            s_clean = s[2:] if s.lower().startswith("0x") else s
+            return int(s_clean, 16)
         return int(can_id)
 
     @staticmethod

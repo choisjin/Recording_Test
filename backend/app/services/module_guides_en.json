@@ -1137,10 +1137,25 @@
         "params": {}
       },
       "SendCanFd": {
-        "description": "Sends a raw CAN FD frame directly (no signal definition needed). For low-level debugging.",
+        "description": "Sends a raw CAN FD frame directly (no signal definition needed). Repeats 5 times at 200 ms.",
         "params": {
-          "can_id": "CAN ID (integer, e.g. 0x411 = 1041)",
-          "payload_hex": "Payload (hex string, spaces/commas allowed; e.g. '01 02 03')"
+          "can_id": "CAN ID (integer or hex string, e.g. '0x448')",
+          "payload_hex": "Payload (spaces/commas/brackets allowed, e.g. '01,02,03' or '01 02 03')",
+          "can_type": "Frame type: 'STA' (standard, default) / 'EXT' (extended frame, AVN) / 'FD' (CAN FD, Cluster)"
+        }
+      },
+      "SendAvnCan": {
+        "description": "Sends a raw CAN frame on the AVN channel. Identical to send_can.py TARGET=AVN (CANTYPE.EXT, frame_byte = 0x20 | DLC). Repeats 5 times at 200 ms.",
+        "params": {
+          "msg_id": "CAN ID (integer or hex string, e.g. '0x414', '0x11C47601')",
+          "payload_hex": "Payload hex bytes (spaces/commas/brackets allowed, e.g. '00,00,00,00,00,00,00,00')"
+        }
+      },
+      "SendClusterCan": {
+        "description": "Sends a raw CAN FD frame on the Cluster channel. Identical to send_can.py TARGET=CLUSTER (CANTYPE.FD, frame_byte = 0x80 | DLC). Repeats 5 times at 200 ms.",
+        "params": {
+          "msg_id": "CAN ID (integer or hex string, e.g. '0x65')",
+          "payload_hex": "Payload hex bytes (spaces/commas/brackets allowed, e.g. '00,00,00,00,00,00,00,00')"
         }
       },
       "ReinitCanFd": {
