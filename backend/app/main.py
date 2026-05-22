@@ -551,8 +551,10 @@ async def websocket_screen_mirror(websocket: WebSocket):
                             )
                             await websocket.send_bytes(jpeg_bytes)
                         except Exception as ce:
-                            # 캡처 실패 원인을 진단하기 위해 warning 레벨로 기록
-                            logger.warning("ICAS capture error (%s): %s", screen_type, ce)
+                            # 캡처 실패 원인을 진단하기 위해 warning 레벨로 기록.
+                            # 일부 예외(paramiko ChannelException 등)는 str()이 비어있어 type을 함께 출력.
+                            msg = str(ce) or type(ce).__name__
+                            logger.warning("ICAS capture error (%s): %s (%s)", screen_type, msg, type(ce).__name__)
                             await asyncio.sleep(0.5)
                             continue
                     else:
