@@ -943,6 +943,13 @@ class ICASAgentService:
                     logger.debug("ICAS HU skip unreadable %s: %s", p, ie)
             if not images:
                 raise RuntimeError("No HU screenshot decodable")
+            # 합성 순서 — variant별로 다름:
+            #  - ICAS EU: screen 0(UI)을 base, screen 2(map)를 over로 올림.
+            #    screen 2가 map 영역만 불투명한 alpha 구조라 디바이스 UI 위에 map만 표출.
+            #  - ICAS3 CN: screen 2(map)가 fully opaque라 위에 올리면 UI 전체를 가림.
+            #    → screen 2(map)를 base, screen 0(UI with transparent map region)을 위에 올린다.
+            if self.variant == "icas3":
+                images = list(reversed(images))
             base = images[0]
             for over in images[1:]:
                 if over.size != base.size:
