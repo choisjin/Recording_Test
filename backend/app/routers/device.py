@@ -978,10 +978,24 @@ async def device_input(req: InputRequest):
             return {"result": "ok"}
 
         if req.action in ("hkmc_touch", "hkmc_swipe", "hkmc_key", "hkmc_long_press", "repeat_tap") and dev and dev.type in ("hkmc_agent", "hkmc5th_wide_agent"):
-            # HKMC5thWide는 HKMC6th와 동일 API(async_tap/swipe/long_press/send_key_by_name 시그니처) → 같은 경로로 처리.
-            if dev.type == "hkmc5th_wide_agent":
+            # Gen5 자동 라우팅 — hkmc_agent로 잘못 등록된 디바이스도 device_model/id에 "gen5"가
+            # 있으면 5th_wide service를 사용 (한쪽이라도 동작 가능하게 함). 사용자가 디바이스
+            # 삭제·재등록 없이도 hardkey가 작동하도록 input 시점에도 안전망 적용.
+            _model_str = (dev.info.get("device_model") or "").lower()
+            _id_str = (dev.id or "").lower()
+            _is_gen5 = ("gen5" in _model_str) or ("gen5" in _id_str)
+            if dev.type == "hkmc5th_wide_agent" or _is_gen5:
                 hkmc = dm.get_hkmc5th_wide_service(req.device_id)
                 _label = "HKMC5thWide"
+                # 잘못된 hkmc_agent 연결이 있을 때 5th_wide service가 없으면 즉시 연결 시도 안내
+                if hkmc is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"Device {req.device_id} is Gen5 but bound to hkmc_agent service. "
+                            "Disconnect/reconnect to migrate to HKMC5thWide."
+                        ),
+                    )
             else:
                 hkmc = dm.get_hkmc_service(req.device_id)
                 _label = "HKMC"
