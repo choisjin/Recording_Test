@@ -522,6 +522,24 @@ async def connect_device(req: ConnectRequest):
         except RuntimeError as e:
             raise HTTPException(status_code=400, detail=str(e))
     elif req.type == "hkmc_agent":
+        # Gen5 모델 자동 라우팅 — frontend가 type을 hkmc_agent로 잘못 보내도 device_model 로 보정.
+        # HKMC6th 와 5th_wide 는 통신 프로토콜이 달라 서로 동작 불가.
+        if "gen5" in (req.device_model or "").lower():
+            if not req.address or not req.port:
+                raise HTTPException(status_code=400, detail="HKMC5thWide requires address (IP) and port (TCP port)")
+            try:
+                dev = await dm.add_hkmc5th_wide_device(
+                    req.address, req.port, device_id=custom_id,
+                    name=req.name or "",
+                    device_model=req.device_model or "",
+                )
+                return {
+                    "result": f"HKMC5thWide registered (auto-routed from Gen5 model): {dev.name} (ID: {dev.id})",
+                    "primary": _with_protected_flag(dm.list_primary()),
+                    "auxiliary": _with_protected_flag(dm.list_auxiliary()),
+                }
+            except RuntimeError as e:
+                raise HTTPException(status_code=400, detail=str(e))
         if not req.address or not req.port:
             raise HTTPException(status_code=400, detail="HKMC6th requires address (IP) and port (TCP port)")
         ef = req.extra_fields or {}

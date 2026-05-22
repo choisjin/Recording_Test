@@ -46,7 +46,8 @@ CMD_RESOURCEINFO_START = 0xE0
 CMD_RESOURCEINFO_STOP  = 0xE1
 
 # 이미지 캡처
-CMD_GETIMG = 0x6A
+CMD_GETIMG   = 0x6A
+CMD_GETFILE  = 0xE3
 
 # 터치 / 드래그
 CMD_LCDTOUCH      = 0x69
@@ -77,9 +78,20 @@ CMD_DMB_KEY             = 0xD1
 CMD_MEDIA_KEY           = 0xD2
 CMD_SEEK_KEY            = 0xD3
 CMD_TRACK_KEY           = 0xD4
+CMD_KOECN_APP_MEMORY_INFO = 0xD5
 CMD_CALL_KEY            = 0xD7
 CMD_CALLLONG_KEY        = 0xD8
 CMD_CALLEND_KEY         = 0xD9
+
+# 볼륨 / 시크 / 모드 요청 커맨드
+CMD_VOLUME_UP_REQ   = 0x20
+CMD_VOLUME_DOWN_REQ = 0x21
+CMD_SEEK_UP_REQ     = 0x22
+CMD_SEEK_DOWN_REQ   = 0x23
+CMD_MODE_REQ        = 0x24
+
+# CDP (0x44b = 1099)
+CMD_CDP_REQ         = 0x44b
 
 # SWC 추가 메시지 키
 CMD_SWRC_NEXT        = 0x95
@@ -97,7 +109,22 @@ CMD_SWRC_SRC         = 0xB3
 CMD_CCP_HOME_KEY     = 0x55
 
 # 연결 알림
-NOTI_CONNECTED = 0x5E
+NOTI_CONNECTED   = 0x5E
+NOTI_HKEY        = 0x65
+NOTI_SWC         = 0x75
+NOTI_CCP         = 0x85
+NOTI_RRC         = 0x90
+NOTI_LCDTOUCHEXT = 0xB5
+
+# 응답 값
+RESPONSE_FAIL         = 0x20
+RESPONSE_SUCCESS      = 0x21
+RESPONSE_INITIAL_HEX  = 0x22
+
+# 패킷 파싱 상태
+FULL_PACKET  = 1
+NEED_DATA    = 2
+MORE_PACKET  = 3
 
 # 서브 커맨드 (키 동작)
 RELEASE_KEY  = 0x41  # Release
@@ -121,10 +148,12 @@ HKEY_MAPVOICE          = 0x15
 HKEY_NAV               = 0x16
 HKEY_EJECT             = 0x17
 HKEY_SETUP             = 0x18
-HKEY_TUNE_CENTER       = 0x1C
-HKEY_TUNE_DIAL         = 0xA0  # dial (encoder)
-HKEY_VOLUME_CENTER     = 0xF0
-HKEY_VOLUME_DIAL       = 0xF1  # dial (encoder)
+HKEY_TUNE_CENTER          = 0x1C
+HKEY_TUNE_DIAL            = 0xA0  # dial (encoder)
+HKEY_TUNE_DIAL_ENCODER    = 0xA0  # 원본명 별칭
+HKEY_VOLUME_CENTER        = 0xF0
+HKEY_VOLUME_DIAL          = 0xF1  # dial (encoder)
+HKEY_VOLUME_DIAL_ENCODER  = 0xF1  # 원본명 별칭
 
 # SWC 키 코드 (CMD_SWC=0x70 keyExt 방식)
 SWC_PHONE_SEND         = 0x01
@@ -138,6 +167,56 @@ SWC_SEEK_DOWN          = 0x08
 SWC_SEEK_UP            = 0x09
 SWC_VOLUME_SCROLL_DOWN = 0x10
 SWC_VOLUME_SCROLL_UP   = 0x11
+
+# Hyundai Premier 5th — MKBD (Media Keyboard)
+MKBD_MAP                  = 0x11
+MKBD_NAV                  = 0x13
+MKBD_RADIO                = 0x12
+MKBD_MEDIA                = 0x14
+MKBD_CUSTOM               = 0x16
+MKBD_SETUP                = 0x18
+MKBD_POWER_VOLUME_PRESS       = 0xF0
+MKBD_POWER_VOLUME_CLOCK       = 0xF1
+MKBD_POWER_VOLUME_ANTI        = 0xF1
+MKBD_POWER_VOLUME_ANTICLOCK   = 0xF1  # 원본명 별칭
+MKBD_TUNE_PRESS               = 0x1C
+MKBD_TUNE_CLOCK               = 0xA0
+MKBD_TUNE_ANTI                = 0xA0
+MKBD_TUNE_ANTICLOCK           = 0xA0  # 원본명 별칭
+
+# CCP — Control Command Panel (조그/홈/백)
+CCP_BACK          = 0x11
+CCP_HOME          = 0x21
+CCP_MENU          = 0x31
+CCP_JOG_PRESS     = 0x61
+CCP_JOG_UP        = 0x64
+CCP_JOG_DOWN      = 0x64
+CCP_JOG_LEFT      = 0x64
+CCP_JOG_RIGHT     = 0x64
+CCP_JOG_CLOCK     = 0x62
+CCP_JOG_ANTI      = 0x62
+CCP_JOG_ANTICLOCK = 0x62  # 원본명 별칭
+
+# RRC — Rear Remote Control
+RRC_BACK          = 0x32
+RRC_HOME          = 0x12
+RRC_MENU          = 0x13
+RRC_MODE          = 0x22
+RRC_PWR_L         = 0x41
+RRC_SEEK_L        = 0x31
+RRC_SEEK_R        = 0x11
+RRC_MUTE          = 0x33
+RRC_PWR_R         = 0x42
+RRC_VOL_DOWN      = 0xF2
+RRC_VOL_UP        = 0xF3
+RRC_JOG_PRESS     = 0x61
+RRC_JOG_UP        = 0x64
+RRC_JOG_DOWN      = 0x64
+RRC_JOG_LEFT      = 0x64
+RRC_JOG_RIGHT     = 0x64
+RRC_JOG_CLOCK     = 0x62
+RRC_JOG_ANTI      = 0x62
+RRC_JOG_ANTICLOCK = 0x62  # 원본명 별칭
 
 # ---------------------------------------------------------------------------
 # HKMC 5th Wide 앱 목록 (리소스 모니터링 — from IVILGECommonAgentAppMemInfo.py)
@@ -329,6 +408,11 @@ class HKMC5thWideService:
         self._img_filename = ""
         self._img_made = False
         self._img_buffer: bytes = b""
+
+        # File transfer state (get_file)
+        self._file_event = threading.Event()
+        self.path_pc: str = ""
+        self.bGetFile: bool = False
 
         # Screen size (populated after reqScreenSize — 5th gen: single screen)
         self._screen_size_event = threading.Event()
@@ -628,6 +712,19 @@ class HKMC5thWideService:
                 self._img_event.set()
                 logger.debug("HKMC5thWide image received: %d bytes", len(raw_bytes))
 
+            elif cmd == CMD_GETFILE:
+                if self.path_pc:
+                    dir_name = os.path.dirname(self.path_pc)
+                    if dir_name and not os.path.isdir(dir_name):
+                        os.makedirs(dir_name, exist_ok=True)
+                    text = "".join(chr(b) for b in data)
+                    with open(self.path_pc, "w", encoding="utf-8", errors="replace") as f:
+                        f.write(text)
+                    logger.info("HKMC5thWide getFile: wrote %d bytes → %s", len(text), self.path_pc)
+                    self.bGetFile = True
+                    self._file_event.set()
+                    self._file_event.clear()
+
             elif cmd == CMD_ATSA_GETRESOURCEINFO:
                 self._decode_resource_info(data)
 
@@ -765,6 +862,45 @@ class HKMC5thWideService:
             if self._resource_file is not None:
                 self._resource_file.close()
                 self._resource_file = None
+
+    def get_file(self, path_pc: str, path_target: str, timeout: float = 10.0) -> bool:
+        """Request a file from the target device and save it to path_pc.
+
+        Args:
+            path_pc: 저장할 PC 측 파일 경로
+            path_target: 디바이스 측 파일 경로
+            timeout: 응답 대기 최대 시간(초)
+
+        Returns:
+            True=성공, False=실패
+        """
+        self.path_pc = path_pc
+        self.bGetFile = False
+        self._file_event.clear()
+
+        # 원본 getFile()과 동일: 4바이트 길이 + 경로 바이트
+        length = len(path_target)
+        data: list[int] = [
+            (length >> 24) & 0xFF,
+            (length >> 16) & 0xFF,
+            (length >> 8) & 0xFF,
+            length & 0xFF,
+        ] + [ord(c) for c in path_target]
+        with self._send_lock:
+            self._make_send_packet(CMD_GETFILE, 0, 0, data)
+
+        self._file_event.wait(timeout=timeout)
+
+        if self.bGetFile:
+            return True
+        logger.error("HKMC5thWide get_file timeout or error: %s", path_target)
+        return False
+
+    async def async_get_file(self, path_pc: str, path_target: str,
+                              timeout: float = 10.0) -> bool:
+        """Async wrapper for get_file."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.get_file, path_pc, path_target, timeout)
 
     # ------------------------------------------------------------------
     # Screenshot
@@ -934,22 +1070,58 @@ class HKMC5thWideService:
             data.append(screen_type & 0xFF)
         self._make_send_packet(CMD_LCDTOUCH_DRAG, 0, 0, data)
 
+    def lcd_touch_ext(self, pos_fing_idx: list[int], data_list: list[int],
+                      screen_type: Optional[int] = None) -> None:
+        """Multi-finger touch (원본 lcdTouchExt 포팅).
+
+        Args:
+            pos_fing_idx: 손가락 인덱스 리스트
+            data_list: 손가락별 [fingIdx, action, xPos, yPos] 반복 (4 * N 개)
+            screen_type: 스크린 타입 (None=생략)
+        """
+        fing_num = len(pos_fing_idx)
+        data: list[int] = [fing_num]
+        for i in range(fing_num):
+            fing_idx = i
+            data.append(fing_idx)
+            action = data_list[(i * 4) + 1]
+            x_pos  = data_list[(i * 4) + 2]
+            y_pos  = data_list[(i * 4) + 3]
+            data.append((x_pos >> 8) & 0xFF)
+            data.append(x_pos & 0xFF)
+            data.append((y_pos >> 8) & 0xFF)
+            data.append(y_pos & 0xFF)
+            data.append(action)
+        if screen_type is not None:
+            data.append((screen_type >> 8) & 0xFF)
+            data.append(screen_type & 0xFF)
+        logger.debug("[HKMC5thWide LCD_TOUCH_EXT] fing_num=%d", fing_num)
+        with self._send_lock:
+            self._make_send_packet(CMD_LCDTOUCHEXT, 0, 0, data)
+
+    async def async_lcd_touch_ext(self, pos_fing_idx: list[int], data_list: list[int],
+                                   screen_type: Optional[int] = None) -> None:
+        """Async wrapper for lcd_touch_ext."""
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, self.lcd_touch_ext, pos_fing_idx, data_list, screen_type)
+
     # ------------------------------------------------------------------
     # Hardware keys
     # ------------------------------------------------------------------
 
     def send_key(self, cmd: int, sub_cmd: int, key_data: int,
                  monitor: int = 0x00, direction: Optional[int] = None) -> None:
-        """Send a hardware key event (keyExt int 방식).
+        """Send a hardware key event (keyExt int/list 방식).
 
         Args:
             cmd: 키 카테고리 커맨드 (CMD_HKEY, CMD_SWC, CMD_CCP, CMD_RRC)
             sub_cmd: 동작 (SHORT_KEY, LONG_KEY, PRESS_KEY, RELEASE_KEY, DIAL_ACTION)
             key_data: 키 코드 (int)
-            monitor: 미사용 (5th gen 호환용 — 항상 0x00)
-            direction: 다이얼 방향 (CLOCK=0x00, ANTI_CLOCK=0x01)
+            monitor: 미사용 시그니처 호환 파라미터 (원본 keyExt에 없음 — 패킷에 포함 안 함)
+            direction: 다이얼 방향 (CLOCK=0x00, ANTI_CLOCK=0x01) — ListType[1] 에 해당
         """
         resp = 0xFE
+        # 원본 keyExt: IntType → 4바이트, ListType → 4바이트 + 1바이트(direction)
         data = [
             (key_data >> 24) & 0xFF,
             (key_data >> 16) & 0xFF,
@@ -957,8 +1129,7 @@ class HKMC5thWideService:
             key_data & 0xFF,
         ]
         if direction is not None:
-            data.append(direction)
-        data.append(monitor)  # 5th gen은 monitor 바이트 0x00 고정
+            data.append(direction & 0xFF)
 
         logger.debug("[HKMC5thWide KEY] cmd=0x%02X sub=0x%02X key=0x%02X dir=%s",
                      cmd, sub_cmd, key_data, direction)

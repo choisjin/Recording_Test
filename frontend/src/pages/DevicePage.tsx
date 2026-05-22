@@ -793,7 +793,11 @@ export default function DevicePage() {
     if (!ensurePrimaryProjectModel()) return;
     setConnecting(true);
     try {
-      const result = await connectDevice('hkmc_agent', ip, undefined, '', 'primary', undefined, undefined, undefined, '', port, deviceModel || undefined);
+      // 모델명에 "Gen5"가 포함되면 HKMC 5th Wide 프로토콜 — hkmc_agent와 다른 service.
+      // (Gen6/cc* 등 다른 모델은 기존 hkmc_agent 유지)
+      const isGen5 = /gen5/i.test(deviceModel || '');
+      const devType: 'hkmc_agent' | 'hkmc5th_wide_agent' = isGen5 ? 'hkmc5th_wide_agent' : 'hkmc_agent';
+      const result = await connectDevice(devType, ip, undefined, '', 'primary', undefined, undefined, undefined, '', port, deviceModel || undefined);
       message.success(result);
       closeAddModal();
     } catch (e: any) {
@@ -1617,7 +1621,8 @@ export default function DevicePage() {
                             dataSource={scannedHkmc}
                             pagination={scannedHkmc.length > PAGE_SIZE ? { pageSize: PAGE_SIZE, size: 'small' } : false}
                             renderItem={(d) => {
-                              const existing = findExisting(x => x.type === 'hkmc_agent' && x.address === d.ip);
+                              // HKMC 스캔 결과는 hkmc_agent 또는 hkmc5th_wide_agent 어느 쪽으로도 등록될 수 있음.
+                              const existing = findExisting(x => (x.type === 'hkmc_agent' || x.type === 'hkmc5th_wide_agent') && x.address === d.ip);
                               return (
                                 <List.Item actions={[
                                   renderScanAction(existing, t('common.add'), () => handleAddHkmc(d.ip, d.port), {
