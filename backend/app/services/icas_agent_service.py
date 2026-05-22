@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import os
 import threading
 import time
 from typing import Optional
@@ -75,6 +76,30 @@ def _rm_tree(path: str) -> None:
         shutil.rmtree(path, ignore_errors=True)
     except Exception:
         pass
+
+
+def _validate_png_file(path: str) -> bool:
+    """PNG 파일이 시그니처 + IEND chunk를 모두 갖춘 완전한 파일인지 빠르게 검증.
+
+    PIL.Image.open의 lazy load는 IEND 부재 등 일부 손상에 무관심하지만 .convert('RGBA')에서
+    실제 디코딩이 일어나며 chunk 경계 깨짐을 만나면 실패. SCP 결과를 사용 전 미리 거르기 위함.
+    """
+    try:
+        size = os.path.getsize(path)
+        if size < 16:
+            return False
+        with open(path, "rb") as f:
+            sig = f.read(8)
+            if sig != b"\x89PNG\r\n\x1a\n":
+                return False
+            # 마지막 12 bytes는 IEND chunk: 4byte length(0) + 'IEND' + 4byte CRC
+            f.seek(-12, 2)
+            tail = f.read(12)
+            if len(tail) < 12 or tail[4:8] != b"IEND":
+                return False
+        return True
+    except Exception:
+        return False
 
 
 class ICASAgentService:
@@ -680,6 +705,47 @@ class ICASAgentService:
     # ------------------------------------------------------------------
     # HU screenshot — LayerManagerControl dump + SCP pull + composite
     # ------------------------------------------------------------------
+    def _wait_remote_files_stable(self, ssh, remote_paths: list[str],
+                                  max_wait_s: float = 1.0,
+                                  poll_interval_s: float = 0.05,
+                                  stable_iters: int = 2) -> None:
+        """디바이스 쪽 파일 크기가 stable_iters회 연속 동일할 때까지 폴링.
+
+        LayerManagerControl이 비동기로 PNG를 쓰는 환경(ICAS3 CN 등)에서 SCP가 partial 파일을
+        가져가는 race를 막기 위함. 실패해도 silent — 안정성은 _validate_png_file에서 한 번 더 거름.
+        """
+        if not remote_paths:
+            return
+        deadline = time.monotonic() + max_wait_s
+        size_cmd = " ; ".join([f"wc -c < {rp} 2>/dev/null || echo 0" for rp in remote_paths])
+        prev_sizes: Optional[list[int]] = None
+        stable_streak = 0
+        while time.monotonic() < deadline:
+            try:
+                stdin, stdout, stderr = ssh.exec_command(size_cmd, timeout=2)
+                try:
+                    stdin.close()
+                except Exception:
+                    pass
+                out = stdout.read().decode("utf-8", errors="replace")
+                lines = [l.strip() for l in out.splitlines() if l.strip()]
+                sizes: list[int] = []
+                for l in lines:
+                    try:
+                        sizes.append(int(l.split()[0]))
+                    except Exception:
+                        sizes.append(0)
+                if sizes and all(s > 0 for s in sizes) and sizes == prev_sizes:
+                    stable_streak += 1
+                    if stable_streak >= stable_iters:
+                        return
+                else:
+                    stable_streak = 0
+                prev_sizes = sizes
+            except Exception:
+                pass
+            time.sleep(poll_interval_s)
+
     def _detect_capture_strategy(self, ssh) -> str:
         """LayerManagerControl get screens / get screen 0 결과로 캡처 전략 결정.
 
@@ -719,17 +785,22 @@ class ICASAgentService:
 
     def _screencap_hu(self, fmt: str = "png") -> bytes:
         import tempfile
-        import os
         from PIL import Image, ImageFile
-        # truncated PNG를 부분 디코드 허용하면 위쪽만 보이는 검은 프레임이 화면에 표출되어
-        # 블링킹 발생. 잘린 파일은 거부하고 다음 프레임을 기다리는 편이 시각적으로 안정.
-        ImageFile.LOAD_TRUNCATED_IMAGES = False
+        # _validate_png_file + _wait_remote_files_stable 이 1차 게이트 역할을 하므로
+        # IDAT 내부 미세 손상은 PIL의 truncated tolerance에 맡기는 편이 시각 안정성에 유리.
+        ImageFile.LOAD_TRUNCATED_IMAGES = True
 
         # HU sshd는 SFTP 서브시스템 미지원 → SCP(paramiko-scp)로 pull.
         try:
             from scp import SCPClient
         except ImportError as e:
             raise RuntimeError("scp module required: pip install scp") from e
+
+        # ICAS_DUMP_TIMEOUT_S — exec_command stdout 폴링 타임아웃(초). 기본 8.
+        try:
+            dump_timeout = float(os.environ.get("ICAS_DUMP_TIMEOUT_S", "8") or 8)
+        except Exception:
+            dump_timeout = 8.0
 
         tmp_dir = tempfile.mkdtemp(prefix="icas_cap_")
         try:
@@ -742,36 +813,42 @@ class ICASAgentService:
 
                 if self._capture_strategy == "screen0_only":
                     # CN 패턴: screen 0 한 장으로 완성된 화면.
-                    # 끝에 sync — LayerManagerControl이 비동기로 파일을 닫는 경우가 있어
-                    # SCP가 부분 파일을 받아 truncated PNG가 되는 것을 막는다.
-                    dump_cmd = (
-                        "export XDG_RUNTIME_DIR=/run/platform/weston && "
-                        "LayerManagerControl dump screen 0 to /tmp/screen1.png && sync"
-                    )
-                    remotes: tuple[tuple[str, str], ...] = (
-                        ("/tmp/screen1.png", "screen1.png"),
-                    )
+                    file_map: list[tuple[int, str]] = [(0, "screen1.png")]
                 else:
-                    # EU 패턴(기존): screen 0(메인) + screen 2(오버레이) 합성
-                    dump_cmd = (
-                        "export XDG_RUNTIME_DIR=/run/platform/weston && "
-                        "LayerManagerControl dump screen 0 to /tmp/screen1.png && "
-                        "LayerManagerControl dump screen 2 to /tmp/screen2.png && sync"
-                    )
-                    remotes = (
-                        ("/tmp/screen1.png", "screen1.png"),
-                        ("/tmp/screen2.png", "screen2.png"),
-                    )
-                stdin, stdout, stderr = ssh.exec_command(dump_cmd, timeout=20)
+                    # EU 패턴(기존): screen 0(메인) + screen 2(오버레이) 합성.
+                    file_map = [(0, "screen1.png"), (2, "screen2.png")]
+
+                # rm + dump + sync 순서 — LayerManagerControl이 IVI 그래픽 파이프라인을 통해
+                # 비동기로 PNG를 쓰는 구현체가 있어 exec_command가 끝나도 파일이 완성 전일 수 있음.
+                # 각 dump 사이는 ';' 사용 — 한쪽 실패가 다른쪽을 막지 않음. stderr는 진단용 파일로.
+                rm_parts = [f"rm -f /tmp/{fname}" for _, fname in file_map]
+                dump_parts = [
+                    f"LayerManagerControl dump screen {idx} to /tmp/{fname} 2>/tmp/lmc_icas_idx{idx}.err"
+                    for idx, fname in file_map
+                ]
+                dump_cmd = (
+                    "export XDG_RUNTIME_DIR=/run/platform/weston ; "
+                    + " ; ".join(rm_parts)
+                    + " ; "
+                    + " ; ".join(dump_parts)
+                    + " ; sync"
+                )
+                remotes = tuple((f"/tmp/{fname}", fname) for _, fname in file_map)
+                stdin, stdout, stderr = ssh.exec_command(dump_cmd, timeout=dump_timeout)
                 try:
                     stdin.close()
                 except Exception:
                     pass
                 exit_status = -1
                 err_text = ""
+                dump_deadline = time.monotonic() + dump_timeout
                 try:
-                    stdout.channel.settimeout(20)
+                    stdout.channel.settimeout(dump_timeout)
                     while not stdout.channel.exit_status_ready():
+                        if time.monotonic() > dump_deadline:
+                            # exec_command 자체의 timeout으로 안 끊기는 환경 대비 안전망.
+                            logger.warning("ICAS HU dump timeout %.1fs — abandoning cycle", dump_timeout)
+                            break
                         if stdout.channel.recv_stderr_ready():
                             try:
                                 err_text += stdout.channel.recv_stderr(4096).decode("utf-8", errors="replace")
@@ -794,37 +871,32 @@ class ICASAgentService:
                         except Exception:
                             pass
 
-                if exit_status != 0:
+                dump_failed = (exit_status != 0)
+                if dump_failed:
                     snippet = err_text.strip().replace("\r", " ").replace("\n", " | ")[:200]
-                    logger.warning("ICAS HU dump exit=%d stderr=%r", exit_status, snippet)
+                    logger.warning("ICAS HU dump exit=%d stderr=%r — skipping SCP, will reset SSH",
+                                   exit_status, snippet)
+                    # dump 자체가 실패면 SCP 단계 skip — partial 파일을 가져와 화면이 흔들리는 부작용 방지.
+                    # 호출자가 SSH 채널 리셋하도록 RuntimeError 신호.
+                    raise RuntimeError(f"ICAS HU dump failed (exit={exit_status})")
+
+                # LayerManagerControl이 비동기로 PNG를 쓰는 환경 대응: 파일 크기가 안정될 때까지 폴링.
+                # 최대 1초 대기, 50ms 간격, 2회 연속 동일 크기여야 통과.
+                self._wait_remote_files_stable(ssh, [rp for rp, _ in remotes])
 
                 files: list[str] = []
-                # PNG 시그니처 — LayerManagerControl이 비활성 레이어에 대해 placeholder/truncated
-                # 파일을 남기거나 SCP가 dump 완료 전 빈 상태를 읽어가 truncated 되는 경우가 있어
-                # size>0 만으로는 유효성 판단 불충분.
-                # - 시작 8B: \x89PNG\r\n\x1a\n
-                # - 끝 12B: IEND chunk (00000000 49454E44 AE426082)
-                PNG_SIG = b"\x89PNG\r\n\x1a\n"
-                PNG_END = b"\x00\x00\x00\x00IEND\xaeB`\x82"  # IEND chunk + CRC
                 try:
                     with SCPClient(ssh.get_transport()) as scp:
                         for remote, fname in remotes:
                             local = os.path.join(tmp_dir, fname)
                             try:
                                 scp.get(remote, local)
-                                size = os.path.getsize(local) if os.path.exists(local) else 0
-                                if size < (8 + len(PNG_END)):
-                                    continue
-                                with open(local, "rb") as fp:
-                                    if fp.read(8) != PNG_SIG:
-                                        logger.debug("ICAS HU %s invalid PNG signature, skipping", fname)
-                                        continue
-                                    fp.seek(-len(PNG_END), os.SEEK_END)
-                                    if fp.read(len(PNG_END)) != PNG_END:
-                                        # truncated — dump가 끝나기 전에 SCP가 읽어간 경우
-                                        logger.debug("ICAS HU %s truncated (no IEND), skipping size=%d", fname, size)
-                                        continue
-                                files.append(local)
+                                if _validate_png_file(local):
+                                    files.append(local)
+                                else:
+                                    size = os.path.getsize(local) if os.path.exists(local) else 0
+                                    logger.debug("ICAS HU %s invalid/truncated PNG (size=%d), skipping",
+                                                 fname, size)
                             except Exception as ee:
                                 logger.debug("ICAS HU scp %s failed: %s", remote, ee)
                 except Exception as ee:
