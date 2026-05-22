@@ -152,6 +152,11 @@
           "value": "ICAS EU",
           "enabled": true,
           "agent": "ICAS Agent"
+        },
+        {
+          "value": "ICAS CN",
+          "enabled": true,
+          "agent": "ICAS Agent"
         }
       ]
     }

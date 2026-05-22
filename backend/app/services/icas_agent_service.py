@@ -733,6 +733,9 @@ class ICASAgentService:
                     logger.warning("ICAS HU dump exit=%d stderr=%r", exit_status, snippet)
 
                 files: list[str] = []
+                # PNG 시그니처 — LayerManagerControl이 비활성 레이어에 대해 placeholder/truncated
+                # 파일을 남기는 경우가 있어 size>0 만으로는 유효성 판단 불충분.
+                PNG_SIG = b"\x89PNG\r\n\x1a\n"
                 try:
                     with SCPClient(ssh.get_transport()) as scp:
                         for remote, fname in (("/tmp/screen1.png", "screen1.png"),
@@ -740,8 +743,13 @@ class ICASAgentService:
                             local = os.path.join(tmp_dir, fname)
                             try:
                                 scp.get(remote, local)
-                                if os.path.exists(local) and os.path.getsize(local) > 0:
-                                    files.append(local)
+                                if not (os.path.exists(local) and os.path.getsize(local) >= 8):
+                                    continue
+                                with open(local, "rb") as fp:
+                                    if fp.read(8) != PNG_SIG:
+                                        logger.debug("ICAS HU %s invalid PNG signature, skipping", fname)
+                                        continue
+                                files.append(local)
                             except Exception as ee:
                                 logger.debug("ICAS HU scp %s failed: %s", remote, ee)
                 except Exception as ee:
@@ -767,7 +775,16 @@ class ICASAgentService:
             if not local_files:
                 raise RuntimeError("No HU screenshot captured")
 
-            images = [Image.open(p).convert("RGBA") for p in local_files]
+            # PNG 시그니처 검증을 통과해도 PIL이 디코딩 실패할 수 있으므로
+            # 개별 파일 단위로 try/except 처리하여 일부만 깨져도 가능한 레이어로 합성.
+            images: list[Image.Image] = []
+            for p in local_files:
+                try:
+                    images.append(Image.open(p).convert("RGBA"))
+                except Exception as ie:
+                    logger.debug("ICAS HU skip unreadable %s: %s", p, ie)
+            if not images:
+                raise RuntimeError("No HU screenshot decodable")
             base = images[0]
             for over in images[1:]:
                 if over.size != base.size:
