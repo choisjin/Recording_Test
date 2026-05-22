@@ -175,11 +175,8 @@ class ICASAgentService:
         self._ps_tunnel_chan = None
         self._ps_lock = threading.RLock()
         self._key_overrides: dict[str, dict] = dict(key_overrides or {})
-        # HU 캡처 전략 — 첫 캡처 때 LayerManagerControl get screens 결과로 자동 감지.
-        # - "screen0_only": screen 0 한 장만 dump (ICAS3 CN 패턴: screen 0가 이미 2개 레이어 합성)
-        # - "screen0_plus_screen2": screen 0 + screen 2 alpha 합성 (ICAS EU 패턴, 기존 로직)
-        # 재연결 시 _capture_strategy도 None으로 리셋되어 재감지됨.
-        self._capture_strategy: Optional[str] = None
+        # HU 캡처: ICAS EU / ICAS3 CN 공통으로 screen 0(디바이스 화면) + screen 2(navigation map)를
+        # alpha 합성해 최종 화면을 만든다. 분기 없이 두 screen 항상 dump.
 
     # ------------------------------------------------------------------
     # Basic accessors
@@ -421,8 +418,6 @@ class ICASAgentService:
                 except Exception:
                     pass
                 self._ssh_client = None
-            # 명시적 disconnect 시 캡처 전략 캐시 무효화 (다른 디바이스로 재접속 대비)
-            self._capture_strategy = None
         self._close_private_server_ssh()
 
     def _close_private_server_ssh(self) -> None:
@@ -808,43 +803,6 @@ class ICASAgentService:
                 pass
             time.sleep(poll_interval_s)
 
-    def _detect_capture_strategy(self, ssh) -> str:
-        """LayerManagerControl get screens / get screen 0 결과로 캡처 전략 결정.
-
-        - ICAS3 CN: screen이 3개, screen 0가 이미 2개 레이어를 합성 → "screen0_only"
-        - ICAS EU: 기존 코드처럼 screen 0(메인) + screen 2(오버레이)를 합성 → "screen0_plus_screen2"
-
-        감지 실패 시 안전하게 기존 동작(screen0_plus_screen2) 폴백.
-        """
-        cmd = (
-            "export XDG_RUNTIME_DIR=/run/platform/weston && "
-            "LayerManagerControl get screen 0"
-        )
-        try:
-            stdin, stdout, stderr = ssh.exec_command(cmd, timeout=10)
-            try:
-                stdin.close()
-            except Exception:
-                pass
-            out = stdout.read().decode("utf-8", errors="replace")
-            try:
-                stdout.channel.recv_exit_status()
-            except Exception:
-                pass
-            # "layer render order:" 라인에서 토큰(콤마 구분) 개수가 2개 이상이면
-            # screen 0 자체가 합성 결과 → screen0_only 로 충분.
-            for line in out.splitlines():
-                low = line.strip().lower()
-                if low.startswith("- layer render order:") or low.startswith("layer render order:"):
-                    payload = line.split(":", 1)[1]
-                    tokens = [t for t in payload.replace(",", " ").split() if t]
-                    if len(tokens) >= 2:
-                        return "screen0_only"
-                    break
-        except Exception as e:
-            logger.debug("ICAS capture strategy detect failed: %s", e)
-        return "screen0_plus_screen2"
-
     def _screencap_hu(self, fmt: str = "png") -> bytes:
         import tempfile
         from PIL import Image, ImageFile
@@ -867,18 +825,9 @@ class ICASAgentService:
         tmp_dir = tempfile.mkdtemp(prefix="icas_cap_")
         try:
             # 공유 SSH 세션에서 dump + SCP pull 을 일괄 수행 (매 프레임마다 재인증 방지).
-            # 첫 호출 시 자동 감지로 ICAS3 CN / ICAS EU 캡처 전략 결정 (이후 캐싱).
+            # ICAS EU / ICAS3 CN 공통: screen 0(디바이스 화면) + screen 2(navigation map) 합성.
             def _do_capture(ssh) -> list[str]:
-                if self._capture_strategy is None:
-                    self._capture_strategy = self._detect_capture_strategy(ssh)
-                    logger.info("ICAS HU capture strategy=%s", self._capture_strategy)
-
-                if self._capture_strategy == "screen0_only":
-                    # CN 패턴: screen 0 한 장으로 완성된 화면.
-                    file_map: list[tuple[int, str]] = [(0, "screen1.png")]
-                else:
-                    # EU 패턴(기존): screen 0(메인) + screen 2(오버레이) 합성.
-                    file_map = [(0, "screen1.png"), (2, "screen2.png")]
+                file_map: list[tuple[int, str]] = [(0, "screen1.png"), (2, "screen2.png")]
 
                 # rm + dump + sync 순서 — LayerManagerControl이 IVI 그래픽 파이프라인을 통해
                 # 비동기로 PNG를 쓰는 구현체가 있어 exec_command가 끝나도 파일이 완성 전일 수 있음.
