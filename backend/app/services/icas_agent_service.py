@@ -543,19 +543,75 @@ class ICASAgentService:
             ssh = self._get_shared_ssh()
             _run_all(ssh, commands)
 
+    def _ksend_exec(self, cmds: list[str], interval_s: float = 0.0) -> None:
+        """ksend를 exec_command로 송신 — 각 호출마다 새 채널 오픈.
+
+        ICAS3 CN sshd가 invoke_shell + 빠른 연속 명령에서 transport를 끊는 케이스 회피용.
+        EU(invoke_shell) 대비 약간 느리지만 (~10ms/호출 오버헤드) ClientDisconnected가 안 남.
+        """
+        def _run(ssh) -> None:
+            for c in cmds:
+                try:
+                    stdin, stdout, stderr = ssh.exec_command(c, timeout=4)
+                    try:
+                        stdin.close()
+                    except Exception:
+                        pass
+                    try:
+                        # stdout 한번 읽어 채널 정상 종료 보장 — ksend는 stdout이 비어있어 즉시 EOF.
+                        stdout.read()
+                        stdout.channel.recv_exit_status()
+                    except Exception:
+                        pass
+                    finally:
+                        for f in (stdout, stderr):
+                            try:
+                                f.close()
+                            except Exception:
+                                pass
+                except Exception as e:
+                    logger.debug("ICAS ksend exec failed: %s", e)
+                if interval_s > 0:
+                    time.sleep(interval_s)
+
+        with self._ssh_lock:
+            try:
+                ssh = self._get_shared_ssh()
+                _run(ssh)
+                return
+            except Exception as e:
+                logger.warning("ICAS ksend exec failed, retrying with fresh SSH: %s", e)
+                if self._ssh_client is not None:
+                    try:
+                        self._ssh_client.close()
+                    except Exception:
+                        pass
+                    self._ssh_client = None
+                ssh = self._get_shared_ssh()
+                _run(ssh)
+
     def _ksend(self, data_bytes: str) -> None:
-        """ksend 명령 1회 송신 — 공유 shell 채널 사용 (레퍼런스 구현 동일 패턴)."""
+        """ksend 명령 1회 송신. variant에 따라 채널 모드 분기.
+          - icas (EU): invoke_shell 공유 채널 (저오버헤드, 빠름)
+          - icas3 (CN): exec_command 채널 (안정성 우선 — invoke_shell이 ClientDisconnected 유발)
+        """
         cmd = f'/lge/app_ro/bin/ksend -s {self.src_addr} -d {self.dst_addr} -b "{data_bytes}"'
-        self._shell_run([cmd])
+        if self.variant == "icas3":
+            self._ksend_exec([cmd])
+        else:
+            self._shell_run([cmd])
 
     def _ksend_many(self, data_list: list[str], interval_s: float = 0.1) -> None:
-        """ksend 명령 여러 개를 공유 shell 채널에서 순차 송신."""
+        """ksend 명령 여러 개를 순차 송신. variant 분기 동일."""
         cmds = [
             f'/lge/app_ro/bin/ksend -s {self.src_addr} -d {self.dst_addr} -b "{data}"'
             for data in data_list
         ]
-        # 각 cmd 사이 간격은 shell_run의 post_sleep_s로 들어감 — interval_s 우선
-        self._shell_run(cmds, post_sleep_s=max(0.02, interval_s))
+        if self.variant == "icas3":
+            self._ksend_exec(cmds, interval_s=interval_s)
+        else:
+            # 각 cmd 사이 간격은 shell_run의 post_sleep_s로 들어감 — interval_s 우선
+            self._shell_run(cmds, post_sleep_s=max(0.02, interval_s))
 
     # ------------------------------------------------------------------
     # Touch (press/drag/release) — ref RemoteController.excutecmdTouch*
@@ -912,6 +968,13 @@ class ICASAgentService:
                                 logger.debug("ICAS HU scp %s failed: %s", remote, ee)
                 except Exception as ee:
                     logger.warning("ICAS HU SCPClient failed: %s", ee)
+                    # transport가 죽은 상태(예: ClientDisconnected)면 외부 retry에 위임 —
+                    # _do_capture 내부에서 빈 리스트 반환만 하면 외부 except가 안 잡혀
+                    # dead transport에서 매 사이클마다 같은 에러를 반복하게 됨.
+                    if not self._is_ssh_alive(ssh):
+                        raise RuntimeError(
+                            f"ICAS HU SSH transport dead during SCP: {type(ee).__name__}"
+                        )
                 return files
 
             local_files: list[str] = []
