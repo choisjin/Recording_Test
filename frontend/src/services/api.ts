@@ -20,6 +20,10 @@ export const deviceApi = {
     api.get('/device/hkmc-keys', { params: deviceId ? { device_id: deviceId } : {} }),
   updateHkmcKeys: (deviceId: string, keys: Record<string, { cmd?: number; key?: number; dial?: boolean; visible?: boolean }>) =>
     api.post('/device/hkmc-keys', { device_id: deviceId, keys }),
+  listHkmc5thWideKeys: (deviceId?: string) =>
+    api.get('/device/hkmc5th-wide-keys', { params: deviceId ? { device_id: deviceId } : {} }),
+  updateHkmc5thWideKeys: (deviceId: string, keys: Record<string, { cmd?: number; key?: number; dial?: boolean; visible?: boolean }>) =>
+    api.post('/device/hkmc5th-wide-keys', { device_id: deviceId, keys }),
   listIsapKeys: (deviceId?: string) =>
     api.get('/device/isap-keys', { params: deviceId ? { device_id: deviceId } : {} }),
   updateIsapKeys: (deviceId: string, keys: Record<string, { cmd?: number; key?: number; dial?: boolean; visible?: boolean }>) =>

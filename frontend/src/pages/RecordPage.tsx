@@ -651,7 +651,7 @@ export default function RecordPage() {
       try {
         const dev = primaryDevices.find(d => d.id === targetId)
           || auxiliaryDevices.find(d => d.id === targetId);
-        const needsScreenType = (dev?.type === 'hkmc_agent' || dev?.type === 'isap_agent' || dev?.type === 'icas_agent' || dev?.type === 'mib_agent') || (dev?.type === 'adb' && (dev.info?.displays?.length ?? 0) > 1);
+        const needsScreenType = (dev?.type === 'hkmc_agent' || dev?.type === 'isap_agent' || dev?.type === 'icas_agent' || dev?.type === 'mib_agent' || dev?.type === 'hkmc5th_wide_agent') || (dev?.type === 'adb' && (dev.info?.displays?.length ?? 0) > 1);
         const res = await deviceApi.screenshot(targetId, needsScreenType ? screenType : undefined, 'png');
         if (res.data.image) {
           const fmt = res.data.format || 'png';
@@ -738,7 +738,7 @@ export default function RecordPage() {
 
   // Get current screen device info
   const screenDevice = primaryDevices.find(d => d.id === screenshotDeviceId);
-  const isScreenHkmc = screenDevice?.type === 'hkmc_agent' || screenDevice?.type === 'isap_agent';
+  const isScreenHkmc = screenDevice?.type === 'hkmc_agent' || screenDevice?.type === 'isap_agent' || screenDevice?.type === 'hkmc5th_wide_agent';
   const isScreenCCRC = isScreenHkmc && screenDevice?.info?.device_model === 'ccRC';
   const isScreenICAS = screenDevice?.type === 'icas_agent' || screenDevice?.type === 'mib_agent';
 
@@ -807,6 +807,10 @@ export default function RecordPage() {
     ...primaryDevices
       .filter(d => d.type === 'hkmc_agent' && isDeviceConnected(d))
       .map(d => ({ ...d, info: { ...d.info, module: 'HKMC6th' } })),
+    // HKMC5thWide primary devices를 HKMC5thWide 가상 모듈로 노출
+    ...primaryDevices
+      .filter(d => d.type === 'hkmc5th_wide_agent' && isDeviceConnected(d))
+      .map(d => ({ ...d, info: { ...d.info, module: 'HKMC5thWide' } })),
   ];
 
   // 선택된 디바이스에서 모듈 이름 derive
@@ -911,6 +915,11 @@ export default function RecordPage() {
       }).catch(() => {});
     } else if (dev?.type === 'hkmc_agent') {
       deviceApi.listHkmcKeys(dev.id).then(res => {
+        setHkmcKeys(res.data.keys || []);
+        setHkmcSubCommands(res.data.sub_commands || {});
+      }).catch(() => {});
+    } else if (dev?.type === 'hkmc5th_wide_agent') {
+      deviceApi.listHkmc5thWideKeys(dev.id).then(res => {
         setHkmcKeys(res.data.keys || []);
         setHkmcSubCommands(res.data.sub_commands || {});
       }).catch(() => {});
@@ -1038,7 +1047,7 @@ export default function RecordPage() {
       if (action === 'hkmc_long_press') return 'icas_long_press';
       return action;
     }
-    if (dev?.type === 'hkmc_agent' || dev?.type === 'isap_agent') {
+    if (dev?.type === 'hkmc_agent' || dev?.type === 'isap_agent' || dev?.type === 'hkmc5th_wide_agent') {
       if (action === 'tap') return 'hkmc_touch';
       if (action === 'swipe') return 'hkmc_swipe';
       if (action === 'long_press') return 'hkmc_long_press';
@@ -1053,7 +1062,7 @@ export default function RecordPage() {
     if ((dev?.type === 'icas_agent' || dev?.type === 'mib_agent') && (action === 'icas_touch' || action === 'icas_swipe' || action === 'icas_key' || action === 'icas_long_press' || action === 'repeat_tap')) {
       return { ...params, screen_type: screenType };
     }
-    if ((dev?.type === 'hkmc_agent' || dev?.type === 'isap_agent') && (action === 'hkmc_touch' || action === 'hkmc_swipe' || action === 'hkmc_key' || action === 'hkmc_long_press' || action === 'repeat_tap')) {
+    if ((dev?.type === 'hkmc_agent' || dev?.type === 'isap_agent' || dev?.type === 'hkmc5th_wide_agent') && (action === 'hkmc_touch' || action === 'hkmc_swipe' || action === 'hkmc_key' || action === 'hkmc_long_press' || action === 'repeat_tap')) {
       return { ...params, screen_type: screenType };
     }
     // ADB multi-display: 모든 디스플레이에 screen_type 주입 (display 0 포함 — screencap에 SF display ID 필요)

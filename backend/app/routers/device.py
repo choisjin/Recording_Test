@@ -959,12 +959,18 @@ async def device_input(req: InputRequest):
                     )
             return {"result": "ok"}
 
-        if req.action in ("hkmc_touch", "hkmc_swipe", "hkmc_key", "hkmc_long_press", "repeat_tap") and dev and dev.type == "hkmc_agent":
-            hkmc = dm.get_hkmc_service(req.device_id)
+        if req.action in ("hkmc_touch", "hkmc_swipe", "hkmc_key", "hkmc_long_press", "repeat_tap") and dev and dev.type in ("hkmc_agent", "hkmc5th_wide_agent"):
+            # HKMC5thWide는 HKMC6th와 동일 API(async_tap/swipe/long_press/send_key_by_name 시그니처) → 같은 경로로 처리.
+            if dev.type == "hkmc5th_wide_agent":
+                hkmc = dm.get_hkmc5th_wide_service(req.device_id)
+                _label = "HKMC5thWide"
+            else:
+                hkmc = dm.get_hkmc_service(req.device_id)
+                _label = "HKMC"
             if not hkmc:
-                raise HTTPException(status_code=400, detail=f"HKMC device {req.device_id} not connected")
-            logger.info("[HKMC INPUT] device=%s action=%s params=%s connected=%s",
-                        req.device_id, req.action, req.params, hkmc.is_connected)
+                raise HTTPException(status_code=400, detail=f"{_label} device {req.device_id} not connected")
+            logger.info("[%s INPUT] device=%s action=%s params=%s connected=%s",
+                        _label, req.device_id, req.action, req.params, hkmc.is_connected)
             p = req.params
             screen_type = p.get("screen_type", "front_center")
             if req.action == "repeat_tap":
@@ -972,16 +978,16 @@ async def device_input(req: InputRequest):
                                             int(p.get("interval_ms", 100)), screen_type)
             elif req.action == "hkmc_touch":
                 await hkmc.async_tap(p["x"], p["y"], screen_type)
-                logger.info("[HKMC INPUT] tap sent: x=%s y=%s screen=%s", p["x"], p["y"], screen_type)
+                logger.info("[%s INPUT] tap sent: x=%s y=%s screen=%s", _label, p["x"], p["y"], screen_type)
             elif req.action == "hkmc_long_press":
                 await hkmc.async_long_press(p["x"], p["y"],
                                             int(p.get("duration_ms", 3000)), screen_type)
-                logger.info("[HKMC INPUT] long_press sent: x=%s y=%s ms=%s screen=%s",
-                            p["x"], p["y"], p.get("duration_ms", 3000), screen_type)
+                logger.info("[%s INPUT] long_press sent: x=%s y=%s ms=%s screen=%s",
+                            _label, p["x"], p["y"], p.get("duration_ms", 3000), screen_type)
             elif req.action == "hkmc_swipe":
                 await hkmc.async_swipe(p["x1"], p["y1"], p["x2"], p["y2"], screen_type,
                                        int(p.get("duration_ms", 0)))
-                logger.info("[HKMC INPUT] swipe sent: duration_ms=%s", p.get("duration_ms", 0))
+                logger.info("[%s INPUT] swipe sent: duration_ms=%s", _label, p.get("duration_ms", 0))
             elif req.action == "hkmc_key":
                 key_name = p.get("key_name")
                 if key_name:
@@ -990,7 +996,7 @@ async def device_input(req: InputRequest):
                         p.get("direction"), screen_type,
                         key_source=p.get("key_source"),
                     )
-                    logger.info("[HKMC INPUT] key sent: %s (source=%s)", key_name, p.get("key_source"))
+                    logger.info("[%s INPUT] key sent: %s (source=%s)", _label, key_name, p.get("key_source"))
                 else:
                     await hkmc.async_send_key(
                         p["cmd"], p["sub_cmd"], p["key_data"], p.get("monitor", 0x00), p.get("direction")
