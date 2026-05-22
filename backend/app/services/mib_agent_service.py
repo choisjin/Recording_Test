@@ -1167,18 +1167,38 @@ class MIBAgentService:
         """ABTpower의 command03~05에 해당하는 추가 ksend 송신.
         market에 따라 src2/dst2 주소가 다름 (ref RemoteController.ABTpower).
 
-        EU/NAR/CN (legacy): IPv6 private server, src2/dst2는 hex bitmask
-        GP/KR (bit-position): IPv4 private server, src2/dst2는 decimal bit position
+        EU/NAR/CN (legacy): hex bitmask (0x40000000000 = bit42, 0x8000000000000000 = bit63)
+        GP/KR (bit-position): decimal bit position (42, 63)
+
+        주의: 디바이스 ksend variant가 bit-position form만 받는 경우(_try_autocorrect_addr이
+        self.src_addr을 변환한 경우), src2/dst2도 동일하게 bit-position으로 자동 변환.
+        EU 모드의 hex 값은 의미상 bit-position 42/63과 동일하므로 변환은 안전.
         """
+        # market 기반 기본값
         if self.market in ("EU", "NAR", "CN"):
-            src2 = "0x40000000000"
-            dst2 = "0x8000000000000000"
+            src2 = "0x40000000000"      # = 1 << 42
+            dst2 = "0x8000000000000000"  # = 1 << 63
             addr_form = "legacy_hex"
         else:
             # GP/KR: bit-position form (42, 63 = src/dst bit positions)
             src2 = "42"
             dst2 = "63"
             addr_form = "bit_position"
+
+        # ksend variant가 bit-position form만 받는 경우 자동 변환.
+        # self.src_addr이 decimal 문자열(0-63)이면 이 디바이스의 ksend는 bit-position variant.
+        # 그럼 src2/dst2도 bit-position form으로 강제 변환해야 함 (EU hex는 거부됨).
+        if addr_form == "legacy_hex" and self._is_bit_position_form(self.src_addr):
+            new_src2 = self._bitmask_to_bit_position(src2) or src2
+            new_dst2 = self._bitmask_to_bit_position(dst2) or dst2
+            logger.info(
+                "MIB _ksend_power_extra: device uses bit-position ksend variant "
+                "(self.src=%s), auto-converting src2/dst2: %s→%s, %s→%s",
+                self.src_addr, src2, new_src2, dst2, new_dst2,
+            )
+            src2 = new_src2
+            dst2 = new_dst2
+            addr_form = "legacy_hex_auto→bit_position"
 
         payloads = [
             "0x01 0x91 0xF0 0x01 0x4C 0x00 0x00",  # command03
@@ -1194,6 +1214,15 @@ class MIBAgentService:
             self.market, addr_form, src2, dst2, len(payloads)
         )
         self._shell_run(cmds, post_sleep_s=0.1)
+
+    @staticmethod
+    def _is_bit_position_form(addr: str) -> bool:
+        """addr이 bit-position decimal form인지 확인 (0-63 범위 정수 문자열)."""
+        try:
+            v = int(addr)
+            return 0 <= v <= 63
+        except (ValueError, TypeError):
+            return False
 
     def send_key(self, cmd: int, sub_cmd: int, key_data: int,
                  monitor: int = 0x00, direction: Optional[int] = None) -> None:
