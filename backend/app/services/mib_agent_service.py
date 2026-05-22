@@ -250,8 +250,8 @@ class MIBAgentService:
         """market 값에 따라 ksend src/dst 주소 + private_server_ip 기본값 설정.
 
         RemoteController.py 라인 63-75 참조:
-          EU/NAR/CN: legacy — src=0x200000000000000, dst=0x80000000000, private=IPv6
-          GP (그 외): src=57, dst=43, private=IPv4 192.168.0.2
+          EU/NAR/CN (legacy): src=0x200000000000000, dst=0x80000000000, private=IPv6
+          GP/KR (bit-position): src=57, dst=43, private=IPv4 192.168.0.2
         private_server_ip_override가 비어있지 않으면 그 값을 그대로 사용.
         """
         m = (market or "EU").upper()
@@ -259,16 +259,36 @@ class MIBAgentService:
             self.src_addr = "0x200000000000000"
             self.dst_addr = "0x80000000000"
             default_private = "fd53:7cb8:383:3::73"
+            ksend_form = "legacy_hex"
         else:
+            # GP/KR: bit-position decimal form
             self.src_addr = "57"
             self.dst_addr = "43"
             default_private = "192.168.0.2"
+            ksend_form = "bit_position_decimal"
         self.private_server_ip = private_server_ip_override or default_private
+        logger.debug(
+            "MIB market defaults applied: market=%s ksend_form=%s "
+            "src_addr=%s dst_addr=%s private_server_ip=%s",
+            m, ksend_form, self.src_addr, self.dst_addr, self.private_server_ip
+        )
 
     def set_market(self, market: str, private_server_ip_override: str = "") -> None:
-        """런타임 market 전환 (addr + private_server_ip 동시 갱신)."""
+        """런타임 market 전환 (addr + private_server_ip 동시 갱신).
+
+        market 변경 시 모든 hardkey 동작(특히 POWER)의 추가 메시지 주소가 자동으로 갱신됨.
+        """
+        old_market = self.market
+        old_src = self.src_addr
+        old_dst = self.dst_addr
+
         self.market = (market or "EU").upper()
         self._apply_market_defaults(self.market, private_server_ip_override)
+
+        logger.info(
+            "MIB market switched: %s → %s (src: %s → %s, dst: %s → %s)",
+            old_market, self.market, old_src, self.src_addr, old_dst, self.dst_addr
+        )
 
     # ------------------------------------------------------------------
     # Connection (SSH check)
@@ -475,7 +495,11 @@ class MIBAgentService:
             with self._input_ssh_lock:
                 self._get_input_ssh()   # 입력용 SSH 사전 확보 (첫 ksend 지연 제거)
             self._connected = True
-            logger.info("MIB connected to %s:%d (capture+input sessions)", self.host, self.port)
+            logger.info(
+                "MIB connected to %s:%d (market=%s, src_addr=%s, dst_addr=%s) "
+                "[capture+input sessions]",
+                self.host, self.port, self.market, self.src_addr, self.dst_addr
+            )
             # 캡처 layer 진단: 가용 screen/layer 인덱스를 알면 사용자에게 가이드 제공.
             # 실패해도 연결 자체에는 영향 없음 (best-effort, 5초 타임아웃).
             try:
@@ -1107,6 +1131,7 @@ class MIBAgentService:
         """이름 기반 하드키 송신. sub_cmd는 HKMC6th API 호환용(SHORT/LONG).
 
         MIB는 press→release 시퀀스가 기본. LONG은 press→대기→release 패턴으로 처리.
+        market별 추가 동작(POWER 메시지 등)도 함께 처리.
         """
         info = self.resolve_key(key_name)
         if not info:
@@ -1126,31 +1151,48 @@ class MIBAgentService:
         time.sleep(hold_s)
         self._ksend_many([release], interval_s=0)
 
-        # POWER 전용 추가 커맨드 (ref ABTpower: command03~05)
-        # HU의 power state 전환을 위한 별도 주소(src2/dst2) 메시지
+        # market별 추가 동작 분기
         if key_name == "POWER":
+            # POWER 전용 추가 커맨드 (ref ABTpower: command03~05)
+            # HU의 power state 전환을 위한 별도 주소(src2/dst2) 메시지
+            # market: EU/NAR/CN은 legacy hex addr, else는 bit-position form
             self._ksend_power_extra()
+            logger.debug(
+                "MIB send_key_by_name(POWER) complete [market=%s src=%s dst=%s]",
+                self.market, self.src_addr, self.dst_addr
+            )
 
 
     def _ksend_power_extra(self) -> None:
         """ABTpower의 command03~05에 해당하는 추가 ksend 송신.
         market에 따라 src2/dst2 주소가 다름 (ref RemoteController.ABTpower).
+
+        EU/NAR/CN (legacy): IPv6 private server, src2/dst2는 hex bitmask
+        GP/KR (bit-position): IPv4 private server, src2/dst2는 decimal bit position
         """
         if self.market in ("EU", "NAR", "CN"):
             src2 = "0x40000000000"
             dst2 = "0x8000000000000000"
+            addr_form = "legacy_hex"
         else:
+            # GP/KR: bit-position form (42, 63 = src/dst bit positions)
             src2 = "42"
             dst2 = "63"
+            addr_form = "bit_position"
+
         payloads = [
-            "0x01 0x91 0xF0 0x01 0x4C 0x00 0x00",
-            "0x01 0x91 0xF0 0x02 0x38 0x00 0x00",
-            "0x01 0x91 0xF0 0x01 0x01 0x00 0x00",
+            "0x01 0x91 0xF0 0x01 0x4C 0x00 0x00",  # command03
+            "0x01 0x91 0xF0 0x02 0x38 0x00 0x00",  # command04 (key code 0x38 = POWER)
+            "0x01 0x91 0xF0 0x01 0x01 0x00 0x00",  # command05
         ]
         cmds = [
             f'/lge/app_ro/bin/ksend -s {src2} -d {dst2} -b "{p}"'
             for p in payloads
         ]
+        logger.debug(
+            "MIB _ksend_power_extra: market=%s addr_form=%s src2=%s dst2=%s payloads=%d",
+            self.market, addr_form, src2, dst2, len(payloads)
+        )
         self._shell_run(cmds, post_sleep_s=0.1)
 
     def send_key(self, cmd: int, sub_cmd: int, key_data: int,
@@ -1159,6 +1201,9 @@ class MIBAgentService:
 
         MIB는 cmd 분류가 하나라, 별도 분기 없이 short 프레임을 기본으로 사용.
         long class가 필요하면 key_data 범위로 자동 판별 (POWER=0x38, HOME=0x66).
+
+        주의: 이 경로는 market별 추가 메시지(POWER)를 송신하지 않음.
+        POWER를 사용할 때는 send_key_by_name("POWER")을 권장.
         """
         klass = "long" if key_data in (0x38, 0x66) else "short"
         press = (self._hkey_short_frame(key_data, 0x01) if klass == "short"
@@ -1167,6 +1212,14 @@ class MIBAgentService:
         release = (self._hkey_short_frame(0x00, 0x00) if klass == "short"
                    else self._hkey_long_frame(key_data, 0x00))
         hold_s = 1.0 if sub_cmd == LONG_KEY else 0.1
+
+        key_name_hint = {0x10: "VOLUME_UP", 0x11: "VOLUME_DOWN", 0x20: "MUTE",
+                         0x38: "POWER", 0x66: "HOME"}.get(key_data, f"0x{key_data:02X}")
+        logger.debug(
+            "MIB send_key(raw): key_data=0x%02X (%s) class=%s hold_s=%.1f [market=%s]",
+            key_data, key_name_hint, klass, hold_s, self.market
+        )
+
         self._ksend_many([press], interval_s=0)
         time.sleep(hold_s)
         self._ksend_many([release], interval_s=0)
