@@ -806,12 +806,14 @@ export default function DevicePage() {
   };
 
   // SSH 기반 주 디바이스(ICAS/MIB) 즉시 등록·연결 — scan 결과 클릭 시 사용.
-  // project/model 검증 없이 바로 진행. SSH 자격증명은 입력값 또는 root/(공백) 기본값.
+  // 다른 주 디바이스 핸들러와 동일하게 프로젝트·모델 선택을 강제한다.
+  // SSH 자격증명은 입력값 또는 root/(공백) 기본값.
   const handleAddSshAgent = async (
     devType: 'icas_agent' | 'mib_agent',
     ip: string,
     port: number,
   ) => {
+    if (!ensurePrimaryProjectModel()) return;
     setConnecting(true);
     try {
       const extra: Record<string, any> = {
@@ -1660,7 +1662,10 @@ export default function DevicePage() {
                               const existing = findExisting(x => x.type === 'icas_agent' && x.address === h.ip);
                               return (
                                 <List.Item actions={[
-                                  renderScanAction(existing, t('common.connect'), () => handleAddSshAgent('icas_agent', h.ip, h.port))
+                                  renderScanAction(existing, t('common.connect'), () => handleAddSshAgent('icas_agent', h.ip, h.port), {
+                                    disabled: primaryProjectModelMissing,
+                                    title: primaryProjectModelMissing ? '프로젝트·모델을 먼저 선택하세요' : undefined,
+                                  })
                                 ]}>
                                   <Tag color="purple">ICAS</Tag> <Tag color="blue">{h.ip}</Tag> <span style={{ color: '#888' }}>SSH: {h.port}</span>
                                 </List.Item>
@@ -1684,7 +1689,10 @@ export default function DevicePage() {
                               const existing = findExisting(x => x.type === 'mib_agent' && x.address === h.ip);
                               return (
                                 <List.Item actions={[
-                                  renderScanAction(existing, t('common.connect'), () => handleAddSshAgent('mib_agent', h.ip, h.port))
+                                  renderScanAction(existing, t('common.connect'), () => handleAddSshAgent('mib_agent', h.ip, h.port), {
+                                    disabled: primaryProjectModelMissing,
+                                    title: primaryProjectModelMissing ? '프로젝트·모델을 먼저 선택하세요' : undefined,
+                                  })
                                 ]}>
                                   <Tag color="geekblue">MIB</Tag> <Tag color="blue">{h.ip}</Tag> <span style={{ color: '#888' }}>SSH: {h.port}</span>
                                 </List.Item>
