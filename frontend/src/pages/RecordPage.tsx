@@ -4791,10 +4791,6 @@ export default function RecordPage() {
                                   // MKBD_CUSTOM: 비어있는 별, SWRC_CUSTOM: 채워있는 별
                                   if (k.name === 'MKBD_CUSTOM') return `☆ ${baseName}`;
                                   if (k.name === 'SWRC_CUSTOM') return `★ ${baseName}`;
-                                  // SWRC_TEST_XX: 무차별 스캔용 - 키값만 표시
-                                  if (k.name.startsWith('SWRC_TEST') && k.key !== undefined) {
-                                    return `0x${k.key.toString(16).toUpperCase().padStart(2, '0')}`;
-                                  }
                                   return baseName;
                                 })()}</Button>
                               ))}
