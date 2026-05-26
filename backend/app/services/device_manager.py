@@ -24,9 +24,6 @@ from .wincontrol_service import WinControlService
 logger = logging.getLogger(__name__)
 
 _AUX_DEVICES_FILE = Path(__file__).resolve().parent.parent.parent / "auxiliary_devices.json"
-# 사용자가 명시적으로 제거한 CANAT 자동 등록 대상 주소 목록.
-# scan_serial이 STM Virtual COM Port를 발견해도 이 리스트에 있으면 자동 등록을 skip한다.
-_CANAT_DISMISSED_FILE = Path(__file__).resolve().parent.parent.parent / "auxiliary_canat_dismissed.json"
 
 
 def _scan_serial_ports() -> list[dict]:
@@ -529,8 +526,6 @@ class DeviceManager:
         self._ssh_conns: dict[str, SSHConnection] = {}  # device_id -> SSHConnection
         self._ever_connected: set[str] = set()  # 사용자가 명시적으로 연결한 디바이스만 자동 재연결
         self._wincontrol = WinControlService()  # 단일 인스턴스 — WinControl 디바이스가 임베드한 윈도우 보유
-        # CANAT 자동 등록 차단 주소 — 사용자가 한 번 제거한 STM 포트는 다음 스캔 시 자동 재등록 금지
-        self._canat_dismissed: set[str] = self._load_canat_dismissed()
         self._load_auxiliary_devices()
         self._ensure_default_common_device()
         self._ensure_default_wincontrol_device()
@@ -713,26 +708,6 @@ class DeviceManager:
             _AUX_DEVICES_FILE.write_text(json.dumps(aux, ensure_ascii=False, indent=2), encoding="utf-8")
         except Exception as e:
             logger.warning("Failed to save auxiliary devices: %s", e)
-
-    def _load_canat_dismissed(self) -> set[str]:
-        """사용자가 제거한 CANAT 포트 주소 목록 로드 (자동 재등록 차단용)."""
-        try:
-            if _CANAT_DISMISSED_FILE.exists():
-                data = json.loads(_CANAT_DISMISSED_FILE.read_text(encoding="utf-8"))
-                if isinstance(data, list):
-                    return {str(x) for x in data if isinstance(x, (str, int))}
-        except Exception as e:
-            logger.warning("Failed to load CANAT dismissed list: %s", e)
-        return set()
-
-    def _save_canat_dismissed(self) -> None:
-        try:
-            _CANAT_DISMISSED_FILE.write_text(
-                json.dumps(sorted(self._canat_dismissed), ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
-        except Exception as e:
-            logger.warning("Failed to save CANAT dismissed list: %s", e)
 
     async def refresh_adb(self) -> None:
         """Sync ADB device statuses — only update already-registered ADB devices."""
@@ -1512,53 +1487,9 @@ class DeviceManager:
         return lock
 
     async def scan_serial(self) -> list[dict]:
-        """Scan available serial ports.
-
-        스캔 결과 중 description에 'STMicroelectronics Virtual COM Port'가 포함된 포트는
-        해당 address가 아직 등록되지 않았다면 CANAT 보조 디바이스로 자동 등록한다.
-        - module: CANAT
-        - baudrate: 115200 고정
-        idempotent: 이미 같은 address(또는 module=CANAT + 같은 address)로 등록된 디바이스가
-        있으면 건너뛴다.
-        """
+        """Scan available serial ports."""
         loop = asyncio.get_event_loop()
-        ports = await loop.run_in_executor(None, _scan_serial_ports)
-
-        STM_DESC_MARKER = "STMicroelectronics Virtual COM Port"
-        registered_addresses = {d.address for d in self._devices.values() if d.type == "serial"}
-        for p in ports:
-            desc = p.get("description") or ""
-            if STM_DESC_MARKER not in desc:
-                continue
-            addr = p.get("port")
-            if not addr or addr in registered_addresses:
-                p["auto_registered"] = False
-                continue
-            # 사용자가 명시적으로 제거한 주소는 자동 재등록 차단 (수동 추가는 가능)
-            if addr in self._canat_dismissed:
-                p["auto_registered"] = False
-                p["auto_register_dismissed"] = True
-                continue
-            try:
-                dev = await self.add_serial_device(
-                    port=addr,
-                    baudrate=115200,
-                    name="",
-                    category="auxiliary",
-                    module="CANAT",
-                    connect_type="serial",
-                )
-                registered_addresses.add(addr)
-                p["auto_registered"] = True
-                p["auto_registered_id"] = dev.id
-                logger.info(
-                    "scan_serial: auto-registered CANAT device %s on %s (desc=%s)",
-                    dev.id, addr, desc,
-                )
-            except Exception as e:
-                logger.warning("scan_serial: auto-register CANAT failed for %s: %s", addr, e)
-                p["auto_registered"] = False
-        return ports
+        return await loop.run_in_executor(None, _scan_serial_ports)
 
     def _com_port_exists(self, address: str) -> bool:
         """지정 COM 포트가 시스템에 물리적으로 존재하는지 확인.
@@ -1671,10 +1602,6 @@ class DeviceManager:
             info=info,
         )
         self._devices[final_id] = dev
-        # CANAT 모듈로 수동 등록 시 dismissed 차단 해제 — 다음 스캔부터는 자동 재등록 가능 상태
-        if module == "CANAT" and port in self._canat_dismissed:
-            self._canat_dismissed.discard(port)
-            self._save_canat_dismissed()
         self._save_auxiliary_devices()
         return dev
 
@@ -1948,11 +1875,6 @@ class DeviceManager:
         if module_name:
             from .module_service import reset_instance
             reset_instance(module_name)
-        # 사용자가 명시적으로 CANAT 자동 등록 디바이스를 제거하면 같은 포트가 다음 스캔에서
-        # 자동 재등록되지 않도록 dismissed 목록에 기록 (수동 추가로 해제 가능).
-        if dev.type == "serial" and (dev.info or {}).get("module") == "CANAT" and dev.address:
-            self._canat_dismissed.add(dev.address)
-            self._save_canat_dismissed()
         self._devices.pop(dev.id, None)
         self._ever_connected.discard(dev.id)
         self._save_auxiliary_devices()

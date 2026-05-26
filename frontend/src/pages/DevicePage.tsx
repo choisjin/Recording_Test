@@ -36,9 +36,6 @@ interface SerialPort {
   manufacturer: string;
   vid: string;
   pid: string;
-  auto_registered?: boolean;
-  auto_registered_id?: string;
-  auto_register_dismissed?: boolean;
 }
 
 // 디바이스 ID에서 prefix 추출 (Android_1 → Android, POWER_2 → POWER)
@@ -1294,18 +1291,7 @@ export default function DevicePage() {
 
   const serialColumns = [
     { title: t('device.port'), dataIndex: 'port', key: 'port', render: (v: string) => <Tag color="blue">{v}</Tag> },
-    {
-      title: t('common.description'),
-      dataIndex: 'description',
-      key: 'description',
-      render: (v: string, r: SerialPort) => (
-        <span>
-          {v}
-          {r.auto_registered && <Tag color="green" style={{ marginLeft: 6 }}>CANAT {t('device.autoRegistered') || '자동 등록됨'}</Tag>}
-          {r.auto_register_dismissed && <Tag color="orange" style={{ marginLeft: 6 }} title={t('device.canatDismissedHint') || ''}>{t('device.canatDismissed') || '자동 등록 차단됨'}</Tag>}
-        </span>
-      ),
-    },
+    { title: t('common.description'), dataIndex: 'description', key: 'description' },
     { title: t('device.manufacturer'), dataIndex: 'manufacturer', key: 'manufacturer' },
     { title: 'VID:PID', key: 'vidpid', render: (_: any, r: SerialPort) => r.vid ? `${r.vid}:${r.pid}` : '-' },
     {
@@ -1644,7 +1630,7 @@ export default function DevicePage() {
                         children: (
                           <>
                             <div style={{ marginBottom: 6, padding: '6px 10px', background: 'rgba(82,196,26,0.08)', borderLeft: '3px solid #52c41a', borderRadius: 3, fontSize: 11, color: '#888' }}>
-                              {t('device.canatAutoRegisterHint')}
+                              {t('device.canatHint')}
                             </div>
                             <Table
                               columns={serialColumns}
