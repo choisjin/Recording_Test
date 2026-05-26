@@ -38,6 +38,7 @@ interface SerialPort {
   pid: string;
   auto_registered?: boolean;
   auto_registered_id?: string;
+  auto_register_dismissed?: boolean;
 }
 
 // 디바이스 ID에서 prefix 추출 (Android_1 → Android, POWER_2 → POWER)
@@ -767,8 +768,12 @@ export default function DevicePage() {
     if (!ensurePrimaryProjectModel()) return;
     setConnecting(true);
     try {
-      const scanModuleConnType = getModuleConnectType(scanSelectedModule);
-      const result = await connectDevice('serial', port, baudrate, description, modalCategory, scanSelectedModule, scanModuleConnType);
+      // STM Virtual COM Port는 어떤 탭에서 등록하든 CANAT/115200 고정
+      const isCanat = (description || '').includes('STMicroelectronics Virtual COM Port');
+      const effectiveModule = isCanat ? 'CANAT' : scanSelectedModule;
+      const effectiveBaudrate = isCanat ? 115200 : baudrate;
+      const scanModuleConnType = getModuleConnectType(effectiveModule);
+      const result = await connectDevice('serial', port, effectiveBaudrate, description, modalCategory, effectiveModule, scanModuleConnType);
       message.success(result);
       closeAddModal();
     } catch (e: any) {
@@ -1297,6 +1302,7 @@ export default function DevicePage() {
         <span>
           {v}
           {r.auto_registered && <Tag color="green" style={{ marginLeft: 6 }}>CANAT {t('device.autoRegistered') || '자동 등록됨'}</Tag>}
+          {r.auto_register_dismissed && <Tag color="orange" style={{ marginLeft: 6 }} title={t('device.canatDismissedHint') || ''}>{t('device.canatDismissed') || '자동 등록 차단됨'}</Tag>}
         </span>
       ),
     },
