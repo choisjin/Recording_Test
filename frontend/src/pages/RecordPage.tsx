@@ -5480,8 +5480,50 @@ export default function RecordPage() {
         footer={
           <Space>
             <span style={{ fontSize: 11, color: subTextColor }}>
-              {t('record.imageTapSimLabel')}:&nbsp;{imageTapSimilarity.toFixed(2)}
+              {t('record.imageTapSimLabel')}:
             </span>
+            <InputNumber
+              size="small"
+              min={50}
+              max={100}
+              step={1}
+              value={Math.round(imageTapSimilarity * 100)}
+              disabled={imageTapBusy}
+              onChange={(v) => { if (typeof v === 'number') setImageTapSimilarity(v / 100); }}
+              suffix="%"
+              style={{ width: 80 }}
+            />
+            {imageTapEditIndex != null && (
+              <Button
+                type="primary"
+                disabled={imageTapBusy}
+                onClick={async () => {
+                  if (imageTapEditIndex == null) return;
+                  const editIdx = imageTapEditIndex;
+                  const newSim = imageTapSimilarity;
+                  setImageTapBusy(true);
+                  try {
+                    const updatedSteps = steps.map((s, i) =>
+                      i === editIdx
+                        ? { ...s, params: { ...s.params, similarity: newSim } }
+                        : s,
+                    );
+                    setSteps(updatedSteps);
+                    await syncFrontendStepsToBackend(updatedSteps);
+                    message.success(t('record.imageTapSimUpdated', { sim: newSim.toFixed(2) }));
+                    setImageTapModalOpen(false);
+                    setImageTapEditIndex(null);
+                  } catch (e: any) {
+                    const detail = e.response?.data?.detail;
+                    message.error(typeof detail === 'string' ? detail : t('record.imageTapFailed'));
+                  } finally {
+                    setImageTapBusy(false);
+                  }
+                }}
+              >
+                {t('record.imageTapApplySimOnly')}
+              </Button>
+            )}
             <Button disabled={imageTapBusy} onClick={() => { setImageTapModalOpen(false); setImageTapEditIndex(null); }}>
               {t('common.cancel')}
             </Button>
