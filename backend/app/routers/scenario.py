@@ -721,6 +721,127 @@ async def record_image_tap(req: ImageTapRequest):
     }
 
 
+class UpdateImageTapRequest(BaseModel):
+    """IMAGE_TAP 스텝의 템플릿 이미지를 새 크롭으로 교체.
+
+    프론트엔드 모달에 표시되던 현재 화면(image_base64)에서 사용자가 새 크롭 영역을
+    드래그하면 백엔드가:
+      1) 기존 템플릿 파일 삭제,
+      2) 새 크롭 영역을 PNG로 저장,
+      3) 새 템플릿 기준으로 매칭 위치/신뢰도 계산,
+      4) step.params(template, similarity, matched_x/y, template_width/height) 갱신.
+    실제 디바이스에 tap을 실행하지는 않는다 (편집 중 의도치 않은 입력 방지).
+    """
+    scenario_name: str
+    step_index: int
+    image_base64: str
+    crop: dict
+    similarity: float = 0.85
+    screen_type: Optional[str] = None
+
+
+@router.post("/record/update-image-tap")
+async def update_image_tap(req: UpdateImageTapRequest):
+    """기존 IMAGE_TAP 스텝의 템플릿 이미지/파라미터를 교체."""
+    import cv2
+    import numpy as np
+    import time as _time
+
+    scenario = await _resolve_scenario(req.scenario_name)
+    if req.step_index < 0 or req.step_index >= len(scenario.steps):
+        raise HTTPException(status_code=400, detail=f"Invalid step index: {req.step_index}")
+    step = scenario.steps[req.step_index]
+    if step.type != StepType.IMAGE_TAP:
+        raise HTTPException(status_code=400, detail="Step is not IMAGE_TAP")
+
+    # 1) base64 디코딩
+    try:
+        raw = req.image_base64
+        if raw.startswith("data:"):
+            raw = raw.split(",", 1)[1]
+        png_bytes = base64.b64decode(raw)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid base64 image data")
+
+    arr = np.frombuffer(png_bytes, dtype=np.uint8)
+    src_img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if src_img is None:
+        raise HTTPException(status_code=400, detail="Cannot decode screenshot")
+
+    cx = int(req.crop.get("x", 0))
+    cy = int(req.crop.get("y", 0))
+    cw = int(req.crop.get("width", 0))
+    ch = int(req.crop.get("height", 0))
+    if cw < 5 or ch < 5:
+        raise HTTPException(status_code=400, detail="Crop region too small (need >=5×5)")
+    ih, iw = src_img.shape[:2]
+    cx = max(0, min(cx, iw - 1))
+    cy = max(0, min(cy, ih - 1))
+    cw = max(1, min(cw, iw - cx))
+    ch = max(1, min(ch, ih - cy))
+    cropped = src_img[cy:cy + ch, cx:cx + cw]
+
+    # 2) template_match — 새 크롭 기준 매칭 위치/신뢰도 (같은 이미지에서 잘랐으므로 보통 1.0)
+    src_gray = cv2.cvtColor(src_img, cv2.COLOR_BGR2GRAY)
+    tpl_gray = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
+    if tpl_gray.shape[0] > src_gray.shape[0] or tpl_gray.shape[1] > src_gray.shape[1]:
+        raise HTTPException(status_code=400, detail="Crop is larger than the screenshot")
+    res = cv2.matchTemplate(src_gray, tpl_gray, cv2.TM_CCOEFF_NORMED)
+    _, max_val, _, max_loc = cv2.minMaxLoc(res)
+    confidence = round(float(max_val), 4)
+    threshold = max(0.0, min(1.0, float(req.similarity)))
+    match_x = int(max_loc[0])
+    match_y = int(max_loc[1])
+    center_x = match_x + cw // 2
+    center_y = match_y + ch // 2
+
+    # 3) 새 템플릿 파일 저장 — 타임스탬프로 캐시 충돌 방지
+    save_dir = SCREENSHOTS_DIR / scenario.name
+    save_dir.mkdir(parents=True, exist_ok=True)
+    ts = int(_time.time() * 1000) % 1000000
+    new_tpl = f"{scenario.name}_step_{step.id:03d}_imgtap_{ts}.png"
+    ok, buf = cv2.imencode(".png", cropped)
+    if not ok:
+        raise HTTPException(status_code=500, detail="Failed to encode template image")
+    (save_dir / new_tpl).write_bytes(buf.tobytes())
+
+    # 4) 이전 템플릿 파일 삭제 (이름이 같으면 건너뜀 — 타임스탬프로 충돌 거의 없음)
+    old_tpl = (step.params or {}).get("template")
+    if old_tpl and old_tpl != new_tpl:
+        old_path = save_dir / old_tpl
+        if old_path.exists():
+            old_path.unlink(missing_ok=True)
+
+    # 5) step.params 갱신
+    new_params = dict(step.params or {})
+    new_params.update({
+        "template": new_tpl,
+        "similarity": threshold,
+        "matched_x": center_x,
+        "matched_y": center_y,
+        "template_width": cw,
+        "template_height": ch,
+    })
+    if req.screen_type is not None:
+        new_params["screen_type"] = req.screen_type
+        step.screen_type = req.screen_type
+    step.params = new_params
+
+    await recording_svc.save_scenario(scenario)
+    return {
+        "status": "ok",
+        "step": step.model_dump(),
+        "match": {
+            "confidence": confidence,
+            "center_x": center_x,
+            "center_y": center_y,
+            "template_width": cw,
+            "template_height": ch,
+        },
+        "template_filename": new_tpl,
+    }
+
+
 class ImportStepsRequest(BaseModel):
     target_name: str
     source_name: str

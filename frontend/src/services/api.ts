@@ -136,6 +136,21 @@ export const scenarioApi = {
     delay_after_ms: delayAfterMs ?? 3000,
     description: description ?? '',
   }),
+  updateImageTap: (
+    scenarioName: string,
+    stepIndex: number,
+    imageBase64: string,
+    crop: { x: number; y: number; width: number; height: number },
+    similarity: number,
+    screenType?: string,
+  ) => api.post('/scenario/record/update-image-tap', {
+    scenario_name: scenarioName,
+    step_index: stepIndex,
+    image_base64: imageBase64,
+    crop,
+    similarity,
+    screen_type: screenType,
+  }),
   // Folders
   getFolders: () => api.get('/scenario/folders'),
   createFolder: (name: string) => api.post('/scenario/folders/create', { name }),

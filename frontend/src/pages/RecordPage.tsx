@@ -553,6 +553,8 @@ export default function RecordPage() {
   const imageTapDragRef = useRef<{ startX: number; startY: number; curX: number; curY: number; active: boolean }>({
     startX: 0, startY: 0, curX: 0, curY: 0, active: false,
   });
+  // 편집 모드 — null 이면 새 IMAGE_TAP 녹화, 숫자면 해당 인덱스 스텝의 템플릿만 교체.
+  const [imageTapEditIndex, setImageTapEditIndex] = useState<number | null>(null);
 
   // OCR ExtractRegion 크롭 모달
   const [ocrCropModalOpen, setOcrCropModalOpen] = useState(false);
@@ -2026,7 +2028,7 @@ export default function RecordPage() {
     });
   }, [drawImageTapCanvas]);
 
-  // 크롭 확정 → 백엔드에 image_base64 + crop + similarity 전송 → tap 실행 + 스텝 기록.
+  // 크롭 확정 → 편집 모드면 update, 아니면 record (tap 실행 + 스텝 추가).
   const imageTapMouseUp = useCallback(async () => {
     if (!imageTapDragRef.current.active) return;
     imageTapDragRef.current.active = false;
@@ -2051,34 +2053,60 @@ export default function RecordPage() {
       : ((isScreenHkmc || isScreenICAS || hasMultiDisplay) ? screenType : undefined);
     setImageTapBusy(true);
     try {
-      const res = await scenarioApi.recordImageTap(
-        scenarioName,
-        targetDev,
-        modalImage,
-        { x: rx, y: ry, width: rw, height: rh },
-        imageTapSimilarity,
-        screenTypeArg,
-        delayMs,
-        `image_tap (sim≥${imageTapSimilarity.toFixed(2)})`,
-      );
-      const newStep = res.data.step;
-      const match = res.data.match;
-      setSteps((prev) => [...prev, newStep]);
-      message.success(t('record.imageTapMatched', {
-        confidence: (match.confidence * 100).toFixed(1),
-        x: String(match.center_x),
-        y: String(match.center_y),
-      }));
-      setImageTapModalOpen(false);
-      // 액션 직후 화면 갱신
-      setTimeout(() => refreshScreenshot(), 200);
+      if (imageTapEditIndex != null) {
+        // 편집 모드 — 기존 스텝의 템플릿만 교체 (tap 실행하지 않음)
+        const res = await scenarioApi.updateImageTap(
+          scenarioName,
+          imageTapEditIndex,
+          modalImage,
+          { x: rx, y: ry, width: rw, height: rh },
+          imageTapSimilarity,
+          screenTypeArg,
+        );
+        const updated = res.data.step;
+        const editIdx = imageTapEditIndex;
+        const match = res.data.match;
+        // 이미지 캐시 무효화를 위해 _imageVer 증가
+        setSteps((prev) => prev.map((s, i) =>
+          i === editIdx ? { ...updated, _imageVer: (s._imageVer || 0) + 1 } : s,
+        ));
+        message.success(t('record.imageTapMatched', {
+          confidence: (match.confidence * 100).toFixed(1),
+          x: String(match.center_x),
+          y: String(match.center_y),
+        }));
+        setImageTapModalOpen(false);
+        setImageTapEditIndex(null);
+      } else {
+        const res = await scenarioApi.recordImageTap(
+          scenarioName,
+          targetDev,
+          modalImage,
+          { x: rx, y: ry, width: rw, height: rh },
+          imageTapSimilarity,
+          screenTypeArg,
+          delayMs,
+          `image_tap (sim≥${imageTapSimilarity.toFixed(2)})`,
+        );
+        const newStep = res.data.step;
+        const match = res.data.match;
+        setSteps((prev) => [...prev, newStep]);
+        message.success(t('record.imageTapMatched', {
+          confidence: (match.confidence * 100).toFixed(1),
+          x: String(match.center_x),
+          y: String(match.center_y),
+        }));
+        setImageTapModalOpen(false);
+        // 액션 직후 화면 갱신
+        setTimeout(() => refreshScreenshot(), 200);
+      }
     } catch (e: any) {
       const detail = e.response?.data?.detail;
       message.error(typeof detail === 'string' ? detail : t('record.imageTapFailed'));
     } finally {
       setImageTapBusy(false);
     }
-  }, [scenarioName, screenshotDeviceId, imageTapSimilarity, isScreenHkmc, isScreenICAS, hasMultiDisplay, screenType, delayMs, refreshScreenshot, t]);
+  }, [scenarioName, screenshotDeviceId, imageTapSimilarity, isScreenHkmc, isScreenICAS, hasMultiDisplay, screenType, delayMs, refreshScreenshot, t, imageTapEditIndex]);
 
   useEffect(() => {
     if (imageTapModalOpen) setTimeout(() => drawImageTapCanvas(), 50);
@@ -3661,6 +3689,35 @@ export default function RecordPage() {
 
   const openEditStepModal = useCallback(async (index: number) => {
     const s = steps[index];
+    // IMAGE_TAP — 현재 화면에서 다시 크롭하여 템플릿만 교체하는 전용 흐름
+    if (s.type === 'image_tap') {
+      if (!scenarioName) {
+        message.warning(t('record.recordingRequired'));
+        return;
+      }
+      // 스텝이 원래 가리키던 디바이스에서 화면을 다시 캡처 — 없으면 현재 선택
+      const target = s.device_id || screenshotDeviceId;
+      if (!target) {
+        message.warning(t('record.deviceRequired'));
+        return;
+      }
+      const shot = await snapshotScreenshot(target);
+      if (!shot) {
+        message.error(t('record.screenshotFailed'));
+        return;
+      }
+      await ensureSavedForImageOp();
+      imageTapTargetRef.current = target;
+      imageTapScreenshotRef.current = shot;
+      // 현재 스텝의 sim 값을 슬라이더에 반영
+      const curSim = Number(s.params?.similarity);
+      if (Number.isFinite(curSim) && curSim > 0 && curSim <= 1) {
+        setImageTapSimilarity(curSim);
+      }
+      setImageTapEditIndex(index);
+      setImageTapModalOpen(true);
+      return;
+    }
     // 스냅샷을 먼저 캡처 (모달 열기 전에 완료)
     editScreenshotRef.current = await snapshotScreenshot();
     setEditStepIndex(index);
@@ -3672,7 +3729,7 @@ export default function RecordPage() {
         setModuleDescription(res.data.module_description || '');
       }).catch(() => {});
     }
-  }, [steps, snapshotScreenshot]);
+  }, [steps, snapshotScreenshot, scenarioName, screenshotDeviceId, t]);
 
   const drawEditCanvas = useCallback(() => {
     const canvas = editCanvasRef.current;
@@ -5399,11 +5456,15 @@ export default function RecordPage() {
         </Splitter.Panel>
       </Splitter>
 
-      {/* Image Touch Modal — 녹화 중에만 열림. 크롭 → 백엔드 매칭 → tap 자동 실행. */}
+      {/* Image Touch Modal — 새 IMAGE_TAP 녹화 또는 기존 스텝 템플릿 교체 (편집). */}
       <Modal
-        title={t('record.imageTapModalTitle', { sim: imageTapSimilarity.toFixed(2) })}
+        title={
+          imageTapEditIndex != null
+            ? t('record.imageTapEditTitle', { index: imageTapEditIndex + 1, sim: imageTapSimilarity.toFixed(2) })
+            : t('record.imageTapModalTitle', { sim: imageTapSimilarity.toFixed(2) })
+        }
         open={imageTapModalOpen}
-        onCancel={() => setImageTapModalOpen(false)}
+        onCancel={() => { setImageTapModalOpen(false); setImageTapEditIndex(null); }}
         width="90vw"
         style={{ top: 20 }}
         maskClosable={!imageTapBusy}
@@ -5413,7 +5474,7 @@ export default function RecordPage() {
             <span style={{ fontSize: 11, color: subTextColor }}>
               {t('record.imageTapSimLabel')}:&nbsp;{imageTapSimilarity.toFixed(2)}
             </span>
-            <Button disabled={imageTapBusy} onClick={() => setImageTapModalOpen(false)}>
+            <Button disabled={imageTapBusy} onClick={() => { setImageTapModalOpen(false); setImageTapEditIndex(null); }}>
               {t('common.cancel')}
             </Button>
           </Space>
