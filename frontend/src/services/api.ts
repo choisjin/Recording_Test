@@ -143,6 +143,7 @@ export const scenarioApi = {
     crop: { x: number; y: number; width: number; height: number },
     similarity: number,
     screenType?: string,
+    deviceId?: string,
   ) => api.post('/scenario/record/update-image-tap', {
     scenario_name: scenarioName,
     step_index: stepIndex,
@@ -150,6 +151,7 @@ export const scenarioApi = {
     crop,
     similarity,
     screen_type: screenType,
+    device_id: deviceId,
   }),
   // Folders
   getFolders: () => api.get('/scenario/folders'),

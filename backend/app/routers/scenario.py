@@ -729,7 +729,8 @@ class UpdateImageTapRequest(BaseModel):
       1) 기존 템플릿 파일 삭제,
       2) 새 크롭 영역을 PNG로 저장,
       3) 새 템플릿 기준으로 매칭 위치/신뢰도 계산,
-      4) step.params(template, similarity, matched_x/y, template_width/height) 갱신.
+      4) step.params(template, similarity, matched_x/y, template_width/height) 갱신,
+      5) device_id가 주어지면 step.device_id / screenshot_device_id 도 덮어쓰기.
     실제 디바이스에 tap을 실행하지는 않는다 (편집 중 의도치 않은 입력 방지).
     """
     scenario_name: str
@@ -738,6 +739,7 @@ class UpdateImageTapRequest(BaseModel):
     crop: dict
     similarity: float = 0.85
     screen_type: Optional[str] = None
+    device_id: Optional[str] = None  # 현재 화면에서 선택된 디바이스 — 스텝의 device_id를 덮어씀
 
 
 @router.post("/record/update-image-tap")
@@ -826,6 +828,13 @@ async def update_image_tap(req: UpdateImageTapRequest):
         new_params["screen_type"] = req.screen_type
         step.screen_type = req.screen_type
     step.params = new_params
+
+    # device_id 덮어쓰기 — 편집 시 현재 화면에 선택된 디바이스로 갱신.
+    # screenshot_device_id 도 같은 디바이스로 맞춰 device_map 일관성 유지.
+    if req.device_id:
+        step.device_id = req.device_id
+        step.screenshot_device_id = req.device_id
+        # device_map에 별칭이 없다면 그대로 두고, 있다면 그대로 유지 (사용자가 명시적으로 매핑한 경우 보존).
 
     await recording_svc.save_scenario(scenario)
     return {

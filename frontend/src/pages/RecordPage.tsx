@@ -2054,7 +2054,7 @@ export default function RecordPage() {
     setImageTapBusy(true);
     try {
       if (imageTapEditIndex != null) {
-        // 편집 모드 — 기존 스텝의 템플릿만 교체 (tap 실행하지 않음)
+        // 편집 모드 — 기존 스텝의 템플릿/디바이스/screen_type 을 현재 선택 기준으로 덮어쓴다 (tap 실행 안 함)
         const res = await scenarioApi.updateImageTap(
           scenarioName,
           imageTapEditIndex,
@@ -2062,6 +2062,7 @@ export default function RecordPage() {
           { x: rx, y: ry, width: rw, height: rh },
           imageTapSimilarity,
           screenTypeArg,
+          targetDev,
         );
         const updated = res.data.step;
         const editIdx = imageTapEditIndex;
@@ -3695,8 +3696,9 @@ export default function RecordPage() {
         message.warning(t('record.recordingRequired'));
         return;
       }
-      // 스텝이 원래 가리키던 디바이스에서 화면을 다시 캡처 — 없으면 현재 선택
-      const target = s.device_id || screenshotDeviceId;
+      // 편집 시에는 디바이스 화면 패널에서 현재 선택된 디바이스로 덮어쓴다 — 원본 step.device_id 무시.
+      // 다른 디바이스에 같은 IMAGE_TAP을 적용하려는 의도 등 대응.
+      const target = screenshotDeviceId;
       if (!target) {
         message.warning(t('record.deviceRequired'));
         return;
