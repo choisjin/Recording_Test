@@ -2398,19 +2398,25 @@ export default function ScenarioPage() {
                             {!scenarios.includes(entry.name) && <Tag color="red">{t('scenario.missing')}</Tag>}
                             {hasAnyJump && <BranchesOutlined style={{ color: '#722ed1', fontSize: 11 }} />}
                             {isPlayingNow && <Tag color="blue" style={{ margin: 0, fontSize: 10 }}>▶</Tag>}
-                            <Tooltip title={t('scenario.playCountTooltip')}>
-                              <InputNumber
-                                size="small"
-                                min={1}
-                                max={999}
-                                value={entry.play_count ?? 1}
-                                onChange={(v) => updateGroupPlayCount(gName, idx, Number(v) || 1)}
-                                onClick={(e) => e.stopPropagation()}
-                                style={{ width: 56 }}
-                                disabled={playing}
-                              />
-                            </Tooltip>
-                            <span style={{ color: '#000', fontSize: 10 }}>{t('scenario.times')}</span>
+                            <span
+                              onClick={(e) => e.stopPropagation()}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onKeyDown={(e) => e.stopPropagation()}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}
+                            >
+                              <Tooltip title={t('scenario.playCountTooltip')}>
+                                <InputNumber
+                                  size="small"
+                                  min={1}
+                                  max={999}
+                                  value={entry.play_count ?? 1}
+                                  onChange={(v) => updateGroupPlayCount(gName, idx, Number(v) || 1)}
+                                  style={{ width: 56 }}
+                                  disabled={playing}
+                                />
+                              </Tooltip>
+                              <span style={{ color: '#000', fontSize: 10 }}>{t('scenario.times')}</span>
+                            </span>
                             <span style={{ color: '#000', fontSize: 10 }}>{steps.length} {t('scenario.steps')}</span>
                             <Button size="small" type="text" danger icon={<DeleteOutlined />}
                               onClick={(e) => { e.stopPropagation(); removeFromGroup(gName, idx); }}
@@ -3182,19 +3188,25 @@ export default function ScenarioPage() {
                           <span style={{ flex: 1, fontWeight: 500, color: '#000' }}>{entry.name}</span>
                           {!scenarios.includes(entry.name) && <Tag color="red">{t('scenario.missing')}</Tag>}
                           {hasAnyJump && <BranchesOutlined style={{ color: '#722ed1', fontSize: 11 }} />}
-                          <Tooltip title={t('scenario.playCountTooltip')}>
-                            <InputNumber
-                              size="small"
-                              min={1}
-                              max={999}
-                              value={entry.play_count ?? 1}
-                              onChange={(v) => updateGroupPlayCount(gName, idx, Number(v) || 1)}
-                              onClick={(e) => e.stopPropagation()}
-                              style={{ width: 56 }}
-                              disabled={playing}
-                            />
-                          </Tooltip>
-                          <span style={{ color: '#000', fontSize: 10 }}>{t('scenario.times')}</span>
+                          <span
+                            onClick={(e) => e.stopPropagation()}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => e.stopPropagation()}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}
+                          >
+                            <Tooltip title={t('scenario.playCountTooltip')}>
+                              <InputNumber
+                                size="small"
+                                min={1}
+                                max={999}
+                                value={entry.play_count ?? 1}
+                                onChange={(v) => updateGroupPlayCount(gName, idx, Number(v) || 1)}
+                                style={{ width: 56 }}
+                                disabled={playing}
+                              />
+                            </Tooltip>
+                            <span style={{ color: '#000', fontSize: 10 }}>{t('scenario.times')}</span>
+                          </span>
                           <span style={{ color: '#000', fontSize: 10 }}>{steps.length} {t('scenario.steps')}</span>
                           <Button size="small" type="text" danger icon={<DeleteOutlined />}
                             onClick={() => removeFromGroup(gName, idx)}
