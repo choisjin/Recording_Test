@@ -26,8 +26,11 @@ START_2 = 0xAA
 SENDER_ID = 100
 DEFAULT_UDP_PORT = 25000
 
-# CAN FD 송신 패킷 헤더 (legacy CCIC_BENCH/UDP_CANFD 동일)
-CANFD_SEND_PACKET_HEADER = [START_1, START_2, SENDER_ID, 0x00, 0x04, 0x30]
+# CAN FD 송신 패킷 헤더
+# cmd1 채널 번호: 0x02=CAN B, 0x03=CAN D(AVN/EXT), 0x04=CAN C(Cluster/FD)
+CANFD_SEND_PACKET_HEADER_AVN     = [START_1, START_2, SENDER_ID, 0x00, 0x03, 0x30]  # CAN D — AVN(EXT)
+CANFD_SEND_PACKET_HEADER_CLUSTER = [START_1, START_2, SENDER_ID, 0x00, 0x04, 0x30]  # CAN C — Cluster(FD)
+CANFD_SEND_PACKET_HEADER         = CANFD_SEND_PACKET_HEADER_CLUSTER  # 기존 기본값 유지 (STA/FD)
 # CAN FD INIT(OPEN write) 패킷 헤더. cmd=0x04 0x10 — 원본 UDP_CANFD_INIT()와 동일.
 CANFD_INIT_PACKET_HEADER = [START_1, START_2, SENDER_ID, 0x00, 0x04, 0x10]
 
@@ -311,11 +314,14 @@ class WoohyunBench:
         if ct == "FD":
             dlc = _payload_size_to_dlc(len(payload))
             can_frame = 0x80 | (dlc & 0x7F)
+            send_header = CANFD_SEND_PACKET_HEADER_CLUSTER  # 0x04 — CAN C (Cluster)
         elif ct == "EXT":
             dlc = _payload_size_to_dlc(len(payload))
             can_frame = 0x20 | (dlc & 0x7F)
+            send_header = CANFD_SEND_PACKET_HEADER_AVN      # 0x03 — CAN D (AVN)
         else:  # STA
             can_frame = len(payload) & 0x7F
+            send_header = CANFD_SEND_PACKET_HEADER_CLUSTER  # 기본: 0x04
 
         can_id_bytes = [
             (can_id >> 24) & 0xFF,
@@ -325,7 +331,7 @@ class WoohyunBench:
         ]
         data = can_id_bytes + [can_frame, 0x00] + list(payload)
         length_bytes = [(len(data) >> 8) & 0xFF, len(data) & 0xFF]
-        packet = bytearray(CANFD_SEND_PACKET_HEADER + length_bytes + data)
+        packet = bytearray(send_header + length_bytes + data)
         hex_str = ", ".join(hex(b) for b in packet)
 
         for i in range(max(1, repeat)):
