@@ -1487,9 +1487,48 @@ class DeviceManager:
         return lock
 
     async def scan_serial(self) -> list[dict]:
-        """Scan available serial ports."""
+        """Scan available serial ports.
+
+        스캔 결과 중 description에 'STMicroelectronics Virtual COM Port'가 포함된 포트는
+        해당 address가 아직 등록되지 않았다면 CANAT 보조 디바이스로 자동 등록한다.
+        - module: CANAT
+        - baudrate: 115200 고정
+        idempotent: 이미 같은 address(또는 module=CANAT + 같은 address)로 등록된 디바이스가
+        있으면 건너뛴다.
+        """
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _scan_serial_ports)
+        ports = await loop.run_in_executor(None, _scan_serial_ports)
+
+        STM_DESC_MARKER = "STMicroelectronics Virtual COM Port"
+        registered_addresses = {d.address for d in self._devices.values() if d.type == "serial"}
+        for p in ports:
+            desc = p.get("description") or ""
+            if STM_DESC_MARKER not in desc:
+                continue
+            addr = p.get("port")
+            if not addr or addr in registered_addresses:
+                p["auto_registered"] = False
+                continue
+            try:
+                dev = await self.add_serial_device(
+                    port=addr,
+                    baudrate=115200,
+                    name="",
+                    category="auxiliary",
+                    module="CANAT",
+                    connect_type="serial",
+                )
+                registered_addresses.add(addr)
+                p["auto_registered"] = True
+                p["auto_registered_id"] = dev.id
+                logger.info(
+                    "scan_serial: auto-registered CANAT device %s on %s (desc=%s)",
+                    dev.id, addr, desc,
+                )
+            except Exception as e:
+                logger.warning("scan_serial: auto-register CANAT failed for %s: %s", addr, e)
+                p["auto_registered"] = False
+        return ports
 
     def _com_port_exists(self, address: str) -> bool:
         """지정 COM 포트가 시스템에 물리적으로 존재하는지 확인.
