@@ -1503,77 +1503,102 @@ async def _run_play_group_job(data: dict):
                     break
                 entry = entries[sc_idx]
                 sc_name = entry["name"]
-                scen = await recording_service.load_scenario(sc_name)
-                publish_event({
-                    "type": "group_scenario_start",
-                    "scenario_name": sc_name,
-                    "scenario_index": sc_idx + 1,
-                    "total_scenarios": len(entries),
-                    "start_step": start_step,
-                })
-
                 step_jumps = entry.get("step_jumps", {})
-                step_jump_target = None
+                try:
+                    play_count = max(1, int(entry.get("play_count", 1)))
+                except (TypeError, ValueError):
+                    play_count = 1
 
-                _pending_seq = 0
-                async for item in playback_service.execute_scenario_stream(
-                    scen, verify=verify, repeat_index=iteration, start_step=start_step,
-                    device_map_override=device_map_override, group_scenario_index=sc_idx + 1,
-                ):
-                    if isinstance(item, dict) and item.get("_type") == "step_start":
-                        global_step_seq += 1
-                        _pending_seq = global_step_seq
-                        start_data = {k: v for k, v in item.items() if k != "_type"}
-                        start_data["step_id"] = _pending_seq
-                        start_data["description"] = f"[{sc_name}] {start_data.get('description', '')}" if start_data.get('description') else f"[{sc_name}]"
-                        # exec_seq: 그룹 전체에서 monotonic — 시나리오 간/조건부이동 revisit 모두 새 값.
-                        # 프론트가 step_id+repeat_index 대신 이것으로 dedup해서 revisit 행이 누락되지 않도록.
-                        start_data["exec_seq"] = _pending_seq
+                step_jump_target = None
+                # play_count > 1 시 멤버 단위 jump 판정에 쓸 마지막 sub-iter 상태
+                last_member_status = "pass"
+
+                for play_i in range(1, play_count + 1):
+                    if playback_service._should_stop:
+                        break
+                    scen = await recording_service.load_scenario(sc_name)
+                    # description prefix: play_count>1 이면 회차 표시 포함
+                    sc_prefix = f"[{sc_name} #{play_i}/{play_count}]" if play_count > 1 else f"[{sc_name}]"
+
+                    publish_event({
+                        "type": "group_scenario_start",
+                        "scenario_name": sc_name,
+                        "scenario_index": sc_idx + 1,
+                        "total_scenarios": len(entries),
+                        "start_step": start_step,
+                        "scenario_play_index": play_i,
+                        "scenario_play_total": play_count,
+                    })
+
+                    _pending_seq = 0
+                    # sub-iteration 종료 시점의 마지막 일반 step 상태 (runtime fail 제외)
+                    last_step_status = "pass"
+                    async for item in playback_service.execute_scenario_stream(
+                        scen, verify=verify, repeat_index=iteration, start_step=start_step,
+                        device_map_override=device_map_override, group_scenario_index=sc_idx + 1,
+                    ):
+                        if isinstance(item, dict) and item.get("_type") == "step_start":
+                            global_step_seq += 1
+                            _pending_seq = global_step_seq
+                            start_data = {k: v for k, v in item.items() if k != "_type"}
+                            start_data["step_id"] = _pending_seq
+                            start_data["description"] = f"{sc_prefix} {start_data.get('description', '')}" if start_data.get('description') else sc_prefix
+                            # exec_seq: 그룹 전체에서 monotonic — 시나리오 간/조건부이동 revisit 모두 새 값.
+                            # 프론트가 step_id+repeat_index 대신 이것으로 dedup해서 revisit 행이 누락되지 않도록.
+                            start_data["exec_seq"] = _pending_seq
+                            publish_event({
+                                "type": "step_start",
+                                "data": start_data,
+                                "iteration": iteration,
+                                "scenario_name": sc_name,
+                            })
+                            continue
+                        step_result = item
+                        original_step_id = step_result.step_id
+                        is_runtime_fail = step_result.parent_step_id is not None
+                        if is_runtime_fail:
+                            # parent를 직전 일반 스텝의 _pending_seq로 remap, step_id(9000+)는 보존
+                            step_result.parent_step_id = _pending_seq
+                        else:
+                            step_result.step_id = _pending_seq
+                        step_result.description = f"{sc_prefix} {step_result.description}" if step_result.description else sc_prefix
+
+                        unified_result.step_results.append(step_result)
+                        if step_result.status == "pass":
+                            unified_result.passed_steps += 1
+                        elif step_result.status == "fail":
+                            unified_result.failed_steps += 1
+                        else:
+                            unified_result.error_steps += 1
+                        sr_data = step_result.model_dump()
+                        sr_data["exec_seq"] = _pending_seq
                         publish_event({
-                            "type": "step_start",
-                            "data": start_data,
+                            "type": "step_result",
+                            "data": sr_data,
                             "iteration": iteration,
                             "scenario_name": sc_name,
                         })
-                        continue
-                    step_result = item
-                    original_step_id = step_result.step_id
-                    is_runtime_fail = step_result.parent_step_id is not None
-                    if is_runtime_fail:
-                        # parent를 직전 일반 스텝의 _pending_seq로 remap, step_id(9000+)는 보존
-                        step_result.parent_step_id = _pending_seq
-                    else:
-                        step_result.step_id = _pending_seq
-                    step_result.description = f"[{sc_name}] {step_result.description}" if step_result.description else f"[{sc_name}]"
 
-                    unified_result.step_results.append(step_result)
-                    if step_result.status == "pass":
-                        unified_result.passed_steps += 1
-                    elif step_result.status == "fail":
-                        unified_result.failed_steps += 1
-                    else:
-                        unified_result.error_steps += 1
-                    sr_data = step_result.model_dump()
-                    sr_data["exec_seq"] = _pending_seq
-                    publish_event({
-                        "type": "step_result",
-                        "data": sr_data,
-                        "iteration": iteration,
-                        "scenario_name": sc_name,
-                    })
+                        # step_jump는 일반 스텝에만 적용 (인라인 fail에는 무의미)
+                        if is_runtime_fail:
+                            continue
+                        last_step_status = step_result.status
+                        sj = step_jumps.get(str(original_step_id))
+                        if sj:
+                            if step_result.status == "pass":
+                                sj_jump = sj.get("on_pass_goto")
+                            else:
+                                sj_jump = sj.get("on_fail_goto")
+                            if sj_jump is not None:
+                                step_jump_target = sj_jump
+                                break
 
-                    # step_jump는 일반 스텝에만 적용 (인라인 fail에는 무의미)
-                    if is_runtime_fail:
-                        continue
-                    sj = step_jumps.get(str(original_step_id))
-                    if sj:
-                        if step_result.status == "pass":
-                            sj_jump = sj.get("on_pass_goto")
-                        else:
-                            sj_jump = sj.get("on_fail_goto")
-                        if sj_jump is not None:
-                            step_jump_target = sj_jump
-                            break
+                    # step_jump 발사 시 남은 sub-iteration 즉시 종료
+                    if step_jump_target is not None:
+                        break
+                    last_member_status = last_step_status
+                    # 2회차 이후 sub-iter는 항상 처음 스텝부터 — 첫 sub-iter에 적용된 start_step 소비
+                    start_step = 0
 
                 if playback_service._should_stop:
                     break
@@ -1585,9 +1610,7 @@ async def _run_play_group_job(data: dict):
                 if step_jump_target is not None:
                     jump = step_jump_target
                 else:
-                    last_sr = unified_result.step_results[-1] if unified_result.step_results else None
-                    last_status = last_sr.status if last_sr else "pass"
-                    if last_status == "pass":
+                    if last_member_status == "pass":
                         jump = entry.get("on_pass_goto")
                     else:
                         jump = entry.get("on_fail_goto")

@@ -541,9 +541,11 @@ class RecordingService:
     def _load_groups(self) -> dict[str, list[dict]]:
         """Load groups, auto-migrating old formats to new dict-based jump format.
 
-        Current format: on_pass_goto / on_fail_goto = {scenario: int, step: int} | null
+        Current format: on_pass_goto / on_fail_goto = {scenario: int, step: int} | null,
+                        play_count = int (>=1, default 1)
         Old format v1: list[str] (just scenario names)
         Old format v2: on_pass_goto / on_fail_goto = int | null (scenario index only)
+        Old format v3: play_count 필드 부재
         """
         raw = self._load_groups_raw()
         migrated = False
@@ -551,17 +553,24 @@ class RecordingService:
         for gname, members in raw.items():
             if isinstance(members, list) and len(members) > 0 and isinstance(members[0], str):
                 # Old format v1: list of scenario names
-                result[gname] = [{"name": m, "on_pass_goto": None, "on_fail_goto": None} for m in members]
+                result[gname] = [
+                    {"name": m, "on_pass_goto": None, "on_fail_goto": None, "play_count": 1}
+                    for m in members
+                ]
                 migrated = True
             else:
                 entries = members if isinstance(members, list) else []
-                # Migrate v2 integer jumps to dict format
                 for entry in entries:
+                    # v2 → v3: 정수 jump를 dict로
                     for key in ("on_pass_goto", "on_fail_goto"):
                         val = entry.get(key)
                         if isinstance(val, int):
                             entry[key] = {"scenario": val, "step": 0}
                             migrated = True
+                    # v3 → 현재: play_count 필드 보충
+                    if "play_count" not in entry:
+                        entry["play_count"] = 1
+                        migrated = True
                 result[gname] = entries
         if migrated:
             self._save_groups(result)
@@ -612,7 +621,12 @@ class RecordingService:
         if group_name not in groups:
             groups[group_name] = []
         # 동일 시나리오 중복 추가 허용
-        groups[group_name].append({"name": scenario_name, "on_pass_goto": None, "on_fail_goto": None})
+        groups[group_name].append({
+            "name": scenario_name,
+            "on_pass_goto": None,
+            "on_fail_goto": None,
+            "play_count": 1,
+        })
         self._save_groups(groups)
         return groups
 
@@ -688,6 +702,20 @@ class RecordingService:
         if group_name in groups and 0 <= index < len(groups[group_name]):
             groups[group_name][index]["on_pass_goto"] = on_pass_goto
             groups[group_name][index]["on_fail_goto"] = on_fail_goto
+        self._save_groups(groups)
+        return groups
+
+    def update_group_play_count(self, group_name: str, index: int, play_count: int) -> dict[str, list[dict]]:
+        """Update per-member play count for a scenario in a group."""
+        try:
+            pc = int(play_count)
+        except (TypeError, ValueError):
+            pc = 1
+        if pc < 1:
+            pc = 1
+        groups = self._load_groups()
+        if group_name in groups and 0 <= index < len(groups[group_name]):
+            groups[group_name][index]["play_count"] = pc
         self._save_groups(groups)
         return groups
 

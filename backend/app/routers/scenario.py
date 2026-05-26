@@ -8,7 +8,7 @@ from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
@@ -1281,6 +1281,18 @@ async def update_group_step_jumps(group_name: str, req: UpdateGroupStepJumpsRequ
     groups = recording_svc.update_group_step_jumps(
         group_name, req.index, req.step_id, pass_goto, fail_goto
     )
+    return {"groups": groups}
+
+
+class UpdateGroupPlayCountRequest(BaseModel):
+    index: int
+    play_count: int = Field(ge=1, le=999)
+
+
+@router.post("/groups/{group_name}/play-count")
+async def update_group_play_count(group_name: str, req: UpdateGroupPlayCountRequest):
+    """Update per-member play count for a scenario in a group."""
+    groups = recording_svc.update_group_play_count(group_name, req.index, req.play_count)
     return {"groups": groups}
 
 

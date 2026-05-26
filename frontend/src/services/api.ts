@@ -180,6 +180,8 @@ export const scenarioApi = {
     api.post(`/scenario/groups/${groupName}/jumps`, { index, on_pass_goto, on_fail_goto }),
   updateGroupStepJumps: (groupName: string, index: number, stepId: number, on_pass_goto: { scenario: number; step: number } | null, on_fail_goto: { scenario: number; step: number } | null) =>
     api.post(`/scenario/groups/${groupName}/step-jumps`, { index, step_id: stepId, on_pass_goto, on_fail_goto }),
+  updateGroupPlayCount: (groupName: string, index: number, playCount: number) =>
+    api.post(`/scenario/groups/${groupName}/play-count`, { index, play_count: playCount }),
   // Copy
   copy: (name: string, targetName: string) =>
     api.post(`/scenario/copy/${name}`, { target_name: targetName }),
