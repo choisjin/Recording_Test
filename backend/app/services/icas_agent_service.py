@@ -40,25 +40,12 @@ RELEASE_KEY = 0x42
 # ── ICAS 하드키 테이블 ──
 # class: "short" (13B 프레임) / "long" (15B 프레임)
 # key: KEY_CODE 바이트 (ksend 프레임의 키 위치)
-# behavior: long class에서만 의미 — POWER 키의 3가지 동작 분기.
-#   "power" → 1초 hold + ABT power extras (전원 토글)
-#   "mute"  → 0.5초 hold, extras 미송신 (HU가 mute로 해석)
-#   "reset" → 11초 hold, extras 미송신 (HU가 manual reset으로 해석)
 ICAS_KEYS: dict[str, dict] = {
-    "VOLUME_UP":     {"class": "short", "key": 0x10},
-    "VOLUME_DOWN":   {"class": "short", "key": 0x11},
-    "MUTE":          {"class": "short", "key": 0x20},
-    "HOME":          {"class": "long",  "key": 0x66},
-    "POWER":         {"class": "long",  "key": 0x38, "behavior": "power"},
-    "MUTE_BY_POWER": {"class": "long",  "key": 0x38, "behavior": "mute"},
-    "MANUAL_RESET":  {"class": "long",  "key": 0x38, "behavior": "reset"},
-}
-
-# behavior별 기본 hold (ms) — 사용자가 hold_ms를 지정하지 않을 때 적용
-POWER_BEHAVIOR_DEFAULT_HOLD_MS: dict[str, int] = {
-    "mute":  500,
-    "power": 1500,
-    "reset": 11000,
+    "VOLUME_UP":   {"class": "short", "key": 0x10},
+    "VOLUME_DOWN": {"class": "short", "key": 0x11},
+    "MUTE":        {"class": "short", "key": 0x20},
+    "HOME":        {"class": "long",  "key": 0x66},
+    "POWER":       {"class": "long",  "key": 0x38},
 }
 
 
@@ -744,7 +731,7 @@ class ICASAgentService:
             return None
         merged = dict(base)
         ov = self._key_overrides.get(key_name) or {}
-        for k in ("class", "key", "behavior"):
+        for k in ("class", "key"):
             if k in ov:
                 merged[k] = ov[k]
         return merged
@@ -763,18 +750,12 @@ class ICASAgentService:
 
         ICAS는 press→release 시퀀스가 기본. LONG은 press→대기→release 패턴으로 처리.
         hold_ms: LONG_KEY일 때 press↔release 사이 hold 시간(ms). None이면 기본 1000ms.
-
-        POWER 계열(behavior 필드)은 hold 시간과 추가 메시지 송신 여부가 분기됨:
-          - behavior="mute":  ~0.5s hold,  extras 미송신 (HU가 짧은 press를 mute로 해석)
-          - behavior="power": ~1.5s hold,  ABT power extras 송신 (전원 토글)
-          - behavior="reset": ~11s hold,   extras 미송신 (HU가 manual reset으로 해석)
         """
         info = self.resolve_key(key_name)
         if not info:
             raise ValueError(f"Unknown ICAS key: {key_name}")
         key_code = int(info["key"])
         klass = info.get("class", "short")
-        behavior = info.get("behavior")  # "mute" | "power" | "reset" | None
 
         # press / release — Short class는 release 시 key=0x00, state=0x00 (ref RemoteController:525)
         # Long class는 key_code 유지, state만 0x00 + tail 변경 (ref line 562)
@@ -783,22 +764,17 @@ class ICASAgentService:
         release = (self._hkey_short_frame(0x00, 0x00) if klass == "short"
                    else self._hkey_long_frame(key_code, 0x00))
 
-        # hold 시간 결정 — behavior가 있으면 그 기본값을, 없으면 sub_cmd로 판정
-        if behavior in POWER_BEHAVIOR_DEFAULT_HOLD_MS:
-            eff_hold_ms = hold_ms if hold_ms is not None else POWER_BEHAVIOR_DEFAULT_HOLD_MS[behavior]
-            hold_s = max(0.05, eff_hold_ms / 1000.0)
-        elif sub_cmd == LONG_KEY:
+        if sub_cmd == LONG_KEY:
             hold_s = max(0.05, (hold_ms / 1000.0)) if hold_ms is not None else 1.0
         else:
             hold_s = 0.1
-
         self._ksend_many([press], interval_s=0)
         time.sleep(hold_s)
         self._ksend_many([release], interval_s=0)
 
-        # POWER 전용 추가 커맨드 — behavior="power"일 때만 송신.
-        # mute/reset은 HU 펌웨어가 hold 시간으로 자체 해석하므로 extras 불필요.
-        if behavior == "power":
+        # POWER 전용 추가 커맨드 (ref ABTpower: command03~05)
+        # HU의 power state 전환을 위한 별도 주소(src2/dst2) 메시지
+        if key_name == "POWER":
             self._ksend_power_extra()
 
 
