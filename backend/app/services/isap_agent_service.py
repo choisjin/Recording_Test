@@ -161,8 +161,11 @@ ISAP_KEYS: dict[str, dict] = {
     "SWRC_SEEK_UP":     {"cmd": CMD_SWRC, "key": 0x0F},
     "SWRC_SEEK_DOWN":   {"cmd": CMD_SWRC, "key": 0x10},
     "SWRC_CUSTOM":      {"cmd": CMD_SWRC, "key": 0x11},
-    "SWRC_CUSTOM_2":    {"cmd": CMD_SWRC, "key": 0x12},
-    "SWRC_CUSTOM_3":    {"cmd": CMD_SWRC, "key": 0x13},
+    # 두 번째 SWRC CUSTOM 키값 탐색용 임시 후보 (스펙 미확인)
+    "SWRC_TEST1":       {"cmd": CMD_SWRC, "key": 0x27},  # END(0x26) 직후 - 전화 클러스터 확장
+    "SWRC_TEST2":       {"cmd": CMD_SWRC, "key": 0x14},  # MKBD_HOME 위치 매핑
+    "SWRC_TEST3":       {"cmd": CMD_SWRC, "key": 0x21},  # PTT(0x22) 직전
+    "SWRC_TEST4":       {"cmd": CMD_SWRC, "key": 0x29},  # MKBD_PHONE 위치 매핑
     "SWRC_SEND":        {"cmd": CMD_SWRC, "key": 0x25},
     "SWRC_END":         {"cmd": CMD_SWRC, "key": 0x26},
     "SWRC_VOLUME":      {"cmd": CMD_SWRC, "key": 0x01, "dial": True},
