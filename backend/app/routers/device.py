@@ -1693,8 +1693,9 @@ async def list_icas_keys(device_id: Optional[str] = None):
         klass = ov.get("class", info.get("class", "short"))
         key_code = ov.get("key", info["key"])
         visible = ov.get("visible", True)
+        behavior = ov.get("behavior", info.get("behavior"))  # mute|power|reset|None
         # hkmc/isap 구조와 호환: cmd=0(더미), is_dial=False
-        keys.append({
+        entry = {
             "name": name,
             "group": group,
             "cmd": 0,
@@ -1702,7 +1703,10 @@ async def list_icas_keys(device_id: Optional[str] = None):
             "class": klass,
             "is_dial": False,
             "visible": visible,
-        })
+        }
+        if behavior:
+            entry["behavior"] = behavior
+        keys.append(entry)
     return {
         "keys": keys,
         "sub_commands": {
@@ -1742,6 +1746,8 @@ async def update_icas_keys(req: UpdateIcasKeysRequest):
                 pass
         if "visible" in ov and ov["visible"] is not None:
             entry["visible"] = bool(ov["visible"])
+        if "behavior" in ov and ov["behavior"] in ("mute", "power", "reset"):
+            entry["behavior"] = ov["behavior"]
         if entry:
             clean[name] = entry
     if clean:
@@ -1770,7 +1776,8 @@ async def list_mib_keys(device_id: Optional[str] = None):
         klass = ov.get("class", info.get("class", "short"))
         key_code = ov.get("key", info["key"])
         visible = ov.get("visible", True)
-        keys.append({
+        behavior = ov.get("behavior", info.get("behavior"))  # mute|power|reset|None
+        entry = {
             "name": name,
             "group": "MIB",
             "cmd": 0,
@@ -1778,7 +1785,10 @@ async def list_mib_keys(device_id: Optional[str] = None):
             "class": klass,
             "is_dial": False,
             "visible": visible,
-        })
+        }
+        if behavior:
+            entry["behavior"] = behavior
+        keys.append(entry)
     return {
         "keys": keys,
         "sub_commands": {
@@ -1818,6 +1828,8 @@ async def update_mib_keys(req: UpdateMibKeysRequest):
                 pass
         if "visible" in ov and ov["visible"] is not None:
             entry["visible"] = bool(ov["visible"])
+        if "behavior" in ov and ov["behavior"] in ("mute", "power", "reset"):
+            entry["behavior"] = ov["behavior"]
         if entry:
             clean[name] = entry
     if clean:

@@ -50,13 +50,27 @@ RELEASE_KEY = 0x42
 #   VOLUME_UP press: 06 48 01 01 00 82        → volume frame, delta=+1 (0x01)
 #   VOLUME_DOWN press: 06 48 01 ff 00 82      → volume frame, delta=-1 (0xFF signed)
 #   VOLUME release:  06 48 01 00 [delta] 82   → delta가 byte 4로 이동 (swap)
+#
+# behavior (long class에서만 의미) — POWER 키의 3가지 동작 분기:
+#   "power" → 1.5초 hold + ABT power extras (전원 토글)
+#   "mute"  → 0.5초 hold, extras 미송신 (HU가 mute로 해석)
+#   "reset" → 11초 hold, extras 미송신 (HU가 manual reset으로 해석)
 MIB_KEYS: dict[str, dict] = {
     # VOLUME 전용 frame: byte 11=delta(press)/0(release), byte 12=0(press)/delta(release)
-    "VOLUME_UP":   {"class": "volume", "key": 0x01},   # +1
-    "VOLUME_DOWN": {"class": "volume", "key": 0xFF},   # -1 (signed)
-    "MUTE":        {"class": "short",  "key": 0x20},
-    "HOME":        {"class": "long",   "key": 0x66, "category": 0x30},
-    "POWER":       {"class": "long",   "key": 0x38, "category": 0x30},
+    "VOLUME_UP":     {"class": "volume", "key": 0x01},   # +1
+    "VOLUME_DOWN":   {"class": "volume", "key": 0xFF},   # -1 (signed)
+    "MUTE":          {"class": "short",  "key": 0x20},
+    "HOME":          {"class": "long",   "key": 0x66, "category": 0x30},
+    "POWER":         {"class": "long",   "key": 0x38, "category": 0x30, "behavior": "power"},
+    "MUTE_BY_POWER": {"class": "long",   "key": 0x38, "category": 0x30, "behavior": "mute"},
+    "MANUAL_RESET":  {"class": "long",   "key": 0x38, "category": 0x30, "behavior": "reset"},
+}
+
+# behavior별 기본 hold (ms) — 사용자가 hold_ms를 지정하지 않을 때 적용
+POWER_BEHAVIOR_DEFAULT_HOLD_MS: dict[str, int] = {
+    "mute":  500,
+    "power": 1500,
+    "reset": 11000,
 }
 
 
@@ -1146,14 +1160,15 @@ class MIBAgentService:
     def resolve_key(self, key_name: str) -> Optional[dict]:
         """키 스펙 반환 (override 병합).
 
-        반환 dict 필드: class("short"|"long"), key(int), category(int, long 전용)
+        반환 dict 필드: class("short"|"long"), key(int), category(int, long 전용),
+        behavior("mute"|"power"|"reset", long 전용)
         """
         base = MIB_KEYS.get(key_name)
         if not base:
             return None
         merged = dict(base)
         ov = self._key_overrides.get(key_name) or {}
-        for k in ("class", "key", "category"):
+        for k in ("class", "key", "category", "behavior"):
             if k in ov:
                 merged[k] = ov[k]
         return merged
@@ -1181,6 +1196,7 @@ class MIBAgentService:
         klass = info.get("class", "short")
         # long frame의 category(byte 9): HOME/POWER=0x30
         category = int(info.get("category", 0x30))
+        behavior = info.get("behavior")  # "mute" | "power" | "reset" | None
 
         # frame 빌드: class별 분기
         #   short: 13B (MUTE) — release 시 key=0x00, state=0x00
@@ -1196,19 +1212,22 @@ class MIBAgentService:
             press = self._hkey_long_frame(key_code, 0x01, category)
             release = self._hkey_long_frame(key_code, 0x00, category)
 
-        if sub_cmd == LONG_KEY:
+        # hold 시간 결정 — POWER 계열 behavior가 있으면 그 기본값을, 없으면 sub_cmd로 판정
+        if behavior in POWER_BEHAVIOR_DEFAULT_HOLD_MS:
+            eff_hold_ms = hold_ms if hold_ms is not None else POWER_BEHAVIOR_DEFAULT_HOLD_MS[behavior]
+            hold_s = max(0.05, eff_hold_ms / 1000.0)
+        elif sub_cmd == LONG_KEY:
             hold_s = max(0.05, (hold_ms / 1000.0)) if hold_ms is not None else 1.0
         else:
             hold_s = 0.1
+
         self._ksend_many([press], interval_s=0)
         time.sleep(hold_s)
         self._ksend_many([release], interval_s=0)
 
-        # market별 추가 동작 분기
-        if key_name == "POWER":
-            # POWER 전용 추가 커맨드 (ref ABTpower: command03~05)
-            # HU의 power state 전환을 위한 별도 주소(src2/dst2) 메시지
-            # market: EU/NAR/CN은 legacy hex addr, else는 bit-position form
+        # POWER 전용 추가 커맨드 — behavior="power"일 때만 송신.
+        # mute/reset은 HU 펌웨어가 hold 시간으로 자체 해석하므로 extras 불필요.
+        if behavior == "power":
             self._ksend_power_extra()
             logger.debug(
                 "MIB send_key_by_name(POWER) complete [market=%s src=%s dst=%s]",
