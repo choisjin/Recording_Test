@@ -747,6 +747,20 @@ class RecordingService:
                     if old_ci.exists():
                         shutil.copy2(str(old_ci), str(new_ci))
                     ci.image = new_ci_name
+            # IMAGE_TAP 템플릿 이미지도 복사 (params.template)
+            if step.type == StepType.IMAGE_TAP and step.params:
+                tpl = step.params.get("template")
+                if tpl:
+                    old_tpl = src_ss_dir / tpl
+                    stem = Path(tpl).stem
+                    ext = Path(tpl).suffix or ".png"
+                    m = re.search(r'_step_\d+(.*)', stem)
+                    suffix = m.group(1) if m else "_imgtap"
+                    new_tpl_name = f"{target_name}_step_{step.id:03d}{suffix}{ext}"
+                    new_tpl = tgt_ss_dir / new_tpl_name
+                    if old_tpl.exists():
+                        shutil.copy2(str(old_tpl), str(new_tpl))
+                    step.params["template"] = new_tpl_name
 
         await self.save_scenario(source)
         return source
@@ -890,6 +904,13 @@ class RecordingService:
                                     ci["image"] = ci["image"].replace(orig_name, final_name, 1)
                                 new_imgs.append(ci)
                             step["expected_images"] = new_imgs
+                            # IMAGE_TAP 템플릿 파일명도 함께 갱신
+                            if step.get("type") == "image_tap":
+                                params = step.get("params") or {}
+                                tpl = params.get("template")
+                                if tpl:
+                                    params["template"] = tpl.replace(orig_name, final_name, 1)
+                                    step["params"] = params
 
                     out_path = SCENARIOS_DIR / f"{final_name}.json"
                     out_path.write_text(json.dumps(sdata, ensure_ascii=False, indent=2), encoding="utf-8")

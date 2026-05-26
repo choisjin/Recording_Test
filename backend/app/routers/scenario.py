@@ -781,6 +781,21 @@ async def import_steps(req: ImportStepsRequest):
                 ci["image"] = new_ci_name
             new_crops.append(ci)
         step_data["expected_images"] = new_crops
+        # IMAGE_TAP 템플릿 이미지 복사 (params.template)
+        if step_data.get("type") == "image_tap":
+            params = step_data.get("params") or {}
+            tpl = params.get("template")
+            if tpl:
+                old_tpl = src_ss_dir / tpl
+                new_tpl_name = f"{req.target_name}_step_{new_id:03d}_imgtap_{ts}.png"
+                new_tpl = tgt_ss_dir / new_tpl_name
+                if old_tpl.exists():
+                    shutil.copy2(str(old_tpl), str(new_tpl))
+                    if is_move:
+                        src_images_to_delete.append(old_tpl)
+                params["template"] = new_tpl_name
+                step_data["params"] = params
+                ts += 1
         step_data["id"] = new_id
         # goto는 초기화 (다른 시나리오에서 온 경우 의미 없음)
         step_data["on_pass_goto"] = None
