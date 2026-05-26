@@ -1579,10 +1579,18 @@ export default function DevicePage() {
                       });
                     }
 
-                    if (scanItemCategory('serial') === modalCategory && scannedSerial.length > 0) {
+                    // STM Virtual COM Port(CANAT)는 별도 탭으로 분리 — 일반 시리얼 탭에는 노출 안 함
+                    const canatPorts = scannedSerial.filter(p =>
+                      (p.description || '').includes('STMicroelectronics Virtual COM Port')
+                    );
+                    const otherSerialPorts = scannedSerial.filter(p =>
+                      !(p.description || '').includes('STMicroelectronics Virtual COM Port')
+                    );
+
+                    if (scanItemCategory('serial') === modalCategory && otherSerialPorts.length > 0) {
                       scanTabs.push({
                         key: 'serial',
-                        label: <span>{t('device.detectedSerial')} <Tag style={{ marginLeft: 3 }}>{scannedSerial.length}</Tag></span>,
+                        label: <span>{t('device.detectedSerial')} <Tag style={{ marginLeft: 3 }}>{otherSerialPorts.length}</Tag></span>,
                         children: (
                           <>
                             {modalCategory === 'auxiliary' && (
@@ -1613,10 +1621,31 @@ export default function DevicePage() {
                             )}
                             <Table
                               columns={serialColumns}
-                              dataSource={scannedSerial}
+                              dataSource={otherSerialPorts}
                               rowKey="port"
                               size="small"
-                              pagination={scannedSerial.length > PAGE_SIZE ? { pageSize: PAGE_SIZE, size: 'small' } : false}
+                              pagination={otherSerialPorts.length > PAGE_SIZE ? { pageSize: PAGE_SIZE, size: 'small' } : false}
+                            />
+                          </>
+                        ),
+                      });
+                    }
+
+                    if (scanItemCategory('serial') === modalCategory && canatPorts.length > 0) {
+                      scanTabs.push({
+                        key: 'canat',
+                        label: <span>{t('device.detectedCanat')} <Tag color="green" style={{ marginLeft: 3 }}>{canatPorts.length}</Tag></span>,
+                        children: (
+                          <>
+                            <div style={{ marginBottom: 6, padding: '6px 10px', background: 'rgba(82,196,26,0.08)', borderLeft: '3px solid #52c41a', borderRadius: 3, fontSize: 11, color: '#888' }}>
+                              {t('device.canatAutoRegisterHint')}
+                            </div>
+                            <Table
+                              columns={serialColumns}
+                              dataSource={canatPorts}
+                              rowKey="port"
+                              size="small"
+                              pagination={canatPorts.length > PAGE_SIZE ? { pageSize: PAGE_SIZE, size: 'small' } : false}
                             />
                           </>
                         ),
