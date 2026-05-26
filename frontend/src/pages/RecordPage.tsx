@@ -5907,6 +5907,9 @@ export default function RecordPage() {
           }
 
           if (step.type === 'hkmc_key' || step.type === 'icas_key') {
+            const isLongKey = Number(editStepParams.sub_cmd) === HKMC_LONG_KEY;
+            // hold_ms는 mib/icas agent (icas_key 스텝)에서만 효과 있음 — hkmc_key(isap)는 무시됨
+            const showHoldMs = step.type === 'icas_key' && isLongKey;
             return (
               <div>
                 <div style={{ marginBottom: 6, fontWeight: 600 }}>{t('record.hkmcKey')}</div>
@@ -5920,6 +5923,28 @@ export default function RecordPage() {
                     value: k.name,
                   }))}
                 />
+                {showHoldMs && (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ marginBottom: 6, fontWeight: 600 }}>
+                      {t('record.longKeyHoldMs')}
+                      <Tag color="volcano" style={{ marginLeft: 6 }}>LONG</Tag>
+                    </div>
+                    <Space>
+                      <InputNumber
+                        min={50}
+                        max={10000}
+                        step={100}
+                        value={editStepParams.hold_ms ?? 1000}
+                        onChange={(v) => setEditStepParams({ ...editStepParams, hold_ms: v ?? 1000 })}
+                        style={{ width: 160 }}
+                      />
+                      <span style={{ color: subTextColor }}>ms</span>
+                    </Space>
+                    <div style={{ marginTop: 4, fontSize: 11, color: subTextColor }}>
+                      {t('record.longKeyHoldMsHint')}
+                    </div>
+                  </div>
+                )}
               </div>
             );
           }

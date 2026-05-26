@@ -2506,13 +2506,20 @@ class PlaybackService:
                     elif step.type == StepType.ICAS_KEY:
                         key_name = params.get("key_name")
                         direction = params.get("direction")
+                        # LONG_KEY일 때만 의미 있음 — None이면 기본 1000ms (서비스 측 기본)
+                        hold_ms_raw = params.get("hold_ms")
+                        try:
+                            hold_ms = int(hold_ms_raw) if hold_ms_raw is not None else None
+                        except (TypeError, ValueError):
+                            hold_ms = None
                         if key_name:
                             sub_cmd = params.get("sub_cmd", 0x43)
-                            await svc.async_send_key_by_name(key_name, sub_cmd, screen_type, direction)
+                            await svc.async_send_key_by_name(key_name, sub_cmd, screen_type, direction,
+                                                             hold_ms=hold_ms)
                         else:
                             await svc.async_send_key(
                                 params.get("cmd", 0), params["sub_cmd"], params["key_data"],
-                                screen_type, direction,
+                                screen_type, direction, hold_ms=hold_ms,
                             )
                     break
                 except (ConnectionError, OSError) as ce:

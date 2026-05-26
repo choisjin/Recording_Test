@@ -1166,11 +1166,13 @@ class MIBAgentService:
 
     def send_key_by_name(self, key_name: str, sub_cmd: int = SHORT_KEY,
                          screen_type: Optional[str] = None,
-                         direction: Optional[int] = None) -> None:
+                         direction: Optional[int] = None,
+                         hold_ms: Optional[int] = None) -> None:
         """이름 기반 하드키 송신. sub_cmd는 HKMC6th API 호환용(SHORT/LONG).
 
         MIB는 press→release 시퀀스가 기본. LONG은 press→대기→release 패턴으로 처리.
         market별 추가 동작(POWER 메시지 등)도 함께 처리.
+        hold_ms: LONG_KEY일 때 press↔release 사이 hold 시간(ms). None이면 기본 1000ms.
         """
         info = self.resolve_key(key_name)
         if not info:
@@ -1194,7 +1196,10 @@ class MIBAgentService:
             press = self._hkey_long_frame(key_code, 0x01, category)
             release = self._hkey_long_frame(key_code, 0x00, category)
 
-        hold_s = 1.0 if sub_cmd == LONG_KEY else 0.1
+        if sub_cmd == LONG_KEY:
+            hold_s = max(0.05, (hold_ms / 1000.0)) if hold_ms is not None else 1.0
+        else:
+            hold_s = 0.1
         self._ksend_many([press], interval_s=0)
         time.sleep(hold_s)
         self._ksend_many([release], interval_s=0)
@@ -1273,11 +1278,13 @@ class MIBAgentService:
             return False
 
     def send_key(self, cmd: int, sub_cmd: int, key_data: int,
-                 monitor: int = 0x00, direction: Optional[int] = None) -> None:
+                 monitor: int = 0x00, direction: Optional[int] = None,
+                 hold_ms: Optional[int] = None) -> None:
         """HKMC 호환용 raw send_key. key_data를 KEY_CODE로 해석해 single press/release 수행.
 
         MIB는 cmd 분류가 하나라, 별도 분기 없이 short 프레임을 기본으로 사용.
         long class가 필요하면 key_data 범위로 자동 판별 (POWER=0x38, HOME=0x66).
+        hold_ms: LONG_KEY일 때 press↔release 사이 hold 시간(ms). None이면 기본 1000ms.
 
         주의: 이 경로는 market별 추가 메시지(POWER)를 송신하지 않음.
         POWER를 사용할 때는 send_key_by_name("POWER")을 권장.
@@ -1288,7 +1295,10 @@ class MIBAgentService:
         # Short release는 key=0, state=0 (send_key_by_name과 동일 규칙)
         release = (self._hkey_short_frame(0x00, 0x00) if klass == "short"
                    else self._hkey_long_frame(key_data, 0x00))
-        hold_s = 1.0 if sub_cmd == LONG_KEY else 0.1
+        if sub_cmd == LONG_KEY:
+            hold_s = max(0.05, (hold_ms / 1000.0)) if hold_ms is not None else 1.0
+        else:
+            hold_s = 0.1
 
         key_name_hint = {0x10: "VOLUME_UP", 0x11: "VOLUME_DOWN", 0x20: "MUTE",
                          0x38: "POWER", 0x66: "HOME"}.get(key_data, f"0x{key_data:02X}")
@@ -1811,18 +1821,20 @@ class MIBAgentService:
 
     async def async_send_key_by_name(self, key_name: str, sub_cmd: int = SHORT_KEY,
                                      screen_type: Optional[str] = None,
-                                     direction: Optional[int] = None) -> None:
+                                     direction: Optional[int] = None,
+                                     hold_ms: Optional[int] = None) -> None:
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(
-            None, self.send_key_by_name, key_name, sub_cmd, screen_type, direction
+            None, self.send_key_by_name, key_name, sub_cmd, screen_type, direction, hold_ms
         )
 
     async def async_send_key(self, cmd: int, sub_cmd: int, key_data: int,
                              monitor: int = 0x00,
-                             direction: Optional[int] = None) -> None:
+                             direction: Optional[int] = None,
+                             hold_ms: Optional[int] = None) -> None:
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(
-            None, self.send_key, cmd, sub_cmd, key_data, monitor, direction
+            None, self.send_key, cmd, sub_cmd, key_data, monitor, direction, hold_ms
         )
 
     # ------------------------------------------------------------------
