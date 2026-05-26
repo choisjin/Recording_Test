@@ -161,6 +161,8 @@ ISAP_KEYS: dict[str, dict] = {
     "SWRC_SEEK_UP":     {"cmd": CMD_SWRC, "key": 0x0F},
     "SWRC_SEEK_DOWN":   {"cmd": CMD_SWRC, "key": 0x10},
     "SWRC_CUSTOM":      {"cmd": CMD_SWRC, "key": 0x11},
+    "SWRC_CUSTOM_2":    {"cmd": CMD_SWRC, "key": 0x12},
+    "SWRC_CUSTOM_3":    {"cmd": CMD_SWRC, "key": 0x13},
     "SWRC_SEND":        {"cmd": CMD_SWRC, "key": 0x25},
     "SWRC_END":         {"cmd": CMD_SWRC, "key": 0x26},
     "SWRC_VOLUME":      {"cmd": CMD_SWRC, "key": 0x01, "dial": True},

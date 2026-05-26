@@ -202,6 +202,8 @@ HKMC_KEYS = {
     "SWRC_SEND":        {"cmd": CMD_SWC, "key": 0x25},
     "SWRC_END":         {"cmd": CMD_SWC, "key": 0x26},
     "SWRC_CUSTOM":      {"cmd": CMD_SWC, "key": 0x11},
+    "SWRC_CUSTOM_2":    {"cmd": CMD_SWC, "key": 0x12},
+    "SWRC_CUSTOM_3":    {"cmd": CMD_SWC, "key": 0x13},
     "SWRC_VOLUME_UP":   {"cmd": CMD_SWC, "key": 0x01, "dial": True, "direction": 0x00},
     "SWRC_VOLUME_DOWN": {"cmd": CMD_SWC, "key": 0x01, "dial": True, "direction": 0x01},
 
